@@ -1,0 +1,5 @@
+packages:
+  - apps/api
+
+onlyBuiltDependencies:
+  - bigint-buffer

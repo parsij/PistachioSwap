@@ -1,0 +1,857 @@
+/*
+ * Trigger color variables must be global because the trigger
+ * is outside the portalled popover element.
+ */
+:root {
+    --swap-slippage-neutral: #a3a3a3;
+    --swap-slippage-neutral-bg: #303030;
+
+    --swap-slippage-high: #f5b91b;
+    --swap-slippage-high-bg: rgb(245 185 27 / 14%);
+    --swap-slippage-high-hover-bg: rgb(245 185 27 / 20%);
+
+    --swap-slippage-very-high: #ff5a4e;
+    --swap-slippage-very-high-bg: rgb(255 90 78 / 15%);
+    --swap-slippage-very-high-hover-bg: rgb(255 90 78 / 22%);
+}
+
+.swap-settings-popover {
+    --settings-background: #191919;
+    --settings-border: #383838;
+    --settings-border-strong: #484848;
+    --settings-text: #ffffff;
+    --settings-muted: #969696;
+    --settings-editable: #9b9b9b;
+    --settings-editable-active: #d0d0d0;
+    --settings-subtle: #737373;
+    --settings-accent: #ff37c4;
+    --settings-accent-hover: #ff4bc9;
+    --settings-accent-soft: rgb(255 55 196 / 15%);
+    --settings-error: #ff5f5f;
+
+    z-index: 200;
+
+    width: min(
+            340px,
+            calc(100vw - 24px)
+    );
+
+    padding: 15px 17px;
+
+    overflow: hidden;
+
+    border: 1px solid var(--settings-border);
+    border-radius: 22px;
+
+    background: var(--settings-background);
+
+    box-shadow:
+            0 22px 70px
+            rgb(0 0 0 / 52%);
+
+    color: var(--settings-text);
+
+    font-family:
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+
+    transform-origin:
+            var(
+                    --radix-popover-content-transform-origin
+            );
+}
+
+.swap-settings-popover[data-state="open"] {
+    animation:
+            settings-popover-in
+            180ms
+            cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.swap-settings-popover[data-state="closed"] {
+    animation:
+            settings-popover-out
+            125ms
+            ease-in;
+}
+
+/* Percentage badge attached to the gear. */
+
+.settings-trigger-with-value {
+    display: inline-flex !important;
+
+    width: auto !important;
+    min-width: 58px !important;
+    height: 36px !important;
+
+    align-items: center;
+    justify-content: center;
+
+    gap: 5px;
+
+    padding:
+            0 8px 0 11px !important;
+
+    border: 0 !important;
+    border-radius: 999px !important;
+
+    transition:
+            color 160ms ease,
+            background-color 160ms ease,
+            transform 100ms ease !important;
+}
+
+.settings-trigger-with-value:active {
+    transform: scale(0.97);
+}
+
+.settings-trigger-value {
+    display: block;
+
+    color: inherit;
+
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1;
+
+    white-space: nowrap;
+}
+
+.settings-trigger-icon {
+    display: grid;
+
+    width: 19px;
+    height: 19px;
+
+    place-items: center;
+
+    color: inherit;
+}
+
+.settings-trigger-icon svg {
+    width: 19px;
+    height: 19px;
+
+    color: inherit;
+}
+
+/*
+ * Up to and including 5.5%:
+ * neutral gray.
+ */
+.settings-trigger-normal {
+    color:
+            var(--swap-slippage-neutral)
+    !important;
+
+    background:
+            var(--swap-slippage-neutral-bg)
+    !important;
+}
+
+.settings-trigger-normal:hover {
+    background: #393939 !important;
+}
+
+/*
+ * More than 5.5% through 22%:
+ * amber/yellow.
+ */
+.settings-trigger-high {
+    color:
+            var(--swap-slippage-high)
+    !important;
+
+    background:
+            var(--swap-slippage-high-bg)
+    !important;
+}
+
+.settings-trigger-high:hover {
+    background:
+            var(
+                    --swap-slippage-high-hover-bg
+            )
+    !important;
+}
+
+/*
+ * More than 22% through 100%:
+ * red.
+ */
+.settings-trigger-very-high {
+    color:
+            var(--swap-slippage-very-high)
+    !important;
+
+    background:
+            var(
+                    --swap-slippage-very-high-bg
+            )
+    !important;
+}
+
+.settings-trigger-very-high:hover {
+    background:
+            var(
+                    --swap-slippage-very-high-hover-bg
+            )
+    !important;
+}
+
+/* Slippage row. */
+
+.slippage-setting {
+    padding: 4px 0 11px;
+}
+
+.slippage-setting-row {
+    display: flex;
+
+    min-height: 47px;
+
+    align-items: flex-start;
+    justify-content: space-between;
+
+    gap: 14px;
+}
+
+.slippage-label-column {
+    display: flex;
+
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+
+    gap: 5px;
+}
+
+.settings-row-label {
+    display: inline-flex;
+
+    min-width: 0;
+
+    align-items: center;
+
+    gap: 6px;
+
+    color: var(--settings-text);
+
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.settings-row-label label {
+    color: inherit;
+    cursor: pointer;
+}
+
+.settings-row-label button,
+.settings-row-label [role="button"] {
+    color: var(--settings-subtle);
+}
+
+.settings-row-label button:hover,
+.settings-row-label [role="button"]:hover {
+    color: var(--settings-muted);
+}
+
+/* Warning label beneath Max slippage. */
+
+.slippage-warning {
+    display: flex;
+
+    align-items: center;
+
+    gap: 5px;
+
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.15;
+
+    animation:
+            slippage-warning-in
+            160ms
+            cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.slippage-warning svg {
+    width: 15px;
+    height: 15px;
+
+    flex: 0 0 auto;
+}
+
+.slippage-warning-high {
+    color:
+            var(--swap-slippage-high);
+}
+
+.slippage-warning-very-high {
+    color:
+            var(--swap-slippage-very-high);
+}
+
+/*
+ * Auto and manual percentage are one shared pill.
+ */
+
+.slippage-combined-control {
+    display: flex;
+
+    width: 140px;
+    height: 36px;
+
+    flex: 0 0 auto;
+
+    align-items: center;
+
+    padding: 3px;
+
+    border:
+            1px solid
+            var(--settings-border-strong);
+
+    border-radius: 999px;
+
+    background:
+            var(--settings-background);
+
+    transition:
+            border-color 160ms ease,
+            box-shadow 160ms ease,
+            background-color 160ms ease;
+}
+
+.slippage-combined-control:hover {
+    border-color: #565656;
+}
+
+/* Normal custom value uses pink. */
+
+.slippage-combined-control.is-custom {
+    border-color:
+            var(--settings-accent);
+
+    box-shadow:
+            0 0 0 1px
+            rgb(255 55 196 / 8%);
+}
+
+/* More than 5.5% uses yellow. */
+
+.slippage-combined-control.is-high {
+    border-color:
+            var(--swap-slippage-high);
+
+    box-shadow:
+            0 0 0 1px
+            rgb(245 185 27 / 11%);
+}
+
+/* More than 22% uses red. */
+
+.slippage-combined-control.is-very-high {
+    border-color:
+            var(--swap-slippage-very-high);
+
+    box-shadow:
+            0 0 0 1px
+            rgb(255 90 78 / 12%);
+}
+
+.slippage-combined-control.is-invalid {
+    border-color:
+            var(--settings-error);
+}
+
+/* Auto segment. */
+
+.slippage-auto-button {
+    display: grid;
+
+    height: 28px;
+    min-width: 57px;
+
+    place-items: center;
+
+    padding: 0 11px;
+
+    border: 0;
+    border-radius: 999px;
+
+    background: transparent;
+
+    color: var(--settings-muted);
+
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+
+    cursor: pointer;
+
+    transition:
+            color 160ms ease,
+            background-color 180ms ease,
+            transform 100ms ease;
+}
+
+.slippage-auto-button:hover {
+    color: var(--settings-text);
+}
+
+.slippage-auto-button:active {
+    transform: scale(0.96);
+}
+
+.slippage-combined-control.is-auto
+.slippage-auto-button {
+    color: var(--settings-accent);
+
+    background:
+            var(--settings-accent-soft);
+}
+
+.slippage-combined-control.is-custom
+.slippage-auto-button {
+    color: #a9a9a9;
+    background: #303030;
+}
+
+.slippage-combined-control.is-high
+.slippage-auto-button {
+    color: #b7ab88;
+    background: #39352a;
+}
+
+.slippage-combined-control.is-very-high
+.slippage-auto-button {
+    color: #bca19e;
+    background: #3a2e2d;
+}
+
+/* Editable manual segment. */
+
+.slippage-custom-control {
+    display: flex;
+
+    min-width: 0;
+    height: 28px;
+
+    flex: 1 1 auto;
+
+    align-items: center;
+    justify-content: flex-end;
+
+    padding: 0 7px 0 5px;
+
+    border-radius: 999px;
+
+    cursor: text;
+
+    transition:
+            background-color 150ms ease;
+}
+
+.slippage-custom-control:hover {
+    background:
+            rgb(255 255 255 / 3%);
+}
+
+.slippage-custom-control input {
+    width: 100%;
+    min-width: 0;
+
+    padding: 0;
+
+    border: 0;
+    outline: 0;
+
+    background: transparent;
+
+    color: var(--settings-editable);
+
+    caret-color:
+            var(--settings-accent);
+
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+
+    text-align: right;
+
+    cursor: text;
+
+    appearance: textfield;
+
+    transition:
+            color 160ms ease;
+}
+
+.slippage-custom-control input::-webkit-inner-spin-button,
+.slippage-custom-control input::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+}
+
+.slippage-custom-control input::selection {
+    color: #ffffff;
+
+    background:
+            rgb(255 55 196 / 30%);
+}
+
+.slippage-combined-control.is-custom
+.slippage-custom-control input {
+    color:
+            var(--settings-editable-active);
+}
+
+.slippage-combined-control.is-high
+.slippage-custom-control input {
+    color:
+            var(--swap-slippage-high);
+
+    caret-color:
+            var(--swap-slippage-high);
+}
+
+.slippage-combined-control.is-very-high
+.slippage-custom-control input {
+    color:
+            var(--swap-slippage-very-high);
+
+    caret-color:
+            var(--swap-slippage-very-high);
+}
+
+.slippage-percent-symbol {
+    flex: 0 0 auto;
+
+    color: var(--settings-editable);
+
+    font-size: 14px;
+    font-weight: 600;
+
+    transition:
+            color 160ms ease;
+}
+
+.slippage-combined-control.is-custom
+.slippage-percent-symbol {
+    color:
+            var(--settings-editable-active);
+}
+
+.slippage-combined-control.is-high
+.slippage-percent-symbol {
+    color:
+            var(--swap-slippage-high);
+}
+
+.slippage-combined-control.is-very-high
+.slippage-percent-symbol {
+    color:
+            var(--swap-slippage-very-high);
+}
+
+.settings-error {
+    margin: 6px 0 0;
+
+    color: var(--settings-error);
+
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.35;
+
+    text-align: right;
+}
+
+/* Existing toggle styles. */
+
+.settings-toggle-row {
+    display: flex;
+
+    min-height: 58px;
+
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 20px;
+
+    border-top:
+            1px solid
+            rgb(255 255 255 / 4%);
+}
+
+.settings-toggle-copy {
+    display: flex;
+
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+}
+
+.uniswap-toggle {
+    position: relative;
+
+    width: 64px;
+    height: 36px;
+
+    flex: 0 0 auto;
+
+    padding: 0;
+
+    border: 0;
+    border-radius: 999px;
+
+    background: #343434;
+
+    cursor: pointer;
+
+    -webkit-tap-highlight-color:
+            transparent;
+
+    transition:
+            background-color 200ms
+            cubic-bezier(
+                    0.22,
+                    1,
+                    0.36,
+                    1
+            ),
+            box-shadow 160ms ease,
+            transform 100ms ease;
+}
+
+.uniswap-toggle:hover {
+    background: #3d3d3d;
+}
+
+.uniswap-toggle:active {
+    transform: scale(0.97);
+}
+
+.uniswap-toggle:focus-visible {
+    outline: none;
+
+    box-shadow:
+            0 0 0 2px
+            var(--settings-background),
+            0 0 0 4px
+            rgb(255 55 196 / 58%);
+}
+
+.uniswap-toggle[data-state="checked"] {
+    background:
+            var(--settings-accent);
+}
+
+.uniswap-toggle[data-state="checked"]:hover {
+    background:
+            var(--settings-accent-hover);
+}
+
+.uniswap-toggle:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.uniswap-toggle-thumb {
+    position: absolute;
+
+    top: 4px;
+    left: 4px;
+
+    display: grid;
+
+    width: 28px;
+    height: 28px;
+
+    place-items: center;
+
+    border-radius: 999px;
+
+    background: #ffffff;
+
+    box-shadow:
+            0 2px 7px
+            rgb(0 0 0 / 28%);
+
+    color:
+            var(--settings-accent);
+
+    transform: translateX(0);
+
+    transition:
+            transform 230ms
+            cubic-bezier(
+                    0.22,
+                    1,
+                    0.36,
+                    1
+            ),
+            box-shadow 180ms ease;
+}
+
+.uniswap-toggle[data-state="checked"]
+.uniswap-toggle-thumb {
+    transform: translateX(28px);
+}
+
+.uniswap-toggle:active
+.uniswap-toggle-thumb {
+    box-shadow:
+            0 1px 4px
+            rgb(0 0 0 / 32%);
+}
+
+.uniswap-toggle-check {
+    display: grid;
+
+    width: 18px;
+    height: 18px;
+
+    place-items: center;
+
+    opacity: 0;
+
+    transform:
+            scale(0.45)
+            rotate(-20deg);
+
+    transition:
+            opacity 130ms ease 30ms,
+            transform 220ms
+            cubic-bezier(
+                    0.22,
+                    1,
+                    0.36,
+                    1
+            );
+}
+
+.uniswap-toggle-check svg {
+    width: 18px;
+    height: 18px;
+}
+
+.uniswap-toggle[data-state="checked"]
+.uniswap-toggle-check {
+    opacity: 1;
+
+    transform:
+            scale(1)
+            rotate(0deg);
+}
+
+.sr-only {
+    position: absolute;
+
+    width: 1px;
+    height: 1px;
+
+    padding: 0;
+    margin: -1px;
+
+    overflow: hidden;
+
+    clip: rect(0, 0, 0, 0);
+
+    white-space: nowrap;
+
+    border: 0;
+}
+
+@keyframes settings-popover-in {
+    from {
+        opacity: 0;
+
+        transform:
+                translateY(-4px)
+                scale(0.96);
+
+        filter: blur(3px);
+    }
+
+    to {
+        opacity: 1;
+
+        transform:
+                translateY(0)
+                scale(1);
+
+        filter: blur(0);
+    }
+}
+
+@keyframes settings-popover-out {
+    from {
+        opacity: 1;
+
+        transform:
+                translateY(0)
+                scale(1);
+    }
+
+    to {
+        opacity: 0;
+
+        transform:
+                translateY(-3px)
+                scale(0.98);
+    }
+}
+
+@keyframes slippage-warning-in {
+    from {
+        opacity: 0;
+        transform: translateY(-2px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 480px) {
+    .swap-settings-popover {
+        width: min(
+                340px,
+                calc(100vw - 24px)
+        );
+
+        padding: 14px 16px;
+    }
+
+    .slippage-setting-row {
+        gap: 10px;
+    }
+
+    .slippage-combined-control {
+        width: 136px;
+    }
+}
+
+@media (
+prefers-reduced-motion:
+        reduce
+) {
+    .swap-settings-popover,
+    .slippage-combined-control,
+    .slippage-auto-button,
+    .settings-trigger-with-value,
+    .slippage-warning,
+    .uniswap-toggle,
+    .uniswap-toggle-thumb,
+    .uniswap-toggle-check {
+        animation: none;
+        transition-duration: 0ms;
+    }
+}
