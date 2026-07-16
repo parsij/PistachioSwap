@@ -24,13 +24,14 @@ function exactObject(value: unknown, allowed: string[]) {
 }
 
 function tradeInput(value: unknown, clientIp: string, includeSlippage: boolean): GaslessInput {
-    const allowed = ['chainId', 'walletAddress', 'sellToken', 'sellAmount']
+    const allowed = ['chainId', 'walletAddress', 'sellToken', 'buyToken', 'sellAmount']
     if (includeSlippage) allowed.push('slippageBps')
     const body = exactObject(value, allowed)
     return {
         chainId: Number(body.chainId),
         walletAddress: String(body.walletAddress ?? ''),
         sellToken: String(body.sellToken ?? ''),
+        buyToken: String(body.buyToken ?? ''),
         sellAmount: String(body.sellAmount ?? ''),
         ...(includeSlippage ? { slippageBps: Number(body.slippageBps ?? 50) } : {}),
         clientIp,
@@ -54,10 +55,16 @@ export const gasAssistRoutes: FastifyPluginAsync = async (app) => {
             enabled,
             mode: enabled ? 'zero-x-gasless' : config.gasAssist.mode,
             chainId: 56,
-            buyToken: 'native',
+            supportedBuyTokens: ['native', 'bep20'],
             minimumSellUsd: config.gasAssist.minimumSellUsd,
             minimumUserOutputUsd: config.gasAssist.minimumUserOutputUsd,
-            feeBps: config.fees.platformFeeBps,
+            fee: {
+                mode: config.gasAssist.feeMode,
+                percentBps: config.gasAssist.feePercentBps,
+                fixedUsd: config.gasAssist.fixedFeeUsd,
+                maximumUsd: config.gasAssist.maximumFeeUsd,
+                tokenMode: config.gasAssist.feeTokenMode,
+            },
             rejectUnlimitedPermits: config.gasAssist.rejectUnlimitedPermits,
             quoteTtlSeconds: config.gasAssist.quoteTtlSeconds,
             statusPollIntervalMs: config.gasAssist.statusPollIntervalMs,

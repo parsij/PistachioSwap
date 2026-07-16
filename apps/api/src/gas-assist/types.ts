@@ -17,10 +17,13 @@ export type ZeroXSigningObject = {
 
 export type StoredGaslessQuote = {
     id: string
+    sponsorshipOrderId: string | null
+    billingMode: 'provider-integrator' | 'prepaid-megafuel'
     zid: string | null
     chainId: number
     walletAddress: string
     sellTokenAddress: string
+    buyTokenAddress: string
     requestedSellAmount: string
     quotedSellAmount: string
     buyAmount: string

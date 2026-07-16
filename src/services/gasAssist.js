@@ -60,7 +60,7 @@ export function fetchGaslessStatus(quoteEndpoint, tradeHash, signal) {
 }
 
 export function exactGaslessRequest(request, includeSlippage) {
-    const fields = ['chainId', 'walletAddress', 'sellToken', 'sellAmount']
+    const fields = ['chainId', 'walletAddress', 'sellToken', 'buyToken', 'sellAmount']
     if (includeSlippage) fields.push('slippageBps')
     const allowed = new Set(fields)
     if (

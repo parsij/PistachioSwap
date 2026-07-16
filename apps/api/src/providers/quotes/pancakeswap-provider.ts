@@ -387,6 +387,7 @@ export function createPancakeSwapProvider(): QuoteProvider {
 
                 return {
                     provider: 'pancakeswap',
+                    billingMode: 'normal-provider-fee',
                     quoteId: quoteId(trade.quoteQueryHash, 'pancakeswap'),
                     chainId: request.chainId,
                     sellToken: request.sellToken,

@@ -23,11 +23,13 @@ describe('0x Gasless frontend boundaries', () => {
             chainId: 56,
             walletAddress: '0x1',
             sellToken: '0x2',
+            buyToken: '0x3',
             sellAmount: '100',
             slippageBps: 50,
         }, true)
         expect(Object.isFrozen(request)).toBe(true)
-        expect(() => exactGaslessRequest({ ...request, buyToken: '0x3' }, true)).toThrow(/unsupported/i)
+        expect(request.buyToken).toBe('0x3')
+        expect(() => exactGaslessRequest({ ...request, swapFeeBps: 500 }, true)).toThrow(/unsupported/i)
     })
 
     it('removes only EIP712Domain for Viem without mutating provider data', () => {

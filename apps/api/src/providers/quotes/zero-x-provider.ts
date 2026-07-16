@@ -11,7 +11,11 @@ import {
 import type { QuoteProvider } from './types.js'
 import { normalizeProviderToken } from './provider-token.js'
 
-export function createZeroXProvider(): QuoteProvider {
+export function createZeroXProvider({
+    applyPlatformFee = true,
+}: {
+    applyPlatformFee?: boolean
+} = {}): QuoteProvider {
     const config = getApiConfig()
 
     return {
@@ -54,6 +58,7 @@ export function createZeroXProvider(): QuoteProvider {
             )
 
             if (
+                applyPlatformFee &&
                 config.fees.platformFeeBps > 0 &&
                 config.fees.collectionMode === 'provider-affiliate' &&
                 config.fees.treasuryAddress
@@ -120,6 +125,10 @@ export function createZeroXProvider(): QuoteProvider {
 
             return {
                 provider: '0x',
+                billingMode:
+                    applyPlatformFee && config.fees.platformFeeBps > 0
+                        ? 'provider-integrator'
+                        : 'normal-provider-fee',
                 quoteId: quoteId(payload.zid ?? payload.blockNumber, '0x'),
                 chainId: request.chainId,
                 sellToken: request.sellToken,
@@ -139,7 +148,9 @@ export function createZeroXProvider(): QuoteProvider {
                     bps:
                         feeAmount === '0'
                             ? 0
-                            : config.fees.platformFeeBps,
+                            : applyPlatformFee
+                                ? config.fees.platformFeeBps
+                                : 0,
                 },
                 route:
                     isRecord(payload.route) && Array.isArray(payload.route.fills)

@@ -16,8 +16,6 @@ import { getApiConfig } from '../config.js'
 import { getPool } from '../db/client.js'
 import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../lib/address.js'
 import { getTokenPrices, getNativeBnbPrice } from '../providers/alchemy/token-prices.js'
-import { moralisWalletTokenService } from '../providers/moralis/wallet-token-spam.js'
-import { tokenSecurityService } from '../providers/security/token-security.js'
 import {
     createZeroXGaslessClient,
     zeroXGaslessClient,
@@ -46,6 +44,7 @@ export type GaslessInput = {
     chainId: number
     walletAddress: string
     sellToken: string
+    buyToken: string
     sellAmount: string
     slippageBps?: number
     clientIp: string
@@ -55,21 +54,14 @@ type Dependencies = {
     database: Pool
     client: ReturnType<typeof createZeroXGaslessClient>
     now: () => Date
-    getBalanceAndDecimals: (wallet: Address, token: Address) => Promise<{ balance: bigint; decimals: number; hasCode: boolean }>
-    assessToken: (wallet: string, token: string) => Promise<{
-        securityStatus: string
-        securityReasons: string[]
-        possibleSpam: boolean | null
-        spamAvailable: boolean
-        liquidityUsd: string | null
-    }>
-    getSellPrice: (token: string) => Promise<string | null>
-    getNativePrice: () => Promise<string | null>
+    getBalanceAndDecimals: (wallet: Address, token: Address) => Promise<{ balance: bigint; decimals: number }>
+    getTokenPrice: (token: string) => Promise<string | null>
+    getTokenDecimals: (token: Address) => Promise<number>
 }
 
 function publicClient() {
     const rpcUrl = getApiConfig().quotes.pancakeSwap.rpcUrl
-    if (!rpcUrl) throw new GasAssistError('TOKEN_SECURITY_UNAVAILABLE', 'BSC RPC is not configured.', 503)
+    if (!rpcUrl) throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', 'BSC RPC is not configured for balance and decimal reads.', 503)
     return createPublicClient({ chain: bsc, transport: http(rpcUrl) })
 }
 
@@ -80,30 +72,20 @@ function defaults(database: Pool): Dependencies {
         now: () => new Date(),
         async getBalanceAndDecimals(wallet, token) {
             const client = publicClient()
-            const [balance, decimals, code] = await Promise.all([
+            const [balance, decimals] = await Promise.all([
                 client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [wallet] }),
                 client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }),
-                client.getCode({ address: token }),
             ])
-            return { balance, decimals: Number(decimals), hasCode: Boolean(code && code !== '0x') }
+            return { balance, decimals: Number(decimals) }
         },
-        async assessToken(wallet, token) {
-            const [security, spam] = await Promise.all([
-                tokenSecurityService.refresh(token),
-                moralisWalletTokenService.getWalletTokens(wallet),
-            ])
-            return {
-                securityStatus: security.securityStatus,
-                securityReasons: security.securityReasons,
-                possibleSpam: spam.tokens.get(token)?.possibleSpam ?? null,
-                spamAvailable: spam.available,
-                liquidityUsd: security.honeypot.liquidityUsd ?? security.goPlus.dexLiquidityUsd,
-            }
-        },
-        async getSellPrice(token) {
+        async getTokenPrice(token) {
+            if (token === ZEROX_NATIVE_TOKEN) return getNativeBnbPrice()
             return (await getTokenPrices({ addresses: [token] })).get(token) ?? null
         },
-        getNativePrice: () => getNativeBnbPrice(),
+        async getTokenDecimals(token) {
+            const client = publicClient()
+            return Number(await client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }))
+        },
     }
 }
 
@@ -123,6 +105,73 @@ function decimalScale(value: string, scale = 18) {
 
 function usdValue(raw: string, decimals: number, price: string) {
     return BigInt(raw) * decimalScale(price) / 10n ** BigInt(decimals)
+}
+
+type FeePlan = {
+    sellValueUsd: bigint
+    targetFeeUsd: bigint
+    dynamicFeeBps: number
+    expectedFeeRaw: string
+    estimatedFeeUsd: bigint
+    sellPrice: string
+    priceTimestamp: string
+}
+
+type FeeSchedule = {
+    feePercentBps: number
+    fixedFeeUsd: string
+    maximumFeeUsd: string
+}
+
+function formatScaled(value: bigint, scale = 18) {
+    const base = 10n ** BigInt(scale)
+    const whole = value / base
+    const fraction = (value % base).toString().padStart(scale, '0').replace(/0+$/, '')
+    return fraction ? `${whole}.${fraction}` : whole.toString()
+}
+
+function calculateFeePlan(
+    sellAmount: string,
+    decimals: number,
+    sellPrice: string,
+    schedule: FeeSchedule = getApiConfig().gasAssist,
+    priceTimestamp = new Date().toISOString(),
+): FeePlan {
+    let sellValueUsd: bigint
+    try {
+        sellValueUsd = usdValue(sellAmount, decimals, sellPrice)
+    } catch {
+        throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'The trusted sell-token price is malformed.', 503)
+    }
+    if (sellValueUsd <= 0n) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'The trusted sell-token price is not usable.', 503)
+    const percentage = sellValueUsd * BigInt(schedule.feePercentBps) / 10_000n
+    const uncapped = percentage + decimalScale(schedule.fixedFeeUsd)
+    const maximum = decimalScale(schedule.maximumFeeUsd)
+    const targetFeeUsd = uncapped < maximum ? uncapped : maximum
+    const dynamicFeeBpsBigInt = targetFeeUsd * 10_000n / sellValueUsd
+    if (dynamicFeeBpsBigInt < 0n || dynamicFeeBpsBigInt > 1_000n) {
+        throw new GasAssistError('GAS_ASSIST_FEE_NOT_REPRESENTABLE', 'The Gas Assist fee cannot be represented safely.', 409)
+    }
+    const dynamicFeeBps = Number(dynamicFeeBpsBigInt)
+    const expectedFeeRaw = (BigInt(sellAmount) * dynamicFeeBpsBigInt / 10_000n).toString()
+    const estimatedFeeUsd = usdValue(expectedFeeRaw, decimals, sellPrice)
+    if (estimatedFeeUsd > targetFeeUsd || estimatedFeeUsd > maximum) {
+        throw new GasAssistError('GAS_ASSIST_FEE_NOT_REPRESENTABLE', 'The Gas Assist fee exceeds its configured cap.', 409)
+    }
+    return { sellValueUsd, targetFeeUsd, dynamicFeeBps, expectedFeeRaw, estimatedFeeUsd, sellPrice, priceTimestamp }
+}
+
+function publicFee(plan: FeePlan) {
+    return {
+        sellValueUsd: formatScaled(plan.sellValueUsd),
+        targetFeeUsd: formatScaled(plan.targetFeeUsd),
+        dynamicFeeBps: plan.dynamicFeeBps,
+        expectedFeeTokenAmount: plan.expectedFeeRaw,
+        estimatedFeeUsd: formatScaled(plan.estimatedFeeUsd),
+        trustedPrice: plan.sellPrice,
+        trustedPriceSource: 'alchemy-token-prices',
+        trustedPriceTimestamp: plan.priceTimestamp,
+    }
 }
 
 function assertAtLeast(value: bigint, configured: string, code: string, message: string) {
@@ -185,7 +234,31 @@ function feeAmount(value: unknown) {
         : 0n
 }
 
-function validateProviderQuote(payload: Record<string, unknown>, input: ReturnType<typeof normalizeInput>) {
+function validateIntegratorFee(fees: Record<string, unknown>, input: ReturnType<typeof normalizeInput>, feePlan: FeePlan) {
+    const integratorFees = Array.isArray(fees.integratorFees)
+        ? fees.integratorFees
+        : [fees.integratorFee]
+    const integratorTotal = integratorFees.reduce((sum, fee) => sum + feeAmount(fee), 0n)
+    if (
+        integratorFees.some((fee) => feeAmount(fee) > 0n && !sameAddress(record(fee)?.token, input.sellToken)) ||
+        (feePlan.dynamicFeeBps > 0 && integratorTotal === 0n) ||
+        integratorTotal !== BigInt(feePlan.expectedFeeRaw)
+    ) {
+        throw new GasAssistError('GAS_ASSIST_INTEGRATOR_FEE_MISMATCH', '0x returned an inconsistent PistachioSwap fee.', 502)
+    }
+}
+
+function validateNoIntegratorFee(fees: Record<string, unknown>) {
+    const integratorFees = [
+        ...(Array.isArray(fees.integratorFees) ? fees.integratorFees : []),
+        fees.integratorFee,
+    ]
+    if (integratorFees.some((fee) => feeAmount(fee) !== 0n)) {
+        throw new GasAssistError('BILLING_MODE_CONFLICT', '0x returned an integrator fee for a prepaid order.', 502)
+    }
+}
+
+function validateProviderQuote(payload: Record<string, unknown>, input: ReturnType<typeof normalizeInput>, feePlan?: FeePlan) {
     const config = getApiConfig()
     if (payload.liquidityAvailable !== true) {
         throw new GasAssistError('ZEROX_NO_LIQUIDITY', '0x found no Gasless liquidity for this trade.')
@@ -219,13 +292,18 @@ function validateProviderQuote(payload: Record<string, unknown>, input: ReturnTy
     }
     if (
         !sameAddress(payload.sellToken, input.sellToken) ||
-        !sameAddress(payload.buyToken, ZEROX_NATIVE_TOKEN)
+        !sameAddress(payload.buyToken, input.buyToken) ||
+        (payload.taker !== undefined && !sameAddress(payload.taker, input.walletAddress)) ||
+        (payload.recipient !== undefined && !sameAddress(payload.recipient, input.walletAddress))
     ) {
         throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x returned different quote tokens.', 502)
     }
     const quotedSellAmount = exactPositiveInteger(payload.sellAmount)
     const buyAmount = exactPositiveInteger(payload.buyAmount)
     const minimumBuyAmount = exactPositiveInteger(payload.minBuyAmount)
+    if (BigInt(quotedSellAmount) > BigInt(input.sellAmount) || BigInt(minimumBuyAmount) > BigInt(buyAmount)) {
+        throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x returned incoherent quote amounts.', 502)
+    }
     const { message, permitted, slippage } = getTradeParts(trade)
     if (
         Number(trade.eip712.domain.chainId) !== 56 ||
@@ -234,7 +312,7 @@ function validateProviderQuote(payload: Record<string, unknown>, input: ReturnTy
         String(permitted.amount) !== input.sellAmount ||
         !slippage ||
         !sameAddress(slippage.recipient, input.walletAddress) ||
-        !sameAddress(slippage.buyToken, ZEROX_NATIVE_TOKEN) ||
+        !sameAddress(slippage.buyToken, input.buyToken) ||
         String(slippage.minAmountOut) !== minimumBuyAmount ||
         !deadlineSeconds(message.deadline)
     ) {
@@ -267,32 +345,8 @@ function validateProviderQuote(payload: Record<string, unknown>, input: ReturnTy
         }
     }
 
-    const metadata = record(payload.tokenMetadata)
-    const sellMetadata = record(metadata?.sellToken)
-    for (const field of ['buyTaxBps', 'sellTaxBps', 'transferTaxBps']) {
-        const tax = sellMetadata?.[field]
-        if (tax !== null && tax !== undefined && String(tax) !== '0') {
-            throw new GasAssistError('TOKEN_UNSAFE', 'Fee-on-transfer tokens are not supported by Gas Assist.', 403)
-        }
-    }
     const fees = record(payload.fees) ?? {}
-    const integratorFees = Array.isArray(fees.integratorFees)
-        ? fees.integratorFees
-        : [fees.integratorFee]
-    const integratorTotal = integratorFees.reduce((sum, fee) => sum + feeAmount(fee), 0n)
-    if (integratorFees.some((fee) => feeAmount(fee) > 0n && !sameAddress(record(fee)?.token, input.sellToken))) {
-        throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x returned the PistachioSwap fee in an unexpected token.', 502)
-    }
-    if (config.fees.platformFeeBps > 0 && integratorTotal === 0n) {
-        throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', 'The configured PistachioSwap fee is missing.', 502)
-    }
-    if (config.fees.platformFeeBps > 0) {
-        const expectedIntegratorFee =
-            BigInt(input.sellAmount) * BigInt(config.fees.platformFeeBps) / 10_000n
-        if (integratorTotal !== expectedIntegratorFee) {
-            throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x returned an unexpected PistachioSwap fee.', 502)
-        }
-    }
+    if (feePlan) validateIntegratorFee(fees, input, feePlan)
     const route = record(payload.route) ?? {}
     const ttlDeadline = [deadlineSeconds(trade.eip712.message.deadline), approval ? deadlineSeconds(approval.eip712.message.deadline) : null]
         .filter((value): value is bigint => value !== null)
@@ -317,76 +371,72 @@ function validateProviderQuote(payload: Record<string, unknown>, input: ReturnTy
 function normalizeInput(input: GaslessInput) {
     const walletAddress = normalizeAddress(input.walletAddress)
     const sellToken = normalizeAddress(input.sellToken)
+    const requestedBuyToken = normalizeAddress(input.buyToken)
     if (input.chainId !== 56) throw new GasAssistError('WRONG_CHAIN', 'Gas Assist supports only BNB Chain.')
     if (!walletAddress || walletAddress === zeroAddress) throw new GasAssistError('INVALID_WALLET', 'A valid wallet address is required.')
-    if (!sellToken || sellToken === zeroAddress) throw new GasAssistError('INVALID_TOKEN', 'A valid BEP-20 token is required.')
+    if (!sellToken || sellToken === zeroAddress) throw new GasAssistError('INVALID_SELL_TOKEN', 'A valid BEP-20 sell token is required.')
+    if (!requestedBuyToken) throw new GasAssistError('INVALID_BUY_TOKEN', 'A valid BEP-20 or native BNB buy token is required.')
     if (sellToken === NATIVE_TOKEN_ADDRESS || sellToken === ZEROX_NATIVE_TOKEN) {
         throw new GasAssistError('NATIVE_SELL_TOKEN_UNSUPPORTED', 'Gas Assist cannot sell native BNB.')
     }
+    const buyToken = requestedBuyToken === NATIVE_TOKEN_ADDRESS ? ZEROX_NATIVE_TOKEN : requestedBuyToken
+    if (sameAddress(sellToken, buyToken)) throw new GasAssistError('IDENTICAL_TOKEN_PAIR', 'Sell and buy tokens must differ.')
     const sellAmount = exactPositiveInteger(input.sellAmount)
     const slippageBps = input.slippageBps ?? 50
     if (!Number.isInteger(slippageBps) || slippageBps < 30 || slippageBps > 10_000) {
         throw new GasAssistError('INVALID_AMOUNT', 'Gas Assist slippage must be between 30 and 10000 BPS.')
     }
-    return { chainId: 56 as const, walletAddress, sellToken, sellAmount, slippageBps, clientIp: input.clientIp }
+    return { chainId: 56 as const, walletAddress, sellToken, buyToken, sellAmount, slippageBps, clientIp: input.clientIp }
 }
 
 async function preliminary(input: ReturnType<typeof normalizeInput>, dependencies: Dependencies) {
     const config = getApiConfig()
-    const [{ balance, decimals, hasCode }, assessment, sellPrice] = await Promise.all([
+    const [{ balance, decimals }, sellPrice, buyDecimals, buyPrice] = await Promise.all([
         dependencies.getBalanceAndDecimals(input.walletAddress as Address, input.sellToken as Address),
-        dependencies.assessToken(input.walletAddress, input.sellToken),
-        dependencies.getSellPrice(input.sellToken),
+        dependencies.getTokenPrice(input.sellToken),
+        input.buyToken === ZEROX_NATIVE_TOKEN
+            ? Promise.resolve(18)
+            : dependencies.getTokenDecimals(input.buyToken as Address),
+        dependencies.getTokenPrice(input.buyToken),
     ])
-    if (!hasCode) throw new GasAssistError('INVALID_TOKEN', 'The sell token has no contract bytecode.')
     if (balance < BigInt(input.sellAmount)) throw new GasAssistError('INSUFFICIENT_TOKEN_BALANCE', 'The wallet token balance is insufficient.')
-    if (assessment.possibleSpam === true) throw new GasAssistError('TOKEN_UNSAFE', 'Spam tokens cannot use Gas Assist.', 403)
-    if (config.gasAssist.requireStrictTokenSecurity && !assessment.spamAvailable) {
-        throw new GasAssistError('TOKEN_SECURITY_UNAVAILABLE', 'Token spam classification is unavailable.', 503)
-    }
-    if (
-        ['blocked', 'high'].includes(assessment.securityStatus) ||
-        (config.gasAssist.requireStrictTokenSecurity && assessment.securityStatus !== 'low' && assessment.securityStatus !== 'trusted') ||
-        assessment.securityReasons.some((reason) => /tax|paus|blacklist|cannot-sell|simulation-failed/i.test(reason))
-    ) {
-        throw new GasAssistError('TOKEN_UNSAFE', 'This token does not pass the Gas Assist security policy.', 403)
-    }
-    if (assessment.liquidityUsd !== null && decimalScale(assessment.liquidityUsd) === 0n) {
-        throw new GasAssistError('ZEROX_NO_LIQUIDITY', 'This token has no trusted liquidity.')
-    }
     if (!sellPrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A trusted sell-token price is unavailable.', 503)
-    const sellUsd = usdValue(input.sellAmount, decimals, sellPrice)
+    if (!buyPrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A trusted buy-token price is unavailable.', 503)
+    const feePlan = calculateFeePlan(input.sellAmount, decimals, sellPrice, config.gasAssist)
+    const sellUsd = feePlan.sellValueUsd
     assertAtLeast(sellUsd, config.gasAssist.minimumSellUsd, 'SELL_VALUE_TOO_LOW', 'The sell value is below the Gas Assist minimum.')
     if (sellUsd < decimalScale('0.10')) throw new GasAssistError('SELL_VALUE_TOO_LOW', 'Gas Assist never accepts balances worth less than $0.10.')
-    return { decimals, sellPrice, sellUsd }
+    return { decimals, sellPrice, sellUsd, buyDecimals, buyPrice, feePlan }
 }
 
-function providerRequest(input: ReturnType<typeof normalizeInput>): GaslessRequest {
+function providerRequest(input: ReturnType<typeof normalizeInput>, feePlan?: FeePlan): GaslessRequest {
     const config = getApiConfig()
     return {
         chainId: 56,
         sellToken: input.sellToken,
-        buyToken: ZEROX_NATIVE_TOKEN,
+        buyToken: input.buyToken,
         sellAmount: input.sellAmount,
         taker: input.walletAddress,
         recipient: input.walletAddress,
         slippageBps: input.slippageBps,
-        ...(config.fees.platformFeeBps > 0 ? {
+        ...(feePlan && feePlan.dynamicFeeBps > 0 ? {
             swapFeeRecipient: config.fees.treasuryAddress!,
-            swapFeeBps: config.fees.platformFeeBps,
+            swapFeeBps: feePlan.dynamicFeeBps,
             swapFeeToken: input.sellToken,
         } : {}),
     }
 }
 
-function publicSummary(validated: ReturnType<typeof validateProviderQuote>) {
+function publicSummary(validated: ReturnType<typeof validateProviderQuote>, feePlan: FeePlan) {
     return {
         sellAmount: validated.quotedSellAmount,
         buyAmount: validated.buyAmount,
         minBuyAmount: validated.minimumBuyAmount,
         fees: validated.fees,
+        fee: publicFee(feePlan),
         routeSummary: Array.isArray(validated.route.fills) ? validated.route.fills : [],
         approvalRequired: validated.approvalRequired,
+        billingMode: 'provider-integrator' as const,
         gaslessApprovalAvailable: Boolean(validated.approval),
         approval: validated.approval ? {
             type: validated.approval.type,
@@ -401,13 +451,17 @@ function publicSummary(validated: ReturnType<typeof validateProviderQuote>) {
 async function economicChecks(
     validated: ReturnType<typeof validateProviderQuote>,
     sellUsd: bigint,
-    dependencies: Dependencies,
+    buyDecimals: number,
+    buyPrice: string,
 ) {
     const config = getApiConfig()
-    const nativePrice = await dependencies.getNativePrice()
-    if (!nativePrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A trusted BNB price is unavailable.', 503)
-    const outputUsd = usdValue(validated.buyAmount, 18, nativePrice)
-    assertAtLeast(outputUsd, config.gasAssist.minimumUserOutputUsd, 'USER_OUTPUT_TOO_LOW', 'The expected BNB output is below the Gas Assist minimum.')
+    let outputUsd: bigint
+    try {
+        outputUsd = usdValue(validated.buyAmount, buyDecimals, buyPrice)
+    } catch {
+        throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'The trusted buy-token price is malformed.', 503)
+    }
+    assertAtLeast(outputUsd, config.gasAssist.minimumUserOutputUsd, 'USER_OUTPUT_TOO_LOW', 'The expected user output is below the Gas Assist minimum.')
     const impactBps = outputUsd >= sellUsd ? 0n : (sellUsd - outputUsd) * 10_000n / sellUsd
     if (impactBps > BigInt(config.gasAssist.maximumPriceImpactBps)) {
         throw new GasAssistError('PRICE_IMPACT_TOO_HIGH', 'The Gas Assist trade has excessive price impact.', 409)
@@ -429,43 +483,103 @@ export function createGaslessService(overrides: Partial<Dependencies> = {}) {
     async function price(raw: GaslessInput) {
         assertMode()
         const input = normalizeInput(raw)
-        const { sellUsd } = await preliminary(input, dependencies)
-        const payload = await dependencies.client.getGaslessPrice(providerRequest(input))
+        const { sellUsd, buyDecimals, buyPrice, feePlan } = await preliminary(input, dependencies)
+        const payload = await dependencies.client.getGaslessPrice(providerRequest(input, feePlan))
         if (
             payload.liquidityAvailable !== true ||
             !sameAddress(payload.sellToken, input.sellToken) ||
-            !sameAddress(payload.buyToken, ZEROX_NATIVE_TOKEN)
+            !sameAddress(payload.buyToken, input.buyToken)
         ) {
             throw new GasAssistError('ZEROX_NO_LIQUIDITY', '0x found no valid Gasless liquidity for this trade.')
         }
         const buyAmount = exactPositiveInteger(payload.buyAmount)
         const minimumBuyAmount = exactPositiveInteger(payload.minBuyAmount)
         const quotedSellAmount = exactPositiveInteger(payload.sellAmount)
+        if (BigInt(quotedSellAmount) > BigInt(input.sellAmount) || BigInt(minimumBuyAmount) > BigInt(buyAmount)) {
+            throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x returned incoherent Gasless price amounts.', 502)
+        }
         const issues = record(payload.issues)
         if (!issues || issues.balance !== null && issues.balance !== undefined) {
             throw new GasAssistError('INSUFFICIENT_TOKEN_BALANCE', '0x reports an insufficient token balance.')
         }
-        await economicChecks({ buyAmount } as ReturnType<typeof validateProviderQuote>, sellUsd, dependencies)
+        await economicChecks({ buyAmount } as ReturnType<typeof validateProviderQuote>, sellUsd, buyDecimals, buyPrice)
         const fees = record(payload.fees) ?? {}
+        validateIntegratorFee(fees, input, feePlan)
         const route = record(payload.route) ?? {}
         return {
             chainId: 56,
             sellToken: input.sellToken,
-            buyToken: 'native',
+            buyToken: input.buyToken,
             requestedSellAmount: input.sellAmount,
             sellAmount: quotedSellAmount,
             buyAmount,
             minBuyAmount: minimumBuyAmount,
             fees,
+            fee: publicFee(feePlan),
             routeSummary: Array.isArray(route.fills) ? route.fills : [],
             approvalRequired: issues.allowance !== null,
+        }
+    }
+
+    async function probePrepaid(raw: GaslessInput) {
+        assertMode()
+        const input = normalizeInput(raw)
+        const { sellUsd, buyDecimals, buyPrice } = await preliminary(input, dependencies)
+        const payload = await dependencies.client.getGaslessPrice(providerRequest(input))
+        if (
+            payload.liquidityAvailable !== true ||
+            !sameAddress(payload.sellToken, input.sellToken) ||
+            !sameAddress(payload.buyToken, input.buyToken)
+        ) {
+            return { route: 'unavailable' as const, reason: 'ZEROX_NO_LIQUIDITY' }
+        }
+        const quotedSellAmount = exactPositiveInteger(payload.sellAmount)
+        const buyAmount = exactPositiveInteger(payload.buyAmount)
+        const minimumBuyAmount = exactPositiveInteger(payload.minBuyAmount)
+        if (BigInt(quotedSellAmount) > BigInt(input.sellAmount) || BigInt(minimumBuyAmount) > BigInt(buyAmount)) {
+            throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x returned incoherent Gasless price amounts.', 502)
+        }
+        const issues = record(payload.issues)
+        if (!issues || issues.balance !== null && issues.balance !== undefined || issues.simulationIncomplete === true) {
+            throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x could not simulate the prepaid Gasless route.', 409)
+        }
+        const fees = record(payload.fees) ?? {}
+        const integratorTotal = [
+            ...(Array.isArray(fees.integratorFees) ? fees.integratorFees : []),
+            fees.integratorFee,
+        ].reduce((sum, fee) => sum + feeAmount(fee), 0n)
+        if (integratorTotal !== 0n) {
+            throw new GasAssistError('BILLING_MODE_CONFLICT', '0x returned a provider integrator fee for a prepaid order.', 502)
+        }
+        await economicChecks({ buyAmount } as ReturnType<typeof validateProviderQuote>, sellUsd, buyDecimals, buyPrice)
+        const allowance = record(issues.allowance)
+        if (!allowance) {
+            return {
+                route: 'direct' as const,
+                sellAmount: quotedSellAmount,
+                buyAmount,
+                minimumBuyAmount,
+                fees,
+            }
+        }
+        const spender = normalizeAddress(allowance.spender ?? payload.allowanceTarget)
+        if (!spender || !sameAddress(spender, payload.allowanceTarget)) {
+            throw new GasAssistError('ZEROX_GASLESS_RESPONSE_INVALID', '0x returned an invalid approval target.', 502)
+        }
+        return {
+            route: 'onchain-approval' as const,
+            spender,
+            sellAmount: quotedSellAmount,
+            buyAmount,
+            minimumBuyAmount,
+            fees,
         }
     }
 
     async function quote(raw: GaslessInput) {
         assertMode()
         const input = normalizeInput(raw)
-        const { sellUsd } = await preliminary(input, dependencies)
+        const { sellUsd, buyDecimals, buyPrice, feePlan } = await preliminary(input, dependencies)
         const count = await dependencies.database.query<{ count: string }>(
             `SELECT count(*)::text AS count FROM gas_assist_gasless_quotes
              WHERE chain_id=56 AND wallet_address=$1 AND created_at > now() - interval '1 hour'`,
@@ -474,9 +588,9 @@ export function createGaslessService(overrides: Partial<Dependencies> = {}) {
         if (Number(count.rows[0]?.count ?? 0) >= getApiConfig().gasAssist.quoteWalletLimitPerHour) {
             throw new GasAssistError('RATE_LIMITED', 'The wallet Gas Assist quote limit has been reached.', 429)
         }
-        const payload = await dependencies.client.getGaslessQuote(providerRequest(input))
-        const validated = validateProviderQuote(payload, input)
-        await economicChecks(validated, sellUsd, dependencies)
+        const payload = await dependencies.client.getGaslessQuote(providerRequest(input, feePlan))
+        const validated = validateProviderQuote(payload, input, feePlan)
+        await economicChecks(validated, sellUsd, buyDecimals, buyPrice)
         const now = dependencies.now()
         const localExpiry = new Date(now.getTime() + getApiConfig().gasAssist.quoteTtlSeconds * 1_000)
         const expiresAt = validated.providerExpiresAt < localExpiry ? validated.providerExpiresAt : localExpiry
@@ -488,9 +602,9 @@ export function createGaslessService(overrides: Partial<Dependencies> = {}) {
               approval_required,gasless_approval_available,approval_amount,approval_unlimited,expires_at)
              VALUES ($1,56,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17)
              RETURNING id`,
-            [validated.zid, input.walletAddress, input.sellToken, ZEROX_NATIVE_TOKEN, input.sellAmount,
+            [validated.zid, input.walletAddress, input.sellToken, input.buyToken, input.sellAmount,
                 validated.quotedSellAmount, validated.buyAmount, validated.minimumBuyAmount,
-                JSON.stringify(validated.fees), JSON.stringify(validated.route),
+                JSON.stringify({ ...validated.fees, pistachioSwap: publicFee(feePlan) }), JSON.stringify(validated.route),
                 validated.approval ? JSON.stringify(validated.approval) : null,
                 JSON.stringify(validated.trade), validated.approvalRequired, Boolean(validated.approval),
                 validated.approvalAmount, validated.approvalUnlimited, expiresAt],
@@ -501,16 +615,74 @@ export function createGaslessService(overrides: Partial<Dependencies> = {}) {
             chainId: 56,
             walletAddress: input.walletAddress,
             sellToken: input.sellToken,
-            buyToken: 'native',
+            buyToken: input.buyToken,
             requestedSellAmount: input.sellAmount,
-            ...publicSummary(validated),
+            ...publicSummary(validated, feePlan),
+        }
+    }
+
+    async function quotePrepaid(raw: GaslessInput, sponsorshipOrderId: string) {
+        assertMode()
+        if (!getApiConfig().sponsorship.enabled) {
+            throw new GasAssistError('SPONSORSHIP_DISABLED', 'Prepaid Gas Assist is disabled.', 503)
+        }
+        const input = normalizeInput(raw)
+        const { sellUsd, buyDecimals, buyPrice } = await preliminary(input, dependencies)
+        const payload = await dependencies.client.getGaslessQuote(providerRequest(input))
+        const validated = validateProviderQuote(payload, input)
+        validateNoIntegratorFee(validated.fees)
+        if (validated.approvalRequired || validated.approval) {
+            throw new GasAssistError('APPROVAL_NOT_CONFIRMED', '0x still reports an approval requirement after the sponsored approval.', 409)
+        }
+        await economicChecks(validated, sellUsd, buyDecimals, buyPrice)
+        const now = dependencies.now()
+        const localExpiry = new Date(now.getTime() + getApiConfig().sponsorship.actionIntentTtlSeconds * 1_000)
+        const expiresAt = validated.providerExpiresAt < localExpiry ? validated.providerExpiresAt : localExpiry
+        if (expiresAt <= now) throw new GasAssistError('QUOTE_EXPIRED', 'The 0x quote has already expired.', 409)
+        const inserted = await dependencies.database.query<{ id: string }>(
+            `INSERT INTO gas_assist_gasless_quotes
+             (sponsorship_order_id,billing_mode,zid,chain_id,wallet_address,sell_token_address,buy_token_address,requested_sell_amount,
+              quoted_sell_amount,buy_amount,minimum_buy_amount,fees,route,approval,trade,
+              approval_required,gasless_approval_available,approval_amount,approval_unlimited,expires_at)
+             VALUES ($1,'prepaid-megafuel',$2,56,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18)
+             RETURNING id`,
+            [sponsorshipOrderId, validated.zid, input.walletAddress, input.sellToken, input.buyToken, input.sellAmount,
+                validated.quotedSellAmount, validated.buyAmount, validated.minimumBuyAmount,
+                JSON.stringify({ ...validated.fees, billingMode: 'prepaid-megafuel' }), JSON.stringify(validated.route),
+                validated.approval ? JSON.stringify(validated.approval) : null, JSON.stringify(validated.trade),
+                validated.approvalRequired, Boolean(validated.approval), validated.approvalAmount,
+                validated.approvalUnlimited, expiresAt],
+        )
+        return {
+            quoteId: inserted.rows[0]!.id,
+            expiresAt: expiresAt.toISOString(),
+            chainId: 56,
+            walletAddress: input.walletAddress,
+            sellToken: input.sellToken,
+            buyToken: input.buyToken,
+            requestedSellAmount: input.sellAmount,
+            billingMode: 'prepaid-megafuel' as const,
+            sellAmount: validated.quotedSellAmount,
+            buyAmount: validated.buyAmount,
+            minBuyAmount: validated.minimumBuyAmount,
+            fees: validated.fees,
+            fee: {
+                billingMode: 'prepaid-megafuel',
+                integratorFeeAmount: '0',
+            },
+            routeSummary: Array.isArray(validated.route.fills) ? validated.route.fills : [],
+            approvalRequired: false,
+            gaslessApprovalAvailable: false,
+            approval: null,
+            trade: { type: validated.trade.type, eip712: validated.trade.eip712 },
         }
     }
 
     async function load(quoteId: string, client: Pool | PoolClient = dependencies.database) {
         const result = await client.query<StoredGaslessQuote>(
-            `SELECT id,zid,chain_id AS "chainId",wallet_address AS "walletAddress",
+            `SELECT id,sponsorship_order_id AS "sponsorshipOrderId",billing_mode AS "billingMode",zid,chain_id AS "chainId",wallet_address AS "walletAddress",
              sell_token_address AS "sellTokenAddress",requested_sell_amount AS "requestedSellAmount",
+             buy_token_address AS "buyTokenAddress",
              quoted_sell_amount AS "quotedSellAmount",buy_amount AS "buyAmount",
              minimum_buy_amount AS "minimumBuyAmount",fees,route,approval,trade,
              approval_required AS "approvalRequired",gasless_approval_available AS "gaslessApprovalAvailable",
@@ -632,7 +804,7 @@ export function createGaslessService(overrides: Partial<Dependencies> = {}) {
         return { status: providerStatus, tradeHash, transactionHash: transactionHash ?? local.transactionHash }
     }
 
-    return { price, quote, submit, status, load }
+    return { price, probePrepaid, quote, quotePrepaid, submit, status, load }
 }
 
 let singleton: ReturnType<typeof createGaslessService> | null = null
@@ -644,6 +816,8 @@ export function gaslessService() {
 export const gaslessInternals = {
     normalizeInput,
     validateProviderQuote,
+    calculateFeePlan,
+    publicFee,
     splitZeroXSignature,
     hashZeroXTypedData,
 }

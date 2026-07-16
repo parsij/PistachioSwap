@@ -11,6 +11,13 @@
     "gas-assist:rule:disable": "tsx --env-file=.env scripts/gas-assist-rules.ts disable",
     "gas-assist:rule:enable": "tsx --env-file=.env scripts/gas-assist-rules.ts enable",
     "gas-assist:rule:remove": "tsx --env-file=.env scripts/gas-assist-rules.ts remove",
+    "sponsor-token:add": "tsx --env-file=.env scripts/sponsorship-tokens.ts add",
+    "sponsor-token:list": "tsx --env-file=.env scripts/sponsorship-tokens.ts list",
+    "sponsor-token:enable": "tsx --env-file=.env scripts/sponsorship-tokens.ts enable",
+    "sponsor-token:disable": "tsx --env-file=.env scripts/sponsorship-tokens.ts disable",
+    "sponsor-token:remove": "tsx --env-file=.env scripts/sponsorship-tokens.ts remove",
+    "sponsor-token:update": "tsx --env-file=.env scripts/sponsorship-tokens.ts update",
+    "debug:zero-x-live": "tsx --env-file=.env scripts/debug-zero-x-live.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

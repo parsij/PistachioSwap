@@ -10,6 +10,7 @@ import { marketTokenRoutes } from './modules/market-tokens.js'
 import { quoteRoutes } from './modules/quotes.js'
 import { tokenDetailsRoutes } from './modules/token-details.js'
 import { walletTokenRoutes } from './modules/wallet-tokens.js'
+import { sponsorshipRoutes } from './modules/sponsorship.js'
 
 export function createApp() {
     const config = validateStartupConfig()
@@ -22,6 +23,7 @@ export function createApp() {
                     'req.headers.x-api-key',
                     'req.headers.0x-api-key',
                     'req.body.signedTransaction',
+                    'req.body.signedRawTransaction',
                     'req.body.approvalSignature',
                     'req.body.tradeSignature',
                 ],
@@ -49,6 +51,7 @@ export function createApp() {
     app.register(quoteRoutes)
     app.register(tokenDetailsRoutes)
     app.register(gasAssistRoutes)
+    app.register(sponsorshipRoutes)
 
     app.addHook('onReady', async () => {
         await assertGasAssistReady()

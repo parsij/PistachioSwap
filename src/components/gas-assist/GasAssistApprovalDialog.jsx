@@ -22,7 +22,7 @@ function feeRows(fees = {}) {
     return rows
 }
 
-export default function GasAssistApprovalDialog({ dialog, token, amount, onClose, onConfirm }) {
+export default function GasAssistApprovalDialog({ dialog, token, buyToken, amount, onClose, onConfirm }) {
     const [remaining, setRemaining] = useState(0)
     const quote = dialog.quote
     useEffect(() => {
@@ -35,8 +35,10 @@ export default function GasAssistApprovalDialog({ dialog, token, amount, onClose
     if (!dialog.open || !token) return null
     const busy = ['quote-loading', 'signing-approval', 'signing-trade', 'submitting'].includes(dialog.state)
     const canConfirm = dialog.state === 'ready' && remaining > 0
-    const output = quote?.buyAmount ? formatUnits(BigInt(quote.buyAmount), 18) : null
-    const minimum = quote?.minBuyAmount ? formatUnits(BigInt(quote.minBuyAmount), 18) : null
+    const buyDecimals = Number(buyToken?.decimals ?? 18)
+    const buySymbol = buyToken?.symbol ?? 'selected token'
+    const output = quote?.buyAmount ? formatUnits(BigInt(quote.buyAmount), buyDecimals) : null
+    const minimum = quote?.minBuyAmount ? formatUnits(BigInt(quote.minBuyAmount), buyDecimals) : null
 
     return (
         <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -46,7 +48,7 @@ export default function GasAssistApprovalDialog({ dialog, token, amount, onClose
                     <div className="gas-assist-heading">
                         <div>
                             <Dialog.Title>Gas Assist via 0x</Dialog.Title>
-                            <Dialog.Description>Sell this BEP-20 token for native BNB. 0x pays gas up front and deducts the gas cost through the trade.</Dialog.Description>
+                            <Dialog.Description>Swap this BEP-20 token for your selected output. 0x pays gas up front and includes the network cost in the trade.</Dialog.Description>
                         </div>
                         <Dialog.Close asChild><button className="gas-assist-close" type="button" disabled={busy} aria-label="Close"><X aria-hidden="true" /></button></Dialog.Close>
                     </div>
@@ -54,8 +56,8 @@ export default function GasAssistApprovalDialog({ dialog, token, amount, onClose
                     {quote && (
                         <div className="gas-assist-details">
                             <div><span>Quoted sell amount</span><strong>{quote.sellAmount} base units</strong></div>
-                            <div><span>Expected native BNB</span><strong>{output}</strong></div>
-                            <div><span>Minimum native BNB</span><strong>{minimum}</strong></div>
+                            <div><span>Expected {buySymbol}</span><strong>{output}</strong></div>
+                            <div><span>Minimum {buySymbol}</span><strong>{minimum}</strong></div>
                             {feeRows(quote.fees).map(([label, value]) => <div key={`${label}:${value}`}><span>{label}</span><strong>{value}</strong></div>)}
                             <div><span>Quote expires</span><strong>{remaining}s</strong></div>
                         </div>

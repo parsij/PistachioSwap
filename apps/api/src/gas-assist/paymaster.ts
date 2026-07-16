@@ -6,6 +6,13 @@ type RpcResponse = {
     error?: { code?: number; message?: string }
 }
 
+type PrivatePolicyConnection = {
+    rpcUrl: string | null
+    policyId: string | null
+    userAgent: string
+    requestTimeoutMs: number
+}
+
 function retryDelay(response: Response, attempt: number) {
     const retryAfter = response.headers.get('retry-after')
     if (retryAfter && /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1_000
@@ -22,24 +29,50 @@ function sleep(ms: number, signal?: AbortSignal) {
     })
 }
 
-export function createPaymasterClient(fetcher: typeof fetch = fetch) {
+function legacyConnection(): PrivatePolicyConnection {
+    const config = getApiConfig().gasAssist
+    return {
+        rpcUrl: config.paymasterRpcUrl,
+        policyId: config.paymasterPolicyId,
+        userAgent: 'PistachioSwap/1.0',
+        requestTimeoutMs: config.requestTimeoutMs,
+    }
+}
+
+function prepaidConnection(): PrivatePolicyConnection {
+    const config = getApiConfig().sponsorship
+    return {
+        rpcUrl: config.apiKey
+            ? `${config.privateRpcBaseUrl}/${encodeURIComponent(config.apiKey)}/bsc-mainnet/megafuel`
+            : null,
+        policyId: config.privatePolicyUuid,
+        userAgent: config.userAgent,
+        requestTimeoutMs: config.requestTimeoutMs,
+    }
+}
+
+export function createPaymasterClient(
+    fetcher: typeof fetch = fetch,
+    getConnection: () => PrivatePolicyConnection = legacyConnection,
+) {
     async function rpc(method: string, params: unknown[], signal?: AbortSignal) {
-        const config = getApiConfig().gasAssist
-        if (!config.paymasterRpcUrl || !config.paymasterPolicyId) {
+        const connection = getConnection()
+        if (!connection.rpcUrl || !connection.policyId) {
             throw new GasAssistError('PAYMASTER_NOT_CONFIGURED', 'The Gas Assist paymaster is not configured.', 503)
         }
         let lastStatus = 0
         for (let attempt = 0; attempt < 3; attempt += 1) {
             const controller = new AbortController()
-            const timeout = setTimeout(() => controller.abort(), config.requestTimeoutMs)
+            const timeout = setTimeout(() => controller.abort(), connection.requestTimeoutMs)
             const abort = () => controller.abort(signal?.reason)
             signal?.addEventListener('abort', abort, { once: true })
             try {
-                const response = await fetcher(config.paymasterRpcUrl, {
+                const response = await fetcher(connection.rpcUrl, {
                     method: 'POST',
                     headers: {
                         'content-type': 'application/json',
-                        'x-megafuel-policy-uuid': config.paymasterPolicyId,
+                        'x-megafuel-policy-uuid': connection.policyId,
+                        'user-agent': connection.userAgent,
                     },
                     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
                     signal: controller.signal,
@@ -78,6 +111,13 @@ export function createPaymasterClient(fetcher: typeof fetch = fetch) {
             }
             return false
         },
+        async getNonce(walletAddress: `0x${string}`, signal?: AbortSignal) {
+            const result = await rpc('eth_getTransactionCount', [walletAddress, 'pending'], signal)
+            if (typeof result !== 'string' || !/^0x[0-9a-f]+$/i.test(result)) {
+                throw new GasAssistError('PAYMASTER_INVALID_RESPONSE', 'The paymaster returned an invalid nonce.', 502)
+            }
+            return BigInt(result)
+        },
         async submit(signedTransaction: `0x${string}`, signal?: AbortSignal) {
             const result = await rpc('eth_sendRawTransaction', [signedTransaction], signal)
             if (typeof result !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(result)) {
@@ -89,3 +129,8 @@ export function createPaymasterClient(fetcher: typeof fetch = fetch) {
 }
 
 export const paymasterClient = createPaymasterClient()
+export const prepaidPaymasterClient = createPaymasterClient(fetch, prepaidConnection)
+
+export const paymasterInternals = {
+    prepaidConnection,
+}

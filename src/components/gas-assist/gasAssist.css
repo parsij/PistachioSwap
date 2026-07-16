@@ -1,5 +1,6 @@
 .gas-assist-overlay { position: fixed; inset: 0; z-index: 90; background: rgb(0 0 0 / 64%); }
 .gas-assist-dialog { position: fixed; z-index: 91; top: 50%; left: 50%; width: min(440px, calc(100vw - 32px)); transform: translate(-50%, -50%); padding: 20px; border: 1px solid #3c3c3c; border-radius: 8px; background: #202020; color: #fff; box-shadow: 0 18px 60px rgb(0 0 0 / 45%); }
+.gas-assist-prepayment-dialog { max-height: min(880px, calc(100vh - 32px)); overflow-y: auto; }
 .gas-assist-heading { display: flex; align-items: flex-start; gap: 16px; }
 .gas-assist-heading h2 { margin: 0; font-size: 18px; letter-spacing: 0; }
 .gas-assist-heading p { margin: 7px 0 0; color: #b9b9b9; font-size: 13px; line-height: 1.45; }
@@ -23,4 +24,10 @@
 .gas-assist-disclosure { display: grid; gap: 6px; margin-top: 14px; padding: 12px; border-left: 3px solid #6cc4a1; background: #292929; font-size: 12px; line-height: 1.45; }
 .gas-assist-disclosure.unlimited { border-left-color: #ffb04a; }
 .gas-assist-transaction { display: block; margin-top: 12px; overflow-wrap: anywhere; color: #bbb; font-size: 11px; }
-.gas-assist-launch { width: 100%; min-height: 42px; margin-top: 10px; border: 1px solid #555; border-radius: 8px; background: transparent; color: #fff; cursor: pointer; }
+.gas-assist-banner { display: grid; gap: 8px; margin-top: 12px; padding: 14px; border: 1px solid #386d5c; border-radius: 8px; background: #173128; color: #f5fff9; font-size: 13px; line-height: 1.45; }
+.gas-assist-banner p { margin: 0; color: #c8ded5; }
+.gas-assist-badge { width: fit-content; color: #78e0b7; font-size: 12px; font-weight: 700; }
+.gas-assist-banner dl { display: grid; gap: 6px; margin: 4px 0 0; }
+.gas-assist-banner dl div { display: flex; justify-content: space-between; gap: 16px; }
+.gas-assist-banner dt { color: #a9c8bc; }
+.gas-assist-banner dd { margin: 0; text-align: right; font-weight: 600; }

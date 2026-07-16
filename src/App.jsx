@@ -14,7 +14,7 @@ import {
     useSendTransaction,
     useWaitForTransactionReceipt,
 } from 'wagmi'
-import { parseEther } from 'viem'
+import { formatUnits, parseEther } from 'viem'
 
 import {
     AnimatePresence,
@@ -27,6 +27,8 @@ import TokenIcon from './components/TokenIcon.jsx'
 import TokenSelector from './components/TokenSelector.jsx'
 import SwapSettingsPopover from './components/settings/SwapSettingsPopover.jsx'
 import GasAssistApprovalDialog from './components/gas-assist/GasAssistApprovalDialog.jsx'
+import GasAssistBanner from './components/gas-assist/GasAssistBanner.jsx'
+import GasAssistPrepaymentDialog from './components/gas-assist/GasAssistPrepaymentDialog.jsx'
 import WalletConnectionButton, {
     WalletNetworkButton,
 } from './components/WalletConnectionButton.jsx'
@@ -44,9 +46,17 @@ import {
     useWalletTokens,
 } from './hooks/useWalletTokens.js'
 import { useNativeBnbBalance } from './hooks/useNativeBnbBalance.js'
+import { useGasAssistConfig } from './hooks/useGasAssistConfig.js'
 import { useSwapSettings } from './hooks/useSwapSettings.js'
 import { useGasAssistApproval } from './hooks/useGasAssistApproval.js'
 import { useZeroXGaslessSwap } from './hooks/useZeroXGaslessSwap.js'
+import { usePrepaidSponsorship } from './hooks/usePrepaidSponsorship.js'
+import {
+    deriveSwapExecution,
+    getSwapExecutionMessage,
+    NORMAL_SWAP_MODE,
+    ZERO_X_GASLESS_MODE,
+} from './services/swapExecutionMode.js'
 
 import {
     mergeWalletBalances,
@@ -921,10 +931,6 @@ export default function App() {
             },
         })
 
-    const quoteReady =
-        quoteStatus === 'success' &&
-        quote !== null
-
     const recommendedSlippageBps = providerRecommendedSlippageBps
     const effectiveSlippageBps = getEffectiveSlippageBps(
         swapSettings,
@@ -940,6 +946,29 @@ export default function App() {
             Number(sellToken.decimals ?? 18),
         )
         : null
+
+    const gasAssistConfig = useGasAssistConfig({
+        quoteEndpoint: quoteConfig.endpoint,
+        enabled: Boolean(
+            walletState.isConnected &&
+            walletAddress &&
+            walletState.chainId === BSC_CHAIN_ID
+        ),
+    })
+
+    const execution = deriveSwapExecution({
+        isConnected: walletState.isConnected,
+        walletAddress,
+        chainId: walletState.chainId,
+        nativeBalanceStatus: nativeBalance.status,
+        nativeBalance: nativeBalance.value,
+        sellToken,
+        buyToken,
+        sellAmount: activeAmountIn,
+        gasAssistConfig: gasAssistConfig.config,
+        gasAssistConfigStatus: gasAssistConfig.status,
+    })
+    const executionMode = execution.mode
 
     const handleApprovalConfirmed = useCallback(async () => {
         await Promise.all([
@@ -963,11 +992,63 @@ export default function App() {
         quoteEndpoint: quoteConfig.endpoint,
         walletAddress,
         sellToken,
+        buyToken,
         sellAmount: activeAmountIn,
         slippageBps: Math.max(30, effectiveSlippageBps),
-        enabled: import.meta.env.VITE_GAS_ASSIST_ENABLED === 'true',
+        config: gasAssistConfig.config,
+        quoteEnabled: executionMode === ZERO_X_GASLESS_MODE,
+        refreshIndex: quoteRefreshIndex,
         onConfirmed: handleApprovalConfirmed,
     })
+
+    const prepaidRequired =
+        executionMode === ZERO_X_GASLESS_MODE &&
+        gasAssist.quoteStatus === 'error' &&
+        gasAssist.quoteError?.code === 'ONCHAIN_APPROVAL_REQUIRED'
+
+    const prepaidSponsorship = usePrepaidSponsorship({
+        quoteEndpoint: quoteConfig.endpoint,
+        walletAddress,
+        sellToken,
+        buyToken,
+        grossInputAmount: activeAmountIn,
+        slippageBps: Math.max(30, effectiveSlippageBps),
+        required: prepaidRequired,
+        onConfirmed: handleApprovalConfirmed,
+    })
+
+    const activeQuote = executionMode === ZERO_X_GASLESS_MODE
+        ? prepaidRequired && prepaidSponsorship.config?.enabled
+            ? { prepaidSponsorshipRequired: true }
+            : gasAssist.quote
+        : quote
+    const activeQuoteStatus = executionMode === ZERO_X_GASLESS_MODE
+        ? prepaidRequired && prepaidSponsorship.config?.enabled
+            ? 'success'
+            : gasAssist.quoteStatus
+        : quoteStatus
+
+    useEffect(() => {
+        setTransactionHash(null)
+        setTransactionStatus('idle')
+    }, [executionMode])
+
+    useEffect(() => {
+        if (executionMode !== ZERO_X_GASLESS_MODE || !gasAssist.quote?.buyAmount || !buyToken) return
+        setBuyAmount(formatUnits(BigInt(gasAssist.quote.buyAmount), Number(buyToken.decimals ?? 18)))
+    }, [buyToken, executionMode, gasAssist.quote])
+
+    useEffect(() => {
+        if (
+            executionMode === ZERO_X_GASLESS_MODE &&
+            gasAssist.quoteStatus === 'error' &&
+            !(prepaidRequired && prepaidSponsorship.config?.enabled)
+        ) {
+            const code = gasAssist.quoteError?.code
+            const message = gasAssist.quoteError?.message ?? 'Gas Assist could not provide a quote.'
+            setStatusMessage(code ? `${code}: ${message}` : message)
+        }
+    }, [executionMode, gasAssist.quoteError, gasAssist.quoteStatus, prepaidRequired, prepaidSponsorship.config?.enabled])
 
     useEffect(() => {
         const amountInBaseUnits =
@@ -1002,7 +1083,8 @@ export default function App() {
             !buyToken ||
             !amountInBaseUnits ||
             amountInBaseUnits === '0' ||
-            sellIdentity === buyIdentity
+            sellIdentity === buyIdentity ||
+            executionMode !== NORMAL_SWAP_MODE
         ) {
             setQuote(null)
             setQuoteStatus('idle')
@@ -1131,6 +1213,7 @@ export default function App() {
         buyToken,
         chain.id,
         effectiveSlippageBps,
+        executionMode,
         quoteConfig.debounceMs,
         quoteConfig.endpoint,
         quoteRefreshIndex,
@@ -1321,7 +1404,7 @@ export default function App() {
         resetQuote()
     }
 
-    const swapAction = getSwapActionState({
+    const baseSwapAction = getSwapActionState({
         isConnected: walletState.isConnected,
         isCorrectNetwork: walletState.isCorrectNetwork,
         hasSellToken: Boolean(sellToken),
@@ -1329,10 +1412,16 @@ export default function App() {
         hasAmount:
             Boolean(sellAmount) &&
             Number(sellAmount) > 0,
-        quoteStatus,
-        quoteReady,
+        quoteStatus: activeQuoteStatus,
+        quoteReady: activeQuoteStatus === 'success' && activeQuote !== null,
         transactionStatus,
     })
+    const swapAction =
+        prepaidRequired &&
+        prepaidSponsorship.config?.enabled &&
+        baseSwapAction.type === 'swap'
+            ? { ...baseSwapAction, label: 'Review Gas Assist prepayment' }
+            : baseSwapAction
 
     async function handlePrimaryAction() {
         setStatusMessage(null)
@@ -1366,6 +1455,20 @@ export default function App() {
             transactionStatus === 'pending' ||
             transactionStatus === 'submitted'
         ) {
+            return
+        }
+
+        if (executionMode === ZERO_X_GASLESS_MODE) {
+            if (prepaidRequired && prepaidSponsorship.config?.enabled) {
+                prepaidSponsorship.start()
+                return
+            }
+            if (!gasAssist.quote || Date.parse(gasAssist.quote.expiresAt) <= Date.now()) {
+                setStatusMessage('The Gas Assist quote expired. Refreshing the price.')
+                setQuoteRefreshIndex((value) => value + 1)
+                return
+            }
+            gasAssist.open()
             return
         }
 
@@ -1436,6 +1539,7 @@ export default function App() {
         getTrustedTokenPrice(buyToken),
     )
     const nativeToken = walletTokens.find(isNativeBnbToken) ?? null
+    const executionMessage = getSwapExecutionMessage(execution.reason)
     const estimatedSwapFeeWei = (() => {
         try {
             const transaction = quote?.selectedQuote?.transaction
@@ -1799,14 +1903,16 @@ export default function App() {
                     {swapAction.label}
                 </motion.button>
 
-                {gasAssist.available && walletState.isCorrectNetwork && (
-                    <button
-                        type="button"
-                        className="gas-assist-launch"
-                        onClick={gasAssist.open}
-                    >
-                        Gas Assist: sell for BNB
-                    </button>
+                {executionMode === ZERO_X_GASLESS_MODE && (
+                    <GasAssistBanner quote={gasAssist.quote} sellToken={sellToken} buyToken={buyToken} />
+                )}
+
+                {nativeBalance.status === 'error' && walletState.isConnected && walletState.isCorrectNetwork && (
+                    <p className="swap-status" role="status">Unable to verify the BNB balance. Quoting is disabled.</p>
+                )}
+
+                {executionMessage && nativeBalance.value === 0n && (
+                    <p className="swap-status" role="status">{executionMessage}</p>
                 )}
 
                 {(statusMessage || walletTokenError) && (
@@ -1868,10 +1974,17 @@ export default function App() {
 
             <GasAssistApprovalDialog
                 dialog={gasAssist.dialog}
+                buyToken={buyToken}
                 token={sellToken}
                 amount={sellAmount}
                 onClose={gasAssist.close}
                 onConfirm={gasAssist.confirm}
+            />
+            <GasAssistPrepaymentDialog
+                key={prepaidSponsorship.order?.id ?? 'prepaid-sponsorship'}
+                sponsorship={prepaidSponsorship}
+                sellToken={sellToken}
+                buyToken={buyToken}
             />
         </main>
     )

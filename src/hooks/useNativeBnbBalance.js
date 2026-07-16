@@ -12,8 +12,16 @@ export function useNativeBnbBalance({ address, enabled = true } = {}) {
     })
 
     const value = active && query.data ? query.data.value : null
+    const status = !active
+        ? 'idle'
+        : query.isError || query.status === 'error'
+            ? 'error'
+            : query.isSuccess || query.status === 'success' || query.data
+                ? 'success'
+                : 'loading'
     return {
         ...query,
+        status,
         value,
         formatted: value === null ? null : formatEther(value),
     }

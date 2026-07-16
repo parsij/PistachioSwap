@@ -3,7 +3,6 @@ import { useWalletClient } from 'wagmi'
 
 import {
     createGaslessQuote,
-    fetchGasAssistConfig,
     fetchGaslessStatus,
     signZeroXTypedData,
     submitGaslessQuote,
@@ -11,49 +10,63 @@ import {
 import { isUserRejectedError } from '../services/swapTransaction.js'
 
 const initial = { open: false, state: 'idle', quote: null, error: null, tradeHash: null, transactionHash: null }
+const initialQuote = { status: 'idle', value: null, error: null }
 
 export function useZeroXGaslessSwap({
     quoteEndpoint,
     walletAddress,
     sellToken,
+    buyToken,
     sellAmount,
     slippageBps,
-    enabled,
+    config,
+    quoteEnabled = false,
+    refreshIndex = 0,
     onConfirmed,
 }) {
     const { data: walletClient } = useWalletClient({ chainId: 56 })
-    const [config, setConfig] = useState(null)
+    const [activeQuote, setActiveQuote] = useState(initialQuote)
     const [dialog, setDialog] = useState(initial)
 
-    useEffect(() => {
-        if (!enabled || !quoteEndpoint) return undefined
-        const controller = new AbortController()
-        fetchGasAssistConfig(quoteEndpoint, controller.signal)
-            .then(setConfig)
-            .catch(() => setConfig({ enabled: false }))
-        return () => controller.abort()
-    }, [enabled, quoteEndpoint])
-
-    const request = useMemo(() => walletAddress && sellToken && sellAmount
+    const sellTokenAddress = sellToken?.address
+    const buyTokenAddress = buyToken?.address
+    const request = useMemo(() => walletAddress && sellTokenAddress && buyTokenAddress && sellAmount
         ? {
             chainId: 56,
             walletAddress,
-            sellToken: sellToken.address,
+            sellToken: sellTokenAddress,
+            buyToken: buyTokenAddress,
             sellAmount,
             slippageBps,
         }
-        : null, [sellAmount, sellToken, slippageBps, walletAddress])
+        : null, [buyTokenAddress, sellAmount, sellTokenAddress, slippageBps, walletAddress])
+
+    useEffect(() => {
+        setDialog(initial)
+        if (!quoteEnabled || !request || config?.enabled !== true || config?.mode !== 'zero-x-gasless') {
+            setActiveQuote(initialQuote)
+            return undefined
+        }
+        const controller = new AbortController()
+        const timeout = window.setTimeout(async () => {
+            setActiveQuote({ status: 'loading', value: null, error: null })
+            try {
+                const quote = await createGaslessQuote(quoteEndpoint, request, controller.signal)
+                if (!controller.signal.aborted) setActiveQuote({ status: 'success', value: quote, error: null })
+            } catch (error) {
+                if (!controller.signal.aborted) setActiveQuote({ status: 'error', value: null, error })
+            }
+        }, 250)
+        return () => {
+            window.clearTimeout(timeout)
+            controller.abort()
+        }
+    }, [config?.enabled, config?.mode, quoteEnabled, quoteEndpoint, refreshIndex, request])
 
     const open = useCallback(async () => {
-        if (!request || !config?.enabled || sellToken?.isNative) return
-        setDialog({ ...initial, open: true, state: 'quote-loading' })
-        try {
-            const quote = await createGaslessQuote(quoteEndpoint, request)
-            setDialog({ ...initial, open: true, state: 'ready', quote })
-        } catch (error) {
-            setDialog({ ...initial, open: true, state: 'failed', error })
-        }
-    }, [config?.enabled, quoteEndpoint, request, sellToken?.isNative])
+        if (activeQuote.status !== 'success' || !activeQuote.value || sellToken?.isNative) return
+        setDialog({ ...initial, open: true, state: 'ready', quote: activeQuote.value })
+    }, [activeQuote, sellToken?.isNative])
 
     const close = useCallback(() => {
         setDialog((current) => ['signing-approval', 'signing-trade', 'submitting'].includes(current.state)
@@ -131,5 +144,15 @@ export function useZeroXGaslessSwap({
         }
     }, [config?.statusPollIntervalMs, config?.statusTimeoutMs, dialog.state, dialog.submittedAt, dialog.tradeHash, onConfirmed, quoteEndpoint])
 
-    return { config, dialog, available: Boolean(config?.enabled && request && !sellToken?.isNative), open, close, confirm }
+    return {
+        config,
+        quote: activeQuote.value,
+        quoteStatus: activeQuote.status,
+        quoteError: activeQuote.error,
+        dialog,
+        available: Boolean(config?.enabled && request && !sellToken?.isNative),
+        open,
+        close,
+        confirm,
+    }
 }

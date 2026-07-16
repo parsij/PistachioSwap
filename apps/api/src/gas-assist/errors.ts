@@ -1,13 +1,13 @@
 export class GasAssistError extends Error {
     readonly code: string
     readonly statusCode: number
-    readonly details: Record<string, string> | undefined
+    readonly details: Record<string, unknown> | undefined
 
     constructor(
         code: string,
         message: string,
         statusCode = 400,
-        details?: Record<string, string>,
+        details?: Record<string, unknown>,
     ) {
         super(message)
         this.name = 'GasAssistError'

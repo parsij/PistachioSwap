@@ -151,6 +151,7 @@ export function createUniswapProvider(): QuoteProvider {
             const transaction = normalizeTransaction(swapPayload.swap)
             const normalized: NormalizedQuote = {
                 provider: 'uniswap',
+                billingMode: 'normal-provider-fee',
                 quoteId: quoteId(rawQuote.quoteId, 'uniswap'),
                 chainId: request.chainId,
                 sellToken: request.sellToken,

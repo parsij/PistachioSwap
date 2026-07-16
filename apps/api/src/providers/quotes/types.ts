@@ -13,6 +13,7 @@ export type QuoteRequest = {
 
 export type NormalizedQuote = {
     provider: QuoteProviderName
+    billingMode: 'provider-integrator' | 'prepaid-megafuel' | 'normal-provider-fee'
     quoteId: string
     chainId: number
     sellToken: string

@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     refetchWalletTokens: vi.fn(),
     refetchBalance: vi.fn(),
     marketTokens: [],
+    gasAssistConfig: { status: 'success', config: { enabled: false, mode: 'disabled' }, error: null, refetch: vi.fn() },
 }))
 
 vi.mock('@reown/appkit/react', () => ({
@@ -56,6 +57,7 @@ vi.mock('wagmi', () => ({
         refetch: mocks.refetchBalance,
     }),
     useDisconnect: () => ({ mutate: vi.fn() }),
+    useConnection: () => ({ connector: null }),
     usePublicClient: () => null,
     useWalletClient: () => ({ data: null }),
     useSendTransaction: () => ({
@@ -79,6 +81,10 @@ vi.mock('./hooks/useMarketTokens.js', () => ({
 vi.mock('./hooks/useWalletTokens.js', () => ({
     useWalletTokens: (options) =>
         mocks.useWalletTokens(options),
+}))
+
+vi.mock('./hooks/useGasAssistConfig.js', () => ({
+    useGasAssistConfig: () => mocks.gasAssistConfig,
 }))
 
 import App from './App.jsx'

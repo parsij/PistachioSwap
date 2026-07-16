@@ -61,6 +61,13 @@ function readAddressSet(name: string) {
     return values
 }
 
+function readAddressSetWithFallback(name: string, fallback: string[]) {
+    if (!process.env[name]?.trim()) {
+        return new Set(fallback.map((value) => normalizeAddress(value)!).filter(Boolean))
+    }
+    return readAddressSet(name)
+}
+
 function readOptionalAddressSet(name: string) {
     const values = new Set<string>()
     const entries = (process.env[name] ?? '').split(',')
@@ -169,6 +176,22 @@ function readPositiveDecimal(name: string, fallback: string) {
         /^0(?:\.0+)?$/.test(value)
     ) {
         throw new Error(`${name} must be a positive decimal string.`)
+    }
+    return value
+}
+
+function readNonnegativeDecimal(name: string, fallback: string) {
+    const value = process.env[name]?.trim() || fallback
+    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) {
+        throw new Error(`${name} must be a nonnegative decimal string.`)
+    }
+    return value
+}
+
+function readUserAgent(name: string, fallback: string) {
+    const value = process.env[name]?.trim() || fallback
+    if (!value || value.length > 160 || /[\r\n]/.test(value)) {
+        throw new Error(`${name} is invalid.`)
     }
     return value
 }
@@ -507,6 +530,22 @@ export function getApiConfig() {
                 'GAS_ASSIST_REJECT_UNLIMITED_PERMITS',
                 false,
             ),
+            feeMode:
+                process.env.GAS_ASSIST_FEE_MODE?.trim() || 'percent-plus-fixed-capped',
+            feePercentBps: readConfiguredInteger(
+                'GAS_ASSIST_FEE_PERCENT_BPS',
+                300,
+                0,
+                1_000,
+            ),
+            fixedFeeUsd: readPositiveDecimal(
+                'GAS_ASSIST_FIXED_FEE_USD',
+                '0.067',
+            ),
+            maximumFeeUsd: readPositiveDecimal(
+                'GAS_ASSIST_MAX_FEE_USD',
+                '5',
+            ),
             feeTokenMode:
                 process.env.GAS_ASSIST_FEE_TOKEN_MODE?.trim() || 'sellToken',
             statusPollIntervalMs: readConfiguredInteger(
@@ -561,6 +600,216 @@ export function getApiConfig() {
                 30_000,
             ),
         },
+        sponsorship: {
+            enabled: readBoolean('MEGAFUEL_PREPAID_ENABLED', false),
+            billingMode:
+                process.env.SPONSORSHIP_BILLING_MODE?.trim().toLowerCase() ||
+                'prepaid',
+            chainId: readConfiguredInteger('MEGAFUEL_CHAIN_ID', 56, 1),
+            apiKey: process.env.MEGAFUEL_API_KEY?.trim() || null,
+            privatePolicyUuid:
+                process.env.MEGAFUEL_PRIVATE_POLICY_UUID?.trim() || null,
+            privateRpcBaseUrl: readUrl(
+                'MEGAFUEL_PRIVATE_RPC_BASE_URL',
+                'https://open-platform-ap.nodereal.io',
+                ['open-platform-ap.nodereal.io', 'open-platform.nodereal.io'],
+            ),
+            userAgent: readUserAgent(
+                'MEGAFUEL_USER_AGENT',
+                'PistachioSwap/1.0',
+            ),
+            orderTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_ORDER_TTL_SECONDS',
+                300,
+                60,
+                300,
+            ),
+            actionIntentTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_ACTION_INTENT_TTL_SECONDS',
+                300,
+                60,
+                300,
+            ),
+            authChallengeTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_AUTH_CHALLENGE_TTL_SECONDS',
+                300,
+                60,
+                600,
+            ),
+            authSessionTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_AUTH_SESSION_TTL_SECONDS',
+                900,
+                300,
+                3_600,
+            ),
+            gasMultiplierBps: readConfiguredInteger(
+                'MEGAFUEL_GAS_MULTIPLIER_BPS',
+                15_000,
+                10_000,
+                30_000,
+            ),
+            fixedFeeUsd: readPositiveDecimal(
+                'MEGAFUEL_FIXED_FEE_USD',
+                '0.067',
+            ),
+            platformFeeBps: readConfiguredInteger(
+                'MEGAFUEL_PLATFORM_FEE_BPS',
+                300,
+                0,
+                1_000,
+            ),
+            commercialFeeCapUsd: readPositiveDecimal(
+                'MEGAFUEL_COMMERCIAL_FEE_CAP_USD',
+                '5',
+            ),
+            minimumGrossTradeUsd: readPositiveDecimal(
+                'MEGAFUEL_MIN_GROSS_TRADE_USD',
+                '1',
+            ),
+            minimumNetTradeUsd: readPositiveDecimal(
+                'MEGAFUEL_MIN_NET_TRADE_USD',
+                '0.10',
+            ),
+            minimumOutputUsd: readPositiveDecimal(
+                'MEGAFUEL_MIN_OUTPUT_USD',
+                '0.10',
+            ),
+            minimumPaymentTokenLiquidityUsd: readPositiveDecimal(
+                'MEGAFUEL_MIN_PAYMENT_TOKEN_LIQUIDITY_USD',
+                '100000',
+            ),
+            maximumPriceAgeSeconds: readConfiguredInteger(
+                'MEGAFUEL_MAX_PRICE_AGE_SECONDS',
+                300,
+                1,
+                3_600,
+            ),
+            maximumPriceDeviationBps: readConfiguredInteger(
+                'MEGAFUEL_MAX_PRICE_DEVIATION_BPS',
+                300,
+                0,
+                10_000,
+            ),
+            approvalSponsorEnabled: readBoolean(
+                'MEGAFUEL_APPROVAL_SPONSOR_ENABLED',
+                true,
+            ),
+            normalSwapSponsorEnabled: readBoolean(
+                'MEGAFUEL_NORMAL_SWAP_SPONSOR_ENABLED',
+                false,
+            ),
+            approvalMode:
+                process.env.MEGAFUEL_APPROVAL_MODE?.trim().toLowerCase() ||
+                'exact',
+            zeroXSafeApprovalTargets: readAddressSetWithFallback(
+                'MEGAFUEL_ZEROX_SAFE_APPROVAL_TARGETS_56',
+                [
+                    '0x0000000000001ff3684f28c67538d4d072c22734',
+                    '0x000000000022d473030f116ddee9f6b43ac78ba3',
+                ],
+            ),
+            zeroXSettlerAddress: normalizeAddress(
+                process.env.MEGAFUEL_ZEROX_SETTLER_ADDRESS_56 ??
+                '0x00000000000004533fe15556b1e086bb1a72ceae',
+            ),
+            rejectUnlimitedApproval: readBoolean(
+                'MEGAFUEL_REJECT_UNLIMITED_APPROVAL',
+                true,
+            ),
+            boundedApprovalMaximumUsd: readPositiveDecimal(
+                'MEGAFUEL_BOUNDED_APPROVAL_MAX_USD',
+                '100',
+            ),
+            maximumPaymentTransferGas: readConfiguredInteger(
+                'MEGAFUEL_MAX_PAYMENT_TRANSFER_GAS',
+                150_000,
+                21_000,
+                1_000_000,
+            ),
+            maximumApprovalGas: readConfiguredInteger(
+                'MEGAFUEL_MAX_APPROVAL_GAS',
+                150_000,
+                21_000,
+                1_000_000,
+            ),
+            maximumSwapGas: readConfiguredInteger(
+                'MEGAFUEL_MAX_SWAP_GAS',
+                600_000,
+                21_000,
+                2_000_000,
+            ),
+            walletDailyOrderLimit: readConfiguredInteger(
+                'MEGAFUEL_WALLET_DAILY_ORDER_LIMIT',
+                3,
+                1,
+                100,
+            ),
+            walletDailyGasUsd: readPositiveDecimal(
+                'MEGAFUEL_WALLET_DAILY_GAS_USD',
+                '1',
+            ),
+            ipDailyOrderLimit: readConfiguredInteger(
+                'MEGAFUEL_IP_DAILY_ORDER_LIMIT',
+                10,
+                1,
+                1_000,
+            ),
+            globalDailyOrderLimit: readConfiguredInteger(
+                'MEGAFUEL_GLOBAL_DAILY_ORDER_LIMIT',
+                500,
+                1,
+                1_000_000,
+            ),
+            globalDailyGasUsd: readPositiveDecimal(
+                'MEGAFUEL_GLOBAL_DAILY_GAS_USD',
+                '100',
+            ),
+            walletCooldownSeconds: readConfiguredInteger(
+                'MEGAFUEL_WALLET_COOLDOWN_SECONDS',
+                60,
+                0,
+                86_400,
+            ),
+            maximumUnpaidPaymentAttempts: readConfiguredInteger(
+                'MEGAFUEL_MAX_UNPAID_PAYMENT_ATTEMPTS',
+                2,
+                1,
+                10,
+            ),
+            maximumRepeatedReverts: readConfiguredInteger(
+                'MEGAFUEL_MAX_REPEATED_REVERTS',
+                2,
+                1,
+                10,
+            ),
+            maximumRepeatedExpiries: readConfiguredInteger(
+                'MEGAFUEL_MAX_REPEATED_EXPIRIES',
+                3,
+                1,
+                20,
+            ),
+            maximumSignatureMismatches: readConfiguredInteger(
+                'MEGAFUEL_MAX_SIGNATURE_MISMATCHES',
+                3,
+                1,
+                20,
+            ),
+            minimumCommercialOverPaymentGasUsd: readNonnegativeDecimal(
+                'MEGAFUEL_MIN_COMMERCIAL_OVER_PAYMENT_GAS_USD',
+                '0.01',
+            ),
+            ipHashSecret:
+                process.env.MEGAFUEL_IP_HASH_SECRET?.trim() || null,
+            emergencyDisabled: readBoolean(
+                'MEGAFUEL_EMERGENCY_DISABLED',
+                false,
+            ),
+            databaseConfigured: Boolean(process.env.DATABASE_URL?.trim()),
+            requestTimeoutMs: Math.min(
+                readInteger('PROVIDER_REQUEST_TIMEOUT_MS', 10_000, 1),
+                30_000,
+            ),
+        },
         fees: {
             treasuryAddress: normalizeAddress(
                 process.env.TREASURY_ADDRESS,
@@ -594,6 +843,8 @@ export function validateStartupConfig(config = getApiConfig()) {
         'zero-x-gasless',
         'megafuel-legacy',
     ])
+    const validSponsorshipBillingModes = new Set(['prepaid'])
+    const validApprovalModes = new Set(['exact', 'bounded-reusable'])
 
     if (!validQuoteModes.has(config.quotes.mode)) {
         throw new Error('QUOTE_PROVIDER_MODE is invalid.')
@@ -649,6 +900,45 @@ export function validateStartupConfig(config = getApiConfig()) {
         throw new Error('GAS_ASSIST_MODE is invalid.')
     }
 
+    if (!validSponsorshipBillingModes.has(config.sponsorship.billingMode)) {
+        throw new Error('SPONSORSHIP_BILLING_MODE must be prepaid.')
+    }
+    if (!validApprovalModes.has(config.sponsorship.approvalMode)) {
+        throw new Error('MEGAFUEL_APPROVAL_MODE is invalid.')
+    }
+    if (
+        config.sponsorship.approvalMode === 'bounded-reusable' &&
+        config.sponsorship.rejectUnlimitedApproval !== true
+    ) {
+        throw new Error('Bounded reusable approvals must still reject unlimited approval.')
+    }
+
+    if (config.sponsorship.enabled) {
+        const errors: string[] = []
+        if (config.sponsorship.chainId !== 56) {
+            errors.push('MEGAFUEL_CHAIN_ID must be exactly 56')
+        }
+        if (!config.sponsorship.apiKey) errors.push('MEGAFUEL_API_KEY is required')
+        if (config.gasAssist.mode !== 'zero-x-gasless') {
+            errors.push('GAS_ASSIST_MODE must be zero-x-gasless')
+        }
+        if (!config.quotes.zeroX.apiKey) errors.push('ZEROX_API_KEY is required')
+        if (!config.sponsorship.privatePolicyUuid) {
+            errors.push('MEGAFUEL_PRIVATE_POLICY_UUID is required')
+        }
+        if (!config.sponsorship.databaseConfigured) errors.push('DATABASE_URL is required')
+        if (!config.fees.treasuryAddress || config.fees.treasuryAddress === NATIVE_TOKEN_ADDRESS) {
+            errors.push('A nonzero TREASURY_ADDRESS is required')
+        }
+        if (!config.sponsorship.ipHashSecret || config.sponsorship.ipHashSecret.length < 32) {
+            errors.push('MEGAFUEL_IP_HASH_SECRET must be at least 32 characters')
+        }
+        if (!config.quotes.pancakeSwap.rpcUrl) errors.push('BSC_RPC_URL is required')
+        if (errors.length > 0) {
+            throw new Error(`Prepaid MegaFuel configuration is unsafe: ${errors.join('; ')}.`)
+        }
+    }
+
     if (config.gasAssist.mode === 'zero-x-gasless') {
         const errors: string[] = []
         if (config.gasAssist.chainId !== 56) {
@@ -663,12 +953,14 @@ export function validateStartupConfig(config = getApiConfig()) {
         if (config.gasAssist.feeTokenMode !== 'sellToken') {
             errors.push('GAS_ASSIST_FEE_TOKEN_MODE must be sellToken')
         }
+        if (config.gasAssist.feeMode !== 'percent-plus-fixed-capped') {
+            errors.push('GAS_ASSIST_FEE_MODE must be percent-plus-fixed-capped')
+        }
         if (
-            config.fees.platformFeeBps > 0 &&
             (!config.fees.treasuryAddress ||
                 config.fees.treasuryAddress === NATIVE_TOKEN_ADDRESS)
         ) {
-            errors.push('a nonzero PLATFORM_FEE_BPS requires a nonzero TREASURY_ADDRESS')
+            errors.push('Gas Assist requires a nonzero TREASURY_ADDRESS')
         }
         if (errors.length > 0) {
             throw new Error(`0x Gas Assist configuration is unsafe: ${errors.join('; ')}.`)

@@ -6,8 +6,17 @@ import { checkDatabase, getPool } from '../db/client.js'
 
 export async function assertGasAssistReady() {
     const config = getApiConfig()
-    if (config.gasAssist.mode === 'disabled') return
+    if (config.gasAssist.mode === 'disabled' && !config.sponsorship.enabled) return
     await checkDatabase()
+    if (config.sponsorship.enabled) {
+        const tokens = await getPool().query<{ count: string }>(
+            `SELECT count(*)::text AS count FROM sponsorship_payment_tokens
+             WHERE chain_id=56 AND enabled=true AND fee_payment_enabled=true`,
+        )
+        if (BigInt(tokens.rows[0]?.count ?? '0') === 0n) {
+            throw new Error('Prepaid Gas Assist readiness failed: no enabled payment tokens.')
+        }
+    }
     if (config.gasAssist.mode === 'zero-x-gasless') return
     const rules = await getPool().query<{ count: string }>(
         `SELECT count(*)::text AS count FROM gas_assist_sponsor_rules
