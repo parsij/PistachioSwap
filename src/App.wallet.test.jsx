@@ -57,6 +57,7 @@ vi.mock('wagmi', () => ({
     }),
     useDisconnect: () => ({ mutate: vi.fn() }),
     usePublicClient: () => null,
+    useWalletClient: () => ({ data: null }),
     useSendTransaction: () => ({
         mutateAsync: vi.fn(),
     }),

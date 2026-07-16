@@ -35,6 +35,9 @@ fee unless a reviewed fee-executor integration is available. The current code
 rejects executor-contract fee mode inside the PancakeSwap adapter rather than
 claiming that an unimplemented fee is collected.
 
+Gas Assist implementation and operational notes are in
+[`docs/gas-assist.md`](docs/gas-assist.md). Gas Assist is disabled by default.
+
 ## Development
 
 ```bash

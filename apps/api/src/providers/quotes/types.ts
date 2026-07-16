@@ -63,4 +63,6 @@ export type QuoteSummary = {
 export type QuoteSelection = {
     selectedQuote: NormalizedQuote
     providers: QuoteSummary[]
+    swapIntentId?: string
+    gasAssistCompatible?: boolean
 }

@@ -3,6 +3,9 @@ import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
 
 import { validateStartupConfig } from './config.js'
+import { closeDatabase } from './db/client.js'
+import { assertGasAssistReady } from './gas-assist/readiness.js'
+import { gasAssistRoutes } from './modules/gas-assist.js'
 import { marketTokenRoutes } from './modules/market-tokens.js'
 import { quoteRoutes } from './modules/quotes.js'
 import { tokenDetailsRoutes } from './modules/token-details.js'
@@ -18,6 +21,9 @@ export function createApp() {
                     'req.headers.authorization',
                     'req.headers.x-api-key',
                     'req.headers.0x-api-key',
+                    'req.body.signedTransaction',
+                    'req.body.approvalSignature',
+                    'req.body.tradeSignature',
                 ],
                 censor: '[REDACTED]',
             },
@@ -42,6 +48,14 @@ export function createApp() {
     app.register(walletTokenRoutes)
     app.register(quoteRoutes)
     app.register(tokenDetailsRoutes)
+    app.register(gasAssistRoutes)
+
+    app.addHook('onReady', async () => {
+        await assertGasAssistReady()
+    })
+    app.addHook('onClose', async () => {
+        await closeDatabase()
+    })
 
     app.get('/health', async () => ({
         status: 'ok',

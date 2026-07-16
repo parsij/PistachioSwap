@@ -1,4 +1,5 @@
 import {
+    useCallback,
     useEffect,
     useMemo,
     useState,
@@ -25,6 +26,7 @@ import {
 import TokenIcon from './components/TokenIcon.jsx'
 import TokenSelector from './components/TokenSelector.jsx'
 import SwapSettingsPopover from './components/settings/SwapSettingsPopover.jsx'
+import GasAssistApprovalDialog from './components/gas-assist/GasAssistApprovalDialog.jsx'
 import WalletConnectionButton, {
     WalletNetworkButton,
 } from './components/WalletConnectionButton.jsx'
@@ -43,6 +45,8 @@ import {
 } from './hooks/useWalletTokens.js'
 import { useNativeBnbBalance } from './hooks/useNativeBnbBalance.js'
 import { useSwapSettings } from './hooks/useSwapSettings.js'
+import { useGasAssistApproval } from './hooks/useGasAssistApproval.js'
+import { useZeroXGaslessSwap } from './hooks/useZeroXGaslessSwap.js'
 
 import {
     mergeWalletBalances,
@@ -583,6 +587,7 @@ export default function App() {
         address: walletState.address,
         enabled: walletState.isConnected,
     })
+    const refetchNativeBalance = nativeBalance.refetch
     const {
         mutateAsync: sendTransaction,
     } = useSendTransaction()
@@ -928,6 +933,41 @@ export default function App() {
             defaultSlippageBps: quoteConfig.defaultSlippageBps,
         },
     )
+
+    const activeAmountIn = sellToken
+        ? decimalToUnits(
+            sellAmount,
+            Number(sellToken.decimals ?? 18),
+        )
+        : null
+
+    const handleApprovalConfirmed = useCallback(async () => {
+        await Promise.all([
+            refetchWalletTokens(),
+            refetchNativeBalance(),
+        ])
+        setStatusMessage('Approval confirmed. Review and submit the swap.')
+    }, [refetchNativeBalance, refetchWalletTokens])
+
+    const normalApproval = useGasAssistApproval({
+        quoteEndpoint: quoteConfig.endpoint,
+        quote,
+        walletAddress,
+        sellToken,
+        amountIn: activeAmountIn,
+        enabled: false,
+        onApprovalConfirmed: handleApprovalConfirmed,
+    })
+
+    const gasAssist = useZeroXGaslessSwap({
+        quoteEndpoint: quoteConfig.endpoint,
+        walletAddress,
+        sellToken,
+        sellAmount: activeAmountIn,
+        slippageBps: Math.max(30, effectiveSlippageBps),
+        enabled: import.meta.env.VITE_GAS_ASSIST_ENABLED === 'true',
+        onConfirmed: handleApprovalConfirmed,
+    })
 
     useEffect(() => {
         const amountInBaseUnits =
@@ -1340,6 +1380,9 @@ export default function App() {
         }
 
         try {
+            const approvalReady = await normalApproval.prepareApproval()
+            if (!approvalReady) return
+
             const transaction =
                 getExecutableTransaction(quote)
 
@@ -1365,7 +1408,9 @@ export default function App() {
 
             setTransactionStatus('failed')
             setStatusMessage(
-                'The wallet could not submit the transaction.',
+                error instanceof Error
+                    ? error.message
+                    : 'The wallet could not submit the transaction.',
             )
         }
     }
@@ -1754,6 +1799,16 @@ export default function App() {
                     {swapAction.label}
                 </motion.button>
 
+                {gasAssist.available && walletState.isCorrectNetwork && (
+                    <button
+                        type="button"
+                        className="gas-assist-launch"
+                        onClick={gasAssist.open}
+                    >
+                        Gas Assist: sell for BNB
+                    </button>
+                )}
+
                 {(statusMessage || walletTokenError) && (
                     <p
                         className="swap-status"
@@ -1810,6 +1865,14 @@ export default function App() {
                     />
                 )}
             </AnimatePresence>
+
+            <GasAssistApprovalDialog
+                dialog={gasAssist.dialog}
+                token={sellToken}
+                amount={sellAmount}
+                onClose={gasAssist.close}
+                onConfirm={gasAssist.confirm}
+            />
         </main>
     )
 }

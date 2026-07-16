@@ -1,4 +1,4 @@
-import { normalizeAddress } from './lib/address.js'
+import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from './lib/address.js'
 
 const ALLOWED_CHAINS = new Set([56])
 const warnedInvalidAddressEntries = new Set<string>()
@@ -150,6 +150,27 @@ function readRpcUrl(name: string) {
     }
 
     return url.toString()
+}
+
+function readOptionalHttpsUrl(name: string) {
+    const raw = process.env[name]?.trim()
+    if (!raw) return null
+    const url = new URL(raw)
+    if (url.protocol !== 'https:' || url.username || url.password) {
+        throw new Error(`${name} must be an HTTPS URL without embedded credentials.`)
+    }
+    return url.toString()
+}
+
+function readPositiveDecimal(name: string, fallback: string) {
+    const value = process.env[name]?.trim() || fallback
+    if (
+        !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) ||
+        /^0(?:\.0+)?$/.test(value)
+    ) {
+        throw new Error(`${name} must be a positive decimal string.`)
+    }
+    return value
 }
 
 export function getApiConfig() {
@@ -437,6 +458,109 @@ export function getApiConfig() {
                 ),
             },
         },
+        gasAssist: {
+            mode:
+                process.env.GAS_ASSIST_MODE?.trim().toLowerCase() ||
+                (readBoolean('GAS_ASSIST_ENABLED', false)
+                    ? 'megafuel-legacy'
+                    : 'disabled'),
+            enabled:
+                (process.env.GAS_ASSIST_MODE?.trim().toLowerCase() ||
+                    (readBoolean('GAS_ASSIST_ENABLED', false)
+                        ? 'megafuel-legacy'
+                        : 'disabled')) !== 'disabled',
+            chainId: readConfiguredInteger('GAS_ASSIST_CHAIN_ID', 56, 1),
+            swapContractAddress: normalizeAddress(
+                process.env.GAS_ASSIST_SWAP_CONTRACT_ADDRESS_56,
+            ),
+            allowedTokens: readAddressSet('GAS_ASSIST_ALLOWED_TOKENS_56'),
+            paymasterRpcUrl: readOptionalHttpsUrl('GAS_ASSIST_PAYMASTER_RPC_URL'),
+            paymasterPolicyId:
+                process.env.GAS_ASSIST_PAYMASTER_POLICY_ID?.trim() || null,
+            nodeRealApiKey:
+                process.env.GAS_ASSIST_NODEREAL_API_KEY?.trim() || null,
+            quoteTtlSeconds: readConfiguredInteger(
+                'GAS_ASSIST_QUOTE_TTL_SECONDS',
+                45,
+                10,
+                300,
+            ),
+            minimumSellUsd: readPositiveDecimal(
+                'GAS_ASSIST_MIN_SELL_USD',
+                '1',
+            ),
+            minimumUserOutputUsd: readPositiveDecimal(
+                'GAS_ASSIST_MIN_USER_OUTPUT_USD',
+                '0.10',
+            ),
+            maximumPriceImpactBps: readConfiguredInteger(
+                'GAS_ASSIST_MAX_PRICE_IMPACT_BPS',
+                2_000,
+                1,
+                10_000,
+            ),
+            requireStrictTokenSecurity: readBoolean(
+                'GAS_ASSIST_REQUIRE_STRICT_TOKEN_SECURITY',
+                true,
+            ),
+            rejectUnlimitedPermits: readBoolean(
+                'GAS_ASSIST_REJECT_UNLIMITED_PERMITS',
+                false,
+            ),
+            feeTokenMode:
+                process.env.GAS_ASSIST_FEE_TOKEN_MODE?.trim() || 'sellToken',
+            statusPollIntervalMs: readConfiguredInteger(
+                'GAS_ASSIST_STATUS_POLL_INTERVAL_MS',
+                3_000,
+                1_000,
+                60_000,
+            ),
+            statusTimeoutMs: readConfiguredInteger(
+                'GAS_ASSIST_STATUS_TIMEOUT_MS',
+                120_000,
+                10_000,
+                600_000,
+            ),
+            quoteWalletLimitPerHour: readConfiguredInteger(
+                'GAS_ASSIST_QUOTE_WALLET_LIMIT_PER_HOUR',
+                10,
+                1,
+                100,
+            ),
+            dailyWalletLimit: readConfiguredInteger(
+                'GAS_ASSIST_DAILY_WALLET_LIMIT',
+                3,
+                1,
+                100,
+            ),
+            dailyIpLimit: readConfiguredInteger(
+                'GAS_ASSIST_DAILY_IP_LIMIT',
+                20,
+                1,
+                1_000,
+            ),
+            maximumApprovalUsd: readPositiveDecimal(
+                'GAS_ASSIST_MAX_APPROVAL_USD',
+                '100',
+            ),
+            maximumGasLimit: readConfiguredInteger(
+                'GAS_ASSIST_MAX_GAS_LIMIT',
+                150_000,
+                21_000,
+                1_000_000,
+            ),
+            ipHashSecret:
+                process.env.GAS_ASSIST_IP_HASH_SECRET?.trim() || null,
+            mainnetConfirmation:
+                process.env.GAS_ASSIST_MAINNET_CONFIRMATION?.trim() || null,
+            databaseConfigured: Boolean(process.env.DATABASE_URL?.trim()),
+            configRulesJson:
+                process.env.GAS_ASSIST_SPONSOR_RULES_56_JSON?.trim() || null,
+            requestTimeoutMs: Math.min(
+                readInteger('PROVIDER_REQUEST_TIMEOUT_MS', 10_000, 1),
+                30_000,
+            ),
+        },
         fees: {
             treasuryAddress: normalizeAddress(
                 process.env.TREASURY_ADDRESS,
@@ -464,6 +588,11 @@ export function validateStartupConfig(config = getApiConfig()) {
         'none',
         'provider-affiliate',
         'executor-contract',
+    ])
+    const validGasAssistModes = new Set([
+        'disabled',
+        'zero-x-gasless',
+        'megafuel-legacy',
     ])
 
     if (!validQuoteModes.has(config.quotes.mode)) {
@@ -514,6 +643,86 @@ export function validateStartupConfig(config = getApiConfig()) {
         throw new Error(
             'provider-affiliate fee mode requires an enabled provider with documented affiliate-fee support.',
         )
+    }
+
+    if (!validGasAssistModes.has(config.gasAssist.mode)) {
+        throw new Error('GAS_ASSIST_MODE is invalid.')
+    }
+
+    if (config.gasAssist.mode === 'zero-x-gasless') {
+        const errors: string[] = []
+        if (config.gasAssist.chainId !== 56) {
+            errors.push('GAS_ASSIST_CHAIN_ID must be exactly 56')
+        }
+        if (!config.quotes.zeroX.apiKey) {
+            errors.push('ZEROX_API_KEY is required')
+        }
+        if (!config.gasAssist.databaseConfigured) {
+            errors.push('DATABASE_URL is required')
+        }
+        if (config.gasAssist.feeTokenMode !== 'sellToken') {
+            errors.push('GAS_ASSIST_FEE_TOKEN_MODE must be sellToken')
+        }
+        if (
+            config.fees.platformFeeBps > 0 &&
+            (!config.fees.treasuryAddress ||
+                config.fees.treasuryAddress === NATIVE_TOKEN_ADDRESS)
+        ) {
+            errors.push('a nonzero PLATFORM_FEE_BPS requires a nonzero TREASURY_ADDRESS')
+        }
+        if (errors.length > 0) {
+            throw new Error(`0x Gas Assist configuration is unsafe: ${errors.join('; ')}.`)
+        }
+    }
+
+    if (config.gasAssist.mode === 'megafuel-legacy') {
+        const errors: string[] = []
+        if (config.gasAssist.chainId !== 56) {
+            errors.push('GAS_ASSIST_CHAIN_ID must be exactly 56')
+        }
+        if (
+            config.gasAssist.mainnetConfirmation !==
+            'I_UNDERSTAND_GAS_ASSIST_SPENDS_REAL_BNB'
+        ) {
+            errors.push('GAS_ASSIST_MAINNET_CONFIRMATION is missing or incorrect')
+        }
+        if (!config.gasAssist.swapContractAddress) {
+            errors.push('GAS_ASSIST_SWAP_CONTRACT_ADDRESS_56 is required and must be valid')
+        }
+        if (config.gasAssist.swapContractAddress === NATIVE_TOKEN_ADDRESS) {
+            errors.push('GAS_ASSIST_SWAP_CONTRACT_ADDRESS_56 cannot be the zero address')
+        }
+        if (config.gasAssist.allowedTokens.has(NATIVE_TOKEN_ADDRESS)) {
+            errors.push('GAS_ASSIST_ALLOWED_TOKENS_56 cannot contain native BNB')
+        }
+        if (config.fees.collectionMode !== 'executor-contract') {
+            errors.push('FEE_COLLECTION_MODE must be executor-contract so swaps use the Gas Assist spender')
+        }
+        if (
+            config.gasAssist.swapContractAddress &&
+            config.quotes.pancakeSwap.feeExecutorAddress !==
+                config.gasAssist.swapContractAddress
+        ) {
+            errors.push('FEE_EXECUTOR_ADDRESS_56 must equal GAS_ASSIST_SWAP_CONTRACT_ADDRESS_56')
+        }
+        if (!config.gasAssist.paymasterRpcUrl) {
+            errors.push('GAS_ASSIST_PAYMASTER_RPC_URL is required')
+        }
+        if (!config.gasAssist.paymasterPolicyId) {
+            errors.push('GAS_ASSIST_PAYMASTER_POLICY_ID is required')
+        }
+        if (!config.gasAssist.databaseConfigured) {
+            errors.push('DATABASE_URL is required')
+        }
+        if (!config.gasAssist.ipHashSecret || config.gasAssist.ipHashSecret.length < 32) {
+            errors.push('GAS_ASSIST_IP_HASH_SECRET must be at least 32 characters')
+        }
+        if (config.gasAssist.configRulesJson) {
+            errors.push('GAS_ASSIST_SPONSOR_RULES_56_JSON cannot be mixed with PostgreSQL mode')
+        }
+        if (errors.length > 0) {
+            throw new Error(`Gas Assist configuration is unsafe: ${errors.join('; ')}.`)
+        }
     }
 
     return config

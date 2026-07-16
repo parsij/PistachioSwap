@@ -5,6 +5,7 @@ import type {
 } from 'fastify'
 
 import { getSafeError } from '../lib/errors.js'
+import { persistSwapIntent } from '../gas-assist/intents.js'
 import { createQuoteSelector } from '../providers/quotes/quote-selector.js'
 import { validateQuoteRequest } from '../providers/quotes/quote-utils.js'
 
@@ -21,7 +22,19 @@ async function handleQuote(
     try {
         const normalized = validateQuoteRequest(request.body)
         const selection = await selectQuotes(normalized, controller.signal)
-        return reply.send(selection)
+        const intent = await persistSwapIntent(
+            normalized,
+            selection.selectedQuote,
+        )
+        return reply.send({
+            ...selection,
+            ...(intent
+                ? {
+                      swapIntentId: intent.id,
+                      gasAssistCompatible: intent.compatible,
+                  }
+                : {}),
+        })
     } catch (error) {
         const safe = getSafeError(error)
         if (

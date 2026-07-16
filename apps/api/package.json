@@ -5,6 +5,12 @@
   "scripts": {
     "dev": "tsx watch --env-file=.env src/server.ts",
     "start": "tsx --env-file=.env src/server.ts",
+    "db:migrate": "tsx --env-file=.env scripts/migrate.ts",
+    "gas-assist:rule:add": "tsx --env-file=.env scripts/gas-assist-rules.ts add",
+    "gas-assist:rule:list": "tsx --env-file=.env scripts/gas-assist-rules.ts list",
+    "gas-assist:rule:disable": "tsx --env-file=.env scripts/gas-assist-rules.ts disable",
+    "gas-assist:rule:enable": "tsx --env-file=.env scripts/gas-assist-rules.ts enable",
+    "gas-assist:rule:remove": "tsx --env-file=.env scripts/gas-assist-rules.ts remove",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -13,11 +19,15 @@
     "@fastify/rate-limit": "^10.3.0",
     "@pancakeswap/sdk": "5.9.0",
     "@pancakeswap/smart-router": "7.6.1",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.0.0",
+    "pg": "^8.16.3",
     "viem": "2.37.13"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.6",
+    "drizzle-kit": "^0.31.7",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.0.0"
