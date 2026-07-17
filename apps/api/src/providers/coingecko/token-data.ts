@@ -5,6 +5,7 @@ import {
     validateRemoteImageUrl,
 } from '../../lib/http.js'
 import { coinGeckoRequest } from './coingecko-client.js'
+import { tokenDiscoveryContext } from '../../token-discovery/context.js'
 
 export type CoinGeckoToken = {
     address: string
@@ -105,24 +106,28 @@ function readTokenCache(key: string) {
 export async function getCoinGeckoToken(
     address: string,
     signal?: AbortSignal,
+    chainId = 56,
 ) {
     const normalized = normalizeAddress(address)
     if (!normalized) return null
 
     const config = getApiConfig().coinGecko
-    const cacheKey = `${config.network}:${normalized}`
+    const context = tokenDiscoveryContext(chainId)
+    if (!context.chain.capabilities.coinGeckoOnchain) return null
+    const network = context.chain.providers.coinGeckoNetwork
+    const cacheKey = `${chainId}:${network}:${normalized}`
     const cached = readTokenCache(cacheKey)
     if (cached !== undefined) return cached
 
     const payload = await coinGeckoRequest(
-        `/onchain/networks/${encodeURIComponent(config.network)}` +
+        `/onchain/networks/${encodeURIComponent(network)}` +
             `/tokens/${encodeURIComponent(normalized)}/info`,
         { signal, notFoundAsNull: true },
     )
     const parsedToken =
         payload === null || !isRecord(payload)
             ? null
-            : normalizeCoinGeckoToken(payload.data, config.network)
+            : normalizeCoinGeckoToken(payload.data, network)
     const token =
         parsedToken?.address === normalized ? parsedToken : null
 
@@ -147,8 +152,14 @@ function chunks<T>(values: T[], size: number) {
 export async function getCoinGeckoTokensBatch(
     addresses: string[],
     signal?: AbortSignal,
+    chainId = 56,
 ): Promise<CoinGeckoTokenBatchResult> {
     const config = getApiConfig().coinGecko
+    const context = tokenDiscoveryContext(chainId)
+    if (!context.chain.capabilities.coinGeckoOnchain) {
+        return { tokens: new Map(), partial: true, successfulBatches: 0, failedBatches: 0 }
+    }
+    const network = context.chain.providers.coinGeckoNetwork
     const unique = [
         ...new Set(
             addresses
@@ -160,7 +171,7 @@ export async function getCoinGeckoTokensBatch(
     const missing: string[] = []
 
     for (const address of unique) {
-        const cached = readTokenCache(`${config.network}:${address}`)
+        const cached = readTokenCache(`${chainId}:${network}:${address}`)
         if (cached === undefined) {
             missing.push(address)
         } else if (cached) {
@@ -175,7 +186,7 @@ export async function getCoinGeckoTokensBatch(
     for (const batch of chunks(missing, 30)) {
         try {
             const payload = await coinGeckoRequest(
-                `/onchain/networks/${encodeURIComponent(config.network)}` +
+                `/onchain/networks/${encodeURIComponent(network)}` +
                     `/tokens/multi/${batch.map(encodeURIComponent).join(',')}`,
                 { signal },
             )
@@ -186,7 +197,7 @@ export async function getCoinGeckoTokensBatch(
             const returned = new Map<string, CoinGeckoToken>()
 
             for (const value of values) {
-                const token = normalizeCoinGeckoToken(value, config.network)
+                const token = normalizeCoinGeckoToken(value, network)
                 if (!token || !batch.includes(token.address)) continue
                 returned.set(token.address, token)
                 tokens.set(token.address, token)
@@ -194,7 +205,7 @@ export async function getCoinGeckoTokensBatch(
 
             for (const address of batch) {
                 const token = returned.get(address) ?? null
-                tokenCache.set(`${config.network}:${address}`, {
+                tokenCache.set(`${chainId}:${network}:${address}`, {
                     token,
                     expiresAt:
                         Date.now() +

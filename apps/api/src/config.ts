@@ -1,6 +1,7 @@
 import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from './lib/address.js'
+import { CURATED_EVM_CHAIN_ID_SET } from './chains.js'
 
-const ALLOWED_CHAINS = new Set([56])
+const ALLOWED_CHAINS = CURATED_EVM_CHAIN_ID_SET
 const warnedInvalidAddressEntries = new Set<string>()
 
 function readInteger(
@@ -481,6 +482,71 @@ export function getApiConfig() {
                 ),
             },
         },
+        crossChain: {
+            capabilityTtlMs: readConfiguredInteger(
+                'CROSS_CHAIN_CAPABILITY_TTL_MS',
+                30 * 60 * 1000,
+                1_000,
+            ),
+            negativeCapabilityTtlMs: readConfiguredInteger(
+                'CROSS_CHAIN_NEGATIVE_CAPABILITY_TTL_MS',
+                60_000,
+                1_000,
+            ),
+            quoteTimeoutMs: readConfiguredInteger(
+                'CROSS_CHAIN_QUOTE_TIMEOUT_MS',
+                12_000,
+                1_000,
+                60_000,
+            ),
+            across: {
+                enabled: readBoolean('ACROSS_ENABLED', true),
+                baseUrl: readUrl(
+                    'ACROSS_API_BASE_URL',
+                    'https://app.across.to/api',
+                    ['app.across.to'],
+                ),
+                apiKey: process.env.ACROSS_API_KEY?.trim() || null,
+                integratorId:
+                    process.env.ACROSS_INTEGRATOR_ID?.trim() || null,
+            },
+            debridge: {
+                enabled: readBoolean('DEBRIDGE_ENABLED', true),
+                baseUrl: readUrl(
+                    'DEBRIDGE_API_BASE_URL',
+                    'https://dln.debridge.finance',
+                    ['dln.debridge.finance'],
+                ),
+                accessToken:
+                    process.env.DEBRIDGE_ACCESS_TOKEN?.trim() || null,
+                referralCode:
+                    process.env.DEBRIDGE_REFERRAL_CODE?.trim() || null,
+            },
+            relay: {
+                enabled: readBoolean('RELAY_ENABLED', true),
+                baseUrl: readUrl(
+                    'RELAY_API_BASE_URL',
+                    'https://api.relay.link',
+                    ['api.relay.link'],
+                ),
+                apiKey: process.env.RELAY_API_KEY?.trim() || null,
+            },
+            chainflip: {
+                enabled: readBoolean('CHAINFLIP_ENABLED', false),
+                network:
+                    process.env.CHAINFLIP_NETWORK?.trim().toLowerCase() ||
+                    'mainnet',
+                brokerApiUrl: readOptionalHttpsUrl(
+                    'CHAINFLIP_BROKER_API_URL',
+                ),
+                brokerCommissionBps: readConfiguredInteger(
+                    'CHAINFLIP_BROKER_COMMISSION_BPS',
+                    0,
+                    0,
+                    1_000,
+                ),
+            },
+        },
         gasAssist: {
             mode:
                 process.env.GAS_ASSIST_MODE?.trim().toLowerCase() ||
@@ -826,6 +892,20 @@ export function getApiConfig() {
 
 export type ApiConfig = ReturnType<typeof getApiConfig>
 
+export function getWalletTokenAddressPolicy(chainId: number) {
+    if (!ALLOWED_CHAINS.has(chainId)) {
+        throw new Error('Wallet-token policy chain is not enabled.')
+    }
+    return {
+        allowlist: readOptionalAddressSet(
+            `WALLET_TOKEN_ALLOWLIST_${chainId}`,
+        ),
+        blocklist: readOptionalAddressSet(
+            `WALLET_TOKEN_BLOCKLIST_${chainId}`,
+        ),
+    }
+}
+
 export function validateStartupConfig(config = getApiConfig()) {
     const validQuoteModes = new Set([
         'best',
@@ -898,6 +978,19 @@ export function validateStartupConfig(config = getApiConfig()) {
 
     if (!validGasAssistModes.has(config.gasAssist.mode)) {
         throw new Error('GAS_ASSIST_MODE is invalid.')
+    }
+
+    if (
+        config.crossChain.across.integratorId &&
+        !/^0x[0-9a-fA-F]{4}$/.test(config.crossChain.across.integratorId)
+    ) {
+        throw new Error('ACROSS_INTEGRATOR_ID must be a 2-byte hex value.')
+    }
+    if (
+        config.crossChain.chainflip.enabled &&
+        config.crossChain.chainflip.network !== 'mainnet'
+    ) {
+        throw new Error('Enabled Chainflip must use mainnet.')
     }
 
     if (!validSponsorshipBillingModes.has(config.sponsorship.billingMode)) {

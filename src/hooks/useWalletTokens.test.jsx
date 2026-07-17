@@ -133,4 +133,27 @@ describe('useWalletTokens', () => {
 
         expect(fetchWalletTokens).not.toHaveBeenCalled()
     })
+
+    it('exposes partial all-chain errors without discarding successful tokens', async () => {
+        fetchWalletTokens.mockResolvedValue({
+            tokens: [{ address: ADDRESS_A, chainId: 56 }],
+            chainErrors: { 137: 'temporarily unavailable' },
+        })
+        const { result } = renderHook(() =>
+            useWalletTokens({
+                chainId: 'all',
+                walletAddress: ADDRESS_A,
+                enabled: true,
+            }),
+        )
+
+        await waitFor(() => expect(result.current.loading).toBe(false))
+        expect(result.current.tokens).toHaveLength(1)
+        expect(result.current.chainErrors).toEqual({
+            137: 'temporarily unavailable',
+        })
+        expect(fetchWalletTokens).toHaveBeenCalledWith(expect.objectContaining({
+            chainId: 'all',
+        }))
+    })
 })

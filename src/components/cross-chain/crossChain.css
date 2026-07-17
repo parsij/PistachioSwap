@@ -1,0 +1,57 @@
+.cross-chain-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel);
+    background: var(--color-background);
+    color: var(--color-text);
+}
+
+.cross-chain-panel h2 { margin: 0 0 4px; font-size: 19px; }
+.cross-chain-selectors, .cross-chain-amount-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.cross-chain-selector, .cross-chain-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: var(--color-muted); font-size: 12px; }
+.cross-chain-selector select, .cross-chain-field input {
+    width: 100%;
+    height: 42px;
+    min-width: 0;
+    padding: 0 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    outline: 0;
+    background: var(--color-panel);
+    color: var(--color-text);
+}
+.cross-chain-decimals { max-width: 100px; }
+.cross-chain-sort { display: flex; gap: 5px; overflow-x: auto; }
+.cross-chain-sort button, .cross-chain-back { padding: 7px 9px; border-radius: 999px; background: var(--color-panel); color: var(--color-muted); font-size: 12px; white-space: nowrap; }
+.cross-chain-sort button.active { background: var(--color-active-tab); color: var(--color-text); }
+.cross-chain-routes { display: flex; flex-direction: column; gap: 7px; }
+.cross-chain-route-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-panel); color: var(--color-text); text-align: left; }
+.cross-chain-route-card > span { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.cross-chain-route-card > span:last-child { align-items: end; text-align: right; }
+.cross-chain-route-card small, .cross-chain-status, .cross-chain-empty { color: var(--color-muted); font-size: 11px; }
+.cross-chain-review { display: flex; margin: 0; flex-direction: column; gap: 10px; }
+.cross-chain-review div { display: flex; justify-content: space-between; gap: 16px; }
+.cross-chain-review dt { color: var(--color-muted); font-size: 12px; }
+.cross-chain-review dd { margin: 0; font-size: 12px; text-align: right; overflow-wrap: anywhere; }
+.cross-chain-warning, .cross-chain-error { margin: 0; color: #ff8299; font-size: 12px; line-height: 1.45; }
+.chainflip-deposit { padding: 12px; border: 1px solid #8c6b32; border-radius: 9px; background: #2c2519; font-size: 12px; }
+.chainflip-deposit p { margin: 7px 0; color: #d1c3a8; line-height: 1.4; }
+.chainflip-deposit dl { display: flex; margin: 10px 0; flex-direction: column; gap: 7px; }
+.chainflip-deposit dl div { display: flex; justify-content: space-between; gap: 12px; }
+.chainflip-deposit dt { color: #d1c3a8; }
+.chainflip-deposit dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.chainflip-deposit code { display: block; overflow-wrap: anywhere; user-select: text; }
+.cross-chain-steps { display: flex; margin: 0; padding: 0; flex-direction: column; gap: 7px; list-style: none; }
+.cross-chain-steps li { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--color-border); border-radius: 9px; }
+.cross-chain-steps li > span { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--color-panel); font-size: 12px; }
+.cross-chain-steps li.complete > span { background: var(--color-accent); color: #122012; }
+.cross-chain-steps li div { display: flex; flex-direction: column; gap: 2px; }
+.cross-chain-steps small { color: var(--color-muted); }
+.cross-chain-success { margin: 0; color: var(--color-accent); font-size: 12px; }
+
+@media (max-width: 520px) {
+    .cross-chain-selectors { grid-template-columns: 1fr; }
+}

@@ -14,7 +14,7 @@
     font-weight: 650;
 }
 
-.wallet-connect-button { background: #ff37c4; border-color: #ff37c4; }
+.wallet-connect-button { border-color: #8ac27c; background: #8ac27c; color: #122012; }
 
 .wallet-avatar {
     display: grid;
@@ -104,6 +104,7 @@
 .wallet-network-label img { width: 25px; height: 25px; }
 .wallet-network-label span,
 .wallet-network-label h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.wallet-network-label .wallet-all-networks-icon { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #88d36a, #3374ff); color: #fff; font-size: 20px; line-height: 1; }
 
 .wallet-account-summary {
     position: relative;
@@ -178,7 +179,9 @@ button.wallet-asset-row:hover, .wallet-asset-row.selected { background: #242424;
 .wallet-asset-values strong { font-size: 14px; font-weight: 600; }
 .wallet-asset-identity .wallet-asset-risk { display: inline-flex; align-items: center; gap: 4px; color: #f4a7b8; }
 .wallet-asset-risk svg { width: 12px; height: 12px; }
-.wallet-asset-check { width: 16px; height: 16px; color: #ff37c4; }
+.wallet-asset-identity .wallet-asset-chain { display: inline-flex; align-items: center; gap: 5px; color: #aaa; }
+.wallet-asset-chain img { width: 14px; height: 14px; border-radius: 50%; object-fit: cover; }
+.wallet-asset-check { width: 16px; height: 16px; color: #8ac27c; }
 .wallet-asset-copy { display: grid; width: 24px; height: 24px; place-items: center; padding: 5px; border-radius: 6px; background: transparent; color: #777; }
 .wallet-asset-copy svg { width: 14px; height: 14px; }
 .wallet-assets-empty { margin: 18px 10px; color: #888; font-size: 13px; text-align: center; }
@@ -197,7 +200,7 @@ button.wallet-asset-row:hover, .wallet-asset-row.selected { background: #242424;
 .receive-address-field { display: flex; width: calc(100% - 32px); align-items: center; gap: 10px; margin: 14px 16px 10px; padding: 11px; border: 1px solid #353535; border-radius: 8px; background: #242424; color: #aaa; font-size: 11px; }
 .receive-address-field span { min-width: 0; flex: 1; overflow-wrap: anywhere; user-select: text; }
 .receive-address-field svg { width: 16px; height: 16px; flex: 0 0 auto; }
-.wallet-primary-button { display: flex; width: calc(100% - 32px); min-height: 48px; align-items: center; justify-content: center; gap: 8px; margin: 0 16px; border-radius: 10px; background: #ff37c4; color: #fff; font-weight: 650; }
+.wallet-primary-button { display: flex; width: calc(100% - 32px); min-height: 48px; align-items: center; justify-content: center; gap: 8px; margin: 0 16px; border-radius: 10px; background: #8ac27c; color: #122012; font-weight: 650; }
 .wallet-primary-button svg { width: 18px; height: 18px; }
 .receive-warning { margin: 13px 22px 0; color: #aaa; font-size: 12px; line-height: 1.45; text-align: center; }
 

@@ -63,7 +63,19 @@ describe('send transaction plans', () => {
         })).toThrow('Insufficient BNB')
     })
 
-    it('blocks the wrong chain and identifies wallet rejection separately', () => {
+    it('supports curated chains, rejects token/network mismatches, and identifies rejection', () => {
+        const ethereumNative = {
+            ...native,
+            chainId: 1,
+        }
+        expect(createTransferPlan({
+            account,
+            chainId: 1,
+            recipient,
+            amount: '0.1',
+            token: ethereumNative,
+            nativeBalanceWei: parseEther('1'),
+        }).request.chainId).toBe(1)
         expect(() => createTransferPlan({
             account,
             chainId: 1,
@@ -71,7 +83,7 @@ describe('send transaction plans', () => {
             amount: '1',
             token: erc20,
             nativeBalanceWei: parseEther('1'),
-        })).toThrow('Switch to BNB Smart Chain')
+        })).toThrow('Select a token on Ethereum')
         expect(isTransferRejectedError({ code: 4001 })).toBe(true)
         expect(isTransferRejectedError(new Error('rpc failed'))).toBe(false)
     })

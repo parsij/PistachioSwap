@@ -1,4 +1,5 @@
 import {
+    useCallback,
     useEffect,
     useMemo,
     useState,
@@ -20,6 +21,7 @@ import {
     formatWalletTokenAmount,
     formatWalletUsdValue,
 } from '../services/walletTokens.js'
+import { getCanonicalTokenIdentity } from '../services/marketTokens.js'
 import { compareDecimalStrings } from '../services/portfolio.js'
 import { confirmRiskyTokenSelection } from '../services/tokenRisk.js'
 import {
@@ -30,6 +32,12 @@ import {
 import {
     swapUiConfig,
 } from '../swapConfig.js'
+import {
+    CURATED_EVM_CHAINS,
+    getCuratedEvmChain,
+    getCuratedEvmChainLogoUri,
+    TOKEN_DISCOVERY_CHAIN_IDS,
+} from '../web3/curatedEvmChains.js'
 
 const DEFAULT_RECENT_LIMIT = 3
 const EMPTY_TOKENS = []
@@ -206,16 +214,7 @@ function normalizeAddress(address) {
 }
 
 function getTokenKey(token) {
-    if (!token) {
-        return 'none'
-    }
-
-    return [
-        Number(token.chainId ?? 0),
-        normalizeAddress(token.address) ||
-        token.id ||
-        token.symbol,
-    ].join(':')
+    return getCanonicalTokenIdentity(token)
 }
 
 function shortenAddress(address) {
@@ -248,8 +247,9 @@ function deduplicateTokens(tokens) {
     const map = new Map()
 
     for (const token of tokens) {
-        if (token) {
-            map.set(getTokenKey(token), token)
+        const identity = getTokenKey(token)
+        if (identity) {
+            map.set(identity, token)
         }
     }
 
@@ -257,6 +257,7 @@ function deduplicateTokens(tokens) {
 }
 
 function sanitizeStoredToken(token) {
+    if (!getTokenKey(token)) return null
     const logoCandidates = [
         ...(Array.isArray(token.logoCandidates)
             ? token.logoCandidates
@@ -323,11 +324,20 @@ function sanitizeStoredToken(token) {
 }
 
 function getRecentStorageKey(chainId) {
+    const scope = String(chainId).trim().toLowerCase() === 'all'
+        ? 'all'
+        : Number(chainId)
+    if (
+        scope !== 'all' &&
+        (!Number.isSafeInteger(scope) || scope <= 0)
+    ) {
+        return null
+    }
     return [
         'pistachioswap',
         'recent-token-searches',
         'v3',
-        chainId,
+        scope,
     ].join(':')
 }
 
@@ -337,9 +347,11 @@ function readRecentTokens(chainId) {
     }
 
     try {
+        const key = getRecentStorageKey(chainId)
+        if (!key) return []
         const value =
             window.localStorage.getItem(
-                getRecentStorageKey(chainId),
+                key,
             )
 
         if (!value) {
@@ -361,8 +373,10 @@ function writeRecentTokens(
     tokens,
 ) {
     try {
+        const key = getRecentStorageKey(chainId)
+        if (!key) return
         window.localStorage.setItem(
-            getRecentStorageKey(chainId),
+            key,
             JSON.stringify(tokens),
         )
     } catch {
@@ -395,68 +409,101 @@ async function copyText(text) {
     textarea.remove()
 }
 
-function NetworkStack({
-                          tokens,
-                      }) {
-    const logos = useMemo(() => {
-        const seen = new Set()
-        const result = []
+function ChainSelector({
+                           chainId,
+                           onChange,
+                       }) {
+    const [open, setOpen] = useState(false)
+    const selectedChain = chainId === 'all'
+        ? null
+        : getCuratedEvmChain(chainId)
+    const options = [
+        { id: 'all', name: 'All Chains', active: true },
+        ...CURATED_EVM_CHAINS.map((chain) => ({
+            id: chain.id,
+            name: chain.name,
+            active: TOKEN_DISCOVERY_CHAIN_IDS.includes(chain.id),
+        })),
+    ]
 
-        for (const token of tokens) {
-            const logo =
-                token?.chainLogoURI ??
-                token?.networkLogoURI ??
-                null
+    function selectOption(option) {
+        if (!option.active) return
+        onChange(String(option.id))
+        setOpen(false)
+    }
 
-            if (
-                !logo ||
-                seen.has(logo)
-            ) {
-                continue
-            }
-
-            seen.add(logo)
-            result.push(logo)
-
-            if (result.length === 4) {
-                break
-            }
+    function handleKeyDown(event) {
+        if (event.key === 'Escape') {
+            setOpen(false)
+            return
         }
-
-        return result
-    }, [tokens])
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            setOpen((value) => !value)
+        }
+    }
 
     return (
-        <button
-            type="button"
-            className="ps-network-filter"
-            aria-label="Select networks"
-        >
-      <span className="ps-network-stack">
-        {logos.length > 0 ? (
-            logos.map((logo, index) => (
-                <img
-                    key={logo}
-                    src={logo}
-                    alt=""
-                    style={{
-                        zIndex:
-                            logos.length - index,
-                    }}
-                />
-            ))
-        ) : (
-            <>
-                <span />
-                <span />
-                <span />
-                <span />
-            </>
-        )}
-      </span>
-
-            <ChevronDownIcon />
-        </button>
+        <div className="ps-network-control">
+            <button
+                type="button"
+                className="ps-network-trigger"
+                aria-label="Token network"
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                onClick={() => setOpen((value) => !value)}
+                onKeyDown={handleKeyDown}
+            >
+                {selectedChain ? (
+                    <span className="ps-chain-icon">
+                        <span aria-hidden="true">{selectedChain.name.slice(0, 1)}</span>
+                        <img
+                            src={getCuratedEvmChainLogoUri(selectedChain.id)}
+                            alt=""
+                            onError={(event) => event.currentTarget.remove()}
+                        />
+                    </span>
+                ) : (
+                    <span className="ps-chain-icon ps-chain-icon-all" aria-hidden="true">∞</span>
+                )}
+                <span>{selectedChain?.name ?? 'All Chains'}</span>
+                <ChevronDownIcon />
+            </button>
+            {open && (
+                <div
+                    className="ps-network-menu"
+                    role="listbox"
+                    aria-label="Token network"
+                >
+                    {options.map((option) => (
+                        <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={String(option.id) === String(chainId)}
+                            aria-disabled={!option.active}
+                            disabled={!option.active}
+                            onClick={() => selectOption(option)}
+                        >
+                            {option.id === 'all' ? (
+                                <span className="ps-chain-icon ps-chain-icon-all" aria-hidden="true">∞</span>
+                            ) : (
+                                <span className="ps-chain-icon">
+                                    <span aria-hidden="true">{option.name.slice(0, 1)}</span>
+                                    <img
+                                        src={getCuratedEvmChainLogoUri(option.id)}
+                                        alt=""
+                                        onError={(event) => event.currentTarget.remove()}
+                                    />
+                                </span>
+                            )}
+                            <span>{option.name}</span>
+                            {!option.active && <small>Unavailable</small>}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
     )
 }
 
@@ -516,12 +563,15 @@ function TokenRow({
         token.isNative ? null : shortenAddress(token.address)
 
     const isCurrent =
+        getTokenKey(token) !== null &&
         getTokenKey(token) ===
         getTokenKey(currentToken)
 
     const isOpposite =
+        getTokenKey(token) !== null &&
         getTokenKey(token) ===
         getTokenKey(oppositeToken)
+    const chainName = getCuratedEvmChain(token.chainId)?.name ?? `Chain ${token.chainId}`
 
     return (
         <button
@@ -550,6 +600,8 @@ function TokenRow({
 
         <span className="ps-token-row-meta">
           <span>{token.symbol}</span>
+
+            <span className="ps-token-chain-label">{chainName}</span>
 
             {address && (
                 <span>{address}</span>
@@ -593,6 +645,7 @@ export default function TokenSelector({
                                           onClose,
                                           hideUnknownTokens = true,
                                           hideSmallBalances = false,
+                                          onChainChange = null,
                                       }) {
     const reducedMotion =
         useReducedMotion()
@@ -636,10 +689,20 @@ export default function TokenSelector({
 
     const normalizedSearch =
         search.trim().toLowerCase()
+    const chainScope = String(chainId).trim().toLowerCase() === 'all'
+        ? 'all'
+        : Number(chainId)
+    const tokenIsInScope = useCallback(
+        (token) =>
+            chainScope === 'all' || Number(token?.chainId) === chainScope,
+        [chainScope],
+    )
 
     const positiveWalletTokens = useMemo(
-        () => deduplicateTokens(walletTokens).filter(hasPositiveBalance),
-        [walletTokens],
+        () => deduplicateTokens(walletTokens)
+            .filter(tokenIsInScope)
+            .filter(hasPositiveBalance),
+        [tokenIsInScope, walletTokens],
     )
 
     const walletTokensByKey = useMemo(
@@ -648,37 +711,25 @@ export default function TokenSelector({
     )
 
     const safeMarketTokens = useMemo(
-        () => deduplicateTokens(tokens).filter((token) => {
+        () => deduplicateTokens(tokens).filter(tokenIsInScope).filter((token) => {
             const walletToken = walletTokensByKey.get(getTokenKey(token))
             return !walletToken || walletToken.visibility === 'primary'
         }),
-        [tokens, walletTokensByKey],
+        [tokenIsInScope, tokens, walletTokensByKey],
     )
 
-    const allVisibleTokens = useMemo(
-        () =>
-            deduplicateTokens([
-                currentToken,
-                oppositeToken,
-                ...positiveWalletTokens,
-                ...safeMarketTokens,
-            ]),
-        [
-            currentToken,
-            oppositeToken,
-            positiveWalletTokens,
-            safeMarketTokens,
-        ],
-    )
-
-    const featuredTokens = useMemo(
-        () =>
-            safeMarketTokens.slice(
-                0,
-                4,
-            ),
-        [safeMarketTokens],
-    )
+    const featuredTokenGroups = useMemo(() => {
+        if (chainScope !== 'all') {
+            return [[chainScope, safeMarketTokens.slice(0, 4)]]
+        }
+        const groups = new Map()
+        for (const token of safeMarketTokens) {
+            const group = groups.get(token.chainId) ?? []
+            if (group.length < 4) group.push(token)
+            groups.set(token.chainId, group)
+        }
+        return [...groups.entries()]
+    }, [chainScope, safeMarketTokens])
 
     const primaryWalletTokens = useMemo(
         () => positiveWalletTokens.filter((token) =>
@@ -715,12 +766,13 @@ export default function TokenSelector({
 
     const visibleRecentTokens = useMemo(
         () => recentTokens
+            .filter(tokenIsInScope)
             .map((token) => walletTokensByKey.get(getTokenKey(token)) ?? token)
             .filter((token) => {
                 const walletToken = walletTokensByKey.get(getTokenKey(token))
                 return !walletToken || walletToken.visibility === 'primary'
             }),
-        [recentTokens, walletTokensByKey],
+        [recentTokens, tokenIsInScope, walletTokensByKey],
     )
 
     const searchResultTokens = useMemo(() => {
@@ -838,6 +890,7 @@ export default function TokenSelector({
 
         const stored =
             sanitizeStoredToken(token)
+        if (!stored) return
 
         const next = [
             stored,
@@ -862,9 +915,8 @@ export default function TokenSelector({
         setRecentTokens([])
 
         try {
-            window.localStorage.removeItem(
-                getRecentStorageKey(chainId),
-            )
+            const key = getRecentStorageKey(chainId)
+            if (key) window.localStorage.removeItem(key)
         } catch {
             // Storage may be unavailable.
         }
@@ -983,6 +1035,30 @@ export default function TokenSelector({
         }
     }
 
+    function groupByChain(items) {
+        const groups = new Map()
+        for (const token of items) {
+            const key = Number(token.chainId)
+            const group = groups.get(key) ?? []
+            group.push(token)
+            groups.set(key, group)
+        }
+        return [...groups.entries()]
+    }
+
+    function renderTokenRows(items) {
+        return items.map((token) => (
+            <TokenRow
+                key={getTokenKey(token)}
+                token={token}
+                currentToken={currentToken}
+                oppositeToken={oppositeToken}
+                onSelect={handleSelect}
+                onContextMenu={openContextMenu}
+            />
+        ))
+    }
+
     function renderSearchResults() {
         if (loading) {
             return <TokenSkeletonList />
@@ -1004,17 +1080,14 @@ export default function TokenSelector({
             )
         }
 
-        return searchResultTokens.map((token) => (
-            <TokenRow
-                key={getTokenKey(token)}
-                token={token}
-                currentToken={currentToken}
-                oppositeToken={oppositeToken}
-                onSelect={handleSelect}
-                onContextMenu={
-                    openContextMenu
-                }
-            />
+        if (chainScope !== 'all') return renderTokenRows(searchResultTokens)
+        return groupByChain(searchResultTokens).map(([resultChainId, resultTokens]) => (
+            <section className="ps-token-section" key={resultChainId}>
+                <SectionTitle>
+                    {getCuratedEvmChain(resultChainId)?.name ?? `Chain ${resultChainId}`}
+                </SectionTitle>
+                {renderTokenRows(resultTokens)}
+            </section>
         ))
     }
 
@@ -1083,11 +1156,12 @@ export default function TokenSelector({
                 </header>
 
                 <div className="ps-token-search-wrapper">
-                    <label className="ps-token-search">
+                    <div className="ps-token-search">
                         <SearchIcon />
 
                         <input
                             autoFocus
+                            aria-label="Search tokens"
                             value={search}
                             onChange={(event) =>
                                 onSearchChange(
@@ -1099,10 +1173,18 @@ export default function TokenSelector({
                             spellCheck="false"
                         />
 
-                        <NetworkStack
-                            tokens={allVisibleTokens}
+                        <ChainSelector
+                            chainId={chainScope}
+                            onChange={(value) => {
+                                if (!onChainChange) return
+                                onSearchChange('')
+                                onChainChange(value === 'all' ? 'all' : Number(value))
+                            }}
                         />
-                    </label>
+                    </div>
+                    <p className="ps-chain-unavailable-note" role="note">
+                        Polygon zkEVM is temporarily unavailable for token discovery.
+                    </p>
                 </div>
 
                 <div
@@ -1115,9 +1197,20 @@ export default function TokenSelector({
                         renderSearchResults()
                     ) : (
                         <>
-                            {featuredTokens.length > 0 && (
-                                <div className="ps-featured-token-list">
-                                    {featuredTokens.map(
+                            {featuredTokenGroups.map(([featuredChainId, featuredTokens]) =>
+                                featuredTokens.length > 0 && (
+                                <section
+                                    className="ps-featured-token-group"
+                                    key={featuredChainId}
+                                >
+                                    {chainScope === 'all' && (
+                                        <SectionTitle>
+                                            Featured on {getCuratedEvmChain(featuredChainId)?.name ??
+                                                `Chain ${featuredChainId}`}
+                                        </SectionTitle>
+                                    )}
+                                    <div className="ps-featured-token-list">
+                                        {featuredTokens.map(
                                         (token) => (
                                             <button
                                                 key={getTokenKey(
@@ -1147,9 +1240,10 @@ export default function TokenSelector({
                         </span>
                                             </button>
                                         ),
-                                    )}
-                                </div>
-                            )}
+                                        )}
+                                    </div>
+                                </section>
+                            ))}
 
                             {primaryWalletTokens.length >
                                 0 && (
@@ -1341,27 +1435,20 @@ export default function TokenSelector({
                                     <div className="ps-token-message">
                                         {error}
                                     </div>
+                                ) : chainScope === 'all' ? (
+                                    groupByChain(safeMarketTokens).map(
+                                        ([volumeChainId, volumeTokens]) => (
+                                            <div key={volumeChainId}>
+                                                <SectionTitle>
+                                                    {getCuratedEvmChain(volumeChainId)?.name ??
+                                                        `Chain ${volumeChainId}`}
+                                                </SectionTitle>
+                                                {renderTokenRows(volumeTokens)}
+                                            </div>
+                                        ),
+                                    )
                                 ) : (
-                                    safeMarketTokens.map((token) => (
-                                        <TokenRow
-                                            key={getTokenKey(
-                                                token,
-                                            )}
-                                            token={token}
-                                            currentToken={
-                                                currentToken
-                                            }
-                                            oppositeToken={
-                                                oppositeToken
-                                            }
-                                            onSelect={
-                                                handleSelect
-                                            }
-                                            onContextMenu={
-                                                openContextMenu
-                                            }
-                                        />
-                                    ))
+                                    renderTokenRows(safeMarketTokens)
                                 )}
                             </section>
                         </>

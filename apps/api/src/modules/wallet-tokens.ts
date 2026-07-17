@@ -7,6 +7,7 @@ import {
     getWalletTokens,
     WALLET_TOKEN_CLASSIFICATION_VERSION,
 } from '../providers/alchemy/wallet-tokens.js'
+import { getTokenDiscoveryChain } from '../token-discovery/registry.js'
 
 type WalletTokenQuery = {
     chainId?: string
@@ -17,18 +18,54 @@ type WalletTokenQuery = {
 export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
     app.get<{ Querystring: WalletTokenQuery }>(
         '/v1/wallet-tokens',
+        {
+            schema: {
+                querystring: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        chainId: {
+                            type: 'string',
+                            pattern: '^[1-9][0-9]*$',
+                        },
+                        address: {
+                            type: 'string',
+                            pattern: '^0x[0-9a-fA-F]{40}$',
+                        },
+                        includeZero: {
+                            type: 'string',
+                            enum: ['true', 'false'],
+                        },
+                    },
+                },
+            },
+            config: {
+                rateLimit: { max: 20, timeWindow: '1 minute' },
+            },
+        },
         async (request, reply) => {
             const config = getApiConfig()
-            const chainId = Number(
-                request.query.chainId ?? config.chainId,
-            )
+            const unsupportedParameters = Object.keys(request.query)
+                .filter((key) => !['chainId', 'address', 'includeZero'].includes(key))
+            if (unsupportedParameters.length > 0) {
+                return reply.code(400).send({
+                    error: {
+                        code: 'UNSUPPORTED_QUERY_PARAMETER',
+                        message: 'Unsupported query parameter.',
+                    },
+                })
+            }
+            const rawChainId = request.query.chainId ?? String(config.chainId)
+            const chainId = /^[1-9]\d*$/.test(rawChainId)
+                ? Number(rawChainId)
+                : Number.NaN
             const address = normalizeAddress(request.query.address)
 
-            if (!config.allowedChains.has(chainId)) {
+            if (!getTokenDiscoveryChain(chainId)?.active) {
                 return reply.code(400).send({
                     error: {
                         code: 'UNSUPPORTED_CHAIN',
-                        message: 'Only BNB Chain (56) is supported.',
+                        message: 'The requested chain is not enabled for token discovery.',
                     },
                 })
             }
@@ -38,6 +75,17 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                     error: {
                         code: 'INVALID_WALLET_ADDRESS',
                         message: 'A valid wallet address is required.',
+                    },
+                })
+            }
+            if (
+                request.query.includeZero !== undefined &&
+                !['true', 'false'].includes(request.query.includeZero)
+            ) {
+                return reply.code(400).send({
+                    error: {
+                        code: 'INVALID_INCLUDE_ZERO',
+                        message: 'includeZero must be true or false.',
                     },
                 })
             }

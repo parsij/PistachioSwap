@@ -16,7 +16,7 @@
 .gas-assist-limits { display: grid; gap: 4px; padding-top: 10px; }
 .gas-assist-status, .gas-assist-error { margin: 14px 0 0; font-size: 13px; }
 .gas-assist-error { color: #ff9aab; }
-.gas-assist-primary { width: 100%; min-height: 48px; margin-top: 18px; border: 0; border-radius: 8px; background: #ff37c4; color: #111; font-weight: 700; cursor: pointer; }
+.gas-assist-primary { width: 100%; min-height: 48px; margin-top: 18px; border: 0; border-radius: 8px; background: #8ac27c; color: #122012; font-weight: 700; cursor: pointer; }
 .gas-assist-details { display: grid; gap: 9px; padding: 14px 0; border-bottom: 1px solid #353535; }
 .gas-assist-details div { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; font-size: 12px; }
 .gas-assist-details span { color: #999; }
@@ -31,3 +31,11 @@
 .gas-assist-banner dl div { display: flex; justify-content: space-between; gap: 16px; }
 .gas-assist-banner dt { color: #a9c8bc; }
 .gas-assist-banner dd { margin: 0; text-align: right; font-weight: 600; }
+.gas-assist-multichain { display: grid; gap: 10px; margin-top: 16px; padding-block: 14px; border-block: 1px solid #444; font-size: 12px; line-height: 1.5; }
+.gas-assist-multichain p { margin: 0; color: #bbb; }
+.gas-assist-multichain-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.gas-assist-multichain-heading span { color: #78e0b7; text-align: right; }
+.gas-assist-multichain-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gas-assist-multichain-actions button { min-height: 36px; padding: 0 12px; border: 1px solid #555; border-radius: 6px; background: #2a2a2a; color: #fff; cursor: pointer; }
+.gas-assist-multichain button:disabled { cursor: not-allowed; opacity: .55; }
+.gas-assist-address-mismatch { overflow-wrap: anywhere; color: #ff9aab !important; }

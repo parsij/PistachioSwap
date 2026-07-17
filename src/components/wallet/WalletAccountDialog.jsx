@@ -16,7 +16,6 @@ import {
     WalletAvatar,
 } from './WalletAccountButton.jsx'
 import { shortenAddress } from '../../services/address.js'
-import { formatWalletTokenAmount, formatWalletUsdValue } from '../../services/walletTokens.js'
 
 export default function WalletAccountDialog({
     open,
@@ -42,10 +41,20 @@ export default function WalletAccountDialog({
         valueUSD: null,
     } : null
     const assets = walletTokens.map((token) =>
-        enrichedNativeToken && token.address.toLowerCase() === enrichedNativeToken.address.toLowerCase()
+        enrichedNativeToken &&
+        Number(token.chainId) === Number(enrichedNativeToken.chainId) &&
+        token.address.toLowerCase() === enrichedNativeToken.address.toLowerCase()
             ? enrichedNativeToken
             : token,
     )
+    const heldAssets = assets.filter((token) =>
+        /^\d+$/.test(String(token.rawBalance ?? ''))
+            ? BigInt(token.rawBalance) > 0n
+            : Number(token.balance) > 0,
+    )
+    const heldNetworkCount = new Set(
+        heldAssets.map((token) => Number(token.chainId)),
+    ).size
 
     async function copyAddress() {
         await navigator.clipboard.writeText(address)
@@ -66,8 +75,8 @@ export default function WalletAccountDialog({
                     <Dialog.Content className="wallet-dialog wallet-account-dialog">
                         <header className="wallet-dialog-header">
                             <div className="wallet-network-label">
-                                <img src="/icons/BSC.svg" alt="" />
-                                <Dialog.Title>BNB Smart Chain</Dialog.Title>
+                                <span className="wallet-all-networks-icon" aria-hidden="true">∞</span>
+                                <Dialog.Title>All Networks</Dialog.Title>
                             </div>
                             <Dialog.Close className="wallet-icon-button" aria-label="Close account dialog">
                                 <X aria-hidden="true" />
@@ -81,17 +90,10 @@ export default function WalletAccountDialog({
                                 <Copy aria-hidden="true" />
                             </button>
                             <strong className="wallet-native-balance">
-                                {nativeBalance.formatted === null
-                                    ? 'Loading BNB balance…'
-                                    : `${formatWalletTokenAmount(nativeBalance.formatted)} BNB`}
+                                {heldAssets.length} {heldAssets.length === 1 ? 'asset' : 'assets'}
                             </strong>
                             <span className="wallet-native-value">
-                                {nativeBalance.formatted === null || !nativeToken
-                                    ? '—'
-                                    : formatWalletUsdValue({
-                                        balance: nativeBalance.formatted,
-                                        priceUSD: nativeToken.priceUSD,
-                                    })}
+                                Across {heldNetworkCount} {heldNetworkCount === 1 ? 'network' : 'networks'}
                             </span>
                             {copied && <span className="wallet-copy-notice" role="status">Address copied</span>}
                         </section>
@@ -134,7 +136,9 @@ export default function WalletAccountDialog({
                 onOpenChange={setSendOpen}
                 address={address}
                 chainId={chainId}
-                assets={assets}
+                assets={assets.filter(
+                    (token) => Number(token.chainId) === Number(chainId),
+                )}
                 settings={settings}
                 nativeBalanceWei={nativeBalance.value ?? 0n}
                 explorerUrl={explorerUrl}

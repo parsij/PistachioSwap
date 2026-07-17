@@ -24,9 +24,9 @@
     --settings-editable: #9b9b9b;
     --settings-editable-active: #d0d0d0;
     --settings-subtle: #737373;
-    --settings-accent: #ff37c4;
-    --settings-accent-hover: #ff4bc9;
-    --settings-accent-soft: rgb(255 55 196 / 15%);
+    --settings-accent: #8ac27c;
+    --settings-accent-hover: #9dce91;
+    --settings-accent-soft: rgb(138 194 124 / 15%);
     --settings-error: #ff5f5f;
 
     z-index: 200;
@@ -331,7 +331,7 @@
     border-color: #565656;
 }
 
-/* Normal custom value uses pink. */
+/* Normal custom value uses the Pistachio green accent. */
 
 .slippage-combined-control.is-custom {
     border-color:
@@ -339,7 +339,7 @@
 
     box-shadow:
             0 0 0 1px
-            rgb(255 55 196 / 8%);
+            rgb(138 194 124 / 8%);
 }
 
 /* More than 5.5% uses yellow. */
@@ -503,7 +503,7 @@
     color: #ffffff;
 
     background:
-            rgb(255 55 196 / 30%);
+            rgb(138 194 124 / 30%);
 }
 
 .slippage-combined-control.is-custom
@@ -644,7 +644,7 @@
             0 0 0 2px
             var(--settings-background),
             0 0 0 4px
-            rgb(255 55 196 / 58%);
+            rgb(138 194 124 / 58%);
 }
 
 .uniswap-toggle[data-state="checked"] {

@@ -6,7 +6,11 @@ import { validateStartupConfig } from './config.js'
 import { closeDatabase } from './db/client.js'
 import { assertGasAssistReady } from './gas-assist/readiness.js'
 import { gasAssistRoutes } from './modules/gas-assist.js'
-import { marketTokenRoutes } from './modules/market-tokens.js'
+import { crossChainRoutes } from './modules/cross-chain.js'
+import {
+    marketCatalogService,
+    marketTokenRoutes,
+} from './modules/market-tokens.js'
 import { quoteRoutes } from './modules/quotes.js'
 import { tokenDetailsRoutes } from './modules/token-details.js'
 import { walletTokenRoutes } from './modules/wallet-tokens.js'
@@ -26,11 +30,14 @@ export function createApp() {
                     'req.body.signedRawTransaction',
                     'req.body.approvalSignature',
                     'req.body.tradeSignature',
+                    'req.body.signature',
+                    'req.body.sessionToken',
                 ],
                 censor: '[REDACTED]',
             },
         },
     })
+    let stopMarketCatalogRefresh: (() => void) | null = null
 
     app.register(cors, {
         origin(origin, callback) {
@@ -49,14 +56,37 @@ export function createApp() {
     app.register(marketTokenRoutes)
     app.register(walletTokenRoutes)
     app.register(quoteRoutes)
+    app.register(crossChainRoutes)
     app.register(tokenDetailsRoutes)
     app.register(gasAssistRoutes)
     app.register(sponsorshipRoutes)
 
     app.addHook('onReady', async () => {
         await assertGasAssistReady()
+        if (process.env.NODE_ENV !== 'test') {
+            app.log.info('Warming token catalogs in the background')
+            void marketCatalogService.refreshAllCatalogs()
+                .then((catalog) => {
+                    app.log.info({
+                        tokenCount: catalog.tokens.length,
+                        unavailableChainIds: catalog.unavailableChainIds,
+                    }, 'Token catalog warmup completed')
+                })
+                .catch((error) => {
+                    app.log.warn({
+                        code: error?.code ?? 'TOKEN_CATALOG_WARMUP_FAILED',
+                    }, 'Token catalog warmup will retry on the hourly schedule')
+                })
+            stopMarketCatalogRefresh =
+                marketCatalogService.startHourlyRefresh(
+                    60 * 60 * 1000,
+                    { refreshImmediately: false },
+                )
+        }
     })
     app.addHook('onClose', async () => {
+        stopMarketCatalogRefresh?.()
+        stopMarketCatalogRefresh = null
         await closeDatabase()
     })
 

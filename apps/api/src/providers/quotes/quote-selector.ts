@@ -63,7 +63,6 @@ export function createQuoteSelector(
         ]
     const enabledProviderNames = new Set(config.quotes.providers)
     const enabled = providers.filter((provider) => {
-        if (!provider.supportsChain(56)) return false
         if (!enabledProviderNames.has(provider.name)) return false
         if (
             provider.name === 'uniswap' &&
@@ -90,8 +89,11 @@ export function createQuoteSelector(
         request: QuoteRequest,
         signal?: AbortSignal,
     ): Promise<QuoteSelection> {
+        const compatible = enabled.filter((provider) =>
+            provider.supportsChain(request.chainId),
+        )
         const settled = await Promise.allSettled(
-            enabled.map((provider) =>
+            compatible.map((provider) =>
                 withTimeout(
                     provider,
                     request,
@@ -103,7 +105,7 @@ export function createQuoteSelector(
         const quotes: NormalizedQuote[] = []
         const diagnostics: ProviderDiagnostic[] = []
         const summaries: QuoteSummary[] = settled.map((result, index) => {
-            const provider = enabled[index]
+            const provider = compatible[index]
             if (result.status === 'fulfilled') {
                 quotes.push(result.value)
                 return {

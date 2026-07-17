@@ -14,9 +14,10 @@ import {
 } from '../services/prepaidSponsorship.js'
 import {
     detectRawTransactionSigning,
-    signRawSponsoredTransaction,
+    signPreparedSponsoredTransaction,
 } from '../services/rawTransactionSigning.js'
 import { isUserRejectedError } from '../services/swapTransaction.js'
+import { useMetaMaskMultichainSigner } from './useMetaMaskMultichainSigner.js'
 
 const initial = {
     open: false,
@@ -43,10 +44,28 @@ export function usePrepaidSponsorship({
     const [config, setConfig] = useState(null)
     const [state, setState] = useState(initial)
     const sessionTokenRef = useRef(null)
-    const capability = useMemo(
+    const submittedIntentIdsRef = useRef(new Set())
+    const walletEpochRef = useRef(0)
+    const localCapability = useMemo(
         () => detectRawTransactionSigning({ connector: connection.connector, walletClient }),
         [connection.connector, walletClient],
     )
+    const metaMaskSigner = useMetaMaskMultichainSigner({
+        appKitAddress: walletAddress,
+        authenticatedWalletAddress: walletAddress,
+        connector: connection.connector,
+        appKitConnected: Boolean(connection.connector && walletAddress),
+    })
+    const capability = localCapability.rawTransactionSigningSupported
+        ? localCapability
+        : metaMaskSigner.capability
+
+    useEffect(() => {
+        walletEpochRef.current += 1
+        sessionTokenRef.current = null
+        submittedIntentIdsRef.current.clear()
+        setState(initial)
+    }, [walletAddress])
 
     useEffect(() => {
         if (!quoteEndpoint || !walletAddress) {
@@ -63,6 +82,10 @@ export function usePrepaidSponsorship({
     const start = useCallback(async () => {
         setState({ ...initial, open: true, phase: 'authenticating', config })
         if (!capability.rawTransactionSigningSupported) {
+            if (metaMaskSigner.isMetaMask && metaMaskSigner.capability.status !== 'disabled') {
+                setState({ ...initial, open: true, phase: 'signer-setup', config })
+                return
+            }
             setState({
                 ...initial,
                 open: true,
@@ -99,11 +122,12 @@ export function usePrepaidSponsorship({
                 error,
             })
         }
-    }, [buyToken, capability.rawTransactionSigningSupported, config, grossInputAmount, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
+    }, [buyToken, capability.rawTransactionSigningSupported, config, grossInputAmount, metaMaskSigner.capability.status, metaMaskSigner.isMetaMask, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
 
     const signIntent = useCallback(async (action) => {
         const order = state.order
         const sessionToken = sessionTokenRef.current
+        const walletEpoch = walletEpochRef.current
         if (!order || !sessionToken || !walletClient) return
         try {
             setState((current) => ({ ...current, phase: `${action}-preparing`, error: null }))
@@ -111,24 +135,39 @@ export function usePrepaidSponsorship({
                 ? await prepareSponsorshipPayment(quoteEndpoint, sessionToken, order.id)
                 : await prepareSponsorshipApproval(quoteEndpoint, sessionToken, order.id)
             setState((current) => ({ ...current, phase: `${action}-signing`, intentExpiresAt: intent.expiresAt }))
-            let signedRawTransaction = await signRawSponsoredTransaction({
+            await signPreparedSponsoredTransaction({
+                transport: capability.transport,
                 capability,
                 walletClient,
-                transaction: intent.transaction,
+                preparedTransaction: intent.transaction,
+                authenticatedWalletAddress: walletAddress,
+                multichainAccount: capability.account,
+                isMetaMask: metaMaskSigner.isMetaMask,
+                submitSignedTransaction: async (signedRawTransaction) => {
+                    if (walletEpochRef.current !== walletEpoch) {
+                        const error = new Error('The connected wallet changed during signing.')
+                        error.code = 'METAMASK_MULTICHAIN_ACCOUNT_MISMATCH'
+                        throw error
+                    }
+                    if (Date.parse(intent.expiresAt) <= Date.now()) {
+                        const error = new Error('The sponsored intent expired. Request a fresh intent.')
+                        error.code = 'INTENT_EXPIRED'
+                        throw error
+                    }
+                    if (submittedIntentIdsRef.current.has(intent.intentId)) {
+                        const error = new Error('This sponsored intent was already submitted in this browser interaction.')
+                        error.code = 'INTENT_ALREADY_USED'
+                        throw error
+                    }
+                    submittedIntentIdsRef.current.add(intent.intentId)
+                    return submitSponsorshipIntent(
+                        quoteEndpoint,
+                        sessionToken,
+                        intent.intentId,
+                        signedRawTransaction,
+                    )
+                },
             })
-            if (Date.parse(intent.expiresAt) <= Date.now()) {
-                signedRawTransaction = null
-                const error = new Error('The sponsored intent expired. Request a fresh intent.')
-                error.code = 'INTENT_EXPIRED'
-                throw error
-            }
-            await submitSponsorshipIntent(
-                quoteEndpoint,
-                sessionToken,
-                intent.intentId,
-                signedRawTransaction,
-            )
-            signedRawTransaction = null
             setState((current) => ({ ...current, phase: `${action}-submitted`, intentExpiresAt: null }))
         } catch (error) {
             setState((current) => ({
@@ -138,7 +177,7 @@ export function usePrepaidSponsorship({
                 error,
             }))
         }
-    }, [capability, quoteEndpoint, state.order, walletClient])
+    }, [capability, metaMaskSigner.isMetaMask, quoteEndpoint, state.order, walletAddress, walletClient])
 
     const requestContinuation = useCallback(async () => {
         const sessionToken = sessionTokenRef.current
@@ -214,6 +253,10 @@ export function usePrepaidSponsorship({
         ...state,
         config,
         capability,
+        metaMaskSigner,
+        walletAddress,
+        rawSigningTransport: capability.transport,
+        retryStart: start,
         available: Boolean(required && config?.enabled),
         start,
         close,

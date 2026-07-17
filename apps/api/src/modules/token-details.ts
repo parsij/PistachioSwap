@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { normalizeAddress } from '../lib/address.js'
 import { getSafeError } from '../lib/errors.js'
 import { getCoinGeckoToken } from '../providers/coingecko/token-data.js'
+import { getTokenDiscoveryChain } from '../token-discovery/registry.js'
 
 type TokenDetailsQuery = {
     chainId?: string
@@ -16,10 +17,25 @@ function createCoinGeckoUrl(coinGeckoId: string) {
     )
 }
 
-export const tokenDetailsRoutes: FastifyPluginAsync = async (app) => {
+export function createTokenDetailsRoutes(
+    lookupToken = getCoinGeckoToken,
+): FastifyPluginAsync {
+    return async (app) => {
     app.get<{ Querystring: TokenDetailsQuery }>(
         '/v1/token-details/coingecko',
         async (request, reply) => {
+            if (
+                Object.keys(request.query).some(
+                    (key) => !['chainId', 'address'].includes(key),
+                )
+            ) {
+                return reply.code(400).send({
+                    error: {
+                        code: 'UNSUPPORTED_QUERY_PARAMETER',
+                        message: 'Unsupported query parameter.',
+                    },
+                })
+            }
             const chainId = Number(request.query.chainId)
             const address = normalizeAddress(request.query.address)
 
@@ -41,7 +57,7 @@ export const tokenDetailsRoutes: FastifyPluginAsync = async (app) => {
                 })
             }
 
-            if (chainId !== 56) {
+            if (!getTokenDiscoveryChain(chainId)?.active) {
                 return reply.code(400).send({
                     error: {
                         code: 'UNSUPPORTED_COINGECKO_NETWORK',
@@ -52,7 +68,11 @@ export const tokenDetailsRoutes: FastifyPluginAsync = async (app) => {
             }
 
             try {
-                const token = await getCoinGeckoToken(address)
+                const token = await lookupToken(
+                    address,
+                    undefined,
+                    chainId,
+                )
 
                 if (!token?.coinGeckoId) {
                     return reply.code(404).send({
@@ -78,4 +98,7 @@ export const tokenDetailsRoutes: FastifyPluginAsync = async (app) => {
             }
         },
     )
+    }
 }
+
+export const tokenDetailsRoutes = createTokenDetailsRoutes()

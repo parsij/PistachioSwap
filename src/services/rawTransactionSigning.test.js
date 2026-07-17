@@ -1,11 +1,26 @@
 import { readFile } from 'node:fs/promises'
 
+import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
     detectRawTransactionSigning,
+    signPreparedSponsoredTransaction,
     signRawSponsoredTransaction,
 } from './rawTransactionSigning.js'
+
+const localWallet = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d')
+const preparedTransaction = {
+    type: '0x0',
+    chainId: '0x38',
+    from: localWallet.address,
+    to: '0x2222222222222222222222222222222222222222',
+    nonce: '0x1',
+    gas: '0x5208',
+    gasPrice: '0x0',
+    value: '0x0',
+    data: '0x',
+}
 
 describe('private sponsored wallet compatibility', () => {
     it('supports only an explicit Pistachio embedded/local connector using eth_signTransaction', async () => {
@@ -15,9 +30,11 @@ describe('private sponsored wallet compatibility', () => {
             connector: { id: 'pistachio-embedded' },
             walletClient,
         })
-        expect(capability).toEqual({
+        expect(capability).toMatchObject({
             rawTransactionSigningSupported: true,
             method: 'eth_signTransaction',
+            transport: 'pistachio-embedded',
+            status: 'verified',
         })
         await expect(signRawSponsoredTransaction({ capability, walletClient, transaction: { to: '0x1' } }))
             .resolves.toBe('0x1234')
@@ -28,9 +45,11 @@ describe('private sponsored wallet compatibility', () => {
     })
 
     it.each(['injected', 'walletConnect', 'coinbaseWallet', 'eip6963'])('fails closed for external connector %s', (id) => {
-        expect(detectRawTransactionSigning({ connector: { id }, walletClient: { request() {} } })).toEqual({
+        expect(detectRawTransactionSigning({ connector: { id }, walletClient: { request() {} } })).toMatchObject({
             rawTransactionSigningSupported: false,
             method: null,
+            transport: null,
+            status: 'unsupported',
         })
     })
 
@@ -44,11 +63,53 @@ describe('private sponsored wallet compatibility', () => {
         expect(request).not.toHaveBeenCalled()
     })
 
+    it('passes a locally verified raw transaction directly to the existing submission callback', async () => {
+        const raw = await localWallet.signTransaction({
+            chainId: 56,
+            type: 'legacy',
+            nonce: 1,
+            gas: 21_000n,
+            gasPrice: 0n,
+            to: preparedTransaction.to,
+            value: 0n,
+            data: '0x',
+        })
+        const walletClient = { request: vi.fn().mockResolvedValue(raw) }
+        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
+        const submitSignedTransaction = vi.fn().mockResolvedValue({ status: 'submitted' })
+        await expect(signPreparedSponsoredTransaction({
+            transport: 'pistachio-local',
+            capability,
+            walletClient,
+            preparedTransaction,
+            authenticatedWalletAddress: localWallet.address,
+            submitSignedTransaction,
+        })).resolves.toEqual({ status: 'submitted' })
+        expect(submitSignedTransaction).toHaveBeenCalledWith(raw)
+    })
+
+    it('never submits when local raw-transaction validation fails', async () => {
+        const walletClient = { request: vi.fn().mockResolvedValue('0x1234') }
+        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-embedded' }, walletClient })
+        const submitSignedTransaction = vi.fn()
+        await expect(signPreparedSponsoredTransaction({
+            transport: 'pistachio-embedded',
+            capability,
+            walletClient,
+            preparedTransaction,
+            authenticatedWalletAddress: localWallet.address,
+            submitSignedTransaction,
+        })).rejects.toMatchObject({ code: 'WALLET_RAW_TRANSACTION_MALFORMED' })
+        expect(submitSignedTransaction).not.toHaveBeenCalled()
+    })
+
     it('does not persist raw transactions and contains no frontend MegaFuel credentials', async () => {
         const sources = await Promise.all([
             readFile(new URL('../hooks/usePrepaidSponsorship.js', import.meta.url), 'utf8'),
             readFile(new URL('./prepaidSponsorship.js', import.meta.url), 'utf8'),
             readFile(new URL('./rawTransactionSigning.js', import.meta.url), 'utf8'),
+            readFile(new URL('./metamaskMultichain.js', import.meta.url), 'utf8'),
+            readFile(new URL('../hooks/useMetaMaskMultichainSigner.js', import.meta.url), 'utf8'),
         ])
         const joined = sources.join('\n')
         expect(joined).not.toMatch(/localStorage|sessionStorage/)

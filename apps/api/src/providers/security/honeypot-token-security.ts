@@ -70,9 +70,10 @@ function countHolderResults(value: unknown, patterns: RegExp[]) {
 export function unavailableHoneypotSecurity(
     address: string,
     checkedAt = new Date().toISOString(),
+    chainId = 56,
 ): HoneypotTokenSecurity {
     return {
-        provider: 'honeypot', chainId: 56, address, available: false, checkedAt,
+        provider: 'honeypot', chainId, address, available: false, checkedAt,
         risk: 'unknown', riskLevel: null, isHoneypot: null,
         honeypotReason: null, simulationSuccess: null,
         buyTaxPercent: null, sellTaxPercent: null, transferTaxPercent: null,
@@ -86,19 +87,20 @@ export function normalizeHoneypotTokenSecurity(
     payload: unknown,
     expectedAddress: string,
     checkedAt = new Date().toISOString(),
+    chainId = 56,
 ): HoneypotTokenSecurity {
     const address = normalizeAddress(expectedAddress)
-    if (!address || !isRecord(payload)) return unavailableHoneypotSecurity(expectedAddress, checkedAt)
+    if (!address || !isRecord(payload)) return unavailableHoneypotSecurity(expectedAddress, checkedAt, chainId)
     if (!['token', 'summary', 'honeypotResult', 'simulationResult', 'contractCode', 'pair']
         .some((field) => isRecord(payload[field]))) {
-        return unavailableHoneypotSecurity(address, checkedAt)
+        return unavailableHoneypotSecurity(address, checkedAt, chainId)
     }
 
     const returnedToken = isRecord(payload.token)
         ? normalizeAddress(payload.token.address)
         : null
     if (returnedToken && returnedToken !== address) {
-        return unavailableHoneypotSecurity(address, checkedAt)
+        return unavailableHoneypotSecurity(address, checkedAt, chainId)
     }
 
     const summary = isRecord(payload.summary) ? payload.summary : {}
@@ -110,7 +112,7 @@ export function normalizeHoneypotTokenSecurity(
     const holderResults = holderAnalysis.holders ?? holderAnalysis.results
 
     return {
-        provider: 'honeypot', chainId: 56, address, available: true, checkedAt,
+        provider: 'honeypot', chainId, address, available: true, checkedAt,
         risk: normalizeRisk(summary.risk),
         riskLevel: numberOrNull(summary.riskLevel),
         isHoneypot: booleanOrNull(honeypot.isHoneypot),
@@ -135,9 +137,10 @@ export function normalizeHoneypotTokenSecurity(
 export async function getHoneypotTokenSecurity(
     address: string,
     signal?: AbortSignal,
+    chainId = 56,
 ) {
-    const payload = await honeypotRequest({ chainId: 56, address, signal })
+    const payload = await honeypotRequest({ chainId, address, signal })
     return payload === null
-        ? unavailableHoneypotSecurity(address)
-        : normalizeHoneypotTokenSecurity(payload, address)
+        ? unavailableHoneypotSecurity(address, undefined, chainId)
+        : normalizeHoneypotTokenSecurity(payload, address, undefined, chainId)
 }

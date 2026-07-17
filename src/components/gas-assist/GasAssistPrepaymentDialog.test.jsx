@@ -93,4 +93,37 @@ describe('Gas Assist prepayment review', () => {
         />)
         expect(screen.getByText(/cannot sign a private sponsored transaction without broadcasting/)).toBeTruthy()
     })
+
+    it('shows explicit MetaMask Multichain controls without automatically connecting or signing', () => {
+        const connect = vi.fn()
+        const reconnect = vi.fn()
+        render(<GasAssistPrepaymentDialog
+            sponsorship={sponsorship({
+                phase: 'signer-setup',
+                order: null,
+                walletAddress: '0x1111111111111111111111111111111111111111',
+                capability: { account: null },
+                retryStart: vi.fn(),
+                metaMaskSigner: {
+                    isMetaMask: true,
+                    session: null,
+                    loading: false,
+                    error: null,
+                    capability: { status: 'not-connected', rawTransactionSigningSupported: false, account: null },
+                    connect,
+                    reconnect,
+                    disconnect: vi.fn(),
+                },
+            })}
+            sellToken={sellToken}
+            buyToken={buyToken}
+        />)
+        expect(screen.getByText('Enable MetaMask sponsored signing')).toBeTruthy()
+        expect(screen.getByText(/will verify the signed transaction/)).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Test zero-gas raw signing' })).toBeNull()
+        expect(connect).not.toHaveBeenCalled()
+        expect(reconnect).not.toHaveBeenCalled()
+        fireEvent.click(screen.getByRole('button', { name: 'Connect MetaMask signing' }))
+        expect(connect).toHaveBeenCalledOnce()
+    })
 })

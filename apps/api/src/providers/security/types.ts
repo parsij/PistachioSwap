@@ -15,7 +15,7 @@ export type HoneypotFlag = {
 
 export type HoneypotTokenSecurity = {
     provider: 'honeypot'
-    chainId: 56
+    chainId: number
     address: string
     available: boolean
     checkedAt: string
@@ -39,7 +39,7 @@ export type HoneypotTokenSecurity = {
 
 export type GoPlusTokenSecurity = {
     provider: 'goplus'
-    chainId: 56
+    chainId: number
     address: string
     available: boolean
     checkedAt: string
@@ -71,7 +71,7 @@ export type SecurityStatus =
     | 'unknown'
 
 export type TokenSecurityAssessment = {
-    chainId: 56
+    chainId: number
     address: string
     securityStatus: SecurityStatus
     securityScore: number | null

@@ -1,14 +1,19 @@
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { bsc } from '@reown/appkit/networks'
 
 import { createAppMetadata } from './appKitMetadata.js'
+import {
+    CURATED_EVM_CHAINS,
+    getCuratedEvmChain,
+} from './curatedEvmChains.js'
+import { getPistachioWalletFlags } from '../wallet/pistachio/featureFlags.js'
+import { pistachioWalletConnector } from '../wallet/pistachio/pistachioConnector.js'
 
 const APPKIT_CONTEXT_KEY = Symbol.for(
     'pistachioswap.appkit.context',
 )
 
-export const appKitNetworks = [bsc]
+export const appKitNetworks = CURATED_EVM_CHAINS
 
 export function validateProjectId(value) {
     const projectId = String(value ?? '').trim()
@@ -35,17 +40,25 @@ function initializeAppKit() {
 
     const origin = window.location.origin
     const metadata = createAppMetadata({ origin })
+    const pistachioWalletFlags = getPistachioWalletFlags()
+    let appKit
 
     const wagmiAdapter = new WagmiAdapter({
         networks: appKitNetworks,
         projectId,
         ssr: false,
+        connectors: pistachioWalletFlags.passkeyWalletEnabled
+            ? [pistachioWalletConnector({
+                closeAppKit: () => appKit.close(),
+                clearAppKitLoading: () => appKit.setLoading(false),
+            })]
+            : [],
     })
 
-    const appKit = createAppKit({
+    appKit = createAppKit({
         adapters: [wagmiAdapter],
         networks: appKitNetworks,
-        defaultNetwork: bsc,
+        defaultNetwork: getCuratedEvmChain(56),
         projectId,
         metadata,
         defaultAccountTypes: { eip155: 'eoa' },
@@ -66,7 +79,7 @@ function initializeAppKit() {
         },
         themeMode: 'dark',
         themeVariables: {
-            '--apkt-accent': '#ff37c4',
+            '--apkt-accent': '#8ac27c',
             '--apkt-color-mix': '#191919',
             '--apkt-color-mix-strength': 0,
             '--apkt-font-family': 'Basel, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',

@@ -3,6 +3,7 @@ import { normalizeAddress } from '../../lib/address.js'
 import { isRecord } from '../../lib/http.js'
 import { goPlusTokenSecurityRequests } from './goplus-client.js'
 import type { GoPlusTokenSecurity } from './types.js'
+import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
 export function goPlusFlag(value: unknown): boolean | null {
     if (value === '1' || value === 1 || value === true) return true
@@ -34,9 +35,10 @@ function sumDexLiquidity(value: unknown) {
 export function unavailableGoPlusSecurity(
     address: string,
     checkedAt = new Date().toISOString(),
+    chainId = 56,
 ): GoPlusTokenSecurity {
     return {
-        provider: 'goplus', chainId: 56, address, available: false, checkedAt,
+        provider: 'goplus', chainId, address, available: false, checkedAt,
         isHoneypot: null, cannotBuy: null, cannotSellAll: null,
         hasBlacklist: null, hasWhitelist: null, transferPausable: null,
         taxModifiable: null,
@@ -51,11 +53,12 @@ export function normalizeGoPlusTokenSecurity(
     value: unknown,
     expectedAddress: string,
     checkedAt = new Date().toISOString(),
+    chainId = 56,
 ): GoPlusTokenSecurity {
     const address = normalizeAddress(expectedAddress)
-    if (!address || !isRecord(value)) return unavailableGoPlusSecurity(expectedAddress, checkedAt)
+    if (!address || !isRecord(value)) return unavailableGoPlusSecurity(expectedAddress, checkedAt, chainId)
     return {
-        provider: 'goplus', chainId: 56, address, available: true, checkedAt,
+        provider: 'goplus', chainId, address, available: true, checkedAt,
         isHoneypot: goPlusFlag(value.is_honeypot),
         cannotBuy: goPlusFlag(value.cannot_buy),
         cannotSellAll: goPlusFlag(value.cannot_sell_all),
@@ -79,18 +82,20 @@ export function normalizeGoPlusTokenSecurity(
 export async function getGoPlusTokenSecurityBatch(
     addresses: string[],
     signal?: AbortSignal,
+    chainId = 56,
 ) {
     const config = getApiConfig()
+    const chain = requireActiveTokenDiscoveryChain(chainId)
     const normalized = [...new Set(addresses
         .map(normalizeAddress)
         .filter((value): value is string => value !== null))]
     const output = new Map(normalized.map((address) => [
         address,
-        unavailableGoPlusSecurity(address),
+        unavailableGoPlusSecurity(address, undefined, chainId),
     ]))
-    if (!config.goPlus.enabled || !config.goPlus.accessToken) return output
+    if (!chain.capabilities.goPlus || !config.goPlus.enabled || !config.goPlus.accessToken) return output
 
-    for (const payload of await goPlusTokenSecurityRequests(normalized, signal)) {
+    for (const payload of await goPlusTokenSecurityRequests(normalized, signal, chainId)) {
         const result = isRecord(payload) && isRecord(payload.result)
             ? payload.result
             : null
@@ -98,7 +103,7 @@ export async function getGoPlusTokenSecurityBatch(
         for (const [rawAddress, value] of Object.entries(result)) {
             const address = normalizeAddress(rawAddress)
             if (!address || !output.has(address)) continue
-            output.set(address, normalizeGoPlusTokenSecurity(value, address))
+            output.set(address, normalizeGoPlusTokenSecurity(value, address, undefined, chainId))
         }
     }
     return output
@@ -107,9 +112,10 @@ export async function getGoPlusTokenSecurityBatch(
 export async function getGoPlusTokenSecurity(
     address: string,
     signal?: AbortSignal,
+    chainId = 56,
 ) {
     const normalized = normalizeAddress(address)
-    if (!normalized) return unavailableGoPlusSecurity(address)
-    return (await getGoPlusTokenSecurityBatch([normalized], signal)).get(normalized) ??
-        unavailableGoPlusSecurity(normalized)
+    if (!normalized) return unavailableGoPlusSecurity(address, undefined, chainId)
+    return (await getGoPlusTokenSecurityBatch([normalized], signal, chainId)).get(normalized) ??
+        unavailableGoPlusSecurity(normalized, undefined, chainId)
 }

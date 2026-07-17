@@ -172,7 +172,7 @@ export async function validateSignedIntent(
         (parsed.gasPrice ?? 0n) === BigInt(template.gasPrice) &&
         (parsed.maxFeePerGas ?? null) === (template.maxFeePerGas === null ? null : BigInt(template.maxFeePerGas)) &&
         (parsed.maxPriorityFeePerGas ?? null) === (template.maxPriorityFeePerGas === null ? null : BigInt(template.maxPriorityFeePerGas)) &&
-        parsed.gas !== undefined && parsed.gas <= BigInt(template.gasLimit) &&
+        parsed.gas !== undefined && parsed.gas === BigInt(template.gasLimit) &&
         (!parsed.accessList || parsed.accessList.length === 0)
 
     if (!matches) {

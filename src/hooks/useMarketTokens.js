@@ -6,6 +6,7 @@ import {
 
 import {
     fetchMarketTokens,
+    normalizeMarketChainScope,
 } from '../services/marketTokens.js'
 
 export function isLatestMarketTokenRequest({
@@ -21,7 +22,13 @@ export function useMarketTokens({
                                     search = '',
                                 } = {}) {
     const normalizedSearch = search.trim().toLowerCase()
-    const requestKey = `${chainId}:${normalizedSearch}`
+    let chainScope
+    try {
+        chainScope = normalizeMarketChainScope(chainId)
+    } catch {
+        chainScope = 'invalid'
+    }
+    const requestKey = `${chainScope}:${normalizedSearch}`
     const requestSequence = useRef(0)
 
     const [state, setState] = useState({
@@ -29,6 +36,7 @@ export function useMarketTokens({
         tokens: [],
         loading: true,
         error: null,
+        chainErrors: {},
         browserCache: null,
     })
 
@@ -42,7 +50,7 @@ export function useMarketTokens({
                 try {
                     const result =
                         await fetchMarketTokens({
-                            chainId,
+                            chainId: chainScope,
                             query: normalizedSearch,
                             signal: controller.signal,
                         })
@@ -60,6 +68,10 @@ export function useMarketTokens({
                         tokens: result.tokens,
                         loading: false,
                         error: null,
+                        chainErrors:
+                            result.chainErrors ??
+                            result.errors ??
+                            {},
 
                         browserCache:
                         result.browserCache,
@@ -84,6 +96,7 @@ export function useMarketTokens({
                                 : 'Unable to load tokens',
 
                         browserCache: null,
+                        chainErrors: {},
                         query: normalizedSearch,
                     })
                 }
@@ -95,13 +108,14 @@ export function useMarketTokens({
             window.clearTimeout(timeoutId)
             controller.abort()
         }
-    }, [chainId, normalizedSearch, requestKey])
+    }, [chainScope, normalizedSearch, requestKey])
 
     if (state.requestKey !== requestKey) {
         return {
             tokens: [],
             loading: true,
             error: null,
+            chainErrors: {},
             browserCache: null,
             query: normalizedSearch,
         }

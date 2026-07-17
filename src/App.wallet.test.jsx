@@ -5,6 +5,7 @@ import {
     cleanup,
     fireEvent,
     render,
+    waitFor,
 } from '@testing-library/react'
 import {
     afterEach,
@@ -20,6 +21,14 @@ const mocks = vi.hoisted(() => ({
         address: undefined,
         isConnected: false,
     },
+    wagmiAccount: {
+        address: undefined,
+        addresses: undefined,
+        chainId: undefined,
+        connector: null,
+        isConnected: false,
+        status: 'disconnected',
+    },
     network: {
         chainId: 56,
     },
@@ -28,6 +37,9 @@ const mocks = vi.hoisted(() => ({
     useWalletTokens: vi.fn(),
     refetchWalletTokens: vi.fn(),
     refetchBalance: vi.fn(),
+    balanceOptions: [],
+    fetchSwapQuote: vi.fn(),
+    sendTransaction: vi.fn(),
     marketTokens: [],
     gasAssistConfig: { status: 'success', config: { enabled: false, mode: 'disabled' }, error: null, refetch: vi.fn() },
 }))
@@ -50,18 +62,23 @@ vi.mock('@reown/appkit/react', () => ({
 }))
 
 vi.mock('wagmi', () => ({
-    useBalance: () => ({
-        data: mocks.account.isConnected
-            ? { value: 5_349_631_675_469_080n }
-            : undefined,
-        refetch: mocks.refetchBalance,
-    }),
+    useAccount: () => mocks.wagmiAccount,
+    useBalance: (options) => {
+        mocks.balanceOptions.push(options)
+        return {
+            data: mocks.account.isConnected || mocks.wagmiAccount.status === 'connected'
+                ? { value: 5_349_631_675_469_080n }
+                : undefined,
+            refetch: mocks.refetchBalance,
+        }
+    },
+    useChainId: () => mocks.network.chainId,
     useDisconnect: () => ({ mutate: vi.fn() }),
     useConnection: () => ({ connector: null }),
     usePublicClient: () => null,
     useWalletClient: () => ({ data: null }),
     useSendTransaction: () => ({
-        mutateAsync: vi.fn(),
+        mutateAsync: mocks.sendTransaction,
     }),
     useWriteContract: () => ({ mutateAsync: vi.fn() }),
     useWaitForTransactionReceipt: () => ({
@@ -87,6 +104,11 @@ vi.mock('./hooks/useGasAssistConfig.js', () => ({
     useGasAssistConfig: () => mocks.gasAssistConfig,
 }))
 
+vi.mock('./services/quotes.js', async (importOriginal) => ({
+    ...await importOriginal(),
+    fetchSwapQuote: mocks.fetchSwapQuote,
+}))
+
 import App from './App.jsx'
 
 const ADDRESS =
@@ -94,13 +116,23 @@ const ADDRESS =
 
 describe('App wallet integration', () => {
     beforeEach(() => {
+        vi.stubEnv('VITE_METAMASK_MULTICHAIN_ENABLED', 'false')
         mocks.account.address = undefined
         mocks.account.isConnected = false
+        mocks.wagmiAccount.address = undefined
+        mocks.wagmiAccount.addresses = undefined
+        mocks.wagmiAccount.chainId = undefined
+        mocks.wagmiAccount.connector = null
+        mocks.wagmiAccount.isConnected = false
+        mocks.wagmiAccount.status = 'disconnected'
         mocks.network.chainId = 56
         mocks.open.mockReset()
         mocks.switchNetwork.mockReset()
         mocks.useWalletTokens.mockReset()
         mocks.refetchWalletTokens.mockReset()
+        mocks.balanceOptions = []
+        mocks.fetchSwapQuote.mockReset()
+        mocks.sendTransaction.mockReset()
         window.localStorage.clear()
         mocks.marketTokens = []
         mocks.useWalletTokens.mockReturnValue({
@@ -134,7 +166,15 @@ describe('App wallet integration', () => {
         })
     })
 
-    it('passes the AppKit address to wallet tokens and blocks the wrong chain', () => {
+    it('does not expose the removed MetaMask signing diagnostic', () => {
+        vi.stubEnv('VITE_METAMASK_MULTICHAIN_ENABLED', 'true')
+        const { queryByRole } = render(<App />)
+        expect(queryByRole('button', { name: 'MetaMask Signing Test' })).toBeNull()
+        expect(queryByRole('button', { name: 'Test zero-gas raw signing' })).toBeNull()
+        expect(window.openMetaMaskSigningTest).toBeUndefined()
+    })
+
+    it('loads chain-scoped wallet tokens independently of the connected network', () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.network.chainId = 1
@@ -142,9 +182,9 @@ describe('App wallet integration', () => {
         const { container } = render(<App />)
 
         expect(mocks.useWalletTokens).toHaveBeenCalledWith({
-            chainId: 56,
+            chainId: 'all',
             walletAddress: ADDRESS,
-            enabled: false,
+            enabled: true,
         })
 
         const primaryAction =
@@ -168,7 +208,164 @@ describe('App wallet integration', () => {
         const { container } = render(<App />)
 
         expect(mocks.useWalletTokens).toHaveBeenCalledWith({
-            chainId: 56,
+            chainId: 'all',
+            walletAddress: ADDRESS,
+            enabled: true,
+        })
+        expect(
+            container.querySelector('.primary-action').textContent,
+        ).toBe('Select a token')
+    })
+
+    it('uses a selected token chain for wallet network and native balance state', () => {
+        mocks.account.address = ADDRESS
+        mocks.account.isConnected = true
+        mocks.network.chainId = 56
+        mocks.marketTokens = [{
+            chainId: 8453,
+            address: '0x0000000000000000000000000000000000008453',
+            name: 'Base token',
+            symbol: 'BASE',
+            decimals: 18,
+            volume24hUsd: 1_000,
+            verificationStatus: 'established',
+            visibility: 'primary',
+        }]
+
+        const { container, getAllByText, getByRole } = render(<App />)
+        fireEvent.click(container.querySelector('.sell-token-position button'))
+        fireEvent.click(getByRole('button', { name: 'Token network' }))
+        fireEvent.click(getByRole('option', { name: 'Base' }))
+        const baseRow = getAllByText('BASE')
+            .map((node) => node.closest('.ps-token-row'))
+            .find(Boolean)
+        fireEvent.click(baseRow)
+
+        expect(mocks.useWalletTokens).toHaveBeenLastCalledWith({
+            chainId: 'all',
+            walletAddress: ADDRESS,
+            enabled: true,
+        })
+        expect(mocks.balanceOptions.at(-1).chainId).toBe(8453)
+        expect(container.querySelector('.primary-action').textContent)
+            .toBe('Switch to Base')
+
+        fireEvent.click(container.querySelector('.primary-action'))
+        expect(mocks.switchNetwork).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 8453 }),
+        )
+    })
+
+    it('rejects mixed-chain Swap pairs and directs the user to Bridge', () => {
+        mocks.account.address = ADDRESS
+        mocks.account.isConnected = true
+        mocks.marketTokens = [{
+            chainId: 8453,
+            address: '0x0000000000000000000000000000000000008453',
+            name: 'Base token',
+            symbol: 'BASE',
+            decimals: 18,
+            volume24hUsd: 1_000,
+            verificationStatus: 'established',
+            visibility: 'primary',
+        }]
+
+        const { container, getAllByText, getByRole } = render(<App />)
+        fireEvent.click(container.querySelector('.buy-token-position button'))
+        fireEvent.click(getByRole('button', { name: 'Token network' }))
+        fireEvent.click(getByRole('option', { name: 'Base' }))
+        const baseRow = getAllByText('BASE')
+            .map((node) => node.closest('.ps-token-row'))
+            .find(Boolean)
+        fireEvent.click(baseRow)
+
+        const action = container.querySelector('.primary-action')
+        expect(action.textContent).toBe('Use Bridge for cross-chain swaps')
+        fireEvent.click(action)
+        expect(getByRole('button', { name: 'Bridge' }).className).toContain('active')
+    })
+
+    it('quotes and broadcasts a non-BSC pair only on its token chain', async () => {
+        mocks.account.address = ADDRESS
+        mocks.account.isConnected = true
+        mocks.network.chainId = 56
+        mocks.marketTokens = [
+            {
+                chainId: 8453,
+                address: '0x0000000000000000000000000000000000008453',
+                name: 'Base token A',
+                symbol: 'BASEA',
+                decimals: 18,
+                volume24hUsd: 2_000,
+                verificationStatus: 'established',
+                visibility: 'primary',
+            },
+            {
+                chainId: 8453,
+                address: '0x0000000000000000000000000000000000008454',
+                name: 'Base token B',
+                symbol: 'BASEB',
+                decimals: 18,
+                volume24hUsd: 1_000,
+                verificationStatus: 'established',
+                visibility: 'primary',
+            },
+        ]
+        mocks.fetchSwapQuote.mockResolvedValue({
+            selectedQuote: {
+                buyAmount: '2000000000000000000',
+                expiresAt: '2999-01-01T00:00:00.000Z',
+                transaction: {
+                    to: '0x0000000000000000000000000000000000000002',
+                    data: '0x1234',
+                    value: '0',
+                },
+            },
+        })
+        mocks.sendTransaction.mockResolvedValue('0xabc')
+
+        const { container, getAllByText, getByRole } = render(<App />)
+        fireEvent.click(container.querySelector('.sell-token-position button'))
+        fireEvent.click(getByRole('button', { name: 'Token network' }))
+        fireEvent.click(getByRole('option', { name: 'Base' }))
+        fireEvent.click(getAllByText('BASEA')
+            .map((node) => node.closest('.ps-token-row'))
+            .find(Boolean))
+
+        mocks.network.chainId = 8453
+        fireEvent.click(container.querySelector('.buy-token-position button'))
+        fireEvent.click(getAllByText('BASEB')
+            .map((node) => node.closest('.ps-token-row'))
+            .find(Boolean))
+        fireEvent.change(getByRole('textbox', { name: 'Sell amount' }), {
+            target: { value: '1' },
+        })
+
+        await waitFor(() => expect(mocks.fetchSwapQuote).toHaveBeenCalled())
+        expect(mocks.fetchSwapQuote.mock.calls.at(-1)[0].request.chainId)
+            .toBe(8453)
+        await waitFor(() =>
+            expect(container.querySelector('.primary-action').textContent)
+                .toBe('Swap'),
+        )
+        fireEvent.click(container.querySelector('.primary-action'))
+        await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalled())
+        expect(mocks.sendTransaction.mock.calls.at(-1)[0].chainId).toBe(8453)
+    })
+
+    it('keeps the app enabled when Wagmi restores a wallet before AppKit account state catches up', () => {
+        mocks.wagmiAccount.address = ADDRESS
+        mocks.wagmiAccount.chainId = 56
+        mocks.wagmiAccount.connector = { id: 'pistachio-local' }
+        mocks.wagmiAccount.isConnected = true
+        mocks.wagmiAccount.status = 'connected'
+        mocks.account.address = undefined
+        mocks.account.isConnected = false
+
+        const { container } = render(<App />)
+
+        expect(mocks.useWalletTokens).toHaveBeenCalledWith({
+            chainId: 'all',
             walletAddress: ADDRESS,
             enabled: true,
         })
@@ -191,7 +388,7 @@ describe('App wallet integration', () => {
         expect(mocks.refetchWalletTokens).not.toHaveBeenCalled()
     })
 
-    it('opens the custom connected account with the exact direct BNB balance', () => {
+    it('opens an all-network portfolio without a header chain selector', () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.useWalletTokens.mockReturnValue({
@@ -225,7 +422,9 @@ describe('App wallet integration', () => {
         fireEvent.click(getByRole('button', { name: /Open account/ }))
 
         expect(document.querySelector('.wallet-native-balance').textContent)
-            .toBe('0.005349 BNB')
+            .toBe('1 asset')
+        expect(getByRole('heading', { name: 'All Networks' })).toBeTruthy()
+        expect(document.querySelector('.appkit-network-control')).toBeNull()
         expect(queryByText('Fund wallet')).toBeNull()
     })
 

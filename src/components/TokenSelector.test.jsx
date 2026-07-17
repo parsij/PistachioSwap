@@ -280,4 +280,96 @@ describe('TokenSelector wallet rows', () => {
         expect(screen.getByText(honeypot.name)).toBeTruthy()
         expect(window.localStorage.getItem('unrelated-setting')).toBe('keep')
     })
+
+    it('renders a controlled accessible chain selector with zkEVM disabled', () => {
+        const onChainChange = vi.fn()
+        renderSelector({ onChainChange })
+
+        const selector = screen.getByRole('button', { name: 'Token network' })
+        expect(selector.textContent).toContain('BNB')
+        fireEvent.click(selector)
+        const listbox = screen.getByRole('listbox', { name: 'Token network' })
+        const options = within(listbox).getAllByRole('option')
+        expect(options.filter((option) => !option.disabled)).toHaveLength(25)
+        expect(within(listbox).getByRole('option', {
+            name: /Polygon zkEVM.*Unavailable/,
+        }).disabled).toBe(true)
+        expect(within(listbox).getByRole('option', {
+            name: 'All Chains',
+        }).textContent).toContain('∞')
+        expect(listbox.querySelectorAll('.ps-chain-icon img')).toHaveLength(25)
+        expect(screen.getByText(/Polygon zkEVM is temporarily unavailable/))
+            .toBeTruthy()
+
+        fireEvent.click(within(listbox).getByRole('option', {
+            name: 'Ethereum',
+        }))
+        expect(onChainChange).toHaveBeenCalledWith(1)
+        expect(selector.textContent).toContain('BNB')
+    })
+
+    it('filters concrete chains and groups all-chain search results', () => {
+        const ethereumToken = {
+            ...native,
+            id: '1:0x0000000000000000000000000000000000000001',
+            chainId: 1,
+            address: '0x0000000000000000000000000000000000000001',
+            isNative: false,
+            name: 'Ethereum token',
+            symbol: 'ETHX',
+        }
+        const bscToken = {
+            ...ethereumToken,
+            id: '56:0x0000000000000000000000000000000000000002',
+            chainId: 56,
+            address: '0x0000000000000000000000000000000000000002',
+            name: 'BSC token',
+            symbol: 'BSCX',
+        }
+        const first = renderSelector({
+            chainId: 56,
+            tokens: [ethereumToken, bscToken],
+            walletTokens: [],
+            currentToken: null,
+            search: 'token',
+        })
+        expect(screen.queryByText('Ethereum token')).toBeNull()
+        expect(screen.getByText('BSC token')).toBeTruthy()
+        first.unmount()
+
+        renderSelector({
+            chainId: 'all',
+            tokens: [ethereumToken, bscToken],
+            walletTokens: [],
+            currentToken: null,
+            search: 'token',
+        })
+        expect(screen.getByText('Ethereum token')).toBeTruthy()
+        expect(screen.getByText('BSC token')).toBeTruthy()
+        expect(screen.getAllByText('Ethereum', {
+            selector: '.ps-token-section-heading',
+        })).toHaveLength(1)
+        expect(screen.getAllByText('BNB Smart Chain', {
+            selector: '.ps-token-section-heading',
+        })).toHaveLength(1)
+    })
+
+    it('drops malformed identities instead of producing NaN keys', () => {
+        renderSelector({
+            tokens: [{
+                chainId: 'bad',
+                address: 'bad',
+                name: 'Malformed',
+                symbol: 'BAD',
+            }],
+            walletTokens: [],
+            currentToken: null,
+        })
+        expect(screen.queryByText('Malformed')).toBeNull()
+        const storageKeys = Array.from(
+            { length: window.localStorage.length },
+            (_, index) => window.localStorage.key(index),
+        )
+        expect(storageKeys.some((key) => key.includes('NaN'))).toBe(false)
+    })
 })

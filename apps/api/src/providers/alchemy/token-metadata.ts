@@ -143,6 +143,7 @@ export async function getTokenMetadataBatch({
                     params: [address],
                 })),
                 signal,
+                chainId,
             )
         } catch {
             for (const address of batch) result.set(address, null)

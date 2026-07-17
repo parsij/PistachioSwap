@@ -38,13 +38,13 @@ describe('frontend quote requests', () => {
         })
     })
 
-    it('rejects wrong-chain and invalid-address quote requests', () => {
+    it('rejects unsupported-chain and invalid-address quote requests', () => {
         expect(() =>
             createQuoteRequestBody({
-                chainId: 1,
+                chainId: 999_999,
                 takerAddress: ADDRESS,
             }),
-        ).toThrow('BNB Chain')
+        ).toThrow('enabled EVM chain')
 
         expect(() =>
             createQuoteRequestBody({

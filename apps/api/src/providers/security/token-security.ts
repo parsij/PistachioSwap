@@ -15,6 +15,7 @@ import type {
     SecurityStatus,
     TokenSecurityAssessment,
 } from './types.js'
+import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
 type CacheEntry = {
     assessment: TokenSecurityAssessment
@@ -265,24 +266,29 @@ export function createTokenSecurityService(overrides: Partial<SecurityDependenci
         ...overrides,
     }
 
-    async function refresh(address: string, signal?: AbortSignal) {
-        const key = `56:${address}`
+    async function refresh(address: string, signal?: AbortSignal, chainId = 56) {
+        const chain = requireActiveTokenDiscoveryChain(chainId)
+        const key = `${chainId}:${address}`
         const existing = pending.get(key)
         if (existing) return existing
         const request = (async () => {
             const [honeypotResult, goPlusResult] = await Promise.allSettled([
-                dependencies.getHoneypot(address, signal),
-                dependencies.getGoPlus(address, signal),
+                chain.capabilities.honeypot
+                    ? dependencies.getHoneypot(address, signal, chainId)
+                    : unavailableHoneypotSecurity(address, undefined, chainId),
+                chain.capabilities.goPlus
+                    ? dependencies.getGoPlus(address, signal, chainId)
+                    : unavailableGoPlusSecurity(address, undefined, chainId),
             ])
             const checkedAt = new Date(dependencies.now()).toISOString()
             const honeypot = honeypotResult.status === 'fulfilled'
                 ? honeypotResult.value
-                : unavailableHoneypotSecurity(address, checkedAt)
+                : unavailableHoneypotSecurity(address, checkedAt, chainId)
             const goPlus = goPlusResult.status === 'fulfilled'
                 ? goPlusResult.value
-                : unavailableGoPlusSecurity(address, checkedAt)
+                : unavailableGoPlusSecurity(address, checkedAt, chainId)
             const classification = classifyTokenSecurity({ honeypot, goPlus })
-            const assessment = { chainId: 56 as const, address, honeypot, goPlus, ...classification }
+            const assessment = { chainId, address, honeypot, goPlus, ...classification }
             const previous = cache.get(key)
             const conclusive = assessment.securityStatus !== 'unknown'
             const now = dependencies.now()
@@ -316,14 +322,14 @@ export function createTokenSecurityService(overrides: Partial<SecurityDependenci
         }
     }
 
-    function getCachedAndRefresh(addressValue: string) {
+    function getCachedAndRefresh(addressValue: string, chainId = 56) {
         const address = normalizeAddress(addressValue)
         if (!address) return null
-        const key = `56:${address}`
+        const key = `${chainId}:${address}`
         const existing = cache.get(key)
         const now = dependencies.now()
         if (!existing || existing.refreshAfter <= now) {
-            void refresh(address).catch(() => {
+            void refresh(address, undefined, chainId).catch(() => {
                 const current = cache.get(key)
                 if (current) current.refreshAfter = now + getApiConfig().tokenSecurity.errorCacheTtlMs
             })

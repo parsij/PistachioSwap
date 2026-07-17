@@ -2,7 +2,16 @@ export const WALLET_TOKEN_SECTION_STORAGE_NAMESPACE =
     'pistachioswap:wallet-token-sections:v1:'
 
 function storageKey(chainId, scope, section) {
-    return `${WALLET_TOKEN_SECTION_STORAGE_NAMESPACE}${Number(chainId)}:${scope}:${section}`
+    const normalizedChainId = String(chainId).trim().toLowerCase() === 'all'
+        ? 'all'
+        : Number(chainId)
+    if (
+        normalizedChainId !== 'all' &&
+        (!Number.isSafeInteger(normalizedChainId) || normalizedChainId <= 0)
+    ) {
+        return null
+    }
+    return `${WALLET_TOKEN_SECTION_STORAGE_NAMESPACE}${normalizedChainId}:${scope}:${section}`
 }
 
 export function readWalletTokenSectionExpanded({
@@ -12,7 +21,8 @@ export function readWalletTokenSectionExpanded({
     storage = globalThis.localStorage,
 }) {
     try {
-        return storage?.getItem(storageKey(chainId, scope, section)) === 'expanded'
+        const key = storageKey(chainId, scope, section)
+        return key !== null && storage?.getItem(key) === 'expanded'
     } catch {
         return false
     }
@@ -26,10 +36,13 @@ export function writeWalletTokenSectionExpanded({
     storage = globalThis.localStorage,
 }) {
     try {
-        storage?.setItem(
-            storageKey(chainId, scope, section),
-            expanded ? 'expanded' : 'collapsed',
-        )
+        const key = storageKey(chainId, scope, section)
+        if (key !== null) {
+            storage?.setItem(
+                key,
+                expanded ? 'expanded' : 'collapsed',
+            )
+        }
     } catch {
         // Browser storage may be unavailable.
     }

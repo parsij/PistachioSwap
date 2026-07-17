@@ -3,12 +3,13 @@ import {
     normalizeAddress,
 } from '../../lib/address.js'
 import { ProviderError } from '../../lib/errors.js'
+import { isCuratedEvmChainId } from '../../chains.js'
 
 export const ZERO_X_NATIVE_TOKEN_ADDRESS =
     '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
 
 export type ProviderTokenIdentity = {
-    chainId: 56
+    chainId: number
     address: string
     isNative: boolean
     internal: string
@@ -31,20 +32,20 @@ export function normalizeProviderToken({
     const normalized = normalizeAddress(address)
 
     if (
-        chainId !== 56 ||
+        !isCuratedEvmChainId(chainId) ||
         !normalized ||
         isNative !== (normalized === NATIVE_TOKEN_ADDRESS)
     ) {
         throw new ProviderError({
             code: 'PROVIDER_TOKEN_INVALID',
-            message: 'Token identity must use chain 56 and the canonical native-token sentinel.',
+            message: 'Token identity must use an enabled chain and the canonical native-token sentinel.',
             statusCode: 400,
             outcome: 'validation',
         })
     }
 
     return {
-        chainId: 56,
+        chainId,
         address: normalized,
         isNative,
         internal: normalized,

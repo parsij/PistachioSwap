@@ -1,3 +1,9 @@
+import {
+    normalizePreparedSponsoredTransaction,
+    signMetaMaskMultichainTransaction,
+    validateSignedPreparedTransaction,
+} from './metamaskMultichain.js'
+
 const SUPPORTED_CONNECTOR_IDS = new Set([
     'pistachio-embedded',
     'pistachio-local',
@@ -8,9 +14,18 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
     const supported =
         SUPPORTED_CONNECTOR_IDS.has(connectorId) &&
         typeof walletClient?.request === 'function'
+    const transport = supported
+        ? connectorId === 'pistachio-local' ? 'pistachio-local' : 'pistachio-embedded'
+        : null
     return Object.freeze({
         rawTransactionSigningSupported: supported,
         method: supported ? 'eth_signTransaction' : null,
+        transport,
+        status: supported ? 'verified' : 'unsupported',
+        scope: supported ? 'eip155:56' : null,
+        account: null,
+        approvedMethods: supported ? ['eth_signTransaction'] : [],
+        reasonCode: supported ? null : 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED',
     })
 }
 
@@ -40,6 +55,57 @@ export async function signRawSponsoredTransaction({
         throw error
     }
     return signedRawTransaction
+}
+
+export async function signPreparedSponsoredTransaction({
+    transport,
+    capability,
+    walletClient,
+    preparedTransaction,
+    authenticatedWalletAddress,
+    multichainAccount,
+    isMetaMask = false,
+    submitSignedTransaction,
+}) {
+    if (typeof submitSignedTransaction !== 'function') {
+        const error = new Error('A direct sponsorship submission callback is required.')
+        error.code = 'SPONSORSHIP_SUBMISSION_REQUIRED'
+        throw error
+    }
+    const normalizedTransaction = normalizePreparedSponsoredTransaction(
+        preparedTransaction,
+        authenticatedWalletAddress,
+    )
+    let signedRawTransaction = null
+    try {
+        if (transport === 'metamask-connect-multichain') {
+            signedRawTransaction = await signMetaMaskMultichainTransaction({
+                preparedTransaction,
+                authenticatedWalletAddress,
+                appKitAddress: authenticatedWalletAddress,
+                isMetaMask,
+            })
+        } else if (transport === 'pistachio-local' || transport === 'pistachio-embedded') {
+            signedRawTransaction = await signRawSponsoredTransaction({
+                capability,
+                walletClient,
+                transaction: normalizedTransaction,
+            })
+            await validateSignedPreparedTransaction({
+                signedRawTransaction,
+                normalizedTransaction,
+                authenticatedWalletAddress,
+                multichainAccount: multichainAccount ?? authenticatedWalletAddress,
+            })
+        } else {
+            const error = new Error('This signing transport is not supported.')
+            error.code = 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED'
+            throw error
+        }
+        return await submitSignedTransaction(signedRawTransaction)
+    } finally {
+        signedRawTransaction = null
+    }
 }
 
 export const rawSigningInternals = {

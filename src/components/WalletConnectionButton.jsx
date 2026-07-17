@@ -1,22 +1,8 @@
-import {
-    AppKitNetworkButton,
-} from '@reown/appkit/react'
 import { useState } from 'react'
 
 import WalletAccountButton from './wallet/WalletAccountButton.jsx'
 import WalletAccountDialog from './wallet/WalletAccountDialog.jsx'
 import './wallet/wallet.css'
-
-export function WalletNetworkButton() {
-    return (
-        <div
-            className="appkit-network-control"
-            aria-label="BNB Chain network"
-        >
-            <AppKitNetworkButton />
-        </div>
-    )
-}
 
 export default function WalletConnectionButton({
     walletState,

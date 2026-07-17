@@ -18,10 +18,12 @@
     "sponsor-token:remove": "tsx --env-file=.env scripts/sponsorship-tokens.ts remove",
     "sponsor-token:update": "tsx --env-file=.env scripts/sponsorship-tokens.ts update",
     "debug:zero-x-live": "tsx --env-file=.env scripts/debug-zero-x-live.ts",
+    "debug:cross-chain-providers": "tsx --env-file=.env scripts/debug-cross-chain-providers.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@chainflip/sdk": "^2.2.1",
     "@fastify/cors": "^11.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@pancakeswap/sdk": "5.9.0",

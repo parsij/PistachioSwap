@@ -1,10 +1,15 @@
-import { getApiConfig } from '../../config.js'
 import {
+    getApiConfig,
+    getWalletTokenAddressPolicy,
+} from '../../config.js'
+import {
+    NATIVE_TOKEN_ADDRESS,
     createTokenId,
     normalizeAddress,
 } from '../../lib/address.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
 import { NATIVE_BNB_TOKEN } from '../../lib/native-token.js'
+import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 import { marketCatalogService } from '../../modules/market-tokens.js'
 import { getCoinGeckoTokensBatch } from '../coingecko/token-data.js'
 import { fetchTokenMarkets } from '../dexscreener/token-markets.js'
@@ -105,14 +110,17 @@ export function isCurrentWalletTokenRecord(value: unknown): value is WalletToken
         ['trusted', 'market', 'untrusted', 'unknown'].includes(String(value.priceConfidence))
 }
 
-function invalidateWalletTokenCacheForAddress(address: string) {
+function invalidateWalletTokenCacheForAddress(chainId: number, address: string) {
     for (const [key, entry] of cache) {
-        if (entry.tokens.some((token) => token.address === address)) cache.delete(key)
+        if (
+            key.startsWith(`v${WALLET_TOKEN_CLASSIFICATION_VERSION}:${chainId}:`) &&
+            entry.tokens.some((token) => token.address === address)
+        ) cache.delete(key)
     }
 }
 
-subscribeTokenSecurityAssessments((address) => {
-    invalidateWalletTokenCacheForAddress(address)
+subscribeTokenSecurityAssessments((address, assessment) => {
+    invalidateWalletTokenCacheForAddress(assessment.chainId, address)
 })
 
 export function clearWalletTokenCacheForTest() {
@@ -371,6 +379,31 @@ export function createNativeWalletToken(
     }
 }
 
+function createNativeWalletTokenForChain(
+    chainId: number,
+    rawBalance: bigint,
+    priceUSD: string | null,
+): WalletToken {
+    if (chainId === 56) return createNativeWalletToken(rawBalance, priceUSD)
+    const chain = requireActiveTokenDiscoveryChain(chainId)
+    return {
+        ...createNativeWalletToken(rawBalance, priceUSD),
+        id: createTokenId(chainId, NATIVE_TOKEN_ADDRESS),
+        chainId,
+        name: chain.native.name,
+        symbol: chain.native.symbol,
+        decimals: chain.native.decimals,
+        logoURI: chain.chainLogoURI,
+        logoCandidates: [chain.chainLogoURI],
+        coinGeckoId: chain.native.coinGeckoId,
+        recognitionReasons: ['native-token'],
+        verificationReasons: ['native-token'],
+        spamReasons: ['native-token'],
+        securityReasons: ['native-token'],
+        visibilityReasons: ['native-token'],
+    }
+}
+
 export function sortWalletTokens(tokens: WalletToken[]) {
     const verificationRank = { established: 0, recognized: 1, unverified: 2 }
     const visibilityRank = { primary: 0, unverified: 1, hidden: 2 }
@@ -426,10 +459,12 @@ function securityPresentation(
 }
 
 export async function getAlchemyTokenBalancesPaginated({
+    chainId = 56,
     walletAddress,
     signal,
     rpc = alchemyRpc,
 }: {
+    chainId?: number
     walletAddress: string
     signal?: AbortSignal
     rpc?: typeof alchemyRpc
@@ -455,6 +490,7 @@ export async function getAlchemyTokenBalancesPaginated({
                 ],
             },
             signal,
+            chainId,
         )
         pageCount += 1
 
@@ -476,13 +512,19 @@ export async function getAlchemyTokenBalancesPaginated({
 }
 
 export async function getPortfolioTokenBalances({
+    chainId = 56,
     walletAddress,
     signal,
 }: {
+    chainId?: number
     walletAddress: string
     signal?: AbortSignal
 }): Promise<BalancePage> {
     const config = getApiConfig().alchemy
+    const chain = requireActiveTokenDiscoveryChain(chainId)
+    if (!chain.capabilities.alchemy || !chain.providers.alchemyNetwork) {
+        throw new Error('Alchemy Portfolio API is unavailable for this chain.')
+    }
     if (!config.apiKey) throw new Error('Alchemy Portfolio API is not configured.')
 
     const balances = new Map<string, bigint>()
@@ -499,7 +541,7 @@ export async function getPortfolioTokenBalances({
             method: 'POST',
             body: {
                 addresses: [
-                    { address: walletAddress, networks: [config.network] },
+                    { address: walletAddress, networks: [chain.providers.alchemyNetwork] },
                 ],
                 includeNativeTokens: true,
                 includeErc20Tokens: true,
@@ -516,7 +558,7 @@ export async function getPortfolioTokenBalances({
         const items = data && Array.isArray(data.tokens) ? data.tokens : []
 
         for (const item of items) {
-            if (!isRecord(item) || item.network !== config.network) continue
+            if (!isRecord(item) || item.network !== chain.providers.alchemyNetwork) continue
             const balance = rawBalance(item.tokenBalance)
             if (balance === null) continue
             if (item.tokenAddress === null) {
@@ -534,16 +576,18 @@ export async function getPortfolioTokenBalances({
     return { balances, nativeBalance, pageCount }
 }
 
-async function getAllBalances(wallet: string, signal?: AbortSignal) {
+async function getAllBalances(chainId: number, wallet: string, signal?: AbortSignal) {
     try {
         return await getPortfolioTokenBalances({
             walletAddress: wallet,
             signal,
+            chainId,
         })
     } catch {
         return getAlchemyTokenBalancesPaginated({
             walletAddress: wallet,
             signal,
+            chainId,
         })
     }
 }
@@ -561,6 +605,7 @@ export async function getWalletTokens({
 }): Promise<WalletToken[]> {
     const wallet = normalizeAddress(walletAddress)
     if (!wallet) throw new Error('Invalid wallet address.')
+    const chain = requireActiveTokenDiscoveryChain(chainId)
 
     const cacheKey = walletCacheKey(chainId, wallet, includeZero)
     const cached = cache.get(cacheKey)
@@ -571,14 +616,14 @@ export async function getWalletTokens({
     ) return cached.tokens
     if (cached) cache.delete(cacheKey)
 
-    const catalogRequest = marketCatalogService.getCatalog()
+    const catalogRequest = marketCatalogService.getCatalog(chainId)
         .then(({ catalog }) => ({
             tokens: catalog.tokens,
             priceFresh: Date.now() - catalog.generatedAt <= 60_000,
         }))
         .catch(() => ({ tokens: [], priceFresh: false }))
     const [balancePage, nativeResult, catalogResult, moralisResult] = await Promise.all([
-        getAllBalances(wallet, signal),
+        getAllBalances(chainId, wallet, signal),
         alchemyRpc(
             {
                 id: 'native',
@@ -587,9 +632,10 @@ export async function getWalletTokens({
                 params: [wallet, 'latest'],
             },
             signal,
+            chainId,
         ).catch(() => null),
         catalogRequest,
-        moralisWalletTokenService.getWalletTokens(wallet, signal),
+        moralisWalletTokenService.getWalletTokens(wallet, signal, chainId),
     ])
     const nativeFromRpc = rawBalance(nativeResult)
     const nativeBalance = nativeFromRpc ?? balancePage.nativeBalance
@@ -598,7 +644,8 @@ export async function getWalletTokens({
     )
     const addresses = [...balances.keys()]
     const config = getApiConfig()
-    const wrappedNativeAddress = config.market.wrappedNativeAddress
+    const addressPolicy = getWalletTokenAddressPolicy(chainId)
+    const wrappedNativeAddress = chain.wrappedNative.address
     const priceAddresses = [...new Set([...addresses, wrappedNativeAddress])]
     const metadata = await getTokenMetadataBatch({
         chainId,
@@ -616,12 +663,14 @@ export async function getWalletTokens({
         curatedResult,
     ] =
         await Promise.allSettled([
-            getTokenDecimalsBatch({ addresses: missingMetadata, signal }),
-            getTokenPrices({ addresses: priceAddresses, signal }),
-            getNativeBnbPrice(signal),
-            getCoinGeckoTokensBatch(priceAddresses, signal),
-            fetchTokenMarkets(priceAddresses, signal),
-            getCuratedBscRecognition(addresses, signal),
+            getTokenDecimalsBatch({ chainId, addresses: missingMetadata, signal }),
+            getTokenPrices({ chainId, addresses: priceAddresses, signal }),
+            getNativeBnbPrice(signal, chainId),
+            getCoinGeckoTokensBatch(priceAddresses, signal, chainId),
+            fetchTokenMarkets(priceAddresses, signal, chainId),
+            chainId === 56
+                ? getCuratedBscRecognition(addresses, signal)
+                : Promise.resolve(new Map()),
         ])
     const decimals = decimalsResult.status === 'fulfilled'
         ? decimalsResult.value
@@ -658,7 +707,7 @@ export async function getWalletTokens({
             nativePrice: directPrice,
             wrappedNativePrice: wrappedPrice,
         })
-        tokens.push(createNativeWalletToken(nativeBalance, price))
+        tokens.push(createNativeWalletTokenForChain(chainId, nativeBalance, price))
     }
 
     for (const [address, balance] of balances) {
@@ -693,8 +742,8 @@ export async function getWalletTokens({
         const pancakeSwapRecognized = curatedRecognition?.pancakeSwap === true
         const trustWalletRecognized = curatedRecognition?.trustWallet === true
         const established = Boolean(catalogToken)
-        const allowlisted = config.walletTokens.allowlist.has(address)
-        const blocklisted = config.walletTokens.blocklist.has(address)
+        const allowlisted = addressPolicy.allowlist.has(address)
+        const blocklisted = addressPolicy.blocklist.has(address)
         const trustedLocalMetadata = allowlisted
         const recognitionReasons = [
             ...(established ? ['established-catalog'] : []),
@@ -721,7 +770,7 @@ export async function getWalletTokens({
               ? ['moralis-clean']
               : ['moralis-spam-unknown']
         const security = securityPresentation(
-            tokenSecurityService.getCachedAndRefresh(address),
+            tokenSecurityService.getCachedAndRefresh(address, chainId),
             recognitionStatus !== 'unverified',
             blocklisted,
         )

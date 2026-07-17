@@ -5,6 +5,7 @@ import {
     validateRemoteImageUrl,
 } from '../../lib/http.js'
 import { moralisWalletTokensRequest } from './moralis-client.js'
+import { tokenDiscoveryContext } from '../../token-discovery/context.js'
 import type {
     MoralisWalletToken,
     MoralisWalletTokenResult,
@@ -95,14 +96,17 @@ export function createMoralisWalletTokenService(
     async function getWalletTokens(
         walletAddress: string,
         signal?: AbortSignal,
+        chainId = 56,
     ): Promise<MoralisWalletTokenResult> {
         const wallet = normalizeAddress(walletAddress)
         if (!wallet) return unavailableResult()
 
         const config = getApiConfig().moralis
+        const context = tokenDiscoveryContext(chainId)
+        if (!context.chain.capabilities.moralis) return unavailableResult()
         if (!config.enabled || !config.apiKey) return unavailableResult()
 
-        const key = `56:${wallet}`
+        const key = `${chainId}:${wallet}`
         const existing = cache.get(key)
         const now = dependencies.now()
         if (existing && existing.expiresAt > now) return existing.result
@@ -119,6 +123,7 @@ export function createMoralisWalletTokenService(
             try {
                 do {
                     const payload = await dependencies.requestPage({
+                        chainId,
                         walletAddress: wallet,
                         cursor,
                         signal,

@@ -1,3 +1,5 @@
+import { isTokenDiscoveryChainId } from '../web3/curatedEvmChains.js'
+
 export const MARKET_TOKEN_CACHE_PREFIX =
     'pistachioswap:market-tokens:v4:'
 
@@ -19,11 +21,34 @@ const SEARCH_CACHE_TTL_MS =
     5 * 60 * 1000
 
 const MAX_BROWSER_CACHE_ENTRIES = 25
+const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/
 
 function normalizeSearch(value) {
     return String(value ?? '')
         .trim()
         .toLowerCase()
+}
+
+export function normalizeMarketChainScope(value) {
+    if (String(value).trim().toLowerCase() === 'all') return 'all'
+    const chainId = Number(value)
+    if (!Number.isSafeInteger(chainId) || !isTokenDiscoveryChainId(chainId)) {
+        throw new Error('A valid token-discovery chain is required')
+    }
+    return chainId
+}
+
+export function getCanonicalTokenIdentity(token) {
+    const chainId = Number(token?.chainId)
+    const address = String(token?.address ?? '').trim()
+    if (
+        !Number.isSafeInteger(chainId) ||
+        chainId <= 0 ||
+        !EVM_ADDRESS_PATTERN.test(address)
+    ) {
+        return null
+    }
+    return `${chainId}:${address.toLowerCase()}`
 }
 
 export function getMarketTokenCacheKey({
@@ -35,7 +60,7 @@ export function getMarketTokenCacheKey({
         MARKET_TOKEN_CACHE_PREFIX +
         encodeURIComponent(
             JSON.stringify({
-                chainId,
+                chainId: normalizeMarketChainScope(chainId),
                 query: normalizeSearch(query),
                 limit,
             }),
@@ -62,7 +87,10 @@ function readCacheEntry(key) {
             !entry ||
             typeof entry.cachedAt !== 'number' ||
             !entry.payload ||
-            !Array.isArray(entry.payload.tokens)
+            !Array.isArray(entry.payload.tokens) ||
+            entry.payload.tokens.some(
+                (token) => getCanonicalTokenIdentity(token) === null,
+            )
         ) {
             window.localStorage.removeItem(key)
             return null
@@ -218,14 +246,17 @@ export async function fetchMarketTokens({
 
     const normalizedQuery =
         normalizeSearch(query)
+    const chainScope = normalizeMarketChainScope(chainId)
 
     const limit =
         normalizedQuery.length > 0
             ? 20
-            : 100
+            : chainScope === 'all'
+                ? 200
+                : 100
 
     const cacheKey = getMarketTokenCacheKey({
-        chainId,
+        chainId: chainScope,
         query: normalizedQuery,
         limit,
     })
@@ -265,7 +296,7 @@ export async function fetchMarketTokens({
 
     url.searchParams.set(
         'chainId',
-        String(chainId),
+        String(chainScope),
     )
 
     url.searchParams.set(
@@ -303,6 +334,9 @@ export async function fetchMarketTokens({
         throw new Error(
             'Backend returned an invalid token list',
         )
+    }
+    if (payload.tokens.some((token) => getCanonicalTokenIdentity(token) === null)) {
+        throw new Error('Backend returned a malformed token identity')
     }
 
     writeCacheEntry(cacheKey, payload)

@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import {
     getNativeSpendableWei,
     getSpendableTokenAmount,
+    isNativeBnbToken,
+    isNativeEvmToken,
     multiplyAmountByPercent,
 } from './balances.js'
 
@@ -23,6 +25,17 @@ const erc20 = {
 }
 
 describe('exact spendable balance math', () => {
+    it('recognizes native tokens on any EVM chain without treating them as BNB', () => {
+        const nativeEth = {
+            ...native,
+            chainId: 1,
+            symbol: 'ETH',
+            isNative: true,
+        }
+        expect(isNativeEvmToken(nativeEth)).toBe(true)
+        expect(isNativeBnbToken(nativeEth)).toBe(false)
+    })
+
     it('fills an ERC-20 complete exact formatted balance', () => {
         expect(getSpendableTokenAmount({ token: erc20 })).toBe('123.456789')
     })

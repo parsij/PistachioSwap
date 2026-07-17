@@ -5,6 +5,7 @@ import {
     validateRemoteImageUrl,
 } from '../../lib/http.js'
 import { geckoTerminalRequest } from './geckoterminal-client.js'
+import { tokenDiscoveryContext } from '../../token-discovery/context.js'
 
 export type DiscoveredTokenCandidate = {
     address: string
@@ -167,14 +168,21 @@ export function extractPoolTokenAddresses(payload: unknown) {
 }
 
 export async function discoverTopPoolTokens({
+    chainId = 56,
     minimumCandidates,
     signal,
 }: {
+    chainId?: number
     minimumCandidates?: number
     signal?: AbortSignal
 } = {}): Promise<CandidateDiscoveryResult> {
     const apiConfig = getApiConfig()
     const config = apiConfig.geckoTerminal
+    const context = tokenDiscoveryContext(chainId)
+    if (!context.chain.capabilities.geckoTerminal) {
+        return { candidates: [], pagesCompleted: 0, partial: true }
+    }
+    const network = context.chain.providers.geckoTerminalNetwork
     const target = Math.min(
         minimumCandidates ?? apiConfig.market.candidateLimit,
         apiConfig.market.candidateLimit,
@@ -188,7 +196,7 @@ export async function discoverTopPoolTokens({
 
         try {
             payload = await geckoTerminalRequest(
-                `/networks/${encodeURIComponent(config.network)}/pools` +
+                `/networks/${encodeURIComponent(network)}/pools` +
                     `?include=base_token,quote_token&sort=h24_volume_usd_desc&page=${page}`,
                 signal,
                 page === 1 ? 2 : 0,
@@ -206,7 +214,7 @@ export async function discoverTopPoolTokens({
 
         for (const candidate of extractPoolTokenCandidates(
             payload,
-            config.network,
+            network,
         )) {
             if (candidate.address === NATIVE_TOKEN_ADDRESS) continue
 

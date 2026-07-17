@@ -212,7 +212,7 @@ describe('signed sponsored transaction verification', () => {
             to: token,
             data,
             value: 0n,
-            gas: 90_000n,
+            gas: 100_000n,
             gasPrice: 0n,
             nonce: 7,
             type: 'legacy',
@@ -252,6 +252,7 @@ describe('signed sponsored transaction verification', () => {
         ['wrong calldata', { data: '0x095ea7b3' }],
         ['nonzero value', { value: 1n }],
         ['nonzero gas price', { gasPrice: 1n }],
+        ['reduced gas', { gas: 99_999n }],
         ['inflated gas', { gas: 100_001n }],
     ])('rejects %s', async (_label, overrides) => {
         const exact = await signed()

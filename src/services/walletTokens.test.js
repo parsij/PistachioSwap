@@ -225,4 +225,45 @@ describe('wallet token presentation data', () => {
             apiBaseUrl: 'http://api.invalid',
         })).rejects.toThrow('Backend returned invalid wallet tokens')
     })
+
+    it('fans out all-chain wallet discovery and reports partial errors', async () => {
+        const fetchMock = vi.fn(async (requestUrl) => {
+            const chainId = Number(new URL(requestUrl).searchParams.get('chainId'))
+            if (chainId === 137) {
+                return new Response('{}', { status: 503 })
+            }
+            return new Response(JSON.stringify({
+                classificationVersion: 3,
+                tokens: [{
+                    classificationVersion: 3,
+                    chainId,
+                    address,
+                    recognitionStatus: 'recognized',
+                    spamStatus: 'clean',
+                    possibleSpam: false,
+                    verifiedContract: true,
+                    securityStatus: 'low',
+                    visibility: 'primary',
+                    priceConfidence: 'unknown',
+                }],
+            }), { status: 200 })
+        })
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await fetchWalletTokens({
+            chainId: 'all',
+            chainIds: [56, 137],
+            address: '0x0000000000000000000000000000000000000042',
+            apiBaseUrl: 'http://api.invalid',
+        })
+
+        expect(result.tokens).toHaveLength(1)
+        expect(result.chainErrors).toHaveProperty('137')
+        expect(fetchMock.mock.calls.map(([url]) =>
+            new URL(url).searchParams.get('chainId'),
+        )).toEqual(['56', '137'])
+        expect(fetchMock.mock.calls.some(([url]) =>
+            new URL(url).searchParams.get('chainId') === 'all',
+        )).toBe(false)
+    })
 })

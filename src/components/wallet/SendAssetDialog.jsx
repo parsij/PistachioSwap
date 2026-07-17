@@ -24,7 +24,6 @@ import {
     DEFAULT_NATIVE_GAS_RESERVE_WEI,
     getSpendableTokenAmount,
     getTokenBalanceWei,
-    isNativeBnbToken,
 } from '../../services/balances.js'
 import { formatUsdAmount } from '../../services/fiatValue.js'
 import {
@@ -34,6 +33,7 @@ import {
 } from '../../services/portfolio.js'
 import {
     createTransferPlan,
+    isNativeEvmToken,
     isTransferRejectedError,
 } from '../../services/transfers.js'
 import { formatWalletTokenAmount } from '../../services/walletTokens.js'
@@ -42,6 +42,10 @@ import {
     confirmRiskyTokenSelection,
     tokenRequiresRiskConfirmation,
 } from '../../services/tokenRisk.js'
+import {
+    getCuratedEvmChain,
+    isCuratedEvmChainId,
+} from '../../web3/curatedEvmChains.js'
 
 function matchesExactContract(token, search) {
     return /^0x[a-fA-F0-9]{40}$/.test(search) &&
@@ -59,7 +63,14 @@ export default function SendAssetDialog({
     explorerUrl,
     onConfirmed,
 }) {
-    const publicClient = usePublicClient({ chainId: 56 })
+    const numericChainId = Number(chainId)
+    const chain = getCuratedEvmChain(numericChainId)
+    const nativeSymbol = chain?.nativeCurrency?.symbol ?? 'native token'
+    const publicClient = usePublicClient({
+        chainId: isCuratedEvmChainId(numericChainId)
+            ? numericChainId
+            : undefined,
+    })
     const { mutateAsync: sendTransactionAsync } = useSendTransaction()
     const { mutateAsync: writeContractAsync } = useWriteContract()
     const [selectedToken, setSelectedToken] = useState(null)
@@ -139,7 +150,8 @@ export default function SendAssetDialog({
             tokenRequiresRiskConfirmation(activeSelectedToken) &&
             !confirmRiskyTokenSelection(activeSelectedToken, 'review this send')
         ) return
-        if (!publicClient) return setError('BNB Smart Chain is unavailable.')
+        if (!chain) return setError('This network is not enabled in PistachioSwap.')
+        if (!publicClient) return setError(`${chain.name} is unavailable.`)
         try {
             const initialPlan = createTransferPlan({
                 account: address,
@@ -170,6 +182,7 @@ export default function SendAssetDialog({
             })
             setReview({
                 account: address,
+                chainId: numericChainId,
                 token: activeSelectedToken,
                 amount,
                 recipient,
@@ -193,11 +206,11 @@ export default function SendAssetDialog({
             setError('The connected account changed. Review the send again.')
             return
         }
-        if (Number(chainId) !== 56) {
+        if (Number(chainId) !== Number(review.plan.request.chainId)) {
             setMode('edit')
             setReview(null)
             setStatus('idle')
-            setError('The active network changed. Switch to BNB Smart Chain and review again.')
+            setError('The active network changed. Switch back and review again.')
             return
         }
         setError(null)
@@ -230,20 +243,20 @@ export default function SendAssetDialog({
     }
 
     const tokenBalance = activeSelectedToken
-        ? isNativeBnbToken(activeSelectedToken)
+        ? isNativeEvmToken(activeSelectedToken)
             ? formatEther(BigInt(nativeBalanceWei ?? 0))
             : formatUnits(getTokenBalanceWei(activeSelectedToken), Number(activeSelectedToken.decimals))
         : '0'
     const afterBalance = review
         ? formatUnits(
-            (isNativeBnbToken(review.token)
+            (isNativeEvmToken(review.token)
                 ? BigInt(nativeBalanceWei ?? 0)
                 : getTokenBalanceWei(review.token)) - review.plan.amountWei,
             Number(review.token.decimals),
         )
         : null
     const recipientValid = isAddress(recipient)
-    const buttonLabel = chainId !== 56 ? 'Switch to BNB Smart Chain' :
+    const buttonLabel = !chain ? 'Unsupported network' :
         !activeSelectedToken ? 'Select token' :
         !amount || !/[1-9]/.test(amount) ? 'Enter amount' :
         !recipientValid ? 'Enter recipient' :
@@ -377,10 +390,11 @@ export default function SendAssetDialog({
                                         <div><dt>Amount</dt><dd>{review.amount} {review.token.symbol}</dd></div>
                                         <div><dt>USD value</dt><dd>{formatUsdAmount(review.amount, review.token.trustedPriceUSD)}</dd></div>
                                         <div><dt>Recipient</dt><dd>{shortenAddress(review.recipient, 6)}</dd></div>
-                                        <div><dt>Estimated network fee</dt><dd>{formatEther(review.feeWei)} BNB</dd></div>
-                                        <div><dt>Total native BNB required</dt><dd>{formatEther(
-                                            review.feeWei + (isNativeBnbToken(review.token) ? review.plan.amountWei : 0n),
-                                        )} BNB</dd></div>
+                                        <div><dt>Network</dt><dd>{chain?.name}</dd></div>
+                                        <div><dt>Estimated network fee</dt><dd>{formatEther(review.feeWei)} {nativeSymbol}</dd></div>
+                                        <div><dt>Total native {nativeSymbol} required</dt><dd>{formatEther(
+                                            review.feeWei + (isNativeEvmToken(review.token) ? review.plan.amountWei : 0n),
+                                        )} {nativeSymbol}</dd></div>
                                         <div><dt>Balance after send</dt><dd>{afterBalance} {review.token.symbol}</dd></div>
                                     </dl>
                                 </section>
@@ -393,7 +407,7 @@ export default function SendAssetDialog({
                                     type="button"
                                     className="wallet-primary-button send-primary-button"
                                     disabled={
-                                        chainId !== 56 ||
+                                        !chain ||
                                         status === 'confirming' ||
                                         status === 'submitted'
                                     }

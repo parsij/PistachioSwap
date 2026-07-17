@@ -1,6 +1,7 @@
 import { getApiConfig } from '../../config.js'
 import { ProviderError } from '../../lib/errors.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
+import { requireServerRpcUrl } from '../../token-discovery/context.js'
 
 export type JsonRpcRequest = {
     id: string | number
@@ -17,20 +18,6 @@ export type JsonRpcResponse = {
         code?: number
         message?: string
     }
-}
-
-function getRpcUrl() {
-    const url = getApiConfig().alchemy.rpcUrl
-
-    if (!url) {
-        throw new ProviderError({
-            code: 'ALCHEMY_NOT_CONFIGURED',
-            message: 'Alchemy is not configured.',
-            statusCode: 503,
-        })
-    }
-
-    return new URL(url)
 }
 
 function normalizeRpcResponse(
@@ -70,13 +57,14 @@ function normalizeRpcResponse(
 export async function alchemyRpc(
     request: JsonRpcRequest,
     signal?: AbortSignal,
+    chainId = 56,
 ): Promise<unknown> {
-    const payload = await fetchJson(getRpcUrl(), {
+    const payload = await fetchJson(requireServerRpcUrl(chainId), {
         method: 'POST',
         body: request,
         signal,
         timeoutMs: getApiConfig().requestTimeoutMs,
-        dedupeKey: `alchemy:${request.method}:${JSON.stringify(request.params)}`,
+        dedupeKey: `alchemy:${chainId}:${request.method}:${JSON.stringify(request.params)}`,
     })
     const response = normalizeRpcResponse(payload)
 
@@ -95,6 +83,7 @@ export async function alchemyRpc(
 export async function alchemyRpcBatch(
     requests: JsonRpcRequest[],
     signal?: AbortSignal,
+    chainId = 56,
 ): Promise<Map<string | number, JsonRpcResponse>> {
     const maximum = getApiConfig().alchemy.maxBatchSize
 
@@ -105,12 +94,12 @@ export async function alchemyRpcBatch(
         })
     }
 
-    const payload = await fetchJson(getRpcUrl(), {
+    const payload = await fetchJson(requireServerRpcUrl(chainId), {
         method: 'POST',
         body: requests,
         signal,
         timeoutMs: getApiConfig().requestTimeoutMs,
-        dedupeKey: `alchemy:batch:${JSON.stringify(requests)}`,
+        dedupeKey: `alchemy:batch:${chainId}:${JSON.stringify(requests)}`,
     })
 
     if (!Array.isArray(payload)) {

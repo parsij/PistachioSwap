@@ -1,4 +1,5 @@
 import { isAddress } from 'viem'
+import { isCuratedEvmChainId } from '../web3/curatedEvmChains.js'
 
 export function createQuoteRequestBody({
     chainId,
@@ -10,8 +11,8 @@ export function createQuoteRequestBody({
     takerAddress,
     slippageBps = 50,
 }) {
-    if (Number(chainId) !== 56) {
-        throw new Error('Executable quotes require BNB Chain.')
+    if (!isCuratedEvmChainId(chainId)) {
+        throw new Error('Executable quotes require an enabled EVM chain.')
     }
 
     if (
@@ -40,7 +41,7 @@ export function createQuoteRequestBody({
     }
 
     return {
-        chainId: 56,
+        chainId: Number(chainId),
         sellToken,
         buyToken,
         sellAmount,

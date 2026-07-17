@@ -6,12 +6,18 @@ import {
 } from 'viem'
 
 export const BSC_CHAIN_ID = 56
-export const NATIVE_BNB_ADDRESS = zeroAddress
+export const NATIVE_EVM_ADDRESS = zeroAddress
+export const NATIVE_BNB_ADDRESS = NATIVE_EVM_ADDRESS
 export const DEFAULT_NATIVE_GAS_RESERVE_WEI = parseEther('0.001')
 
 export function isNativeBnbToken(token) {
     return Number(token?.chainId) === BSC_CHAIN_ID &&
-        String(token?.address ?? '').toLowerCase() === NATIVE_BNB_ADDRESS
+        isNativeEvmToken(token)
+}
+
+export function isNativeEvmToken(token) {
+    return Boolean(token?.isNative) ||
+        String(token?.address ?? '').toLowerCase() === NATIVE_EVM_ADDRESS
 }
 
 export function getNativeSpendableWei({
@@ -48,7 +54,7 @@ export function getSpendableTokenAmount({
     fallbackReserveWei = DEFAULT_NATIVE_GAS_RESERVE_WEI,
 }) {
     const decimals = Number(token?.decimals ?? 18)
-    if (isNativeBnbToken(token)) {
+    if (isNativeEvmToken(token)) {
         return formatUnits(
             getNativeSpendableWei({
                 balanceWei: nativeBalanceWei,

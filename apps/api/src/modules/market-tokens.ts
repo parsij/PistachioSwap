@@ -11,7 +11,6 @@ import {
     normalizeAddress,
 } from '../lib/address.js'
 import { ProviderError, getSafeError } from '../lib/errors.js'
-import { nativeBnbMarketToken } from '../lib/native-token.js'
 import {
     type TokenMetadata,
     getTokenMetadataBatch,
@@ -30,6 +29,7 @@ import {
 import {
     rankSearchResults,
     searchTokens,
+    searchTokensAcrossChains,
 } from '../providers/dexscreener/token-search.js'
 import {
     type CandidateDiscoveryResult,
@@ -43,6 +43,11 @@ import {
     buildTokenLogo,
     getTokenLogoEntries,
 } from '../providers/token-logos.js'
+import {
+    ACTIVE_TOKEN_DISCOVERY_CHAINS,
+    getTokenDiscoveryChain,
+    requireActiveTokenDiscoveryChain,
+} from '../token-discovery/registry.js'
 
 type TokenCandidate =
     | CoinGeckoToken
@@ -84,6 +89,7 @@ export type MarketToken = {
     rank: number | null
     verificationStatus: VerificationStatus
     verificationReasons: string[]
+    isNative?: boolean
 }
 
 export type CatalogStats = {
@@ -112,6 +118,12 @@ type CatalogCache = {
 type SearchCache = {
     expiresAt: number
     tokens: MarketToken[]
+}
+
+type CombinedCatalogCache = {
+    generatedAt: number
+    tokens: MarketToken[]
+    unavailableChainIds: number[]
 }
 
 type Snapshot = Pick<CatalogCache, 'generatedAt' | 'tokens' | 'stats'>
@@ -265,6 +277,23 @@ function asMarketResult(
         : value
 }
 
+function recognitionFromGeckoTerminal(
+    candidates: DiscoveredTokenCandidate[],
+) {
+    return new Map(
+        candidates.flatMap((candidate): Array<[string, CoinGeckoToken]> =>
+            candidate.coinGeckoId &&
+            candidate.name &&
+            candidate.symbol
+                ? [[candidate.address, {
+                      ...candidate,
+                      imageSource: 'coingecko',
+                  }]]
+                : [],
+        ),
+    )
+}
+
 function isRecognizedToken(
     requestedAddress: string,
     token: CoinGeckoToken | undefined,
@@ -340,20 +369,23 @@ export function rankTokens(tokens: MarketToken[]) {
 }
 
 async function getOptionalMetadata(
+    chainId: number,
     addresses: string[],
     dependencies: MarketDependencies,
 ) {
-    if (!getApiConfig().alchemy.rpcUrl || addresses.length === 0) {
+    const chain = requireActiveTokenDiscoveryChain(chainId)
+    if ((!chain.capabilities.alchemy && !chain.capabilities.rpcFallback) || addresses.length === 0) {
         return new Map<string, TokenMetadata | null>()
     }
     try {
-        return await dependencies.fetchMetadata({ chainId: 56, addresses })
+        return await dependencies.fetchMetadata({ chainId, addresses })
     } catch {
         return new Map<string, TokenMetadata | null>()
     }
 }
 
 async function getMissingDecimals(
+    chainId: number,
     candidates: TokenCandidate[],
     metadata: Map<string, TokenMetadata | null>,
     dependencies: MarketDependencies,
@@ -367,19 +399,21 @@ async function getMissingDecimals(
         .map((candidate) => candidate.address)
     if (addresses.length === 0) return new Map<string, number | null>()
     try {
-        return await dependencies.fetchDecimals({ addresses })
+        return await dependencies.fetchDecimals({ chainId, addresses })
     } catch {
         return new Map<string, number | null>()
     }
 }
 
 async function buildEstablishedTokens({
+    chainId,
     candidates,
     recognized,
     markets,
     dependencies,
     now,
 }: {
+    chainId: number
     candidates: DiscoveredTokenCandidate[]
     recognized: Map<string, CoinGeckoToken>
     markets: Map<string, TokenMarket>
@@ -387,6 +421,7 @@ async function buildEstablishedTokens({
     now: number
 }) {
     const config = getApiConfig()
+    const chain = requireActiveTokenDiscoveryChain(chainId)
     const exclusions: Record<string, number> = {}
     const recognizedCandidates: CoinGeckoToken[] = []
 
@@ -407,10 +442,12 @@ async function buildEstablishedTokens({
     }
 
     const metadata = await getOptionalMetadata(
+        chainId,
         recognizedCandidates.map((token) => token.address),
         dependencies,
     )
     const rpcDecimals = await getMissingDecimals(
+        chainId,
         recognizedCandidates,
         metadata,
         dependencies,
@@ -447,14 +484,14 @@ async function buildEstablishedTokens({
         }
 
         return {
-            id: createTokenId(config.chainId, candidate.address),
-            chainId: config.chainId,
+            id: createTokenId(chainId, candidate.address),
+            chainId,
             address: candidate.address,
             name: candidate.name!.trim(),
             symbol: candidate.symbol!.trim(),
             decimals,
             ...logo,
-            chainLogoURI: config.market.chainLogoUri,
+            chainLogoURI: chain.chainLogoURI,
             coinGeckoId: candidate.coinGeckoId!.trim(),
             priceUSD: market?.priceUSD ?? candidate.priceUSD,
             volume24hUsd: market?.volume24hUsd ?? 0,
@@ -476,25 +513,25 @@ async function buildEstablishedTokens({
     )
 
     const wrapped = tokens.find(
-        (token) => token.address === config.market.wrappedNativeAddress,
+        (token) => token.address === chain.wrappedNative.address,
     )
     if (wrapped) {
         const nativeLogo = await dependencies.validateLogos(
             getTokenLogoEntries({
                 address: NATIVE_TOKEN_ADDRESS,
-                localImage: '/icons/bnb.svg',
+                localImage: chain.chainLogoURI,
             }),
         )
         if (nativeLogo) {
             tokens.push({
                 ...wrapped,
-                id: createTokenId(config.chainId, NATIVE_TOKEN_ADDRESS),
+                id: createTokenId(chainId, NATIVE_TOKEN_ADDRESS),
                 address: NATIVE_TOKEN_ADDRESS,
-                name: 'BNB',
-                symbol: 'BNB',
-                decimals: 18,
+                name: chain.native.name,
+                symbol: chain.native.symbol,
+                decimals: chain.native.decimals,
                 ...nativeLogo,
-                coinGeckoId: 'binancecoin',
+                coinGeckoId: chain.native.coinGeckoId,
                 rank: null,
                 verificationReasons: [
                     'explicit-native-allowlist',
@@ -529,21 +566,24 @@ function verificationReasonsForSearch(
 }
 
 async function enrichSearchCandidates({
+    chainId,
     candidates,
     markets,
     dependencies,
 }: {
+    chainId: number
     candidates: TokenCandidate[]
     markets: Map<string, TokenMarket>
     dependencies: MarketDependencies
 }) {
-    const config = getApiConfig()
+    const chain = requireActiveTokenDiscoveryChain(chainId)
     const unique = uniqueCandidates(candidates)
     const metadata = await getOptionalMetadata(
+        chainId,
         unique.map((candidate) => candidate.address),
         dependencies,
     )
-    const rpcDecimals = await getMissingDecimals(unique, metadata, dependencies)
+    const rpcDecimals = await getMissingDecimals(chainId, unique, metadata, dependencies)
     const tokens: MarketToken[] = []
 
     for (const candidate of unique) {
@@ -578,14 +618,14 @@ async function enrichSearchCandidates({
         })
 
         tokens.push({
-            id: createTokenId(config.chainId, candidate.address),
-            chainId: config.chainId,
+            id: createTokenId(chainId, candidate.address),
+            chainId,
             address: candidate.address,
             name,
             symbol,
             decimals,
             ...logo,
-            chainLogoURI: config.market.chainLogoUri,
+            chainLogoURI: chain.chainLogoURI,
             coinGeckoId: recognized ? candidate.coinGeckoId : null,
             priceUSD: market?.priceUSD ?? candidate.priceUSD,
             volume24hUsd: market?.volume24hUsd ?? 0,
@@ -639,30 +679,35 @@ export function createMarketCatalogService(
         now: Date.now,
         ...dependencies,
     }
-    let catalogCache: CatalogCache | null = null
-    let snapshotLoaded = false
-    let refreshPromise: Promise<CatalogCache> | null = null
-    let nextRefreshAllowedAt = 0
+    const catalogCaches = new Map<number, CatalogCache>()
+    const snapshotLoaded = new Set<number>()
+    const refreshPromises = new Map<number, Promise<CatalogCache>>()
+    const nextRefreshAllowedAt = new Map<number, number>()
     const searchCache = new Map<string, SearchCache>()
+    let combinedCatalog: CombinedCatalogCache | null = null
+    let refreshAllPromise: Promise<CombinedCatalogCache> | null = null
 
-    async function loadSnapshotOnce() {
-        if (snapshotLoaded) return
-        snapshotLoaded = true
+    async function loadSnapshotOnce(chainId: number) {
+        if (snapshotLoaded.has(chainId)) return
+        snapshotLoaded.add(chainId)
+        if (chainId !== 56) return
         const snapshot = await resolved.loadSnapshot()
         if (!snapshot) return
         const config = getApiConfig().market
-        catalogCache = {
+        catalogCaches.set(chainId, {
             ...snapshot,
             expiresAt: snapshot.generatedAt + config.catalogTtlMs,
             staleUntil: snapshot.generatedAt + config.staleTtlMs,
             partial: false,
-        }
+        })
     }
 
-    async function buildCatalog(): Promise<CatalogCache> {
+    async function buildCatalog(chainId: number): Promise<CatalogCache> {
         const config = getApiConfig()
+        requireActiveTokenDiscoveryChain(chainId)
         const discovery = asDiscoveryResult(
             await resolved.discoverCandidates({
+                chainId,
                 minimumCandidates: config.market.candidateLimit,
             }),
         )
@@ -670,17 +715,45 @@ export function createMarketCatalogService(
             0,
             config.market.candidateLimit,
         ) as DiscoveredTokenCandidate[]
-        const [recognition, marketResult] = await Promise.all([
+        const [recognitionResult, marketResult] = await Promise.allSettled([
             resolved.fetchRecognized(
                 candidates.map((candidate) => candidate.address),
+                undefined,
+                chainId,
             ),
             resolved.fetchMarkets(
                 candidates.map((candidate) => candidate.address),
+                undefined,
+                chainId,
             ),
         ])
-        const marketBatch = asMarketResult(marketResult)
+        if (marketResult.status === 'rejected') throw marketResult.reason
+        const marketBatch = asMarketResult(marketResult.value)
+        const fallbackRecognition =
+            recognitionFromGeckoTerminal(candidates)
+        if (
+            recognitionResult.status === 'rejected' &&
+            fallbackRecognition.size === 0
+        ) {
+            throw recognitionResult.reason
+        }
+        const recognition = recognitionResult.status === 'fulfilled'
+            ? {
+                  ...recognitionResult.value,
+                  tokens: new Map([
+                      ...fallbackRecognition,
+                      ...recognitionResult.value.tokens,
+                  ]),
+              }
+            : {
+                  tokens: fallbackRecognition,
+                  partial: true,
+                  successfulBatches: 0,
+                  failedBatches: 1,
+              }
         const generatedAt = resolved.now()
         const established = await buildEstablishedTokens({
+            chainId,
             candidates,
             recognized: recognition.tokens,
             markets: marketBatch.markets,
@@ -725,17 +798,19 @@ export function createMarketCatalogService(
         }
     }
 
-    function refreshCatalog() {
-        if (refreshPromise) return refreshPromise
+    function refreshCatalog(chainId = 56) {
+        const existingRefresh = refreshPromises.get(chainId)
+        if (existingRefresh) return existingRefresh
 
-        refreshPromise = buildCatalog()
+        const refreshPromise = buildCatalog(chainId)
             .then(async (catalog) => {
-                if (catalog.partial && catalogCache?.tokens.length) {
-                    return catalogCache
+                const existing = catalogCaches.get(chainId)
+                if (catalog.partial && existing?.tokens.length) {
+                    return existing
                 }
-                catalogCache = catalog
-                nextRefreshAllowedAt = 0
-                if (!catalog.partial) {
+                catalogCaches.set(chainId, catalog)
+                nextRefreshAllowedAt.set(chainId, 0)
+                if (!catalog.partial && chainId === 56) {
                     await resolved
                         .saveSnapshot({
                             generatedAt: catalog.generatedAt,
@@ -749,34 +824,38 @@ export function createMarketCatalogService(
                 return catalog
             })
             .finally(() => {
-                refreshPromise = null
+                refreshPromises.delete(chainId)
             })
+        refreshPromises.set(chainId, refreshPromise)
         return refreshPromise
     }
 
-    async function getCatalog() {
-        await loadSnapshotOnce()
+    async function getCatalog(chainId = 56) {
+        await loadSnapshotOnce(chainId)
         const now = resolved.now()
+        const catalogCache = catalogCaches.get(chainId)
         if (catalogCache && catalogCache.expiresAt > now) {
             return { catalog: catalogCache, stale: false }
         }
         if (catalogCache && catalogCache.staleUntil > now) {
-            if (now >= nextRefreshAllowedAt) {
-                nextRefreshAllowedAt =
+            if (now >= (nextRefreshAllowedAt.get(chainId) ?? 0)) {
+                nextRefreshAllowedAt.set(
+                    chainId,
                     now + getApiConfig().market.partialRetryMs
-                void refreshCatalog().catch(() => {
+                )
+                void refreshCatalog(chainId).catch(() => {
                     // Keep the last known catalog during a provider outage.
                 })
             }
             return { catalog: catalogCache, stale: true }
         }
-        return { catalog: await refreshCatalog(), stale: false }
+        return { catalog: await refreshCatalog(chainId), stale: false }
     }
 
-    async function getExactAddressSearch(address: string) {
+    async function getExactAddressSearch(chainId: number, address: string) {
         const [tokenResult, marketResult] = await Promise.allSettled([
-            resolved.fetchTokenInfo(address),
-            resolved.searchMarkets(address),
+            resolved.fetchTokenInfo(address, undefined, chainId),
+            resolved.searchMarkets(address, undefined, chainId),
         ])
         const token =
             tokenResult.status === 'fulfilled' ? tokenResult.value : null
@@ -791,6 +870,7 @@ export function createMarketCatalogService(
             (exactMarket ? candidateFromMarket(exactMarket) : null) ??
             emptyCandidate(address)
         const tokens = await enrichSearchCandidates({
+            chainId,
             candidates: [candidate],
             markets,
             dependencies: resolved,
@@ -806,14 +886,14 @@ export function createMarketCatalogService(
         return tokens.map((value, index) => ({ ...value, rank: index + 1 }))
     }
 
-    async function getTextSearch(query: string) {
+    async function getTextSearch(chainId: number, query: string) {
         let candidates: TokenCandidate[] = []
         let markets = new Map<string, TokenMarket>()
         let coinGeckoError: unknown
         let dexError: unknown
 
         try {
-            candidates = await resolved.searchCandidates(query)
+            candidates = await resolved.searchCandidates(query, undefined, chainId)
         } catch (error) {
             coinGeckoError = error
         }
@@ -822,6 +902,8 @@ export function createMarketCatalogService(
                 markets = asMarketResult(
                     await resolved.fetchMarkets(
                         candidates.map((candidate) => candidate.address),
+                        undefined,
+                        chainId,
                     ),
                 ).markets
             } catch (error) {
@@ -829,7 +911,7 @@ export function createMarketCatalogService(
             }
         } else {
             try {
-                const fallbackMarkets = await resolved.searchMarkets(query)
+                const fallbackMarkets = await resolved.searchMarkets(query, undefined, chainId)
                 markets = new Map(
                     fallbackMarkets.map((market) => [market.address, market]),
                 )
@@ -844,6 +926,7 @@ export function createMarketCatalogService(
             return []
         }
         const tokens = await enrichSearchCandidates({
+            chainId,
             candidates: candidates.slice(0, 20),
             markets,
             dependencies: resolved,
@@ -851,17 +934,18 @@ export function createMarketCatalogService(
         return rankBroaderSearch(tokens, query)
     }
 
-    async function getSearch(query: string) {
+    async function getSearch(query: string, chainId = 56) {
         const config = getApiConfig()
-        const cacheKey = `${config.chainId}:${query}`
+        requireActiveTokenDiscoveryChain(chainId)
+        const cacheKey = `${chainId}:${query}`
         const cached = searchCache.get(cacheKey)
         if (cached && cached.expiresAt > resolved.now()) return cached.tokens
 
         const address = normalizeAddress(query)
         const tokens = (
             address
-                ? await getExactAddressSearch(address)
-                : await getTextSearch(query)
+                ? await getExactAddressSearch(chainId, address)
+                : await getTextSearch(chainId, query)
         ).slice(0, config.market.searchLimit)
         searchCache.set(cacheKey, {
             tokens,
@@ -870,7 +954,82 @@ export function createMarketCatalogService(
         return tokens
     }
 
-    return { getCatalog, getSearch, refreshCatalog }
+    function refreshAllCatalogs() {
+        if (refreshAllPromise) return refreshAllPromise
+        refreshAllPromise = (async () => {
+            const results = await boundedMap(
+                ACTIVE_TOKEN_DISCOVERY_CHAINS,
+                4,
+                (chain) => refreshCatalog(chain.chainId),
+            )
+            const successful = results.flatMap((result) =>
+                result.status === 'fulfilled' ? [result.value] : [],
+            )
+            const unavailableChainIds = results.flatMap((result, index) =>
+                result.status === 'rejected'
+                    ? [ACTIVE_TOKEN_DISCOVERY_CHAINS[index].chainId]
+                    : [],
+            )
+            if (successful.length === 0) {
+                if (combinedCatalog) return combinedCatalog
+                const rejected = results.find(
+                    (result): result is PromiseRejectedResult =>
+                        result.status === 'rejected',
+                )
+                throw rejected?.reason ?? new Error('No token catalogs are available.')
+            }
+            const tokens = successful
+                .flatMap((catalog) => catalog.tokens.slice(0, 100))
+                .filter((token) => token.logoURI && token.volume24hUsd > 0)
+                .sort((left, right) =>
+                    right.volume24hUsd - left.volume24hUsd ||
+                    left.chainId - right.chainId ||
+                    left.address.localeCompare(right.address),
+                )
+                .slice(0, 200)
+            combinedCatalog = {
+                generatedAt: resolved.now(),
+                tokens,
+                unavailableChainIds,
+            }
+            return combinedCatalog as CombinedCatalogCache
+        })().finally(() => {
+            refreshAllPromise = null
+        })
+        return refreshAllPromise
+    }
+
+    async function getCombinedCatalog() {
+        if (combinedCatalog) return combinedCatalog
+        return refreshAllCatalogs()
+    }
+
+    function startHourlyRefresh(
+        intervalMs = 60 * 60 * 1000,
+        { refreshImmediately = true } = {},
+    ) {
+        if (refreshImmediately) {
+            void refreshAllCatalogs().catch(() => {
+                // Requests retain the last known good combined catalog.
+            })
+        }
+        const timer = setInterval(() => {
+            void refreshAllCatalogs().catch(() => {
+                // A provider outage must not discard existing catalogs.
+            })
+        }, intervalMs)
+        timer.unref?.()
+        return () => clearInterval(timer)
+    }
+
+    return {
+        getCatalog,
+        getCombinedCatalog,
+        getSearch,
+        refreshAllCatalogs,
+        refreshCatalog,
+        startHourlyRefresh,
+    }
 }
 
 type TokenQuery = {
@@ -880,33 +1039,120 @@ type TokenQuery = {
 }
 
 function parseLimit(value: string | undefined, maximum: number) {
+    if (value === undefined) return maximum
     const parsed = Number(value)
-    return Number.isInteger(parsed) && parsed > 0
-        ? Math.min(parsed, maximum)
-        : maximum
+    return Number.isInteger(parsed) && parsed > 0 && parsed <= maximum
+        ? parsed
+        : null
 }
 
 function sendUnsupportedChain(reply: FastifyReply) {
     return reply.code(400).send({
         error: {
             code: 'UNSUPPORTED_CHAIN',
-            message: 'Only BNB Chain (56) is supported.',
+            message: 'The requested chain is not enabled for token discovery.',
         },
     })
 }
 
+function nativeMarketToken(chainId: number, priceUSD: string | null): MarketToken {
+    const chain = requireActiveTokenDiscoveryChain(chainId)
+    return {
+        id: createTokenId(chainId, NATIVE_TOKEN_ADDRESS),
+        chainId,
+        address: NATIVE_TOKEN_ADDRESS,
+        name: chain.native.name,
+        symbol: chain.native.symbol,
+        decimals: chain.native.decimals,
+        logoURI: chain.chainLogoURI,
+        logoCandidates: [chain.chainLogoURI],
+        logoSource: 'local',
+        chainLogoURI: chain.chainLogoURI,
+        coinGeckoId: chain.native.coinGeckoId,
+        priceUSD,
+        volume24hUsd: 0,
+        liquidityUsd: 0,
+        pairCount: 0,
+        oldestPairCreatedAt: null,
+        marketUrl: null,
+        rank: 1,
+        verificationStatus: 'established',
+        verificationReasons: ['explicit-native-allowlist'],
+        isNative: true,
+    }
+}
+
+async function boundedMap<T, R>(
+    values: readonly T[],
+    concurrency: number,
+    run: (value: T) => Promise<R>,
+) {
+    const output: PromiseSettledResult<R>[] = new Array(values.length)
+    let cursor = 0
+    await Promise.all(Array.from(
+        { length: Math.min(concurrency, values.length) },
+        async () => {
+            while (cursor < values.length) {
+                const index = cursor++
+                try {
+                    output[index] = { status: 'fulfilled', value: await run(values[index]) }
+                } catch (reason) {
+                    output[index] = { status: 'rejected', reason }
+                }
+            }
+        },
+    ))
+    return output
+}
+
 export function createMarketTokenRoutes(
     service = createMarketCatalogService(),
+    searchAcrossChains = searchTokensAcrossChains,
 ): FastifyPluginAsync {
     return async (app) => {
         app.get<{ Querystring: TokenQuery }>(
             '/v1/market-tokens',
+            {
+                schema: {
+                    querystring: {
+                        type: 'object',
+                        additionalProperties: true,
+                        properties: {
+                            chainId: {
+                                type: 'string',
+                                pattern: '^(?:all|[1-9][0-9]*)$',
+                            },
+                            q: { type: 'string', maxLength: 80 },
+                            limit: {
+                                type: 'string',
+                                pattern: '^[1-9][0-9]*$',
+                            },
+                        },
+                    },
+                },
+                config: {
+                    rateLimit: { max: 30, timeWindow: '1 minute' },
+                },
+            },
             async (request, reply) => {
                 const config = getApiConfig()
-                const chainId = request.query.chainId
-                    ? Number(request.query.chainId)
-                    : config.chainId
-                if (!config.allowedChains.has(chainId)) {
+                const unsupportedParameters = Object.keys(request.query)
+                    .filter((key) => !['chainId', 'q', 'limit'].includes(key))
+                if (unsupportedParameters.length > 0) {
+                    return reply.code(400).send({
+                        error: {
+                            code: 'UNSUPPORTED_QUERY_PARAMETER',
+                            message: 'Unsupported query parameter.',
+                        },
+                    })
+                }
+                const rawChainId = request.query.chainId ?? String(config.chainId)
+                const allChains = rawChainId === 'all'
+                if (!allChains && !/^[1-9]\d*$/.test(rawChainId)) {
+                    return sendUnsupportedChain(reply)
+                }
+                const chainId = allChains ? null : Number(rawChainId)
+                if (chainId !== null && !getTokenDiscoveryChain(chainId)?.active) {
                     return sendUnsupportedChain(reply)
                 }
 
@@ -920,25 +1166,144 @@ export function createMarketTokenRoutes(
                     })
                 }
 
-                const maximum = query
-                    ? config.market.searchLimit
-                    : config.market.defaultLimit
+                const maximum = allChains && !query
+                    ? 200
+                    : query
+                        ? config.market.searchLimit
+                        : config.market.defaultLimit
                 const limit = parseLimit(request.query.limit, maximum)
+                if (limit === null) {
+                    return reply.code(400).send({
+                        error: {
+                            code: 'INVALID_LIMIT',
+                            message: `Limit must be an integer between 1 and ${maximum}.`,
+                        },
+                    })
+                }
 
+                const controller = new AbortController()
+                const abort = () => controller.abort()
+                request.raw.once('aborted', abort)
                 try {
+                    if (allChains) {
+                        if (!query) {
+                            const combined = await service.getCombinedCatalog()
+                            const tokens = combined.tokens.slice(0, limit)
+                            reply.header('cache-control', 'public, max-age=300')
+                            return {
+                                chainId: 'all',
+                                query,
+                                count: tokens.length,
+                                stale: false,
+                                partial: combined.unavailableChainIds.length > 0,
+                                generatedAt: new Date(
+                                    combined.generatedAt,
+                                ).toISOString(),
+                                metadata: {
+                                    searchedChains:
+                                        ACTIVE_TOKEN_DISCOVERY_CHAINS.length,
+                                    unavailableChainIds:
+                                        combined.unavailableChainIds,
+                                    perChainLimit: 100,
+                                    combinedLimit: 200,
+                                },
+                                tokens,
+                            }
+                        }
+                        const targetChains = query
+                            ? [
+                                  ...new Set(
+                                      (
+                                          await searchAcrossChains(
+                                              query,
+                                              controller.signal,
+                                          )
+                                      ).map(({ chainId }) => chainId),
+                                  ),
+                              ].flatMap((chainId) => {
+                                  const chain = getTokenDiscoveryChain(chainId)
+                                  return chain?.active ? [chain] : []
+                              })
+                            : []
+                        const results = await boundedMap(
+                            targetChains,
+                            4,
+                            async (chain) => {
+                                if (query) {
+                                    return {
+                                        chainId: chain.chainId,
+                                        stale: false,
+                                        tokens: (await service.getSearch(query, chain.chainId))
+                                            .slice(0, 8),
+                                    }
+                                }
+                                const result = await service.getCatalog(chain.chainId)
+                                return {
+                                    chainId: chain.chainId,
+                                    stale: result.stale,
+                                    tokens: result.catalog.tokens
+                                        .filter((token) => token.logoURI && token.volume24hUsd > 0)
+                                        .slice(0, 3),
+                                }
+                            },
+                        )
+                        const groups = results.flatMap((result, index) =>
+                            result.status === 'fulfilled'
+                                ? [result.value]
+                                : [{
+                                      chainId: targetChains[index].chainId,
+                                      stale: false,
+                                      tokens: [] as MarketToken[],
+                                  }],
+                        )
+                        const tokens = groups
+                            .flatMap((group) => group.tokens)
+                            .sort((left, right) =>
+                                query
+                                    ? (left.rank ?? 999) - (right.rank ?? 999)
+                                    : right.volume24hUsd - left.volume24hUsd,
+                            )
+                            .slice(0, limit)
+                        const unavailableChainIds = results.flatMap((result, index) =>
+                            result.status === 'rejected'
+                                ? [targetChains[index].chainId]
+                                : [],
+                        )
+                        reply.header('cache-control', 'public, max-age=60')
+                        return {
+                            chainId: 'all',
+                            query,
+                            count: tokens.length,
+                            stale: groups.some((group) => group.stale),
+                            partial: unavailableChainIds.length > 0,
+                            metadata: {
+                                searchedChains: targetChains.length,
+                                unavailableChainIds,
+                                perChainLimit: query ? 8 : 3,
+                            },
+                            tokens,
+                        }
+                    }
+
+                    const selectedChainId = chainId!
+                    const selectedChain = requireActiveTokenDiscoveryChain(selectedChainId)
                     if (query) {
                         const nativeQuery =
                             query === NATIVE_TOKEN_ADDRESS ||
-                            ['bnb', 'binance coin', 'native bnb'].includes(query)
+                            [
+                                selectedChain.native.symbol.toLowerCase(),
+                                selectedChain.native.name.toLowerCase(),
+                                `native ${selectedChain.native.symbol.toLowerCase()}`,
+                            ].includes(query)
                         const searched = nativeQuery && query === NATIVE_TOKEN_ADDRESS
                             ? []
-                            : await service.getSearch(query)
+                            : await service.getSearch(query, selectedChainId)
                         const wrapped = searched.find(
-                            (token) => token.address === config.market.wrappedNativeAddress,
+                            (token) => token.address === selectedChain.wrappedNative.address,
                         )
                         const tokens = nativeQuery
                             ? [
-                                  nativeBnbMarketToken(wrapped?.priceUSD ?? null),
+                                  nativeMarketToken(selectedChainId, wrapped?.priceUSD ?? null),
                                   ...searched.filter(
                                       (token) => token.address !== NATIVE_TOKEN_ADDRESS,
                                   ),
@@ -946,7 +1311,7 @@ export function createMarketTokenRoutes(
                             : searched
                         reply.header('cache-control', 'public, max-age=300')
                         return {
-                            chainId,
+                            chainId: selectedChainId,
                             query,
                             count: Math.min(tokens.length, limit),
                             stale: false,
@@ -957,7 +1322,7 @@ export function createMarketTokenRoutes(
                         }
                     }
 
-                    const { catalog, stale } = await service.getCatalog()
+                    const { catalog, stale } = await service.getCatalog(selectedChainId)
                     reply.header(
                         'cache-control',
                         stale || catalog.partial
@@ -969,16 +1334,16 @@ export function createMarketTokenRoutes(
                         stale ? 'STALE' : 'FRESH',
                     )
                     const wrapped = catalog.tokens.find(
-                        (token) => token.address === config.market.wrappedNativeAddress,
+                        (token) => token.address === selectedChain.wrappedNative.address,
                     )
                     const tokens = [
-                        nativeBnbMarketToken(wrapped?.priceUSD ?? null),
+                        nativeMarketToken(selectedChainId, wrapped?.priceUSD ?? null),
                         ...catalog.tokens.filter(
                             (token) => token.address !== NATIVE_TOKEN_ADDRESS,
                         ),
                     ]
                     return {
-                        chainId,
+                        chainId: selectedChainId,
                         query,
                         count: Math.min(tokens.length, limit),
                         stale,
@@ -996,6 +1361,8 @@ export function createMarketTokenRoutes(
                         'Market token provider request failed',
                     )
                     return reply.code(safe.statusCode).send(safe.body)
+                } finally {
+                    request.raw.off('aborted', abort)
                 }
             },
         )

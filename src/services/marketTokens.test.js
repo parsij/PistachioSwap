@@ -115,14 +115,25 @@ describe.sequential('frontend market-token services', () => {
             [key]: JSON.stringify({
                 cachedAt: Date.now() - 60_001,
                 payload: {
-                    tokens: [{ symbol: 'OLD' }],
+                    tokens: [{
+                        chainId: 56,
+                        address: '0x0000000000000000000000000000000000000001',
+                        symbol: 'OLD',
+                    }],
                     metadata: { providerPartial: true },
                 },
             }),
         })
         const fetchMock = vi.fn(async () =>
             new Response(
-                JSON.stringify({ tokens: [{ symbol: 'NEW' }], count: 1 }),
+                JSON.stringify({
+                    tokens: [{
+                        chainId: 56,
+                        address: '0x0000000000000000000000000000000000000001',
+                        symbol: 'NEW',
+                    }],
+                    count: 1,
+                }),
                 { status: 200 },
             ),
         )
@@ -134,6 +145,49 @@ describe.sequential('frontend market-token services', () => {
         })
         expect(fetchMock).toHaveBeenCalledTimes(1)
         expect(result.tokens[0].symbol).toBe('NEW')
+    })
+
+    it('uses a stable all-chain key and sends all only to the market endpoint', async () => {
+        const storage = createLocalStorage()
+        const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+            tokens: [{
+                chainId: 1,
+                address: '0x0000000000000000000000000000000000000001',
+                symbol: 'ONE',
+            }],
+        }), { status: 200 }))
+        vi.stubGlobal('window', { localStorage: storage })
+        vi.stubGlobal('fetch', fetchMock)
+
+        expect(getMarketTokenCacheKey({
+            chainId: 'ALL',
+            query: ' Eth ',
+            limit: 20,
+        })).toBe(getMarketTokenCacheKey({
+            chainId: 'all',
+            query: 'eth',
+            limit: 20,
+        }))
+        await fetchMarketTokens({
+            chainId: 'all',
+            query: 'eth',
+            apiBaseUrl: 'http://localhost:3001',
+        })
+        expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get('chainId'))
+            .toBe('all')
+    })
+
+    it('rejects a malformed token identity before caching it', async () => {
+        const storage = createLocalStorage()
+        vi.stubGlobal('window', { localStorage: storage })
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            tokens: [{ chainId: 'oops', address: 'not-an-address' }],
+        }), { status: 200 })))
+
+        await expect(fetchMarketTokens({
+            apiBaseUrl: 'http://localhost:3001',
+        })).rejects.toThrow('malformed token identity')
+        expect(storage.setItem).not.toHaveBeenCalled()
     })
 
     it('does not cache rate-limit or provider-error responses', async () => {

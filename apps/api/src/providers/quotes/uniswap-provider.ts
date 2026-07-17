@@ -1,4 +1,5 @@
 import { getApiConfig } from '../../config.js'
+import { isCuratedEvmChainId } from '../../chains.js'
 import { ProviderError } from '../../lib/errors.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
 import {
@@ -15,7 +16,7 @@ export function createUniswapProvider(): QuoteProvider {
 
     return {
         name: 'uniswap',
-        supportsChain: (chainId) => chainId === 56,
+        supportsChain: isCuratedEvmChainId,
 
         async getQuote(request, signal) {
             if (!config.quotes.uniswap.apiKey) {

@@ -1,5 +1,8 @@
-import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
+import { tokenDiscoveryContext } from '../../token-discovery/context.js'
+import {
+    getTokenDiscoveryChainByDexScreenerId,
+} from '../../token-discovery/registry.js'
 import {
     type DexPair,
     dexScreenerRequest,
@@ -56,14 +59,17 @@ export function rankSearchResults<T extends SearchableToken>(
 export async function searchTokens(
     query: string,
     signal?: AbortSignal,
+    chainId = 56,
 ) {
-    const config = getApiConfig()
+    const context = tokenDiscoveryContext(chainId)
+    if (!context.chain.capabilities.dexScreener) return []
+    const providerChain = context.chain.providers.dexScreenerChain
     let pairs: DexPair[]
     const address = normalizeAddress(query)
 
     if (address) {
         pairs = await dexScreenerRequest(
-            `/tokens/v1/${config.dexScreener.chainId}/${address}`,
+            `/tokens/v1/${providerChain}/${address}`,
             signal,
         )
     } else {
@@ -75,8 +81,36 @@ export async function searchTokens(
 
     const markets = aggregateTokenMarkets(
         pairs.filter(
-            (pair) => pair.chainId === config.dexScreener.chainId,
+            (pair) => pair.chainId === providerChain,
         ),
     )
     return rankSearchResults([...markets.values()], query)
+}
+
+export async function searchTokensAcrossChains(
+    query: string,
+    signal?: AbortSignal,
+) {
+    const pairs = await dexScreenerRequest(
+        `/latest/dex/search?q=${encodeURIComponent(query)}`,
+        signal,
+    )
+    const grouped = new Map<string, DexPair[]>()
+    for (const pair of pairs) {
+        if (!getTokenDiscoveryChainByDexScreenerId(pair.chainId)) continue
+        const values = grouped.get(pair.chainId) ?? []
+        values.push(pair)
+        grouped.set(pair.chainId, values)
+    }
+    return [...grouped].flatMap(([providerChainId, chainPairs]) => {
+        const chain = getTokenDiscoveryChainByDexScreenerId(providerChainId)
+        if (!chain) return []
+        return rankSearchResults(
+            [...aggregateTokenMarkets(chainPairs).values()],
+            query,
+        ).slice(0, 8).map((market) => ({
+            chainId: chain.chainId,
+            market,
+        }))
+    })
 }

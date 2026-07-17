@@ -17,12 +17,17 @@ import {
     readWalletTokenSectionExpanded,
     writeWalletTokenSectionExpanded,
 } from '../../services/walletTokenSections.js'
+import {
+    getCuratedEvmChain,
+    getCuratedEvmChainLogoUri,
+} from '../../web3/curatedEvmChains.js'
 
 function shortContract(address) {
     return `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
 function AssetRow({ token, selected, onSelect }) {
+    const chain = getCuratedEvmChain(token.chainId)
     async function copyContract(event) {
         if (token.isNative) return
         event.preventDefault()
@@ -39,6 +44,14 @@ function AssetRow({ token, selected, onSelect }) {
                     {!token.isNative && token.address
                         ? ` · ${shortContract(token.address)}`
                         : ''}
+                </span>
+                <span className="wallet-asset-chain">
+                    <img
+                        src={getCuratedEvmChainLogoUri(token.chainId)}
+                        alt=""
+                        onError={(event) => event.currentTarget.remove()}
+                    />
+                    {chain?.name ?? `Chain ${token.chainId}`}
                 </span>
                 {(
                     token.visibility === 'hidden' ||
@@ -95,7 +108,14 @@ export default function WalletAssetList({
     expandHidden = false,
     storageScope = 'account',
 }) {
-    const chainId = Number(tokens.find((token) => token?.chainId)?.chainId ?? 56)
+    const tokenChainIds = new Set(
+        tokens
+            .map((token) => Number(token?.chainId))
+            .filter(Number.isSafeInteger),
+    )
+    const chainId = tokenChainIds.size > 1
+        ? 'all'
+        : [...tokenChainIds][0] ?? 56
     const [unverifiedExpanded, setUnverifiedExpanded] = useState(() =>
         readWalletTokenSectionExpanded({
             chainId,

@@ -1,9 +1,9 @@
-import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
 import {
     type DexPair,
     dexScreenerRequest,
 } from './dexscreener-client.js'
+import { tokenDiscoveryContext } from '../../token-discovery/context.js'
 
 export type TokenMarket = {
     address: string
@@ -137,8 +137,13 @@ export function aggregateTokenMarkets(
 export async function fetchTokenMarkets(
     addresses: string[],
     signal?: AbortSignal,
+    chainId = 56,
 ): Promise<TokenMarketBatchResult> {
-    const config = getApiConfig()
+    const context = tokenDiscoveryContext(chainId)
+    if (!context.chain.capabilities.dexScreener) {
+        return { markets: new Map(), partial: true, successfulBatches: 0, failedBatches: 0 }
+    }
+    const providerChain = context.chain.providers.dexScreenerChain
     const unique = [
         ...new Set(
             addresses
@@ -152,7 +157,7 @@ export async function fetchTokenMarkets(
 
     for (const batch of splitIntoChunks(unique, 30)) {
         const path =
-            `/tokens/v1/${config.dexScreener.chainId}/` +
+            `/tokens/v1/${providerChain}/` +
             batch.map(encodeURIComponent).join(',')
 
         try {
@@ -168,7 +173,7 @@ export async function fetchTokenMarkets(
     return {
         markets: aggregateTokenMarkets(
             pairs.filter(
-                (pair) => pair.chainId === config.dexScreener.chainId,
+                (pair) => pair.chainId === providerChain,
             ),
         ),
         partial: failedBatches > 0,

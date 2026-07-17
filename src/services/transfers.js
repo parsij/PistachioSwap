@@ -2,16 +2,23 @@ import {
     erc20Abi,
     isAddress,
     parseUnits,
+    zeroAddress,
 } from 'viem'
 
 import {
-    BSC_CHAIN_ID,
     getNativeSpendableWei,
     getTokenBalanceWei,
-    isNativeBnbToken,
 } from './balances.js'
+import {
+    requireCuratedEvmChain,
+} from '../web3/curatedEvmChains.js'
 
 export const TRANSFER_ABI = erc20Abi
+
+export function isNativeEvmToken(token) {
+    return Boolean(token?.isNative) ||
+        String(token?.address ?? '').toLowerCase() === zeroAddress
+}
 
 export function createTransferPlan({
     account,
@@ -23,8 +30,10 @@ export function createTransferPlan({
     estimatedFeeWei = 0n,
 }) {
     if (!isAddress(account ?? '')) throw new Error('Connect a wallet first.')
-    if (Number(chainId) !== BSC_CHAIN_ID) {
-        throw new Error('Switch to BNB Smart Chain before sending.')
+    const chain = requireCuratedEvmChain(chainId)
+    const nativeSymbol = chain.nativeCurrency.symbol
+    if (Number(token?.chainId) !== Number(chainId)) {
+        throw new Error(`Select a token on ${chain.name}.`)
     }
     if (!isAddress(recipient ?? '')) throw new Error('Enter a valid recipient address.')
     if (!Number.isInteger(Number(token?.decimals))) {
@@ -39,27 +48,27 @@ export function createTransferPlan({
     }
     if (amountWei <= 0n) throw new Error('Amount must be greater than zero.')
 
-    const tokenBalanceWei = isNativeBnbToken(token)
+    const tokenBalanceWei = isNativeEvmToken(token)
         ? BigInt(nativeBalanceWei ?? 0)
         : getTokenBalanceWei(token)
 
     if (amountWei > tokenBalanceWei) throw new Error('Insufficient balance.')
 
     const fee = BigInt(estimatedFeeWei ?? 0)
-    if (isNativeBnbToken(token)) {
+    if (isNativeEvmToken(token)) {
         const spendable = getNativeSpendableWei({
             balanceWei: nativeBalanceWei,
             estimatedFeeWei: fee,
         })
         if (amountWei > spendable) {
-            throw new Error('Insufficient BNB for amount and network fee.')
+            throw new Error(`Insufficient ${nativeSymbol} for amount and network fee.`)
         }
         return {
             kind: 'native',
             amountWei,
             request: {
                 account,
-                chainId: BSC_CHAIN_ID,
+                chainId: chain.id,
                 to: recipient,
                 value: amountWei,
             },
@@ -67,7 +76,7 @@ export function createTransferPlan({
     }
 
     if (BigInt(nativeBalanceWei ?? 0) < fee) {
-        throw new Error('Insufficient BNB for gas.')
+        throw new Error(`Insufficient ${nativeSymbol} for gas.`)
     }
 
     return {
@@ -75,7 +84,7 @@ export function createTransferPlan({
         amountWei,
         request: {
             account,
-            chainId: BSC_CHAIN_ID,
+            chainId: chain.id,
             address: token.address,
             abi: TRANSFER_ABI,
             functionName: 'transfer',

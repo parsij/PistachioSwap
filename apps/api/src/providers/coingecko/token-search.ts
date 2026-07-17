@@ -5,6 +5,7 @@ import {
     type CoinGeckoToken,
     normalizeCoinGeckoToken,
 } from './token-data.js'
+import { tokenDiscoveryContext } from '../../token-discovery/context.js'
 
 type SearchCacheEntry = {
     expiresAt: number
@@ -62,17 +63,21 @@ export function extractCoinGeckoSearchTokens(
 export async function searchCoinGeckoTokens(
     query: string,
     signal?: AbortSignal,
+    chainId = 56,
 ) {
     const normalizedQuery = query.trim().toLowerCase()
     const config = getApiConfig().coinGecko
-    const cacheKey = `${config.network}:${normalizedQuery}`
+    const context = tokenDiscoveryContext(chainId)
+    if (!context.chain.capabilities.coinGeckoOnchain) return []
+    const network = context.chain.providers.coinGeckoNetwork
+    const cacheKey = `${chainId}:${network}:${normalizedQuery}`
     const cached = searchCache.get(cacheKey)
 
     if (cached && cached.expiresAt > Date.now()) return cached.tokens
 
     const search = new URLSearchParams({
         query: normalizedQuery,
-        network: config.network,
+        network,
         include: 'base_token,quote_token',
     })
     const payload = await coinGeckoRequest(
@@ -81,7 +86,7 @@ export async function searchCoinGeckoTokens(
     )
     const tokens = extractCoinGeckoSearchTokens(
         payload,
-        config.network,
+        network,
         20,
     )
 

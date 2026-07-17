@@ -1,4 +1,9 @@
 import { multiplyUsdAmount } from './fiatValue.js'
+import { getCanonicalTokenIdentity } from './marketTokens.js'
+import {
+    isTokenDiscoveryChainId,
+    TOKEN_DISCOVERY_CHAIN_IDS,
+} from '../web3/curatedEvmChains.js'
 
 export const WALLET_TOKEN_CLASSIFICATION_VERSION = 3
 export const WALLET_TOKEN_CACHE_NAMESPACE = 'pistachioswap:wallet-tokens:v3:'
@@ -27,6 +32,7 @@ export function clearLegacyWalletTokenCacheKeys(storage) {
 export function isCurrentWalletTokenRecord(token) {
     return token !== null &&
         typeof token === 'object' &&
+        getCanonicalTokenIdentity(token) !== null &&
         token.classificationVersion === WALLET_TOKEN_CLASSIFICATION_VERSION &&
         ['established', 'recognized', 'unverified'].includes(token.recognitionStatus) &&
         ['clean', 'possible-spam', 'unknown'].includes(token.spamStatus) &&
@@ -107,27 +113,18 @@ export function formatWalletUsdValue(token) {
     return value === null ? '—' : formatUsdDecimal(value)
 }
 
-export async function fetchWalletTokens({
-    chainId = 56,
+async function fetchWalletTokensForChain({
+    chainId,
     address,
     signal,
-    apiBaseUrl =
-        import.meta.env.VITE_API_BASE_URL ??
-        'http://localhost:3001',
-} = {}) {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(String(address ?? ''))) {
-        throw new Error('A valid wallet address is required')
-    }
-
+    apiBaseUrl,
+}) {
     const url = new URL(
         `${apiBaseUrl.replace(/\/+$/, '')}/v1/wallet-tokens`,
     )
     url.searchParams.set('chainId', String(chainId))
     url.searchParams.set('address', address)
     url.searchParams.set('classificationVersion', String(WALLET_TOKEN_CLASSIFICATION_VERSION))
-
-    clearLegacyWalletTokenCacheKeys(globalThis.localStorage)
-    clearLegacyWalletTokenCacheKeys(globalThis.sessionStorage)
 
     const response = await fetch(url, {
         cache: 'no-store',
@@ -145,11 +142,109 @@ export async function fetchWalletTokens({
     if (
         payload.classificationVersion !== WALLET_TOKEN_CLASSIFICATION_VERSION ||
         !Array.isArray(payload.tokens) ||
-        !payload.tokens.every(isCurrentWalletTokenRecord)
+        !payload.tokens.every((token) =>
+            isCurrentWalletTokenRecord(token) &&
+            Number(token.chainId) === chainId,
+        )
     ) {
         throw new Error('Backend returned invalid wallet tokens')
     }
     return payload.tokens
+}
+
+export async function fetchWalletTokens({
+    chainId = 56,
+    chainIds = TOKEN_DISCOVERY_CHAIN_IDS,
+    address,
+    signal,
+    apiBaseUrl =
+        import.meta.env.VITE_API_BASE_URL ??
+        'http://localhost:3001',
+} = {}) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(String(address ?? ''))) {
+        throw new Error('A valid wallet address is required')
+    }
+
+    clearLegacyWalletTokenCacheKeys(globalThis.localStorage)
+    clearLegacyWalletTokenCacheKeys(globalThis.sessionStorage)
+
+    if (String(chainId).trim().toLowerCase() !== 'all') {
+        const numericChainId = Number(chainId)
+        if (!Number.isSafeInteger(numericChainId) ||
+            !isTokenDiscoveryChainId(numericChainId)) {
+            throw new Error('A valid wallet-token chain is required')
+        }
+        return fetchWalletTokensForChain({
+            chainId: numericChainId,
+            address,
+            signal,
+            apiBaseUrl,
+        })
+    }
+
+    const concreteChainIds = [...new Set(chainIds.map(Number))].filter(
+        (value) => Number.isSafeInteger(value) && isTokenDiscoveryChainId(value),
+    )
+    if (concreteChainIds.length === 0) {
+        throw new Error('At least one wallet-token chain is required')
+    }
+
+    const results = await boundedAllSettled(
+        concreteChainIds,
+        4,
+        (concreteChainId) =>
+            fetchWalletTokensForChain({
+                chainId: concreteChainId,
+                address,
+                signal,
+                apiBaseUrl,
+            }),
+    )
+    if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+    }
+
+    const tokens = []
+    const chainErrors = {}
+    results.forEach((result, index) => {
+        const concreteChainId = concreteChainIds[index]
+        if (result.status === 'fulfilled') {
+            tokens.push(...result.value)
+        } else {
+            chainErrors[concreteChainId] =
+                result.reason instanceof Error
+                    ? result.reason.message
+                    : 'Unable to load wallet tokens'
+        }
+    })
+    if (tokens.length === 0 && Object.keys(chainErrors).length > 0) {
+        throw new Error('Unable to load wallet tokens on any chain')
+    }
+    return { tokens, chainErrors }
+}
+
+async function boundedAllSettled(values, concurrency, operation) {
+    const results = new Array(values.length)
+    let cursor = 0
+    const workers = Array.from(
+        { length: Math.min(concurrency, values.length) },
+        async () => {
+            while (cursor < values.length) {
+                const index = cursor
+                cursor += 1
+                try {
+                    results[index] = {
+                        status: 'fulfilled',
+                        value: await operation(values[index]),
+                    }
+                } catch (reason) {
+                    results[index] = { status: 'rejected', reason }
+                }
+            }
+        },
+    )
+    await Promise.all(workers)
+    return results
 }
 
 export function mergeWalletBalances(
@@ -157,8 +252,11 @@ export function mergeWalletBalances(
     walletTokens,
 ) {
     const tokens = new Map()
-    const key = (token) =>
-        `${Number(token.chainId)}:${String(token.address).toLowerCase()}`
+    const key = (token) => {
+        const identity = getCanonicalTokenIdentity(token)
+        if (!identity) throw new Error('A valid token identity is required')
+        return identity
+    }
 
     for (const token of catalogTokens) tokens.set(key(token), token)
     for (const walletToken of walletTokens) {
@@ -241,10 +339,10 @@ export function mergeWalletBalances(
 
 export function resolveSelectedToken(selectedToken, availableTokens) {
     if (!selectedToken) return null
-    const identity = `${Number(selectedToken.chainId)}:${String(selectedToken.address).toLowerCase()}`
+    const identity = getCanonicalTokenIdentity(selectedToken)
+    if (!identity) return null
     const current = availableTokens.find(
-        (token) =>
-            `${Number(token.chainId)}:${String(token.address).toLowerCase()}` === identity,
+        (token) => getCanonicalTokenIdentity(token) === identity,
     )
     if (!current) return selectedToken
     const currentWalletRecord = isCurrentWalletTokenRecord(current)

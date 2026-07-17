@@ -38,9 +38,15 @@ export const swapUiConfig = {
         ),
     },
 
+    crossChain: {
+        endpoint: `${apiBaseUrl}/v1/cross-chain`,
+    },
+
     wallet: {
         nativeGasReserve:
-            import.meta.env.VITE_NATIVE_GAS_RESERVE_BNB ?? '0.001',
+            import.meta.env.VITE_NATIVE_GAS_RESERVE ??
+            import.meta.env.VITE_NATIVE_GAS_RESERVE_BNB ??
+            '0.001',
 
         explorerUrl: (
             import.meta.env.VITE_BSC_EXPLORER_URL ??
@@ -261,7 +267,7 @@ export const swapUiConfig = {
 
             accent:
                 import.meta.env.VITE_ACCENT_COLOR ??
-                '#ff37c4',
+                '#8ac27c',
 
             ethereum:
                 import.meta.env.VITE_ETHEREUM_COLOR ??

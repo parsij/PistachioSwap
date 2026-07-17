@@ -218,6 +218,29 @@ describe.sequential('established BSC market catalog', () => {
         })
     })
 
+    it('uses exact GeckoTerminal CoinGecko metadata when the CoinGecko API is unavailable', async () => {
+        const discovered = candidate(1, {
+            coinGeckoId: 'celo-token',
+            imageUrl: 'https://coin-images.coingecko.com/celo-token.png',
+        })
+        const service = serviceFor([discovered], {
+            fetchRecognized: async () => {
+                throw new Error('CoinGecko API is not configured.')
+            },
+        })
+
+        const { catalog } = await service.getCatalog(42220)
+        expect(catalog.partial).toBe(true)
+        expect(catalog.tokens).toEqual([
+            expect.objectContaining({
+                chainId: 42220,
+                address: discovered.address,
+                coinGeckoId: 'celo-token',
+                verificationStatus: 'established',
+            }),
+        ])
+    })
+
     it('rejects symbol-only CoinGecko matches', () => {
         const parsed = normalizeCoinGeckoToken(
             {
@@ -388,6 +411,33 @@ describe.sequential('established BSC market catalog', () => {
         expect(catalog.tokens).toHaveLength(100)
         expect(catalog.tokens[0].volume24hUsd).toBe(30_119)
         expect(catalog.tokens.every((token) => token.verificationStatus === 'established')).toBe(true)
+    })
+
+    it('builds one hourly-ready combined catalog capped at 200 tokens', async () => {
+        const service = serviceFor([
+            candidate(1),
+            candidate(2),
+            candidate(3),
+        ])
+        const combined = await service.refreshAllCatalogs()
+        const chainCounts = new Map<number, number>()
+        for (const token of combined.tokens) {
+            chainCounts.set(
+                token.chainId,
+                (chainCounts.get(token.chainId) ?? 0) + 1,
+            )
+        }
+
+        expect(combined.tokens.length).toBeLessThanOrEqual(200)
+        expect([...chainCounts.values()].every((count) => count <= 100))
+            .toBe(true)
+        expect(combined.tokens.every((token) =>
+            token.logoURI && token.volume24hUsd > 0,
+        )).toBe(true)
+        expect(combined.tokens.map((token) => token.volume24hUsd))
+            .toEqual([...combined.tokens]
+                .map((token) => token.volume24hUsd)
+                .sort((left, right) => right - left))
     })
 
     it('preserves completed GeckoTerminal pages after later rate limiting', async () => {

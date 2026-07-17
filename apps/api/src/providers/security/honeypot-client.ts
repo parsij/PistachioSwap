@@ -2,6 +2,7 @@ import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
 import { ProviderError } from '../../lib/errors.js'
 import { fetchJson } from '../../lib/http.js'
+import { getTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
 const pending = new Map<string, Promise<unknown>>()
 let activeRequests = 0
@@ -46,10 +47,11 @@ export async function honeypotRequest({
 }) {
     const normalized = normalizeAddress(address)
     const config = getApiConfig()
-    if (chainId !== 56 || !config.allowedChains.has(chainId)) {
+    const chain = getTokenDiscoveryChain(chainId)
+    if (!chain?.active || !chain.capabilities.honeypot) {
         throw new ProviderError({
             code: 'HONEYPOT_UNSUPPORTED_CHAIN',
-            message: 'Honeypot analysis supports BNB Chain only.',
+            message: 'Honeypot analysis is unavailable for this chain.',
             statusCode: 400,
             outcome: 'validation',
         })

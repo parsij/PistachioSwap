@@ -9,12 +9,12 @@ import {
     useAppKit,
     useAppKitNetwork,
 } from '@reown/appkit/react'
-import { bsc } from '@reown/appkit/networks'
 import {
     useSendTransaction,
+    useWalletClient,
     useWaitForTransactionReceipt,
 } from 'wagmi'
-import { formatUnits, parseEther } from 'viem'
+import { formatUnits, parseEther, zeroAddress } from 'viem'
 
 import {
     AnimatePresence,
@@ -29,9 +29,12 @@ import SwapSettingsPopover from './components/settings/SwapSettingsPopover.jsx'
 import GasAssistApprovalDialog from './components/gas-assist/GasAssistApprovalDialog.jsx'
 import GasAssistBanner from './components/gas-assist/GasAssistBanner.jsx'
 import GasAssistPrepaymentDialog from './components/gas-assist/GasAssistPrepaymentDialog.jsx'
-import WalletConnectionButton, {
-    WalletNetworkButton,
-} from './components/WalletConnectionButton.jsx'
+import CrossChainRoutePanel from './components/cross-chain/CrossChainRoutePanel.jsx'
+import PasskeyVaultTestPanel from './components/pistachio/PasskeyVaultTestPanel.jsx'
+import PistachioWalletController, {
+    PistachioWalletButton,
+} from './components/pistachio/PistachioWalletController.jsx'
+import WalletConnectionButton from './components/WalletConnectionButton.jsx'
 
 import {
     createCssVariables,
@@ -45,7 +48,7 @@ import {
 import {
     useWalletTokens,
 } from './hooks/useWalletTokens.js'
-import { useNativeBnbBalance } from './hooks/useNativeBnbBalance.js'
+import { useNativeBalance } from './hooks/useNativeBnbBalance.js'
 import { useGasAssistConfig } from './hooks/useGasAssistConfig.js'
 import { useSwapSettings } from './hooks/useSwapSettings.js'
 import { useGasAssistApproval } from './hooks/useGasAssistApproval.js'
@@ -67,7 +70,7 @@ import { formatUsdAmount } from './services/fiatValue.js'
 import {
     DEFAULT_NATIVE_GAS_RESERVE_WEI,
     getSpendableTokenAmount,
-    isNativeBnbToken,
+    isNativeEvmToken,
     multiplyAmountByPercent,
 } from './services/balances.js'
 import {
@@ -86,10 +89,11 @@ import {
     isQuoteExpired,
     isUserRejectedError,
 } from './services/swapTransaction.js'
+import { useWalletState } from './web3/useWalletState.js'
 import {
-    BSC_CHAIN_ID,
-    useWalletState,
-} from './web3/useWalletState.js'
+    getCuratedEvmChain,
+    getCuratedEvmChainLogoUri,
+} from './web3/curatedEvmChains.js'
 
 function ChevronDownIcon({ className = '' }) {
     return (
@@ -580,6 +584,19 @@ function QuickAmountControls({
 }
 
 export default function App() {
+    const {
+        brand,
+        chain,
+        copy,
+        crossChain,
+        navigation,
+        quote: quoteConfig,
+        wallet: walletConfig,
+        tabs,
+        tokens,
+        motion: motionConfig,
+    } = swapUiConfig
+
     const cssVariables =
         useMemo(
             () => createCssVariables(),
@@ -589,33 +606,33 @@ export default function App() {
     const reducedMotion =
         useReducedMotion()
 
+    const [swapChainId, setSwapChainId] = useState(
+        Number(tokens.initialSellToken?.chainId ?? chain.id),
+    )
     const { open: openAppKit } = useAppKit()
     const { switchNetwork } = useAppKitNetwork()
-    const walletState = useWalletState()
+    const walletState = useWalletState(swapChainId)
     const [swapSettings, setSwapSettings] = useSwapSettings()
-    const nativeBalance = useNativeBnbBalance({
+    const nativeBalance = useNativeBalance({
         address: walletState.address,
+        chainId: swapChainId,
         enabled: walletState.isConnected,
     })
     const refetchNativeBalance = nativeBalance.refetch
     const {
         mutateAsync: sendTransaction,
     } = useSendTransaction()
-
-    const {
-        brand,
-        chain,
-        copy,
-        navigation,
-        quote: quoteConfig,
-        wallet: walletConfig,
-        tabs,
-        tokens,
-        motion: motionConfig,
-    } = swapUiConfig
+    const { data: walletClient } = useWalletClient()
 
     const [tokenSearch, setTokenSearch] =
         useState('')
+    const [selectorChainId, setSelectorChainId] =
+        useState(swapChainId)
+    const [tokenSelectorSide, setTokenSelectorSide] =
+        useState(null)
+    const discoveryChainId = tokenSelectorSide
+        ? selectorChainId
+        : swapChainId
 
     const walletAddress = walletState.address
 
@@ -626,25 +643,26 @@ export default function App() {
         error:
             marketTokensError,
     } = useMarketTokens({
-        chainId: chain.id,
+        chainId: discoveryChainId,
         search: tokenSearch,
     })
 
-    const fallbackChainLogo =
-        tokens.initialSellToken
-            ?.chainLogoURI ??
-        null
+    const activeChain = getCuratedEvmChain(swapChainId)
+    const activeChainName = swapChainId === Number(chain.id)
+        ? chain.name
+        : activeChain?.name
+    const fallbackChainLogo = Number(tokens.initialSellToken?.chainId) === discoveryChainId
+        ? tokens.initialSellToken?.chainLogoURI ?? null
+        : null
 
     const {
         tokens: walletTokenResponse,
         error: walletTokenError,
         refetch: refetchWalletTokens,
     } = useWalletTokens({
-        chainId: chain.id,
+        chainId: 'all',
         walletAddress,
-        enabled:
-            walletState.isConnected &&
-            walletState.isCorrectNetwork,
+        enabled: walletState.isConnected,
     })
 
     const normalizedWalletTokens =
@@ -653,12 +671,12 @@ export default function App() {
                 (token) =>
                     normalizeMarketToken(
                         token,
-                        chain.id,
+                        discoveryChainId,
                         fallbackChainLogo,
                     ),
             )
         }, [
-            chain.id,
+            discoveryChainId,
             fallbackChainLogo,
             walletTokenResponse,
         ])
@@ -668,7 +686,7 @@ export default function App() {
         const nativeBalanceText = nativeBalance.formatted
         let foundNative = false
         const updated = normalizedWalletTokens.map((token) => {
-            if (!isNativeBnbToken(token)) return token
+            if (!isNativeEvmToken(token) || Number(token.chainId) !== swapChainId) return token
             foundNative = true
             return {
                 ...token,
@@ -680,18 +698,25 @@ export default function App() {
         })
         if (!foundNative) {
             updated.unshift(normalizeMarketToken({
-                ...tokens.initialSellToken,
                 classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+                chainId: swapChainId,
+                address: zeroAddress,
+                symbol: getCuratedEvmChain(swapChainId)?.nativeCurrency.symbol ?? 'NATIVE',
+                name: getCuratedEvmChain(swapChainId)?.nativeCurrency.name ?? 'Native token',
+                decimals: getCuratedEvmChain(swapChainId)?.nativeCurrency.decimals ?? 18,
+                logoURI: Number(tokens.initialSellToken?.chainId) === swapChainId
+                    ? tokens.initialSellToken?.logoURI
+                    : getCuratedEvmChainLogoUri(swapChainId),
                 isNative: true,
                 recognitionStatus: 'established',
-                recognitionReasons: ['native-bnb'],
+                recognitionReasons: ['native-token'],
                 verificationStatus: 'established',
                 spamStatus: 'clean',
                 possibleSpam: false,
                 verifiedContract: null,
-                spamReasons: ['native-bnb'],
+                spamReasons: ['native-token'],
                 securityStatus: 'trusted',
-                securityReasons: ['native-bnb'],
+                securityReasons: ['native-token'],
                 securityProviders: {
                     honeypot: {
                         available: false,
@@ -707,22 +732,27 @@ export default function App() {
                     },
                 },
                 visibility: 'primary',
-                visibilityReasons: ['native-bnb'],
-                trustedPriceUSD: tokens.initialSellToken?.priceUSD ?? null,
+                visibilityReasons: ['native-token'],
+                trustedPriceUSD: Number(tokens.initialSellToken?.chainId) === swapChainId
+                    ? tokens.initialSellToken?.priceUSD ?? null
+                    : null,
                 marketPriceUSD: null,
-                priceConfidence: tokens.initialSellToken?.priceUSD ? 'trusted' : 'unknown',
+                priceConfidence:
+                    Number(tokens.initialSellToken?.chainId) === swapChainId &&
+                    tokens.initialSellToken?.priceUSD
+                        ? 'trusted'
+                        : 'unknown',
                 balance: nativeBalanceText,
                 formattedBalance: nativeBalanceText,
                 rawBalance: nativeBalance.value.toString(),
-            }, chain.id, fallbackChainLogo))
+            }, swapChainId, getCuratedEvmChainLogoUri(swapChainId)))
         }
         return updated
     }, [
-        chain.id,
-        fallbackChainLogo,
         nativeBalance.formatted,
         nativeBalance.value,
         normalizedWalletTokens,
+        swapChainId,
         tokens.initialSellToken,
     ])
 
@@ -749,11 +779,11 @@ export default function App() {
                 (token) =>
                     normalizeMarketToken(
                         token,
-                        chain.id,
+                        discoveryChainId,
                         fallbackChainLogo,
                     ),
             )
-        }, [chain.id, fallbackChainLogo, marketTokens])
+        }, [discoveryChainId, fallbackChainLogo, marketTokens])
 
     const availableTokens =
         useMemo(() => {
@@ -763,14 +793,14 @@ export default function App() {
             )
             if (!tokenSearch.trim()) return merged
             const searchIds = new Set(
-                catalogTokens.map((token) => getTokenIdentity(token, chain.id)),
+                catalogTokens.map((token) => getTokenIdentity(token, discoveryChainId)),
             )
             return merged.filter((token) =>
-                searchIds.has(getTokenIdentity(token, chain.id)),
+                searchIds.has(getTokenIdentity(token, discoveryChainId)),
             )
         }, [
-            chain.id,
             catalogTokens,
+            discoveryChainId,
             tokenSearch,
             walletTokens,
         ])
@@ -778,26 +808,26 @@ export default function App() {
     const selectorMarketTokens = useMemo(() => {
         const availableById = new Map(
             availableTokens.map((token) => [
-                getTokenIdentity(token, chain.id),
+                getTokenIdentity(token, discoveryChainId),
                 token,
             ]),
         )
         return catalogTokens.map((token) =>
-            availableById.get(getTokenIdentity(token, chain.id)) ?? token,
+            availableById.get(getTokenIdentity(token, discoveryChainId)) ?? token,
         )
-    }, [availableTokens, catalogTokens, chain.id])
+    }, [availableTokens, catalogTokens, discoveryChainId])
 
     const selectorWalletTokens = useMemo(() => {
         const availableById = new Map(
             availableTokens.map((token) => [
-                getTokenIdentity(token, chain.id),
+                getTokenIdentity(token, discoveryChainId),
                 token,
             ]),
         )
         return walletTokens.map((token) =>
-            availableById.get(getTokenIdentity(token, chain.id)) ?? token,
+            availableById.get(getTokenIdentity(token, discoveryChainId)) ?? token,
         )
-    }, [availableTokens, chain.id, walletTokens])
+    }, [availableTokens, discoveryChainId, walletTokens])
 
     const initialSellToken =
         useMemo(() => {
@@ -809,12 +839,12 @@ export default function App() {
 
             return normalizeMarketToken(
                 tokens.initialSellToken,
-                chain.id,
+                swapChainId,
                 fallbackChainLogo,
             )
         }, [
-            chain.id,
             fallbackChainLogo,
+            swapChainId,
             tokens.initialSellToken,
         ])
 
@@ -828,12 +858,12 @@ export default function App() {
 
             return normalizeMarketToken(
                 tokens.initialBuyToken,
-                chain.id,
+                swapChainId,
                 fallbackChainLogo,
             )
         }, [
-            chain.id,
             fallbackChainLogo,
+            swapChainId,
             tokens.initialBuyToken,
         ])
 
@@ -878,11 +908,6 @@ export default function App() {
     ] = useState(false)
 
     const [
-        tokenSelectorSide,
-        setTokenSelectorSide,
-    ] = useState(null)
-
-    const [
         switchRotation,
         setSwitchRotation,
     ] = useState(0)
@@ -925,7 +950,7 @@ export default function App() {
     const transactionReceipt =
         useWaitForTransactionReceipt({
             hash: transactionHash ?? undefined,
-            chainId: BSC_CHAIN_ID,
+            chainId: swapChainId,
             query: {
                 enabled: Boolean(transactionHash),
             },
@@ -946,17 +971,26 @@ export default function App() {
             Number(sellToken.decimals ?? 18),
         )
         : null
+    const sellChainId = Number(sellToken?.chainId ?? swapChainId)
+    const buyChainId = Number(buyToken?.chainId ?? swapChainId)
+    const hasMixedSwapChains = Boolean(
+        sellToken &&
+        buyToken &&
+        sellChainId !== buyChainId,
+    )
+    const isBscSwap = swapChainId === 56
 
     const gasAssistConfig = useGasAssistConfig({
         quoteEndpoint: quoteConfig.endpoint,
         enabled: Boolean(
+            isBscSwap &&
             walletState.isConnected &&
             walletAddress &&
-            walletState.chainId === BSC_CHAIN_ID
+            walletState.chainId === 56
         ),
     })
 
-    const execution = deriveSwapExecution({
+    const bscExecution = deriveSwapExecution({
         isConnected: walletState.isConnected,
         walletAddress,
         chainId: walletState.chainId,
@@ -968,6 +1002,20 @@ export default function App() {
         gasAssistConfig: gasAssistConfig.config,
         gasAssistConfigStatus: gasAssistConfig.status,
     })
+    const nonBscExecution = nativeBalance.status === 'success'
+        ? {
+            mode: NORMAL_SWAP_MODE,
+            reason: null,
+        }
+        : {
+            mode: null,
+            reason: nativeBalance.status === 'error'
+                ? 'native-balance-error'
+                : 'native-balance-loading',
+        }
+    const execution = isBscSwap
+        ? bscExecution
+        : nonBscExecution
     const executionMode = execution.mode
 
     const handleApprovalConfirmed = useCallback(async () => {
@@ -980,7 +1028,7 @@ export default function App() {
 
     const normalApproval = useGasAssistApproval({
         quoteEndpoint: quoteConfig.endpoint,
-        quote,
+        quote: isBscSwap ? quote : null,
         walletAddress,
         sellToken,
         amountIn: activeAmountIn,
@@ -1065,13 +1113,13 @@ export default function App() {
         const sellIdentity =
             getTokenIdentity(
                 sellToken,
-                chain.id,
+                swapChainId,
             )
 
         const buyIdentity =
             getTokenIdentity(
                 buyToken,
-                chain.id,
+                swapChainId,
             )
 
         if (
@@ -1081,6 +1129,7 @@ export default function App() {
             !walletAddress ||
             !sellToken ||
             !buyToken ||
+            hasMixedSwapChains ||
             !amountInBaseUnits ||
             amountInBaseUnits === '0' ||
             sellIdentity === buyIdentity ||
@@ -1112,7 +1161,7 @@ export default function App() {
                                 request:
                                     createQuoteRequestBody({
                                         chainId:
-                                        chain.id,
+                                        swapChainId,
 
                                         sellToken:
                                         sellToken.address,
@@ -1211,14 +1260,15 @@ export default function App() {
         }
     }, [
         buyToken,
-        chain.id,
         effectiveSlippageBps,
         executionMode,
+        hasMixedSwapChains,
         quoteConfig.debounceMs,
         quoteConfig.endpoint,
         quoteRefreshIndex,
         sellAmount,
         sellToken,
+        swapChainId,
         walletAddress,
         walletState.isConnected,
         walletState.isCorrectNetwork,
@@ -1278,6 +1328,10 @@ export default function App() {
 
     function openTokenSelector(side) {
         setTokenSearch('')
+        setSelectorChainId(Number(
+            (side === 'sell' ? sellToken : buyToken)?.chainId ??
+            swapChainId,
+        ))
         setTokenSelectorSide(side)
     }
 
@@ -1326,6 +1380,9 @@ export default function App() {
         setBuyToken(
             previousSellToken,
         )
+        if (previousBuyToken?.chainId) {
+            setSwapChainId(Number(previousBuyToken.chainId))
+        }
 
         setSellAmount(
             previousBuyAmount === '0'
@@ -1346,26 +1403,26 @@ export default function App() {
         const normalizedToken =
             normalizeMarketToken(
                 token,
-                chain.id,
+                selectorChainId,
                 fallbackChainLogo,
             )
 
         const selectedIdentity =
             getTokenIdentity(
                 normalizedToken,
-                chain.id,
+                selectorChainId,
             )
 
         const sellIdentity =
             getTokenIdentity(
                 sellToken,
-                chain.id,
+                swapChainId,
             )
 
         const buyIdentity =
             getTokenIdentity(
                 buyToken,
-                chain.id,
+                swapChainId,
             )
 
         if (
@@ -1382,6 +1439,7 @@ export default function App() {
             setSellToken(
                 normalizedToken,
             )
+            setSwapChainId(Number(normalizedToken.chainId))
         }
 
         if (
@@ -1398,6 +1456,9 @@ export default function App() {
             setBuyToken(
                 normalizedToken,
             )
+            if (!sellToken) {
+                setSwapChainId(Number(normalizedToken.chainId))
+            }
         }
 
         closeTokenSelector()
@@ -1416,8 +1477,16 @@ export default function App() {
         quoteReady: activeQuoteStatus === 'success' && activeQuote !== null,
         transactionStatus,
     })
-    const swapAction =
-        prepaidRequired &&
+    if (baseSwapAction.type === 'switch-network') {
+        baseSwapAction.label = `Switch to ${activeChainName ?? 'token network'}`
+    }
+    const swapAction = hasMixedSwapChains
+        ? {
+            type: 'bridge',
+            label: 'Use Bridge for cross-chain swaps',
+            enabled: true,
+        }
+        : prepaidRequired &&
         prepaidSponsorship.config?.enabled &&
         baseSwapAction.type === 'swap'
             ? { ...baseSwapAction, label: 'Review Gas Assist prepayment' }
@@ -1437,14 +1506,22 @@ export default function App() {
             return
         }
 
+        if (swapAction.type === 'bridge') {
+            setActiveTab('Bridge')
+            return
+        }
+
         if (swapAction.type === 'switch-network') {
             try {
-                await switchNetwork(bsc)
+                if (!activeChain) {
+                    throw new Error('This token network is not enabled.')
+                }
+                await switchNetwork(activeChain)
             } catch (error) {
                 setStatusMessage(
                     isUserRejectedError(error)
                         ? 'Network switch cancelled.'
-                        : 'Unable to switch to BNB Chain.',
+                        : `Unable to switch to ${activeChainName ?? 'the token network'}.`,
                 )
             }
             return
@@ -1455,6 +1532,14 @@ export default function App() {
             transactionStatus === 'pending' ||
             transactionStatus === 'submitted'
         ) {
+            return
+        }
+        if (
+            hasMixedSwapChains ||
+            sellChainId !== swapChainId ||
+            buyChainId !== swapChainId
+        ) {
+            setStatusMessage('Same-chain Swap requires both tokens on one network. Use Bridge instead.')
             return
         }
 
@@ -1495,7 +1580,10 @@ export default function App() {
                 'Confirm the transaction in your wallet.',
             )
 
-            const hash = await sendTransaction(transaction)
+            const hash = await sendTransaction({
+                ...transaction,
+                chainId: swapChainId,
+            })
 
             setTransactionHash(hash)
             setTransactionStatus('submitted')
@@ -1518,16 +1606,44 @@ export default function App() {
         }
     }
 
+    async function handleCrossChainStep(step) {
+        const stepChain = getCuratedEvmChain(step.chainId)
+        if (!stepChain) throw new Error('This route step uses an unsupported network.')
+        if (Number(walletState.chainId) !== step.chainId) {
+            await switchNetwork(stepChain)
+        }
+        const transaction = step.transaction
+        if (!transaction?.to) throw new Error('Route step is missing a transaction target.')
+        return sendTransaction({
+            chainId: step.chainId,
+            to: transaction.to,
+            data: transaction.data ?? undefined,
+            value: transaction.value == null
+                ? undefined
+                : BigInt(transaction.value),
+        })
+    }
+
+    async function handleCrossChainAuthentication(message) {
+        if (!walletClient || !walletAddress) {
+            throw new Error('Connect a wallet that supports message signing.')
+        }
+        return walletClient.signMessage({
+            account: walletAddress,
+            message,
+        })
+    }
+
     const sellTokenIdentity =
         getTokenIdentity(
             sellToken,
-            chain.id,
+            swapChainId,
         )
 
     const buyTokenIdentity =
         getTokenIdentity(
             buyToken,
-            chain.id,
+            swapChainId,
         )
 
     const sellFiatValue = formatUsdAmount(
@@ -1538,7 +1654,13 @@ export default function App() {
         buyAmount,
         getTrustedTokenPrice(buyToken),
     )
-    const nativeToken = walletTokens.find(isNativeBnbToken) ?? null
+    const nativeToken = walletTokens.find((token) =>
+        isNativeEvmToken(token) &&
+        Number(token.chainId) === swapChainId,
+    ) ?? null
+    const nativeSymbol = activeChain?.nativeCurrency.symbol ?? 'native token'
+    const explorerUrl = activeChain?.blockExplorers?.default?.url ??
+        walletConfig.explorerUrl
     const executionMessage = getSwapExecutionMessage(execution.reason)
     const estimatedSwapFeeWei = (() => {
         try {
@@ -1617,7 +1739,7 @@ export default function App() {
                         <SearchIcon />
                     </button>
 
-                    <WalletNetworkButton />
+                    <PistachioWalletButton />
                     <WalletConnectionButton
                         walletState={walletState}
                         nativeBalance={nativeBalance}
@@ -1625,7 +1747,7 @@ export default function App() {
                         walletTokens={walletTokens}
                         settings={swapSettings}
                         selectedTokens={[sellToken, buyToken]}
-                        explorerUrl={walletConfig.explorerUrl}
+                        explorerUrl={explorerUrl}
                         onRefetch={async () => {
                             await Promise.all([
                                 nativeBalance.refetch(),
@@ -1636,10 +1758,12 @@ export default function App() {
                 </div>
             </header>
 
+            <PasskeyVaultTestPanel />
+
             <section className="swap-root">
                 <div className="swap-toolbar">
                     <nav className="swap-tabs">
-                        {tabs.map((tab) => (
+                        {[...tabs, 'Bridge'].map((tab) => (
                             <button
                                 key={tab}
                                 type="button"
@@ -1657,7 +1781,7 @@ export default function App() {
                         ))}
                     </nav>
 
-                    <SwapSettingsPopover
+                    {activeTab !== 'Bridge' && <SwapSettingsPopover
                         settings={swapSettings}
                         onSettingsChange={handleSettingsChange}
                         defaultSlippageBps={quoteConfig.defaultSlippageBps}
@@ -1670,9 +1794,19 @@ export default function App() {
                         >
                             <SettingsIcon />
                         </button>
-                    </SwapSettingsPopover>
+                    </SwapSettingsPopover>}
                 </div>
 
+                {activeTab === 'Bridge' ? (
+                    <CrossChainRoutePanel
+                        endpoint={crossChain.endpoint}
+                        account={walletAddress}
+                        walletChainId={walletState.chainId}
+                        onExecuteStep={handleCrossChainStep}
+                        onSignMessage={handleCrossChainAuthentication}
+                    />
+                ) : (
+                <>
                 <LayoutGroup id="swap-layout">
                     <div className="swap-panels">
                         <motion.section
@@ -1756,7 +1890,7 @@ export default function App() {
                             <div className="sell-token-position">
                                 <AnimatedTokenButton
                                     token={sellToken}
-                                    chainId={chain.id}
+                                    chainId={sellChainId}
                                     onClick={() =>
                                         openTokenSelector(
                                             'sell',
@@ -1864,7 +1998,7 @@ export default function App() {
                             <div className="buy-token-position">
                                 <AnimatedTokenButton
                                     token={buyToken}
-                                    chainId={chain.id}
+                                    chainId={buyChainId}
                                     onClick={() =>
                                         openTokenSelector(
                                             'buy',
@@ -1908,7 +2042,7 @@ export default function App() {
                 )}
 
                 {nativeBalance.status === 'error' && walletState.isConnected && walletState.isCorrectNetwork && (
-                    <p className="swap-status" role="status">Unable to verify the BNB balance. Quoting is disabled.</p>
+                    <p className="swap-status" role="status">Unable to verify the {nativeSymbol} balance. Quoting is disabled.</p>
                 )}
 
                 {executionMessage && nativeBalance.value === 0n && (
@@ -1925,6 +2059,8 @@ export default function App() {
                             'Wallet balances are temporarily unavailable.'}
                     </p>
                 )}
+                </>
+                )}
             </section>
 
             <AnimatePresence>
@@ -1933,7 +2069,7 @@ export default function App() {
                         side={
                             tokenSelectorSide
                         }
-                        chainId={chain.id}
+                        chainId={selectorChainId}
                         tokens={selectorMarketTokens}
                         walletTokens={
                             selectorWalletTokens
@@ -1959,6 +2095,9 @@ export default function App() {
                         }
                         onSearchChange={
                             setTokenSearch
+                        }
+                        onChainChange={
+                            setSelectorChainId
                         }
                         onSelect={
                             handleTokenSelect
@@ -1986,6 +2125,7 @@ export default function App() {
                 sellToken={sellToken}
                 buyToken={buyToken}
             />
+            <PistachioWalletController />
         </main>
     )
 }

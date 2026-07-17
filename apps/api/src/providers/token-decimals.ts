@@ -1,27 +1,10 @@
 import { normalizeAddress } from '../lib/address.js'
 import { fetchJson, isRecord } from '../lib/http.js'
+import { getServerRpcUrl } from '../token-discovery/context.js'
 
 type RpcResponse = {
     id: number
     result?: unknown
-}
-
-function getRpcUrl() {
-    const raw = process.env.BSC_RPC_URL?.trim()
-    if (!raw) return null
-
-    const url = new URL(raw)
-    const local = ['localhost', '127.0.0.1'].includes(url.hostname)
-
-    if (
-        url.username ||
-        url.password ||
-        (url.protocol !== 'https:' && !(local && url.protocol === 'http:'))
-    ) {
-        throw new Error('BSC_RPC_URL must be an HTTPS RPC URL.')
-    }
-
-    return url
 }
 
 function parseResponse(value: unknown): RpcResponse | null {
@@ -45,9 +28,11 @@ function parseDecimals(value: unknown) {
 }
 
 export async function getTokenDecimalsBatch({
+    chainId = 56,
     addresses,
     signal,
 }: {
+    chainId?: number
     addresses: string[]
     signal?: AbortSignal
 }): Promise<Map<string, number | null>> {
@@ -61,7 +46,7 @@ export async function getTokenDecimalsBatch({
     const result = new Map<string, number | null>(
         unique.map((address) => [address, null]),
     )
-    const url = getRpcUrl()
+    const url = getServerRpcUrl(chainId)
     if (!url || unique.length === 0) return result
 
     const maximumBatchSize = 50
@@ -83,7 +68,7 @@ export async function getTokenDecimalsBatch({
                 signal,
                 timeoutMs: 10_000,
                 retries: 1,
-                dedupeKey: `token-decimals:${batch.join(',')}`,
+                dedupeKey: `token-decimals:${chainId}:${batch.join(',')}`,
             })
             const responses = new Map<number, RpcResponse>()
 

@@ -48,6 +48,54 @@ function providerFeeRows(fees) {
     })
 }
 
+const metaMaskStatusText = {
+    disabled: 'Not connected',
+    'not-metamask': 'Not connected',
+    'not-connected': 'Not connected',
+    connecting: 'Connecting to MetaMask',
+    'scope-missing': 'BNB Chain permission required',
+    'account-mismatch': 'MetaMask account does not match',
+    'method-missing': 'Raw transaction signing not authorized',
+    'ready-unverified': 'Permission ready',
+    verified: 'Ready for sponsored signing',
+    unsupported: 'Unsupported by this MetaMask version',
+    error: 'Unsupported by this MetaMask version',
+}
+
+function MetaMaskSigningControls({ sponsorship, busy }) {
+    const signer = sponsorship.metaMaskSigner
+    if (!signer?.isMetaMask || signer.capability.status === 'disabled') return null
+    const connected = Boolean(signer.session)
+    const ready = signer.capability.rawTransactionSigningSupported
+    return (
+        <section className="gas-assist-multichain" aria-label="MetaMask sponsored signing">
+            <div className="gas-assist-multichain-heading">
+                <strong>Enable MetaMask sponsored signing</strong>
+                <span>{signer.loading ? 'Connecting to MetaMask' : metaMaskStatusText[signer.capability.status]}</span>
+            </div>
+            <p>MetaMask sponsored signing is experimental. PistachioSwap will verify the signed transaction and reject it if MetaMask changes the zero-gas price, recipient, amount, nonce, calldata, or other transaction fields.</p>
+            {signer.capability.status === 'account-mismatch' && (
+                <p className="gas-assist-address-mismatch">
+                    AppKit: {sponsorship.walletAddress ?? 'unknown'}<br />
+                    MetaMask signing: {signer.capability.account ?? 'unknown'}<br />
+                    Reconnect or select the matching MetaMask account.
+                </p>
+            )}
+            {signer.error && <GasAssistError error={signer.error} />}
+            <div className="gas-assist-multichain-actions">
+                {!connected && <button type="button" onClick={signer.connect} disabled={busy || signer.loading}>Connect MetaMask signing</button>}
+                <button type="button" onClick={signer.reconnect} disabled={busy || signer.loading}>Refresh MetaMask permissions</button>
+                {connected && <button type="button" onClick={signer.disconnect} disabled={busy || signer.loading}>Disconnect MetaMask signing</button>}
+            </div>
+            {ready && sponsorship.phase === 'signer-setup' && (
+                <button className="gas-assist-primary" type="button" onClick={sponsorship.retryStart} disabled={busy || signer.loading}>
+                    Continue Gas Assist review
+                </button>
+            )}
+        </section>
+    )
+}
+
 export default function GasAssistPrepaymentDialog({
     sponsorship,
     sellToken,
@@ -128,6 +176,7 @@ export default function GasAssistPrepaymentDialog({
                     )}
 
                     {sponsorship.phase === 'authenticating' && <p className="gas-assist-status" role="status">Authenticate your wallet to request an authoritative five-minute review.</p>}
+                    <MetaMaskSigningControls sponsorship={sponsorship} busy={busy} />
                     {sponsorship.phase === 'unsupported' && <GasAssistError error={sponsorship.error} />}
                     {sponsorship.error && sponsorship.phase !== 'unsupported' && <GasAssistError error={sponsorship.error} />}
                     {orderExpired && <p className="gas-assist-status" role="status">This order or action expired. Request a fresh review.</p>}
