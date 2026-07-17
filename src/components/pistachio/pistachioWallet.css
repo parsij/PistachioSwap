@@ -7,6 +7,10 @@
     animation: pistachio-wallet-fade-in 160ms ease-out;
 }
 
+.hidden-on-mobile {
+    display: none;
+}
+
 .pistachio-session-lock-overlay {
     position: fixed;
     z-index: 1020;
@@ -212,8 +216,8 @@
 .pistachio-wallet-button-row { display: flex; flex-wrap: wrap; gap: 9px; }
 .pistachio-wallet-button-row > * { min-width: 0; flex: 1 1 160px; }
 .pistachio-wallet-entry-actions { display: grid; gap: 10px; }
-.pistachio-wallet-dialog .pistachio-wallet-entry-button { position: relative; width: 100%; min-height: 72px; justify-content: flex-start; padding: 13px 14px; text-align: left; }
-.pistachio-wallet-entry-button > svg:first-child { width: 21px; height: 21px; color: #a6d49b; }
+.pistachio-wallet-dialog .pistachio-wallet-entry-button { position: relative; width: 100%; min-height: 72px; justify-content: flex-start; padding: 13px 14px; text-align: left; background: #1b1921 !important;}
+.pistachio-wallet-entry-button > svg:first-child { width: 21px; height: 21px; color:lightgray !important; }
 .pistachio-wallet-entry-button > span:not(.pistachio-wallet-recommended) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
 .pistachio-wallet-entry-button strong { font-size: 14px; line-height: 1.3; }
 .pistachio-wallet-entry-button small { color: #aaa; font-size: 12px; font-weight: 450; line-height: 1.4; }
@@ -273,7 +277,7 @@
 .pistachio-wallet-dropzone:focus-within { outline: 3px solid rgb(138 194 124 / 38%); outline-offset: 2px; border-color: #9dce91; }
 
 .pistachio-wallet-identity { display: flex; min-width: 0; align-items: center; gap: 12px; padding: 13px; border-radius: 11px; background: #232323; }
-.pistachio-wallet-identity-icon { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #243226; color: #a6d49b; }
+.pistachio-wallet-identity-icon { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #243226; color:lightgray; }
 .pistachio-wallet-identity-icon svg { width: 20px; height: 20px; }
 .pistachio-wallet-identity > div { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
 .pistachio-wallet-identity strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
@@ -361,11 +365,8 @@
 
 /* Modern wallet shell: layered depth, restrained color, and transaction-first hierarchy. */
 .pistachio-wallet-overlay {
-    background:
-        radial-gradient(circle at 18% 12%, rgb(121 73 255 / 14%), transparent 34%),
-        radial-gradient(circle at 82% 88%, rgb(102 229 164 / 10%), transparent 30%),
-        rgb(0 0 0 / 82%);
-    backdrop-filter: blur(18px) saturate(.82);
+
+    backdrop-filter: blur(3px) saturate(.8);
 }
 
 .pistachio-wallet-dialog {
@@ -389,7 +390,7 @@
     background: rgb(17 17 19 / 82%);
     backdrop-filter: blur(18px);
 }
-
+.pistachio-wallet-overlay,
 .pistachio-wallet-header-brand,
 .pistachio-wallet-header-actions {
     display: flex;
@@ -400,20 +401,20 @@
 
 .pistachio-wallet-header-mark {
     display: grid !important;
-    width: 42px;
-    height: 42px;
+    width: 43px;
+    height: 43px;
     flex: 0 0 auto;
     place-items: center;
-    margin: 0 !important;
-    border: 1px solid rgb(182 240 156 / 24%);
-    border-radius: 14px;
-    background:
-        linear-gradient(145deg, rgb(182 240 156 / 22%), rgb(109 209 161 / 7%));
-    color: #b6f09c !important;
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 10%);
+    margin: 0.2rem !important;
 }
 
-.pistachio-wallet-header-mark svg { width: 20px; height: 20px; }
+/*@media (min-width: 768px) {*/
+/*    .pistachio-wallet-header-mark {*/
+/*        display: grid !important;*/
+/*    }*/
+/*}*/
+
+
 .pistachio-wallet-header-brand > div { min-width: 0; }
 .pistachio-wallet-header-brand > div > span {
     margin-bottom: 2px;
@@ -668,7 +669,6 @@
         animation-name: pistachio-wallet-sheet-in;
     }
     .pistachio-wallet-dialog > header { min-height: 66px; padding: 10px 12px 10px 16px; }
-    .pistachio-wallet-header-mark { width: 38px; height: 38px; border-radius: 12px; }
     .pistachio-wallet-network-pill { display: none !important; }
     .pistachio-wallet-stack,
     .pistachio-wallet-review-body { gap: 14px; padding: 17px 16px calc(18px + env(safe-area-inset-bottom)); }

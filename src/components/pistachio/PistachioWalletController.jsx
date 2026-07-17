@@ -16,7 +16,7 @@ import {
     ShieldAlert,
     ShieldCheck,
     Trash2,
-    WalletCards,
+    WalletCards, WalletIcon,
     X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -24,6 +24,7 @@ import { createPortal } from 'react-dom'
 
 import { getPistachioWalletManager } from '../../wallet/pistachio/walletManager.js'
 import './pistachioWallet.css'
+import PistachioLogo from '../../../public/icons/PistachioLogo.svg'
 
 const manager = getPistachioWalletManager()
 const CRITICAL_PHASES = new Set(['registering-passkey', 'unlocking', 'persisting'])
@@ -271,7 +272,7 @@ function formatLastUsed(value) {
 function WalletIdentity({ selected = false, vault }) {
     return (
         <div className="pistachio-wallet-identity">
-            <span className="pistachio-wallet-identity-icon"><WalletCards aria-hidden="true" /></span>
+            <span className="pistachio-wallet-identity-icon"><WalletIcon aria-hidden="true" /></span>
             <div>
                 <strong>{vault.name}</strong>
                 <code>{shortenAddress(vault.address)}</code>
@@ -1174,7 +1175,7 @@ export default function PistachioWalletController() {
             await manager.unlock()
             manager.close()
         } catch {
-            // The restored ciphertext remains saved and the manager publishes a safe unlock error.
+            // The restored ciphertext remains saved, and the manager publishes a safe unlocked error.
         }
     }
 
@@ -1204,8 +1205,10 @@ export default function PistachioWalletController() {
                     >
                         <header>
                             <div className="pistachio-wallet-header-brand">
-                                <span className="pistachio-wallet-header-mark" aria-hidden="true"><KeyRound /></span>
-                                <div><span>Self-custodial wallet</span><Dialog.Title ref={titleRef} tabIndex={-1}>Pistachio Wallet</Dialog.Title></div>
+                            <span className="pistachio-wallet-header-mark">
+                              <img src={PistachioLogo} alt="Pistachio Logo" />
+                            </span>
+                                <div><Dialog.Title ref={titleRef} tabIndex={-1} className={"pt-1 "}>Pistachio Wallet</Dialog.Title></div>
                             </div>
                             <div className="pistachio-wallet-header-actions">
                                 <button type="button" aria-label="Close Pistachio Wallet" onClick={requestClose}><X aria-hidden="true" /></button>

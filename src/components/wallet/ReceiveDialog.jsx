@@ -38,7 +38,7 @@ export default function ReceiveDialog({ open, onOpenChange, address }) {
                             fgColor="#191919"
                             title={`Receive at ${address}`}
                         />
-                        <img src="/PistachioLogo.svg" alt="" className="receive-brand-mark" />
+                        <img src="/icons/PistachioLogo.svg" alt="" className="receive-brand-mark" />
                     </div>
                     <strong className="receive-short-address">{shortenAddress(address, 6)}</strong>
                     <button type="button" className="receive-address-field" onClick={copyAddress}>
