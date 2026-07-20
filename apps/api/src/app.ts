@@ -16,6 +16,7 @@ import { tokenDetailsRoutes } from './modules/token-details.js'
 import { walletTokenRoutes } from './modules/wallet-tokens.js'
 import { sponsorshipRoutes } from './modules/sponsorship.js'
 import { sponsorshipAdminRoutes } from './modules/sponsorship-admin.js'
+import { sponsorshipRefundAdminRoutes } from './modules/sponsorship-refunds-admin.js'
 import { ACTIVE_TOKEN_DISCOVERY_CHAINS } from './token-discovery/registry.js'
 
 const consoleTimeFormatter = new Intl.DateTimeFormat('en-US', {
@@ -71,6 +72,7 @@ export function createApp() {
     app.register(gasAssistRoutes)
     app.register(sponsorshipRoutes)
     app.register(sponsorshipAdminRoutes)
+    app.register(sponsorshipRefundAdminRoutes)
 
     app.addHook('onReady', async () => {
         await assertGasAssistReady()
