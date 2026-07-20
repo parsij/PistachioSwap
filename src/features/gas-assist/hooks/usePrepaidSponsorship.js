@@ -17,7 +17,6 @@ import {
     signPreparedSponsoredTransaction,
 } from '../services/rawTransactionSigning.js'
 import { isUserRejectedError } from '../../../services/swapTransaction.js'
-import { useMetaMaskMultichainSigner } from './useMetaMaskMultichainSigner.js'
 
 const initial = {
     open: false,
@@ -57,15 +56,7 @@ export function usePrepaidSponsorship({
         () => detectRawTransactionSigning({ connector: connection.connector, walletClient }),
         [connection.connector, walletClient],
     )
-    const metaMaskSigner = useMetaMaskMultichainSigner({
-        appKitAddress: walletAddress,
-        authenticatedWalletAddress: walletAddress,
-        connector: connection.connector,
-        appKitConnected: Boolean(connection.connector && walletAddress),
-    })
-    const capability = localCapability.rawTransactionSigningSupported
-        ? localCapability
-        : metaMaskSigner.capability
+    const capability = localCapability
 
     useEffect(() => {
         walletEpochRef.current += 1
@@ -98,19 +89,18 @@ export function usePrepaidSponsorship({
     const start = useCallback(async () => {
         const walletEpoch = walletEpochRef.current
         setState({ ...initial, open: true, phase: 'authenticating', config })
-        if (!capability.rawTransactionSigningSupported) {
-            if (metaMaskSigner.isMetaMask && metaMaskSigner.capability.status !== 'disabled') {
-                setState({ ...initial, open: true, phase: 'signer-setup', config })
-                return
-            }
+        if (
+            connection.connector?.id !== 'pistachio-local' ||
+            !capability.rawTransactionSigningSupported
+        ) {
             setState({
                 ...initial,
                 open: true,
                 phase: 'unsupported',
                 config,
                 error: {
-                    code: 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED',
-                    message: 'This wallet cannot sign a private sponsored transaction without broadcasting it. Use a supported wallet or pay normal BNB gas.',
+                    code: 'PISTACHIO_WALLET_REQUIRED',
+                    message: 'Gas Assist requires Pistachio Wallet.',
                 },
             })
             return
@@ -142,7 +132,7 @@ export function usePrepaidSponsorship({
                 error,
             })
         }
-    }, [buyToken, capability.rawTransactionSigningSupported, config, grossInputAmount, metaMaskSigner.capability.status, metaMaskSigner.isMetaMask, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
+    }, [buyToken, capability.rawTransactionSigningSupported, config, connection.connector?.id, grossInputAmount, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
 
     const signIntent = useCallback(async (action) => {
         const order = state.order
@@ -161,12 +151,11 @@ export function usePrepaidSponsorship({
                 walletClient,
                 preparedTransaction: intent.transaction,
                 authenticatedWalletAddress: walletAddress,
-                multichainAccount: capability.account,
-                isMetaMask: metaMaskSigner.isMetaMask,
+                multichainAccount: walletAddress,
                 submitSignedTransaction: async (signedRawTransaction) => {
                     if (walletEpochRef.current !== walletEpoch) {
                         const error = new Error('The connected wallet changed during signing.')
-                        error.code = 'METAMASK_MULTICHAIN_ACCOUNT_MISMATCH'
+                        error.code = 'PISTACHIO_ACCOUNT_MISMATCH'
                         throw error
                     }
                     if (Date.parse(intent.expiresAt) <= Date.now()) {
@@ -197,7 +186,7 @@ export function usePrepaidSponsorship({
                 error,
             }))
         }
-    }, [capability, metaMaskSigner.isMetaMask, quoteEndpoint, state.order, walletAddress, walletClient])
+    }, [capability, quoteEndpoint, state.order, walletAddress, walletClient])
 
     const requestContinuation = useCallback(async () => {
         const sessionToken = sessionTokenRef.current
@@ -278,7 +267,7 @@ export function usePrepaidSponsorship({
         ...state,
         config,
         capability,
-        metaMaskSigner,
+        metaMaskSigner: null,
         walletAddress,
         rawSigningTransport: capability.transport,
         retryStart: start,
