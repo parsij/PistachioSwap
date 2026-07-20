@@ -57,6 +57,26 @@ export function buildPaymentTransfer(treasury: Address, amount: bigint) {
 }
 
 export function createPrepaidChainClient() {
+    const priceGasLimit = async (gasLimit: bigint, maximumGas: bigint) => {
+        if (gasLimit <= 0n || gasLimit > maximumGas) {
+            throw new GasAssistError('SPONSORED_GAS_CAP_EXCEEDED', 'The quoted transaction exceeds its gas cap.', 409)
+        }
+        const client = publicClient()
+        const [gasPrice, bnbPrice] = await Promise.all([
+            client.getGasPrice(),
+            getNativeBnbPrice(),
+        ])
+        if (!bnbPrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A fresh trusted BNB price is unavailable.', 503)
+        const bnbPriceUsdMicros = parseFixed(bnbPrice)
+        const gasUsdMicros = ceilDiv(gasLimit * gasPrice * bnbPriceUsdMicros, 10n ** 18n)
+        return {
+            gasLimit,
+            currentGasPrice: gasPrice,
+            gasUsdMicros,
+            observedAt: new Date(),
+        }
+    }
+
     return {
         async getCode(address: Address) {
             return publicClient().getCode({ address })
@@ -88,34 +108,22 @@ export function createPrepaidChainClient() {
             wallet,
             to,
             data,
+            value = 0n,
             maximumGas,
         }: {
             wallet: Address
             to: Address
             data: Hex
+            value?: bigint
             maximumGas: bigint
         }) {
             const client = publicClient()
-            await client.call({ account: wallet, to, data, value: 0n, gasPrice: 0n })
-            const estimated = await client.estimateGas({ account: wallet, to, data, value: 0n, gasPrice: 0n })
+            await client.call({ account: wallet, to, data, value, gasPrice: 0n })
+            const estimated = await client.estimateGas({ account: wallet, to, data, value, gasPrice: 0n })
             const gasLimit = ceilDiv(estimated * 12_000n, 10_000n)
-            if (gasLimit > maximumGas) {
-                throw new GasAssistError('SPONSORED_GAS_CAP_EXCEEDED', 'The simulated transaction exceeds its gas cap.', 409)
-            }
-            const [gasPrice, bnbPrice] = await Promise.all([
-                client.getGasPrice(),
-                getNativeBnbPrice(),
-            ])
-            if (!bnbPrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A fresh trusted BNB price is unavailable.', 503)
-            const bnbPriceUsdMicros = parseFixed(bnbPrice)
-            const gasUsdMicros = ceilDiv(gasLimit * gasPrice * bnbPriceUsdMicros, 10n ** 18n)
-            return {
-                gasLimit,
-                currentGasPrice: gasPrice,
-                gasUsdMicros,
-                observedAt: new Date(),
-            }
+            return priceGasLimit(gasLimit, maximumGas)
         },
+        priceGasLimit,
         async getReceipt(hash: Hex) {
             return publicClient().getTransactionReceipt({ hash })
         },
