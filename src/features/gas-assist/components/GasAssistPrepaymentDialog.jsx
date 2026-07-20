@@ -73,7 +73,7 @@ export default function GasAssistPrepaymentDialog({
     const requiredAction = order?.currentRequiredAction
     const showPayment = sponsorship.phase === 'review' || requiredAction === 'prepare-payment'
     const showApproval = requiredAction === 'prepare-approval'
-    const showContinuationRequest = requiredAction === 'request-fresh-zero-x-quote'
+    const showContinuationRequest = requiredAction === 'prepare-sponsored-swap'
     const showContinuationSign = sponsorship.phase === 'continuation-ready'
 
     return (
@@ -139,7 +139,7 @@ export default function GasAssistPrepaymentDialog({
                             Current signing intent expires in <Countdown expiresAt={sponsorship.intentExpiresAt} />
                         </p>
                     )}
-                    {sponsorship.phase === 'zero-x-signing' && <p className="gas-assist-status" role="status">Confirm the fresh 0x trade signature in Pistachio Wallet.</p>}
+                    {sponsorship.phase === 'swap-signing' && <p className="gas-assist-status" role="status">Confirm the exact sponsored swap transaction in Pistachio Wallet.</p>}
                     {sponsorship.phase === 'completed' && <p className="gas-assist-status" role="status">Sponsored swap confirmed.</p>}
 
                     {!orderExpired && showPayment && (
@@ -154,12 +154,12 @@ export default function GasAssistPrepaymentDialog({
                     )}
                     {!orderExpired && showContinuationRequest && (
                         <button className="gas-assist-primary" type="button" onClick={sponsorship.requestContinuation} disabled={busy}>
-                            Request fresh 0x quote
+                            Prepare exact sponsored swap
                         </button>
                     )}
                     {!orderExpired && showContinuationSign && (
                         <button className="gas-assist-primary" type="button" onClick={sponsorship.signContinuation} disabled={busy}>
-                            Sign 0x trade
+                            Sign exact sponsored swap
                         </button>
                     )}
                 </Dialog.Content>
