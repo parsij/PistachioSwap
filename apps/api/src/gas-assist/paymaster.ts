@@ -41,9 +41,10 @@ function legacyConnection(): PrivatePolicyConnection {
 
 function prepaidConnection(): PrivatePolicyConnection {
     const config = getApiConfig().sponsorship
+    const baseUrl = config.privateRpcBaseUrl.replace(/\/+$/, '')
     return {
         rpcUrl: config.apiKey
-            ? `${config.privateRpcBaseUrl}/${encodeURIComponent(config.apiKey)}/bsc-mainnet/megafuel`
+            ? `${baseUrl}/${encodeURIComponent(config.apiKey)}/megafuel/56`
             : null,
         policyId: config.privatePolicyUuid,
         userAgent: config.userAgent,
@@ -86,7 +87,7 @@ export function createPaymasterClient(
                 if (!response.ok || body.error) {
                     throw new GasAssistError(
                         body.error?.code === -32601 ? 'PAYMASTER_METHOD_UNAVAILABLE' : 'PAYMASTER_REJECTED',
-                        'The paymaster rejected the exact sponsored approval.',
+                        'The paymaster rejected the exact sponsored transaction.',
                         response.status === 429 ? 429 : 502,
                     )
                 }
