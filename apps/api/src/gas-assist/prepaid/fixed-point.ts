@@ -116,11 +116,17 @@ export function calculatePrepayment({
         tradeNotionalUsdMicros * BigInt(platformFeeBps),
         BPS_DENOMINATOR,
     )
-    const commercialFeeUsdMicros = fixedFeeUsdMicros + platformFeeUsdMicros
+    const uncappedCommercialFee = fixedFeeUsdMicros + platformFeeUsdMicros
+    const commercialFeeUsdMicros = uncappedCommercialFee < commercialFeeCapUsdMicros
+        ? uncappedCommercialFee
+        : commercialFeeCapUsdMicros
 
     return {
-        fixedServiceFeeUsdMicros: fixedFeeUsdMicros,
-        platformFeeUsdMicros,
+        fixedServiceFeeUsdMicros,
+        platformFeeUsdMicros:
+            commercialFeeUsdMicros > fixedFeeUsdMicros
+                ? commercialFeeUsdMicros - fixedFeeUsdMicros
+                : 0n,
         commercialFeeUsdMicros,
         estimatedSponsoredGasUsdMicros,
         gasReserveUsdMicros,
