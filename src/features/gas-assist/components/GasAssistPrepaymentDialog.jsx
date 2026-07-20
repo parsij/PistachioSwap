@@ -48,54 +48,6 @@ function providerFeeRows(fees) {
     })
 }
 
-const metaMaskStatusText = {
-    disabled: 'Not connected',
-    'not-metamask': 'Not connected',
-    'not-connected': 'Not connected',
-    connecting: 'Connecting to MetaMask',
-    'scope-missing': 'BNB Chain permission required',
-    'account-mismatch': 'MetaMask account does not match',
-    'method-missing': 'Raw transaction signing not authorized',
-    'ready-unverified': 'Permission ready',
-    verified: 'Ready for sponsored signing',
-    unsupported: 'Unsupported by this MetaMask version',
-    error: 'Unsupported by this MetaMask version',
-}
-
-function MetaMaskSigningControls({ sponsorship, busy }) {
-    const signer = sponsorship.metaMaskSigner
-    if (!signer?.isMetaMask || signer.capability.status === 'disabled') return null
-    const connected = Boolean(signer.session)
-    const ready = signer.capability.rawTransactionSigningSupported
-    return (
-        <section className="gas-assist-multichain" aria-label="MetaMask sponsored signing">
-            <div className="gas-assist-multichain-heading">
-                <strong>Enable MetaMask sponsored signing</strong>
-                <span>{signer.loading ? 'Connecting to MetaMask' : metaMaskStatusText[signer.capability.status]}</span>
-            </div>
-            <p>MetaMask sponsored signing is experimental. PistachioSwap will verify the signed transaction and reject it if MetaMask changes the zero-gas price, recipient, amount, nonce, calldata, or other transaction fields.</p>
-            {signer.capability.status === 'account-mismatch' && (
-                <p className="gas-assist-address-mismatch">
-                    AppKit: {sponsorship.walletAddress ?? 'unknown'}<br />
-                    MetaMask signing: {signer.capability.account ?? 'unknown'}<br />
-                    Reconnect or select the matching MetaMask account.
-                </p>
-            )}
-            {signer.error && <GasAssistError error={signer.error} />}
-            <div className="gas-assist-multichain-actions">
-                {!connected && <button type="button" onClick={signer.connect} disabled={busy || signer.loading}>Connect MetaMask signing</button>}
-                <button type="button" onClick={signer.reconnect} disabled={busy || signer.loading}>Refresh MetaMask permissions</button>
-                {connected && <button type="button" onClick={signer.disconnect} disabled={busy || signer.loading}>Disconnect MetaMask signing</button>}
-            </div>
-            {ready && sponsorship.phase === 'signer-setup' && (
-                <button className="gas-assist-primary" type="button" onClick={sponsorship.retryStart} disabled={busy || signer.loading}>
-                    Continue Gas Assist review
-                </button>
-            )}
-        </section>
-    )
-}
-
 /** Renders prepaid sponsorship review/status and invokes only supplied semantic actions. */
 export default function GasAssistPrepaymentDialog({
     sponsorship,
@@ -132,7 +84,7 @@ export default function GasAssistPrepaymentDialog({
                     <div className="gas-assist-heading">
                         <div>
                             <Dialog.Title>Gas Assist Prepayment</Dialog.Title>
-                            <Dialog.Description>Sponsored by PistachioSwap via NodeReal MegaFuel</Dialog.Description>
+                            <Dialog.Description>Pistachio Wallet exact-transaction sponsorship via NodeReal MegaFuel</Dialog.Description>
                         </div>
                         <Dialog.Close asChild>
                             <button className="gas-assist-close" type="button" disabled={busy} aria-label="Close">
@@ -147,58 +99,57 @@ export default function GasAssistPrepaymentDialog({
                                 <TokenIcon token={paymentToken} />
                                 <div>
                                     <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {paymentToken.symbol}</strong>
-                                    <span>Sponsorship payment · {String(order.paymentTokenReason).replaceAll('-', ' ')}</span>
+                                    <span>Exact sponsorship payment · {String(order.paymentTokenReason).replaceAll('-', ' ')}</span>
                                 </div>
                             </div>
                             <div className="gas-assist-details">
                                 <div><span>Gross amount supplied</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {sellToken?.symbol}</strong></div>
-                                <div><span>Sponsorship payment</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {paymentToken.symbol}</strong></div>
+                                <div><span>Exact sponsorship payment</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {paymentToken.symbol}</strong></div>
                                 <div><span>Payment transfer gas</span><strong>{formatUsdMicros(order.estimatedPaymentGasUsdMicros)}</strong></div>
                                 <div><span>Approval gas</span><strong>{formatUsdMicros(order.estimatedApprovalGasUsdMicros)}</strong></div>
-                                {BigInt(order.estimatedSwapGasUsdMicros ?? 0) > 0n && <div><span>Normal swap gas</span><strong>{formatUsdMicros(order.estimatedSwapGasUsdMicros)}</strong></div>}
+                                {BigInt(order.estimatedSwapGasUsdMicros ?? 0) > 0n && <div><span>Swap gas</span><strong>{formatUsdMicros(order.estimatedSwapGasUsdMicros)}</strong></div>}
                                 <div><span>1.5× gas reserve</span><strong>{formatUsdMicros(order.gasReserveUsdMicros)}</strong></div>
-                                <div><span>Fixed service fee</span><strong>$0.067</strong></div>
+                                <div><span>Fixed service fee</span><strong>{formatUsdMicros(order.fixedServiceFeeUsdMicros)}</strong></div>
                                 <div><span>3% trade fee</span><strong>{formatUsdMicros(order.platformFeeUsdMicros)}</strong></div>
-                                <div><span>Commercial fee cap</span><strong>$5</strong></div>
+                                {BigInt(order.conversionCostUsdMicros ?? 0) > 0n && <div><span>Token-to-BNB conversion cost</span><strong>{formatUsdMicros(order.conversionCostUsdMicros)}</strong></div>}
                                 <div><span>Total prepayment</span><strong>{formatUsdMicros(order.totalPrepaymentUsdMicros)}</strong></div>
                                 <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {sellToken?.symbol}</strong></div>
                                 <div><span>Expected output</span><strong>{formatRaw(order.expectedOutputRaw, buyToken?.decimals)} {buyToken?.symbol}</strong></div>
                                 <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {buyToken?.symbol}</strong></div>
                                 {providerFeeRows(order.providerFees).map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
-                                <div><span>Order expires</span><strong><Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} /></strong></div>
+                                <div><span>Current authorization expires</span><strong><Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} /></strong></div>
                             </div>
                             <div className="gas-assist-disclosure">
-                                <strong>Your first sponsored transaction pays the Gas Assist charge to PistachioSwap. After confirmation, that payment authorizes only the exact approval and swap shown here.</strong>
-                                <span>These actions are separate transactions, not one atomic transaction.</span>
-                                <span>The $0.067 service fee is earned after payment confirms. The 3% fee settles only after the swap succeeds.</span>
-                                <span>Unused gas margin and an unsettled 3% reserve become non-withdrawable sponsorship credit tied to this wallet.</span>
+                                <strong>Pistachio Wallet signs only the exact backend-prepared token, recipient, amount, nonce, calldata, gas limit, and zero gas price.</strong>
+                                <span>The backend rejects any changed or user-created transaction before it reaches MegaFuel.</span>
+                                <span>The approval is not prepared until the treasury confirms the exact payment amount.</span>
+                                <span>Payment, approval, and swap are separate transactions and are not atomic.</span>
                             </div>
                         </>
                     )}
 
-                    {sponsorship.phase === 'authenticating' && <p className="gas-assist-status" role="status">Authenticate your wallet to request an authoritative five-minute review.</p>}
-                    <MetaMaskSigningControls sponsorship={sponsorship} busy={busy} />
+                    {sponsorship.phase === 'authenticating' && <p className="gas-assist-status" role="status">Authenticate Pistachio Wallet to request an authoritative review.</p>}
                     {sponsorship.phase === 'unsupported' && <GasAssistError error={sponsorship.error} />}
                     {sponsorship.error && sponsorship.phase !== 'unsupported' && <GasAssistError error={sponsorship.error} />}
                     {orderExpired && <p className="gas-assist-status" role="status">This order or action expired. Request a fresh review.</p>}
-                    {sponsorship.phase === 'payment-signing' && <p className="gas-assist-status" role="status">Confirm the exact payment transaction signature in your wallet.</p>}
-                    {sponsorship.phase === 'approval-signing' && <p className="gas-assist-status" role="status">Confirm the exact approval transaction signature in your wallet.</p>}
+                    {sponsorship.phase === 'payment-signing' && <p className="gas-assist-status" role="status">Confirm the exact payment transaction in Pistachio Wallet.</p>}
+                    {sponsorship.phase === 'approval-signing' && <p className="gas-assist-status" role="status">Confirm the exact approval transaction in Pistachio Wallet.</p>}
                     {sponsorship.intentExpiresAt && (
                         <p className="gas-assist-status" role="status">
                             Current signing intent expires in <Countdown expiresAt={sponsorship.intentExpiresAt} />
                         </p>
                     )}
-                    {sponsorship.phase === 'zero-x-signing' && <p className="gas-assist-status" role="status">Confirm the fresh 0x trade signature in your wallet.</p>}
+                    {sponsorship.phase === 'zero-x-signing' && <p className="gas-assist-status" role="status">Confirm the fresh 0x trade signature in Pistachio Wallet.</p>}
                     {sponsorship.phase === 'completed' && <p className="gas-assist-status" role="status">Sponsored swap confirmed.</p>}
 
                     {!orderExpired && showPayment && (
                         <button className="gas-assist-primary" type="button" onClick={sponsorship.signPayment} disabled={busy}>
-                            Sign payment transaction
+                            Sign exact payment transaction
                         </button>
                     )}
                     {!orderExpired && showApproval && (
                         <button className="gas-assist-primary" type="button" onClick={sponsorship.signApproval} disabled={busy}>
-                            Sign approval transaction
+                            Sign exact approval transaction
                         </button>
                     )}
                     {!orderExpired && showContinuationRequest && (
