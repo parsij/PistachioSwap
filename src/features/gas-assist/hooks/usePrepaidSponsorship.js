@@ -9,7 +9,6 @@ import {
     prepareSponsorshipApproval,
     prepareSponsorshipContinuation,
     prepareSponsorshipPayment,
-    signAndSubmitPrepaidZeroX,
     submitSponsorshipIntent,
 } from '../services/prepaidSponsorship.js'
 import {
@@ -205,24 +204,54 @@ export function usePrepaidSponsorship({
     }, [quoteEndpoint, state.order])
 
     const signContinuation = useCallback(async () => {
-        if (!state.continuation || !walletClient || !walletAddress) return
+        const intent = state.continuation
+        const sessionToken = sessionTokenRef.current
+        const walletEpoch = walletEpochRef.current
+        if (!intent || !sessionToken || !walletClient || !walletAddress) return
         try {
-            setState((current) => ({ ...current, phase: 'zero-x-signing', error: null }))
-            await signAndSubmitPrepaidZeroX({
-                quoteEndpoint,
-                walletAddress,
+            setState((current) => ({ ...current, phase: 'swap-signing', error: null, intentExpiresAt: intent.expiresAt }))
+            await signPreparedSponsoredTransaction({
+                transport: capability.transport,
+                capability,
                 walletClient,
-                quote: state.continuation,
+                preparedTransaction: intent.transaction,
+                authenticatedWalletAddress: walletAddress,
+                multichainAccount: walletAddress,
+                submitSignedTransaction: async (signedRawTransaction) => {
+                    if (walletEpochRef.current !== walletEpoch) {
+                        const error = new Error('The connected wallet changed during signing.')
+                        error.code = 'PISTACHIO_ACCOUNT_MISMATCH'
+                        throw error
+                    }
+                    if (Date.parse(intent.expiresAt) <= Date.now()) {
+                        const error = new Error('The sponsored swap intent expired. Request a fresh intent.')
+                        error.code = 'INTENT_EXPIRED'
+                        throw error
+                    }
+                    if (submittedIntentIdsRef.current.has(intent.intentId)) {
+                        const error = new Error('This sponsored swap intent was already submitted.')
+                        error.code = 'INTENT_ALREADY_USED'
+                        throw error
+                    }
+                    submittedIntentIdsRef.current.add(intent.intentId)
+                    return submitSponsorshipIntent(
+                        quoteEndpoint,
+                        sessionToken,
+                        intent.intentId,
+                        signedRawTransaction,
+                    )
+                },
             })
-            setState((current) => ({ ...current, phase: 'zero-x-submitted' }))
+            setState((current) => ({ ...current, phase: 'swap-submitted', intentExpiresAt: null }))
         } catch (error) {
             setState((current) => ({
                 ...current,
                 phase: isUserRejectedError(error) ? 'cancelled' : 'failed',
+                intentExpiresAt: null,
                 error,
             }))
         }
-    }, [quoteEndpoint, state.continuation, walletAddress, walletClient])
+    }, [capability, quoteEndpoint, state.continuation, walletAddress, walletClient])
 
     useEffect(() => {
         const sessionToken = sessionTokenRef.current
