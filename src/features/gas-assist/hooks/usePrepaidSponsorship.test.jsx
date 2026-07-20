@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('wagmi', () => ({
-    useConnection: () => ({ connector: { id: 'test' } }),
-    useWalletClient: () => ({ data: { account: { address: '0x1' } } }),
+    useConnection: () => ({ connector: { id: 'pistachio-local' } }),
+    useWalletClient: () => ({ data: { account: { address: '0x1' }, request: vi.fn() } }),
 }))
 
 vi.mock('../services/prepaidSponsorship.js', () => ({
@@ -30,17 +30,11 @@ vi.mock('../services/prepaidSponsorship.js', () => ({
 vi.mock('../services/rawTransactionSigning.js', () => ({
     detectRawTransactionSigning: () => ({
         rawTransactionSigningSupported: true,
-        transport: 'wallet-client',
+        method: 'eth_signTransaction',
+        transport: 'pistachio-local',
         account: null,
     }),
     signPreparedSponsoredTransaction: vi.fn(),
-}))
-
-vi.mock('./useMetaMaskMultichainSigner.js', () => ({
-    useMetaMaskMultichainSigner: () => ({
-        isMetaMask: false,
-        capability: { status: 'disabled', rawTransactionSigningSupported: false },
-    }),
 }))
 
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
@@ -113,5 +107,12 @@ describe('prepaid sponsorship async ownership', () => {
         expect(mocks.createOrder).not.toHaveBeenCalled()
         expect(result.current.order).toBeNull()
         expect(result.current.phase).toBe('idle')
+    })
+
+    it('exposes no external wallet signer state', async () => {
+        const { result } = setup()
+        await waitFor(() => expect(result.current.config).toEqual({ enabled: true }))
+        expect(result.current.capability.transport).toBe('pistachio-local')
+        expect(result.current.metaMaskSigner).toBeNull()
     })
 })
