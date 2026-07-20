@@ -122,7 +122,7 @@ export function calculatePrepayment({
         : commercialFeeCapUsdMicros
 
     return {
-        fixedServiceFeeUsdMicros,
+        fixedServiceFeeUsdMicros: fixedFeeUsdMicros,
         platformFeeUsdMicros:
             commercialFeeUsdMicros > fixedFeeUsdMicros
                 ? commercialFeeUsdMicros - fixedFeeUsdMicros
