@@ -1,3 +1,5 @@
+Hello World!
+
 # PistachioSwap Lite
 
 React/Vite frontend with a Fastify/TypeScript backend for BNB Chain token
