@@ -451,17 +451,8 @@ export function useCrossChainController({
         }
 
         try {
-            const preparedRoute = routes.preparedRoute ?? await routes.prepare(reviewRoute)
-            if (!preparedRoute) return
-
-            // Prepared-route normalization intentionally contains execution data, but
-            // older responses do not repeat every quote identity field. Bind the
-            // prepared transactions back to the exact reviewed quote before the
-            // pre-send validation runs.
-            let executionRoute = mergePreparedRouteIdentity(reviewRoute, preparedRoute)
-            const preparedBindingError = routeBindingError(executionRoute)
-            if (preparedBindingError) throw new Error(preparedBindingError)
-
+            let executionRoute = routes.preparedRoute ?? await routes.prepare(reviewRoute)
+            if (!executionRoute) return
             let steps = getOrderedEvmSteps(executionRoute)
             let sourceClaimed = false
             let refreshedAfterApproval = false
@@ -602,33 +593,6 @@ export function useCrossChainController({
                 isCrossChainRouteExpired(reviewRoute) || routes.phase === 'claiming' ||
                 transactionStatus === 'pending' || transactionStatus === 'submitted',
         },
-    }
-}
-
-function mergePreparedRouteIdentity(reviewedRoute, preparedRoute) {
-    return {
-        ...reviewedRoute,
-        ...preparedRoute,
-        sourceChainId: Number(
-            preparedRoute?.sourceChainId ??
-            preparedRoute?.sourceAsset?.chainId ??
-            reviewedRoute?.sourceChainId,
-        ),
-        destinationChainId: Number(
-            preparedRoute?.destinationChainId ??
-            preparedRoute?.destinationAsset?.chainId ??
-            reviewedRoute?.destinationChainId,
-        ),
-        sourceAsset: preparedRoute?.sourceAsset ?? reviewedRoute?.sourceAsset ?? null,
-        destinationAsset: preparedRoute?.destinationAsset ?? reviewedRoute?.destinationAsset ?? null,
-        recipient: preparedRoute?.recipient ?? reviewedRoute?.recipient ?? null,
-        inputAmount: preparedRoute?.inputAmount ?? reviewedRoute?.inputAmount ?? '0',
-        outputAmount: preparedRoute?.outputAmount ?? reviewedRoute?.outputAmount ?? '0',
-        minimumOutputAmount:
-            preparedRoute?.minimumOutputAmount ??
-            reviewedRoute?.minimumOutputAmount ??
-            '0',
-        expiresAt: preparedRoute?.expiresAt ?? reviewedRoute?.expiresAt ?? null,
     }
 }
 
