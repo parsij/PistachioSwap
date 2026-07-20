@@ -1,6 +1,5 @@
 import {
     normalizePreparedSponsoredTransaction,
-    signMetaMaskMultichainTransaction,
     validateSignedPreparedTransaction,
 } from './metamaskMultichain.js'
 
@@ -28,10 +27,10 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
 }
 
 /**
- * Requests raw transaction signing from a compatible wallet client.
+ * Requests raw transaction signing from Pistachio Wallet.
  * @returns {Promise<string>} Signed serialized transaction bytes.
  * @throws A safe capability, account-binding, or wallet-signing error.
- * @sideEffects May display a wallet signature prompt when explicitly invoked.
+ * @sideEffects Displays the Pistachio Wallet transaction review when explicitly invoked.
  */
 export async function signRawSponsoredTransaction({
     capability,
@@ -44,9 +43,7 @@ export async function signRawSponsoredTransaction({
         capability.transport !== 'pistachio-local' ||
         typeof walletClient?.request !== 'function'
     ) {
-        const error = new Error(
-            'Gas Assist requires Pistachio Wallet.',
-        )
+        const error = new Error('Gas Assist requires Pistachio Wallet.')
         error.code = 'PISTACHIO_WALLET_REQUIRED'
         throw error
     }
@@ -62,7 +59,7 @@ export async function signRawSponsoredTransaction({
     return signedRawTransaction
 }
 
-/** Selects the configured signing transport and validates the exact prepared sponsored transaction. */
+/** Signs and validates the exact backend-prepared sponsored transaction. */
 export async function signPreparedSponsoredTransaction({
     transport,
     capability,
@@ -70,12 +67,16 @@ export async function signPreparedSponsoredTransaction({
     preparedTransaction,
     authenticatedWalletAddress,
     multichainAccount,
-    isMetaMask = false,
     submitSignedTransaction,
 }) {
     if (typeof submitSignedTransaction !== 'function') {
         const error = new Error('A direct sponsorship submission callback is required.')
         error.code = 'SPONSORSHIP_SUBMISSION_REQUIRED'
+        throw error
+    }
+    if (transport !== 'pistachio-local') {
+        const error = new Error('Gas Assist requires Pistachio Wallet.')
+        error.code = 'PISTACHIO_WALLET_REQUIRED'
         throw error
     }
     const normalizedTransaction = normalizePreparedSponsoredTransaction(
@@ -84,30 +85,17 @@ export async function signPreparedSponsoredTransaction({
     )
     let signedRawTransaction = null
     try {
-        if (transport === 'metamask-connect-multichain') {
-            signedRawTransaction = await signMetaMaskMultichainTransaction({
-                preparedTransaction,
-                authenticatedWalletAddress,
-                appKitAddress: authenticatedWalletAddress,
-                isMetaMask,
-            })
-        } else if (transport === 'pistachio-local') {
-            signedRawTransaction = await signRawSponsoredTransaction({
-                capability,
-                walletClient,
-                transaction: normalizedTransaction,
-            })
-            await validateSignedPreparedTransaction({
-                signedRawTransaction,
-                normalizedTransaction,
-                authenticatedWalletAddress,
-                multichainAccount: multichainAccount ?? authenticatedWalletAddress,
-            })
-        } else {
-            const error = new Error('Gas Assist requires Pistachio Wallet.')
-            error.code = 'PISTACHIO_WALLET_REQUIRED'
-            throw error
-        }
+        signedRawTransaction = await signRawSponsoredTransaction({
+            capability,
+            walletClient,
+            transaction: normalizedTransaction,
+        })
+        await validateSignedPreparedTransaction({
+            signedRawTransaction,
+            normalizedTransaction,
+            authenticatedWalletAddress,
+            multichainAccount: multichainAccount ?? authenticatedWalletAddress,
+        })
         return await submitSignedTransaction(signedRawTransaction)
     } finally {
         signedRawTransaction = null
