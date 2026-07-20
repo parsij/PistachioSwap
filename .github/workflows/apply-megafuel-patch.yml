@@ -1,0 +1,43 @@
+name: Apply MegaFuel implementation patch
+
+on:
+  push:
+    branches:
+      - feature/megafuel-exact-prepaid-flow
+    paths:
+      - '.github/patches/megafuel-final.patch.gz.b64'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/megafuel-exact-prepaid-flow
+          fetch-depth: 0
+
+      - name: Apply exact sponsored swap patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          encoded='.github/patches/megafuel-final.patch.gz.b64'
+          workflow='.github/workflows/apply-megafuel-patch.yml'
+          if [[ ! -f "$encoded" ]]; then
+            echo 'Patch already consumed.'
+            exit 0
+          fi
+          base64 --decode "$encoded" | gzip --decompress > /tmp/megafuel-final.patch
+          git apply --check /tmp/megafuel-final.patch
+          git apply /tmp/megafuel-final.patch
+          rm -f "$encoded" "$workflow"
+          rmdir .github/patches 2>/dev/null || true
+          git config user.name 'parsij'
+          git config user.email '205437194+parsij@users.noreply.github.com'
+          git add -A
+          git commit -m 'Implement exact sponsored swap and refund accounting'
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
