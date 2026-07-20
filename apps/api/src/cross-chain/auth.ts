@@ -9,6 +9,7 @@ import { normalizeAddress } from '../lib/address.js'
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1_000
 const SESSION_TTL_MS = 15 * 60 * 1_000
+const DEFAULT_MAXIMUM_MEMORY_ENTRIES = 5_000
 
 interface Challenge {
     id: string
@@ -110,6 +111,7 @@ export class CrossChainAuthService {
         private readonly verifier: CrossChainSignatureVerifier = async (input) =>
             verifyMessage(input),
         private readonly now: () => Date = () => new Date(),
+        private readonly maximumMemoryEntries = DEFAULT_MAXIMUM_MEMORY_ENTRIES,
     ) {}
 
     async createChallenge(input: {
@@ -167,6 +169,14 @@ export class CrossChainAuthService {
                 ],
             )
         } else {
+            this.pruneChallenges(issuedAt)
+            if (this.challenges.size >= this.maximumMemoryEntries) {
+                throw new CrossChainAuthError(
+                    'AUTH_CAPACITY_REACHED',
+                    'Cross-chain authentication is temporarily at capacity.',
+                    503,
+                )
+            }
             this.challenges.set(challenge.id, challenge)
         }
 
@@ -244,6 +254,14 @@ export class CrossChainAuthService {
             input.signature as Hex,
         )
         challenge!.consumedAt = result.consumedAt
+        this.pruneSessions(result.consumedAt)
+        if (this.sessions.size >= this.maximumMemoryEntries) {
+            throw new CrossChainAuthError(
+                'AUTH_CAPACITY_REACHED',
+                'Cross-chain authentication is temporarily at capacity.',
+                503,
+            )
+        }
         this.sessions.set(result.session.tokenHash, result.session)
         return result.response
     }
@@ -397,6 +415,22 @@ export class CrossChainAuthService {
             401,
         )
     }
+
+    private pruneChallenges(now: Date) {
+        for (const [id, challenge] of this.challenges) {
+            if (challenge.consumedAt || challenge.expiresAt <= now) {
+                this.challenges.delete(id)
+            }
+        }
+    }
+
+    private pruneSessions(now: Date) {
+        for (const [tokenHash, session] of this.sessions) {
+            if (session.revokedAt || session.expiresAt <= now) {
+                this.sessions.delete(tokenHash)
+            }
+        }
+    }
 }
 
 let defaultService: CrossChainAuthService | null = null
@@ -405,8 +439,14 @@ export function createCrossChainAuthService(input: {
     database?: Pool
     verifier?: CrossChainSignatureVerifier
     now?: () => Date
+    maximumMemoryEntries?: number
 } = {}) {
-    return new CrossChainAuthService(input.database, input.verifier, input.now)
+    return new CrossChainAuthService(
+        input.database,
+        input.verifier,
+        input.now,
+        input.maximumMemoryEntries,
+    )
 }
 
 export function getCrossChainAuthService() {

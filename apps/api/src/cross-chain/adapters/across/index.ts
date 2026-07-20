@@ -16,8 +16,9 @@ import type {
 } from '../../types.js'
 import {
     assertExactQuote,
+    CrossChainValidationError,
+    createExactApprovalTransaction,
     normalizeUint,
-    validateExactApprovalTransaction,
     validateProviderTransaction,
 } from '../../validation.js'
 
@@ -36,36 +37,34 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
         name: 'across',
         async getCapabilities(signal) {
             if (!provider.enabled) return unavailable('disabled')
+            if (!provider.apiKey || !provider.integratorId) {
+                return unavailable('not configured: API key and integrator ID are required')
+            }
             const incompatible = platformFeeIncompatibility('across')
             if (incompatible) return unavailable(incompatible)
-            const url = new URL(`${provider.baseUrl}/available-routes`)
+            const url = new URL(`${provider.baseUrl}/swap/tokens`)
+            url.searchParams.set('integratorId', provider.integratorId)
             const payload = await http(url, {
                 headers,
                 signal,
                 timeoutMs: config.quoteTimeoutMs,
             })
-            const routes = records(isRecord(payload) ? payload.routes : payload).flatMap((route) => {
-                const sourceChainId = Number(route.originChainId)
-                const destinationChainId = Number(route.destinationChainId)
-                const sellToken = address(route.originToken)
-                const buyToken = address(route.destinationToken)
-                const targets = [
-                    route.spokePoolAddress,
-                    route.depositContract,
-                    isRecord(route.contracts) ? route.contracts.spokePool : null,
-                ].map(address).filter((item): item is string => Boolean(item))
-                return Number.isInteger(sourceChainId) &&
-                    Number.isInteger(destinationChainId) &&
-                    sellToken && buyToken
-                    ? [{
-                          sourceChainId,
-                          destinationChainId,
-                          sellTokens: [sellToken],
-                          buyTokens: [buyToken],
-                          transactionTargets: targets,
-                      }]
+            const tokens = records(isRecord(payload) ? payload.tokens : payload).flatMap((token) => {
+                const chainId = Number(token.chainId)
+                const tokenAddress = address(token.address)
+                return Number.isInteger(chainId) && tokenAddress
+                    ? [{ chainId, address: tokenAddress }]
                     : []
             })
+            const routes = tokens.flatMap((sell) => tokens
+                .filter((buy) => buy.chainId !== sell.chainId)
+                .map((buy) => ({
+                    sourceChainId: sell.chainId,
+                    destinationChainId: buy.chainId,
+                    sellTokens: [sell.address],
+                    buyTokens: [buy.address],
+                    transactionTargets: [],
+                })))
             return {
                 provider: 'across',
                 available: routes.length > 0,
@@ -78,7 +77,7 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
             const platformFee = getPlatformFeeConfiguration('across')
             const url = new URL(`${provider.baseUrl}/swap/approval`)
             for (const [key, value] of Object.entries({
-                tradeType: 'minOutput',
+                tradeType: 'exactInput',
                 originChainId: request.sourceAsset.chainId,
                 destinationChainId: request.destinationAsset.chainId,
                 inputToken: request.sourceAsset.address,
@@ -98,6 +97,10 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
             const payload = await http(url, { headers, signal, timeoutMs: config.quoteTimeoutMs })
             if (!isRecord(payload)) throw new Error('Across returned an invalid quote.')
             const tx = isRecord(payload.swapTx) ? payload.swapTx : payload.transaction
+            if (!isRecord(tx)) throw new Error('Across returned no source transaction.')
+            const transactionTarget = address(tx.to)
+            if (!transactionTarget) throw new Error('Across returned an invalid transaction target.')
+            validateAcrossDestination(payload, request)
             const buyAmount = normalizeUint(
                 payload.expectedOutputAmount ?? payload.outputAmount,
                 'buy amount',
@@ -113,7 +116,14 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
             ]
             const approval = normalizeAcrossApprovals(payload, request)
             const transaction = {
-                ...validateProviderTransaction(tx, request, capabilities),
+                ...validateProviderTransaction(tx, request, {
+                    ...capabilities,
+                    routes: [{
+                        sourceChainId: request.sourceAsset.chainId,
+                        destinationChainId: request.destinationAsset.chainId,
+                        transactionTargets: [transactionTarget],
+                    }],
+                }),
                 allowanceTarget: approval.spender,
             }
             const approvalSteps = approval.transactions.map((approvalTransaction, index) => ({
@@ -170,6 +180,33 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
     }
 }
 
+function validateAcrossDestination(
+    payload: Record<string, unknown>,
+    request: CrossChainRequest,
+) {
+    const steps = isRecord(payload.steps) ? payload.steps : null
+    const destinationSwap = steps && isRecord(steps.destinationSwap)
+        ? steps.destinationSwap
+        : null
+    const tokenOut = destinationSwap && isRecord(destinationSwap.tokenOut)
+        ? destinationSwap.tokenOut
+        : null
+    const outputToken = address(
+        tokenOut?.address ?? payload.outputToken ?? payload.destinationToken,
+    )
+    if (outputToken && outputToken !== request.destinationAsset.address) {
+        throw new Error('Across returned a different destination token.')
+    }
+    if (tokenOut?.chainId !== undefined &&
+        Number(tokenOut.chainId) !== request.destinationAsset.chainId) {
+        throw new Error('Across returned the wrong destination chain.')
+    }
+    const recipient = address(payload.recipient)
+    if (recipient && recipient !== request.recipient) {
+        throw new Error('Across returned a different destination recipient.')
+    }
+}
+
 function normalizeAcrossApprovals(
     payload: Record<string, unknown>,
     request: CrossChainRequest,
@@ -179,54 +216,96 @@ function normalizeAcrossApprovals(
     }
     const checks = isRecord(payload.checks) ? payload.checks : null
     const allowance = checks && isRecord(checks.allowance) ? checks.allowance : null
-    const rawTransactions = payload.approvalTxns
-    if (rawTransactions !== undefined && !Array.isArray(rawTransactions)) {
-        throw new Error('Across returned invalid approval transactions.')
-    }
-    const transactions = records(rawTransactions)
-    if (
-        Array.isArray(rawTransactions) &&
-        transactions.length !== rawTransactions.length
-    ) throw new Error('Across returned invalid approval transactions.')
     if (!allowance) {
-        if (transactions.length) {
-            throw new Error('Across approval transactions lack authoritative allowance metadata.')
-        }
         return { transactions: [], spender: null }
     }
 
     const tokenMetadata = isRecord(allowance.token) ? allowance.token : null
     const token = normalizeAddress(tokenMetadata?.address ?? allowance.token)
     if (token !== request.sourceAsset.address) {
-        throw new Error('Across allowance token does not match the source token.')
+        throw acrossError('APPROVAL_TARGET_INVALID', 'Across allowance token does not match the source token.')
     }
     if (
         tokenMetadata?.chainId !== undefined &&
         Number(tokenMetadata.chainId) !== request.sourceAsset.chainId
-    ) throw new Error('Across allowance token is for the wrong chain.')
+    ) throw acrossError('APPROVAL_TARGET_INVALID', 'Across allowance token is for the wrong chain.')
     const spender = normalizeAddress(allowance.spender)
-    if (!spender) throw new Error('Across returned an invalid allowance spender.')
-    const expected = normalizeUint(allowance.expected, 'allowance expected amount')
-    const actual = normalizeUint(allowance.actual, 'allowance actual amount')
-    if (expected !== request.amount) {
-        throw new Error('Across allowance amount does not exactly match the request.')
+    if (!spender) throw acrossError('AUTHORITY_UNAVAILABLE', 'Across returned an invalid allowance spender.')
+    let expected
+    let actual
+    try {
+        expected = normalizeUint(allowance.expected, 'allowance expected amount')
+        actual = normalizeUint(allowance.actual, 'allowance actual amount')
+    } catch (error) {
+        throw acrossError(
+            'APPROVAL_AMOUNT_INVALID',
+            error instanceof Error ? error.message : 'Across returned invalid allowance amounts.',
+        )
     }
-    if (BigInt(actual) < BigInt(expected) && transactions.length === 0) {
-        throw new Error('Across omitted a required approval transaction.')
+    if (expected === '0' || BigInt(expected) === (2n ** 256n) - 1n) {
+        throw acrossError(
+            'APPROVAL_AMOUNT_INVALID',
+            'Across returned a zero or unlimited approval amount.',
+        )
     }
-    if (BigInt(actual) >= BigInt(expected) && transactions.length > 0) {
-        throw new Error('Across returned an unnecessary approval transaction.')
+    const originInput = acrossOriginInputAmount(payload, request.sourceAsset.address)
+    if (BigInt(expected) > BigInt(request.amount)) {
+        throw acrossError(
+            'APPROVAL_AMOUNT_INVALID',
+            'Across required allowance exceeds the exact-input amount.',
+        )
     }
+    if (originInput !== null && originInput !== expected) {
+        throw acrossError(
+            'APPROVAL_AMOUNT_INVALID',
+            'Across required allowance conflicts with its origin input amount.',
+        )
+    }
+    if (BigInt(actual) >= BigInt(expected)) return { transactions: [], spender }
     return {
-        transactions: transactions.map((transaction) =>
-            validateExactApprovalTransaction(transaction, {
-                chainId: request.sourceAsset.chainId,
-                token: request.sourceAsset.address,
-                spenders: [spender],
-                amount: request.amount,
-            })),
+        transactions: [createExactApprovalTransaction({
+            chainId: request.sourceAsset.chainId,
+            token,
+            spender,
+            amount: expected,
+        })],
         spender,
     }
+}
+
+function acrossOriginInputAmount(payload: Record<string, unknown>, token: string) {
+    const checks = isRecord(payload.checks) ? payload.checks : {}
+    const balance = isRecord(checks.balance) ? checks.balance : null
+    const balanceToken = balance && isRecord(balance.token) ? balance.token.address : balance?.token
+    if (balance && (balanceToken === undefined || normalizeAddress(balanceToken) === token)) {
+        for (const value of [balance.expected, balance.required]) {
+            if (value === undefined) continue
+            try {
+                return normalizeUint(value, 'origin input amount')
+            } catch {
+                throw acrossError('ROUTE_MALFORMED', 'Across returned an invalid origin input amount.')
+            }
+        }
+    }
+    const steps = isRecord(payload.steps) ? payload.steps : {}
+    for (const step of [steps.originSwap, steps.bridge]) {
+        if (!isRecord(step)) continue
+        const stepToken = isRecord(step.tokenIn) ? step.tokenIn.address : step.inputToken
+        if (stepToken !== undefined && normalizeAddress(stepToken) !== token) continue
+        for (const value of [step.inputAmount, step.amount, step.amountIn]) {
+            if (value === undefined) continue
+            try {
+                return normalizeUint(value, 'origin input amount')
+            } catch {
+                throw acrossError('ROUTE_MALFORMED', 'Across returned an invalid origin input amount.')
+            }
+        }
+    }
+    return null
+}
+
+function acrossError(suffix: string, message: string) {
+    return new CrossChainValidationError(`ACROSS_${suffix}`, message)
 }
 
 function unavailable(reason: string): ProviderCapabilities {

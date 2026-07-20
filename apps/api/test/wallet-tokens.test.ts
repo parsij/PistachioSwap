@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { getApiConfig } from '../src/config.js'
+import {
+    getApiConfig,
+    validateStartupConfig,
+} from '../src/config.js'
 import { NATIVE_TOKEN_ADDRESS } from '../src/lib/address.js'
 import {
     classifyWalletTokenVisibility,
@@ -65,7 +68,7 @@ describe('wallet token inventory', () => {
     it('uses one canonical native BNB identity distinct from ERC-20 contracts', () => {
         const native = createNativeWalletToken(10n ** 18n, '500')
         expect(native).toMatchObject({
-            classificationVersion: 3,
+            classificationVersion: 4,
             chainId: 56,
             address: NATIVE_TOKEN_ADDRESS,
             symbol: 'BNB',
@@ -143,18 +146,45 @@ describe('wallet token inventory', () => {
         }).visibility).toBe('hidden')
     })
 
-    it('normalizes configured wallet token lists and sanitizes invalid warnings', () => {
+    it('normalizes configured wallet token lists and rejects malformed policy addresses', () => {
         process.env.WALLET_TOKEN_ALLOWLIST_56 = firstToken.toUpperCase()
-        process.env.WALLET_TOKEN_BLOCKLIST_56 = `${laterToken},not-an-address`
-        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        process.env.WALLET_TOKEN_BLOCKLIST_56 = laterToken
         const config = getApiConfig()
 
         expect(config.walletTokens.allowlist).toEqual(new Set([firstToken]))
         expect(config.walletTokens.blocklist).toEqual(new Set([laterToken]))
-        expect(warning).toHaveBeenCalledWith(
-            'WALLET_TOKEN_BLOCKLIST_56 ignored an invalid address entry.',
+        process.env.WALLET_TOKEN_BLOCKLIST_56 = `${laterToken},not-an-address`
+        expect(() => getApiConfig()).toThrow(
+            'WALLET_TOKEN_BLOCKLIST_56 contains an invalid address.',
         )
-        expect(JSON.stringify(warning.mock.calls)).not.toContain('not-an-address')
+    })
+
+    it('rejects malformed booleans and legacy integer settings instead of enabling defaults', () => {
+        process.env.ESTABLISHED_TOKEN_SNAPSHOT_ENABLED = 'flase'
+        expect(() => getApiConfig()).toThrow(
+            'ESTABLISHED_TOKEN_SNAPSHOT_ENABLED must be either true or false.',
+        )
+
+        process.env.ESTABLISHED_TOKEN_SNAPSHOT_ENABLED = 'false'
+        process.env.QUOTE_TIMEOUT_MS = 'not-a-number'
+        expect(() => getApiConfig()).toThrow(
+            'QUOTE_TIMEOUT_MS must be an integer greater than or equal to 1.',
+        )
+    })
+
+    it('validates Portfolio integer configuration and production key requirements', () => {
+        process.env.ALCHEMY_PORTFOLIO_TIMEOUT_MS = '12000.5'
+        expect(() => getApiConfig()).toThrow(
+            'ALCHEMY_PORTFOLIO_TIMEOUT_MS must be an integer.',
+        )
+
+        process.env.ALCHEMY_PORTFOLIO_TIMEOUT_MS = '12000'
+        process.env.ALCHEMY_PORTFOLIO_ENABLED = 'true'
+        process.env.NODE_ENV = 'production'
+        delete process.env.ALCHEMY_API_KEY
+        expect(() => validateStartupConfig()).toThrow(
+            'ALCHEMY_API_KEY is required when ALCHEMY_PORTFOLIO_ENABLED=true.',
+        )
     })
 
     it('uses exact price priority and native WBNB only as fallback', () => {

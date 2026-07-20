@@ -22,6 +22,7 @@ export type TokenDiscoveryChain = Readonly<{
         symbol: string
         decimals: number
         coinGeckoId: string
+        erc20Aliases: readonly `0x${string}`[]
     }>
     wrappedNative: Readonly<{
         address: `0x${string}`
@@ -43,23 +44,25 @@ export type TokenDiscoveryChain = Readonly<{
 }>
 
 type Entry = Omit<TokenDiscoveryChain, 'native' | 'wrappedNative' | 'chainLogoURI' | 'capabilities'> & {
-    native: Omit<TokenDiscoveryChain['native'], 'address' | 'decimals'>
+    native: Omit<TokenDiscoveryChain['native'], 'address' | 'decimals' | 'erc20Aliases'> & {
+        erc20Aliases?: readonly `0x${string}`[]
+    }
     wrappedNative: Omit<TokenDiscoveryChain['wrappedNative'], 'decimals'>
     capabilities?: Partial<TokenDiscoveryCapabilities>
 }
 
-const chainIconSlugs: Readonly<Record<number, string>> = Object.freeze({
-    1: 'ethereum', 56: 'bsc', 137: 'polygon', 42161: 'arbitrum',
-    10: 'optimism', 8453: 'base', 43114: 'avalanche', 42220: 'celo',
-    100: 'gnosis', 59144: 'linea', 534352: 'scroll', 324: 'zksync-era',
-    5000: 'mantle', 146: 'sonic', 80094: 'berachain', 130: 'unichain',
-    480: 'world-chain', 81457: 'blast', 34443: 'mode', 1088: 'metis',
-    25: 'cronos', 1284: 'moonbeam', 167000: 'taiko', 204: 'opbnb',
-    1101: 'polygon-zkevm',
+const chainIconFiles: Readonly<Record<number, string>> = Object.freeze({
+    1: 'ethereum.svg', 56: 'bsc.webp', 137: 'polygon.webp', 42161: 'arbitrum.webp',
+    10: 'optimism.webp', 8453: 'base.webp', 43114: 'avalanche.webp', 42220: 'celo.webp',
+    100: 'gnosis.webp', 59144: 'linea.webp', 534352: 'scroll.webp', 324: 'zksync-era.webp',
+    5000: 'mantle.webp', 146: 'sonic.webp', 80094: 'berachain.webp', 130: 'unichain.webp',
+    480: 'world-chain.webp', 81457: 'blast.webp', 34443: 'mode.webp', 1088: 'metis.webp',
+    25: 'cronos.webp', 1284: 'moonbeam.webp', 167000: 'taiko.webp', 204: 'opbnb.webp',
+    1101: 'polygon-zkevm.webp',
 })
 
 const logo = (chainId: number) =>
-    `https://icons.llamao.fi/icons/chains/rsz_${chainIconSlugs[chainId]}.jpg`
+    `/networkIcons/${chainIconFiles[chainId]}`
 
 const entries: readonly Entry[] = [
     { chainId: 1, name: 'Ethereum', active: true, native: { name: 'Ether', symbol: 'ETH', coinGeckoId: 'ethereum' }, wrappedNative: { address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', name: 'Wrapped Ether', symbol: 'WETH' }, providers: { geckoTerminalNetwork: 'eth', coinGeckoNetwork: 'eth', dexScreenerChain: 'ethereum', moralisChain: 'eth', alchemyNetwork: 'eth-mainnet', rpcEnv: 'ETHEREUM_RPC_URL', goPlusChainId: '1' } },
@@ -69,7 +72,7 @@ const entries: readonly Entry[] = [
     { chainId: 10, name: 'OP Mainnet', active: true, native: { name: 'Ether', symbol: 'ETH', coinGeckoId: 'ethereum' }, wrappedNative: { address: '0x4200000000000000000000000000000000000006', name: 'Wrapped Ether', symbol: 'WETH' }, providers: { geckoTerminalNetwork: 'optimism', coinGeckoNetwork: 'optimism', dexScreenerChain: 'optimism', moralisChain: 'optimism', alchemyNetwork: 'opt-mainnet', rpcEnv: 'OPTIMISM_RPC_URL', goPlusChainId: '10' } },
     { chainId: 8453, name: 'Base', active: true, native: { name: 'Ether', symbol: 'ETH', coinGeckoId: 'ethereum' }, wrappedNative: { address: '0x4200000000000000000000000000000000000006', name: 'Wrapped Ether', symbol: 'WETH' }, providers: { geckoTerminalNetwork: 'base', coinGeckoNetwork: 'base', dexScreenerChain: 'base', moralisChain: 'base', alchemyNetwork: 'base-mainnet', rpcEnv: 'BASE_RPC_URL', goPlusChainId: '8453' } },
     { chainId: 43114, name: 'Avalanche C-Chain', active: true, native: { name: 'Avalanche', symbol: 'AVAX', coinGeckoId: 'avalanche-2' }, wrappedNative: { address: '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7', name: 'Wrapped AVAX', symbol: 'WAVAX' }, providers: { geckoTerminalNetwork: 'avax', coinGeckoNetwork: 'avax', dexScreenerChain: 'avalanche', moralisChain: 'avalanche', alchemyNetwork: 'avax-mainnet', rpcEnv: 'AVALANCHE_RPC_URL', goPlusChainId: '43114' } },
-    { chainId: 42220, name: 'Celo', active: true, native: { name: 'Celo', symbol: 'CELO', coinGeckoId: 'celo' }, wrappedNative: { address: '0x471ece3750da237f93b8e339c536989b8978a438', name: 'Celo', symbol: 'CELO' }, providers: { geckoTerminalNetwork: 'celo', coinGeckoNetwork: 'celo', dexScreenerChain: 'celo', moralisChain: null, alchemyNetwork: 'celo-mainnet', rpcEnv: 'CELO_RPC_URL', goPlusChainId: '42220' } },
+    { chainId: 42220, name: 'Celo', active: true, native: { name: 'Celo', symbol: 'CELO', coinGeckoId: 'celo', erc20Aliases: ['0x471ece3750da237f93b8e339c536989b8978a438'] }, wrappedNative: { address: '0x471ece3750da237f93b8e339c536989b8978a438', name: 'Celo', symbol: 'CELO' }, providers: { geckoTerminalNetwork: 'celo', coinGeckoNetwork: 'celo', dexScreenerChain: 'celo', moralisChain: null, alchemyNetwork: 'celo-mainnet', rpcEnv: 'CELO_RPC_URL', goPlusChainId: '42220' } },
     { chainId: 100, name: 'Gnosis Chain', active: true, native: { name: 'xDAI', symbol: 'xDAI', coinGeckoId: 'xdai' }, wrappedNative: { address: '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d', name: 'Wrapped xDAI', symbol: 'WXDAI' }, providers: { geckoTerminalNetwork: 'xdai', coinGeckoNetwork: 'xdai', dexScreenerChain: 'gnosis', moralisChain: 'gnosis', alchemyNetwork: 'gnosis-mainnet', rpcEnv: 'GNOSIS_RPC_URL', goPlusChainId: '100' } },
     { chainId: 59144, name: 'Linea', active: true, native: { name: 'Ether', symbol: 'ETH', coinGeckoId: 'ethereum' }, wrappedNative: { address: '0xe5d7c2a44ffddf6b295a15c148167daaaf5cf34f', name: 'Wrapped Ether', symbol: 'WETH' }, providers: { geckoTerminalNetwork: 'linea', coinGeckoNetwork: 'linea', dexScreenerChain: 'linea', moralisChain: 'linea', alchemyNetwork: 'linea-mainnet', rpcEnv: 'LINEA_RPC_URL', goPlusChainId: '59144' } },
     { chainId: 534352, name: 'Scroll', active: true, native: { name: 'Ether', symbol: 'ETH', coinGeckoId: 'ethereum' }, wrappedNative: { address: '0x5300000000000000000000000000000000000004', name: 'Wrapped Ether', symbol: 'WETH' }, providers: { geckoTerminalNetwork: 'scroll', coinGeckoNetwork: 'scroll', dexScreenerChain: 'scroll', moralisChain: null, alchemyNetwork: 'scroll-mainnet', rpcEnv: 'SCROLL_RPC_URL', goPlusChainId: '534352' } },
@@ -89,10 +92,28 @@ const entries: readonly Entry[] = [
     { chainId: 1101, name: 'Polygon zkEVM', active: false, native: { name: 'Ether', symbol: 'ETH', coinGeckoId: 'ethereum' }, wrappedNative: { address: '0x4f9a0e7fd2b1e5b7a1ab68fda3c29a366b9ba5d4', name: 'Wrapped Ether', symbol: 'WETH' }, providers: { geckoTerminalNetwork: 'polygon-zkevm', coinGeckoNetwork: 'polygon-zkevm', dexScreenerChain: 'polygonzkevm', moralisChain: null, alchemyNetwork: 'polygonzkevm-mainnet', rpcEnv: 'POLYGON_ZKEVM_RPC_URL', goPlusChainId: '1101' }, capabilities: { geckoTerminal: false, coinGeckoOnchain: false, dexScreener: false, alchemy: false, rpcFallback: false, goPlus: false } },
 ] as const
 
+// Provider support is deliberately independent from the presence of a slug.
+// Update these sets only when the corresponding provider mapping is verified.
+const GECKOTERMINAL_CHAIN_IDS = new Set([
+    1, 10, 25, 56, 100, 130, 137, 146, 204, 324, 480, 1088, 1284,
+    5000, 8453, 34443, 42161, 42220, 43114, 59144, 80094, 81457,
+    167000, 534352,
+])
+const COINGECKO_ONCHAIN_CHAIN_IDS = new Set([
+    1, 10, 25, 56, 100, 130, 137, 146, 204, 324, 480, 1088, 1284,
+    5000, 8453, 34443, 42161, 42220, 43114, 59144, 80094, 81457,
+    167000, 534352,
+])
+const DEXSCREENER_CHAIN_IDS = new Set([
+    1, 10, 25, 56, 100, 130, 137, 146, 204, 324, 480, 1088, 1284,
+    5000, 8453, 34443, 42161, 42220, 43114, 59144, 80094, 81457,
+    167000, 534352,
+])
+
 const defaultCapabilities: TokenDiscoveryCapabilities = {
-    geckoTerminal: true,
-    coinGeckoOnchain: true,
-    dexScreener: true,
+    geckoTerminal: false,
+    coinGeckoOnchain: false,
+    dexScreener: false,
     moralis: false,
     alchemy: false,
     rpcFallback: true,
@@ -104,11 +125,19 @@ const defaultCapabilities: TokenDiscoveryCapabilities = {
 export const TOKEN_DISCOVERY_CHAINS: readonly TokenDiscoveryChain[] = Object.freeze(
     entries.map((entry) => Object.freeze({
         ...entry,
-        native: Object.freeze({ ...entry.native, address: NATIVE_TOKEN_ADDRESS, decimals: 18 }),
+        native: Object.freeze({
+            ...entry.native,
+            address: NATIVE_TOKEN_ADDRESS,
+            decimals: 18,
+            erc20Aliases: Object.freeze([...(entry.native.erc20Aliases ?? [])]),
+        }),
         wrappedNative: Object.freeze({ ...entry.wrappedNative, decimals: 18 }),
         chainLogoURI: logo(entry.chainId),
         capabilities: Object.freeze({
             ...defaultCapabilities,
+            geckoTerminal: GECKOTERMINAL_CHAIN_IDS.has(entry.chainId),
+            coinGeckoOnchain: COINGECKO_ONCHAIN_CHAIN_IDS.has(entry.chainId),
+            dexScreener: DEXSCREENER_CHAIN_IDS.has(entry.chainId),
             moralis: entry.providers.moralisChain !== null,
             alchemy: entry.providers.alchemyNetwork !== null,
             honeypot: [1, 56, 8453].includes(entry.chainId),
@@ -133,6 +162,26 @@ const byDexScreenerId = new Map(
 
 export function getTokenDiscoveryChain(chainId: number) {
     return byId.get(chainId) ?? null
+}
+
+export function canonicalTokenAddress(chainId: number, address: string) {
+    const normalized = address.toLowerCase()
+    const chain = getTokenDiscoveryChain(chainId)
+    return normalized === NATIVE_TOKEN_ADDRESS ||
+        chain?.native.erc20Aliases.includes(normalized as `0x${string}`)
+        ? NATIVE_TOKEN_ADDRESS
+        : normalized
+}
+
+export function hasMarketProviderCapability(
+    chainId: number,
+    provider: 'geckoterminal' | 'coingecko' | 'dexscreener',
+) {
+    const chain = getTokenDiscoveryChain(chainId)
+    if (!chain?.active) return false
+    if (provider === 'geckoterminal') return chain.capabilities.geckoTerminal
+    if (provider === 'coingecko') return chain.capabilities.coinGeckoOnchain
+    return chain.capabilities.dexScreener
 }
 
 export function getTokenDiscoveryChainByDexScreenerId(value: string) {

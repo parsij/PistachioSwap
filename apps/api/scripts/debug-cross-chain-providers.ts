@@ -164,6 +164,11 @@ function authStates(config: ReturnType<typeof getApiConfig>) {
             : config.crossChain.chainflip.brokerApiUrl
                 ? ready()
                 : partial('No broker URL; discovery and quotes only, execution unavailable.'),
+        '0x-cross-chain': !config.crossChain.zeroX.enabled
+            ? skipped('Provider is disabled.')
+            : config.crossChain.zeroX.apiKey
+                ? ready()
+                : partial('No 0x API key; provider unavailable.'),
     } satisfies Record<CrossChainProviderName, {
         auth: 'READY' | 'PARTIAL' | 'SKIPPED'
         note: string

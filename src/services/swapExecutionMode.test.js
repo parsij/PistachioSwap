@@ -1,7 +1,14 @@
 import { getAddress } from 'viem'
 import { describe, expect, it } from 'vitest'
 
-import { deriveSwapExecution, getSwapExecutionMessage } from './swapExecutionMode.js'
+import {
+    CROSS_CHAIN,
+    deriveRoutingMode,
+    deriveSwapExecution,
+    getSwapExecutionMessage,
+    SAME_CHAIN_GASLESS_OR_ASSISTED,
+    SAME_CHAIN_STANDARD,
+} from './swapExecutionMode.js'
 
 const sellToken = { address: '0x0000000000000000000000000000000000000001', decimals: 18, isNative: false }
 const buyToken = { address: '0x0000000000000000000000000000000000000002', decimals: 6, isNative: false }
@@ -19,6 +26,14 @@ const base = {
 }
 
 describe('swap execution mode', () => {
+    it('selects standard, assisted, and cross-chain routing before providers run', () => {
+        expect(deriveRoutingMode({ sellChainId: 1, buyChainId: 1 }))
+            .toBe(SAME_CHAIN_STANDARD)
+        expect(deriveRoutingMode({ sellChainId: 56, buyChainId: 56, gasAssistPreferred: true }))
+            .toBe(SAME_CHAIN_GASLESS_OR_ASSISTED)
+        expect(deriveRoutingMode({ sellChainId: 56, buyChainId: 8453, gasAssistPreferred: true }))
+            .toBe(CROSS_CHAIN)
+    })
     it.each(['idle', 'loading'])('issues no quote while native balance is %s', (nativeBalanceStatus) => {
         expect(deriveSwapExecution({ ...base, nativeBalanceStatus }).mode).toBeNull()
     })

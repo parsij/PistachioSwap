@@ -34,6 +34,13 @@ const APPROVE_ABI = [{
     outputs: [{ name: '', type: 'bool' }],
 }] as const
 
+export class CrossChainValidationError extends Error {
+    constructor(readonly code: string, message: string) {
+        super(message)
+        this.name = 'CrossChainValidationError'
+    }
+}
+
 function requireAddress(value: unknown, field: string) {
     const address = normalizeAddress(value)
     if (!address) throw new Error(`${field} must be an EVM address.`)
@@ -174,12 +181,16 @@ export function validateProviderTransaction(
     const data = String(value.data ?? '')
     if (!HEX_DATA_PATTERN.test(data)) throw new Error('Provider returned invalid transaction data.')
 
+    const gasEstimate = value.gas ?? value.gasLimit
     return {
         chainId: expectedChainId,
         to,
         data,
         value: normalizeUint(value.value ?? '0', 'transaction value'),
         allowanceTarget: null,
+        ...(gasEstimate === undefined
+            ? {}
+            : { gasEstimate: positiveGasEstimate(gasEstimate) }),
     }
 }
 
@@ -188,32 +199,52 @@ type ExactApprovalOptions = {
     token: string
     spenders: readonly string[]
     amount: string
+    providerCodePrefix?: 'ACROSS' | 'RELAY'
+}
+
+function approvalError(code: string, message: string): never {
+    throw new CrossChainValidationError(code, message)
 }
 
 export function validateExactApprovalTransaction(
     value: unknown,
     options: ExactApprovalOptions,
 ): CrossChainTransaction {
+    const code = (suffix: string) =>
+        `${options.providerCodePrefix ?? 'RELAY'}_${suffix}`
     if (options.token === NATIVE_TOKEN_ADDRESS) {
-        throw new Error('Native input assets must not have approval transactions.')
+        approvalError(
+            code('ROUTE_MALFORMED'),
+            'Native input assets must not have approval transactions.',
+        )
     }
-    if (!isRecord(value)) throw new Error('Provider returned an invalid approval transaction.')
+    if (!isRecord(value)) {
+        approvalError(code('ROUTE_MALFORMED'), 'Provider returned an invalid approval transaction.')
+    }
     if (value.chainId === undefined || Number(value.chainId) !== options.chainId) {
-        throw new Error('Approval transaction is for the wrong chain.')
+        approvalError(code('ROUTE_MALFORMED'), 'Approval transaction is for the wrong chain.')
     }
     const token = requireAddress(value.to, 'approval transaction.to')
     if (token !== options.token) {
-        throw new Error('Approval transaction target does not match the source token.')
+        approvalError(
+            code('APPROVAL_TARGET_INVALID'),
+            'Approval transaction target does not match the source token.',
+        )
     }
     const valueAmount = normalizeUint(value.value ?? '0', 'approval transaction value')
-    if (valueAmount !== '0') throw new Error('Approval transaction value must be zero.')
+    if (valueAmount !== '0') {
+        approvalError(code('APPROVAL_AMOUNT_INVALID'), 'Approval transaction value must be zero.')
+    }
 
     const data = String(value.data ?? '')
     if (
         !HEX_DATA_PATTERN.test(data) ||
         data.length !== APPROVE_DATA_LENGTH ||
         data.slice(0, 10).toLowerCase() !== APPROVE_SELECTOR
-    ) throw new Error('Approval transaction must call approve(address,uint256).')
+    ) approvalError(
+        code('ROUTE_MALFORMED'),
+        'Approval transaction must call approve(address,uint256).',
+    )
 
     let decoded: ReturnType<typeof decodeFunctionData<typeof APPROVE_ABI>>
     try {
@@ -222,10 +253,16 @@ export function validateExactApprovalTransaction(
             data: data as `0x${string}`,
         })
     } catch {
-        throw new Error('Approval transaction must call approve(address,uint256).')
+        approvalError(
+            code('ROUTE_MALFORMED'),
+            'Approval transaction must call approve(address,uint256).',
+        )
     }
     if (decoded.functionName !== 'approve') {
-        throw new Error('Approval transaction must call approve(address,uint256).')
+        approvalError(
+            code('ROUTE_MALFORMED'),
+            'Approval transaction must call approve(address,uint256).',
+        )
     }
     const [rawSpender, approvedAmount] = decoded.args
     const spender = requireAddress(rawSpender, 'approval spender')
@@ -235,26 +272,42 @@ export function validateExactApprovalTransaction(
         args: [spender as `0x${string}`, approvedAmount],
     })
     if (canonicalData !== data.toLowerCase()) {
-        throw new Error('Approval transaction calldata is not canonical.')
+        approvalError(code('ROUTE_MALFORMED'), 'Approval transaction calldata is not canonical.')
     }
     const authoritativeSpenders = options.spenders.map((candidate) =>
         requireAddress(candidate, 'authoritative approval spender'))
     if (
         spender === zeroAddress ||
         !authoritativeSpenders.includes(spender)
-    ) throw new Error('Approval spender is not authoritative for the source chain.')
+    ) approvalError(
+        code('APPROVAL_TARGET_INVALID'),
+        'Approval spender is not authoritative for the source chain.',
+    )
     const expectedAmount = normalizeUint(options.amount, 'approval amount')
     if (approvedAmount !== BigInt(expectedAmount)) {
-        throw new Error('Approval amount does not exactly match the required amount.')
+        approvalError(
+            code('APPROVAL_AMOUNT_INVALID'),
+            'Approval amount does not exactly match the required amount.',
+        )
     }
 
+    const gasEstimate = value.gas ?? value.gasLimit
     return {
         chainId: options.chainId,
         to: token,
         data: data.toLowerCase(),
         value: '0',
         allowanceTarget: spender,
+        ...(gasEstimate === undefined
+            ? {}
+            : { gasEstimate: positiveGasEstimate(gasEstimate) }),
     }
+}
+
+function positiveGasEstimate(value: unknown) {
+    const gas = normalizeUint(value, 'transaction gas estimate')
+    if (BigInt(gas) <= 0n) throw new Error('Provider returned an invalid transaction gas estimate.')
+    return gas
 }
 
 export function createExactApprovalTransaction(

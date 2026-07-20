@@ -21,7 +21,7 @@ export function getPlatformFeeConfiguration(
     ) {
         throw new Error(`${provider} is incompatible: platform fee recipient is unavailable.`)
     }
-    if (!['across', 'debridge-dln', 'relay'].includes(provider)) {
+    if (!['across', 'debridge-dln', 'relay', '0x-cross-chain'].includes(provider)) {
         throw new Error(`${provider} is incompatible with configured platform fees.`)
     }
     return { bps: fees.platformFeeBps, recipient: fees.treasuryAddress }

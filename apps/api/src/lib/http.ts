@@ -13,6 +13,56 @@ type FetchJsonOptions = {
 
 const pendingRequests = new Map<string, Promise<unknown>>()
 const MAX_PROVIDER_MESSAGE_LENGTH = 240
+const MAX_PROVIDER_RESPONSE_BYTES = 5 * 1024 * 1024
+
+export async function readResponseTextLimited(
+    response: Response,
+    maximumBytes = MAX_PROVIDER_RESPONSE_BYTES,
+) {
+    const contentLength = Number(response.headers.get('content-length'))
+    if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
+        await response.body?.cancel().catch(() => undefined)
+        throw new ProviderError({
+            code: 'PROVIDER_RESPONSE_TOO_LARGE',
+            message: 'Provider response exceeded the allowed size.',
+        })
+    }
+    if (!response.body) return ''
+
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let totalBytes = 0
+    try {
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            totalBytes += value.byteLength
+            if (totalBytes > maximumBytes) {
+                await reader.cancel().catch(() => undefined)
+                throw new ProviderError({
+                    code: 'PROVIDER_RESPONSE_TOO_LARGE',
+                    message: 'Provider response exceeded the allowed size.',
+                })
+            }
+            chunks.push(value)
+        }
+    } finally {
+        reader.releaseLock()
+    }
+
+    const combined = new Uint8Array(totalBytes)
+    let offset = 0
+    for (const chunk of chunks) {
+        combined.set(chunk, offset)
+        offset += chunk.byteLength
+    }
+    return new TextDecoder().decode(combined)
+}
+
+async function responseJson(response: Response) {
+    const text = await readResponseTextLimited(response)
+    return JSON.parse(text)
+}
 
 function truncateMessage(value: string) {
     return value.replace(/\s+/g, ' ').trim().slice(0, MAX_PROVIDER_MESSAGE_LENGTH)
@@ -128,8 +178,9 @@ async function executeFetchJson(
 
             if (response.ok) {
                 try {
-                    return await response.json()
+                    return await responseJson(response)
                 } catch (error) {
+                    if (error instanceof ProviderError) throw error
                     throw new ProviderError({
                         code: 'PROVIDER_RESPONSE_INVALID',
                         message: 'Provider returned malformed JSON.',
@@ -144,7 +195,10 @@ async function executeFetchJson(
 
             const contentType = response.headers.get('content-type') ?? ''
             const payload = contentType.toLowerCase().includes('application/json')
-                ? await response.json().catch(() => null)
+                ? await responseJson(response).catch((error) => {
+                      if (error instanceof ProviderError) throw error
+                      return null
+                  })
                 : null
 
             const retryable =
@@ -173,6 +227,10 @@ async function executeFetchJson(
                 })
             }
 
+            const retryAfterSeconds = Number(response.headers.get('retry-after'))
+            const retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                ? retryAfterSeconds * 1000
+                : 0
             lastError = new ProviderError({
                 code:
                     response.status === 429
@@ -185,15 +243,13 @@ async function executeFetchJson(
                 retryable: true,
                 outcome: response.status === 429 ? 'rate-limit' : 'upstream',
                 upstreamStatus: response.status,
+                retryAfterMs,
             })
 
             if (attempt < retries) {
-                const retryAfter = Number(
-                    response.headers.get('retry-after'),
-                )
                 const delay =
-                    Number.isFinite(retryAfter) && retryAfter > 0
-                        ? Math.min(retryAfter * 1000, 10_000)
+                    retryAfterMs > 0
+                        ? Math.min(retryAfterMs, 10_000)
                         : 350 * 2 ** attempt
 
                 await sleep(delay, options.signal)

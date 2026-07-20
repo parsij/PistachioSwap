@@ -19,6 +19,13 @@
     "sponsor-token:update": "tsx --env-file=.env scripts/sponsorship-tokens.ts update",
     "debug:zero-x-live": "tsx --env-file=.env scripts/debug-zero-x-live.ts",
     "debug:cross-chain-providers": "tsx --env-file=.env scripts/debug-cross-chain-providers.ts",
+    "diagnose:alchemy-portfolio": "tsx --env-file=.env scripts/diagnose-alchemy-portfolio.ts",
+    "diagnose:market-tokens": "tsx --env-file=.env scripts/diagnose-market-tokens.ts",
+    "diagnose:market-cache": "tsx --env-file=.env scripts/diagnose-market-cache.ts",
+    "diagnose:dexpaprika": "tsx --env-file=.env scripts/diagnose-dexpaprika.ts",
+    "audit:market-catalog": "tsx --env-file=.env scripts/audit-market-catalog.ts",
+    "diagnose:cross-chain": "tsx --env-file=.env scripts/diagnose-cross-chain.ts",
+    "diagnose:official-token": "tsx scripts/diagnose-official-token.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

@@ -623,3 +623,30 @@ export const crossChainRouteSteps = pgTable(
         check('cross_chain_route_steps_index_check', sql`${table.stepIndex} >= 0`),
     ],
 )
+
+export const marketTokenCatalogCache = pgTable(
+    'market_token_catalog_cache',
+    {
+        chainId: integer('chain_id').primaryKey(),
+        schemaVersion: integer('schema_version').notNull(),
+        rankedTokens: jsonb('ranked_tokens').notNull(),
+        commonTokens: jsonb('common_tokens').notNull(),
+        providerStatus: jsonb('provider_status'),
+        exclusionCounts: jsonb('exclusion_counts'),
+        partial: boolean('partial').notNull().default(false),
+        generatedAt: timestamp('generated_at', { withTimezone: true }),
+        lastAttemptedAt: timestamp('last_attempted_at', { withTimezone: true }),
+        lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+        nextRefreshAt: timestamp('next_refresh_at', { withTimezone: true }),
+        contentHash: text('content_hash'),
+        updatedAt: timestamp('updated_at', { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+    },
+    (table) => [
+        index('market_token_catalog_next_refresh_idx').on(table.nextRefreshAt),
+        index('market_token_catalog_last_success_idx').on(table.lastSuccessAt),
+        check('market_token_catalog_chain_id_check', sql`${table.chainId} > 0`),
+        check('market_token_catalog_schema_version_check', sql`${table.schemaVersion} > 0`),
+    ],
+)

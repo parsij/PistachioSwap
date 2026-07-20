@@ -28,34 +28,44 @@ import {
 
 export const DEFAULT_CHAIN_ID = 56
 export const MEGAFUEL_CHAIN_ID = 56
+export const CANONICAL_NATIVE_TOKEN_ADDRESS =
+    '0x0000000000000000000000000000000000000000'
 
-const CHAIN_ICON_SLUGS = Object.freeze({
-    1: 'ethereum',
-    56: 'bsc',
-    137: 'polygon',
-    42161: 'arbitrum',
-    10: 'optimism',
-    8453: 'base',
-    43114: 'avalanche',
-    42220: 'celo',
-    100: 'gnosis',
-    59144: 'linea',
-    534352: 'scroll',
-    324: 'zksync-era',
-    5000: 'mantle',
-    146: 'sonic',
-    80094: 'berachain',
-    130: 'unichain',
-    480: 'world-chain',
-    81457: 'blast',
-    34443: 'mode',
-    1088: 'metis',
-    25: 'cronos',
-    1284: 'moonbeam',
-    167000: 'taiko',
-    204: 'opbnb',
-    1101: 'polygon-zkevm',
+const NATIVE_ERC20_ALIASES = Object.freeze({
+    42220: Object.freeze([
+        '0x471ece3750da237f93b8e339c536989b8978a438',
+    ]),
 })
+
+const CHAIN_ICON_FILES = Object.freeze({
+    1: 'ethereum.svg',
+    56: 'bsc.webp',
+    137: 'polygon.webp',
+    42161: 'arbitrum.webp',
+    10: 'optimism.webp',
+    8453: 'base.webp',
+    43114: 'avalanche.webp',
+    42220: 'celo.webp',
+    100: 'gnosis.webp',
+    59144: 'linea.webp',
+    534352: 'scroll.webp',
+    324: 'zksync-era.webp',
+    5000: 'mantle.webp',
+    146: 'sonic.webp',
+    80094: 'berachain.webp',
+    130: 'unichain.webp',
+    480: 'world-chain.webp',
+    81457: 'blast.webp',
+    34443: 'mode.webp',
+    1088: 'metis.webp',
+    25: 'cronos.webp',
+    1284: 'moonbeam.webp',
+    167000: 'taiko.webp',
+    204: 'opbnb.webp',
+    1101: 'polygon-zkevm.webp',
+})
+
+const CHAIN_ICON_BASE_PATH = '/networkIcons'
 
 export const CURATED_EVM_CHAINS = Object.freeze([
     mainnet,
@@ -121,10 +131,23 @@ export function getCuratedEvmChain(chainId) {
     return curatedChainsById.get(Number(chainId)) ?? null
 }
 
+export function getNativeTokenAliases(chainId) {
+    return NATIVE_ERC20_ALIASES[Number(chainId)] ?? Object.freeze([])
+}
+
+export function getCanonicalTokenAddress(chainId, address) {
+    const normalized = String(address ?? '').trim().toLowerCase()
+    if (normalized === CANONICAL_NATIVE_TOKEN_ADDRESS ||
+        getNativeTokenAliases(chainId).includes(normalized)) {
+        return CANONICAL_NATIVE_TOKEN_ADDRESS
+    }
+    return /^0x[a-f0-9]{40}$/.test(normalized) ? normalized : null
+}
+
 export function getCuratedEvmChainLogoUri(chainId) {
-    const slug = CHAIN_ICON_SLUGS[Number(chainId)]
-    return slug
-        ? `https://icons.llamao.fi/icons/chains/rsz_${slug}.jpg`
+    const fileName = CHAIN_ICON_FILES[Number(chainId)]
+    return fileName
+        ? `${CHAIN_ICON_BASE_PATH}/${fileName}`
         : null
 }
 

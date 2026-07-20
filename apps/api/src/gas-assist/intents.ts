@@ -5,7 +5,7 @@ import { getPool } from '../db/client.js'
 import type {
     NormalizedQuote,
     QuoteRequest,
-} from '../providers/quotes/types.js'
+} from '../features/quotes/types/types.js'
 
 export type SwapIntent = {
     id: string

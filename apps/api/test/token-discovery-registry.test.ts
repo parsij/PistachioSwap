@@ -32,12 +32,13 @@ function token(chainId: number, volume24hUsd: number): MarketToken {
         priceUSD: '1',
         volume24hUsd,
         liquidityUsd: 1_000_000,
+        transactions24h: 100,
         pairCount: 1,
         oldestPairCreatedAt: '2020-01-01T00:00:00.000Z',
         marketUrl: null,
         rank: 1,
         verificationStatus: 'established',
-        verificationReasons: ['fixture'],
+        verificationReasons: ['coingecko-exact-contract'],
     }
 }
 
@@ -105,7 +106,7 @@ describe('token-discovery registry', () => {
 })
 
 describe('all-chain market route', () => {
-    it('returns the hourly combined catalog with a hard 200-token cap', async () => {
+    it('returns the hourly combined catalog with a 100-token per-chain cap', async () => {
         const failedChain = ACTIVE_TOKEN_DISCOVERY_CHAINS[2].chainId
         const combinedTokens = Array.from({ length: 205 }, (_, index) => ({
             ...token(
@@ -138,8 +139,10 @@ describe('all-chain market route', () => {
         const body = response.json()
         expect(body.partial).toBe(true)
         expect(body.metadata.unavailableChainIds).toEqual([failedChain])
-        expect(body.tokens).toHaveLength(200)
-        expect(body.metadata.combinedLimit).toBe(200)
+        expect(body.tokens).toHaveLength(205)
+        expect(body.metadata.combinedLimit).toBe(
+            ACTIVE_TOKEN_DISCOVERY_CHAINS.length * 100,
+        )
         expect(body.metadata.perChainLimit).toBe(100)
         expect(service.getCombinedCatalog).toHaveBeenCalledOnce()
         await app.close()

@@ -1,5 +1,6 @@
 import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
+import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import {
     getGoPlusTokenSecurity,
     unavailableGoPlusSecurity,
@@ -301,7 +302,7 @@ export function createTokenSecurityService(overrides: Partial<SecurityDependenci
             const ttl = providerError
                 ? getApiConfig().tokenSecurity.errorCacheTtlMs
                 : ttlFor(assessment.securityStatus)
-            cache.set(key, {
+            setBoundedCacheEntry(cache, key, {
                 assessment,
                 conclusive,
                 expiresAt: now + ttl,

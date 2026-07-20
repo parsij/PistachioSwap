@@ -11,16 +11,25 @@ import {
     marketCatalogService,
     marketTokenRoutes,
 } from './modules/market-tokens.js'
-import { quoteRoutes } from './modules/quotes.js'
+import { sameChainQuoteRoutes } from './features/quotes/routes/quote-routes.js'
 import { tokenDetailsRoutes } from './modules/token-details.js'
 import { walletTokenRoutes } from './modules/wallet-tokens.js'
 import { sponsorshipRoutes } from './modules/sponsorship.js'
+import { ACTIVE_TOKEN_DISCOVERY_CHAINS } from './token-discovery/registry.js'
+
+const consoleTimeFormatter = new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'full',
+    timeStyle: 'long',
+})
 
 export function createApp() {
     const config = validateStartupConfig()
     const app = Fastify({
         logController: new LogController({ disableRequestLogging: true }),
         logger: {
+            timestamp: () => `,"time":${JSON.stringify(
+                consoleTimeFormatter.format(new Date()),
+            )}`,
             redact: {
                 paths: [
                     'req.headers.authorization',
@@ -55,7 +64,7 @@ export function createApp() {
     })
     app.register(marketTokenRoutes)
     app.register(walletTokenRoutes)
-    app.register(quoteRoutes)
+    app.register(sameChainQuoteRoutes)
     app.register(crossChainRoutes)
     app.register(tokenDetailsRoutes)
     app.register(gasAssistRoutes)
@@ -64,29 +73,33 @@ export function createApp() {
     app.addHook('onReady', async () => {
         await assertGasAssistReady()
         if (process.env.NODE_ENV !== 'test') {
-            app.log.info('Warming token catalogs in the background')
-            void marketCatalogService.refreshAllCatalogs()
-                .then((catalog) => {
-                    app.log.info({
-                        tokenCount: catalog.tokens.length,
-                        unavailableChainIds: catalog.unavailableChainIds,
-                    }, 'Token catalog warmup completed')
-                })
-                .catch((error) => {
-                    app.log.warn({
-                        code: error?.code ?? 'TOKEN_CATALOG_WARMUP_FAILED',
-                    }, 'Token catalog warmup will retry on the hourly schedule')
-                })
+            marketCatalogService.setPersistenceWarningHandler((code) => {
+                app.log.warn({
+                    subsystem: 'market-catalog-persistence',
+                    code,
+                }, 'Market catalog persistence is degraded')
+            })
+            const hydration = await marketCatalogService.hydratePersistentCatalogs()
+            app.log.info({
+                subsystem: 'market-catalog-persistence',
+                loadedCatalogs: hydration.loaded,
+                ignoredCatalogs: hydration.ignored,
+                degraded: hydration.degraded,
+            }, 'Market catalog cache hydration completed')
+            if (ACTIVE_TOKEN_DISCOVERY_CHAINS.length > 30) {
+                app.log.warn({
+                    activeChainCount: ACTIVE_TOKEN_DISCOVERY_CHAINS.length,
+                    refreshIntervalMs: 60_000,
+                }, 'Market catalog rolling refresh cannot meet the 30-minute target')
+            }
             stopMarketCatalogRefresh =
-                marketCatalogService.startHourlyRefresh(
-                    60 * 60 * 1000,
-                    { refreshImmediately: false },
-                )
+                marketCatalogService.startRollingRefresh()
         }
     })
     app.addHook('onClose', async () => {
         stopMarketCatalogRefresh?.()
         stopMarketCatalogRefresh = null
+        marketCatalogService.setPersistenceWarningHandler(null)
         await closeDatabase()
     })
 

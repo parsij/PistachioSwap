@@ -165,6 +165,12 @@ function providerError(
     )
 }
 
+function retryableGetError(error: unknown) {
+    if (!(error instanceof GasAssistError)) return true
+    const upstreamStatus = Number(error.details?.httpStatus)
+    return upstreamStatus === 429 || upstreamStatus >= 500
+}
+
 export function buildGaslessQuery(request: GaslessRequest) {
     const values: Record<string, string> = {
         chainId: String(request.chainId),
@@ -231,7 +237,11 @@ export function createZeroXGaslessClient(options: ClientOptions = {}) {
                     logProviderResponse(operation, response, payload, providerFailure)
                     return payload
                 } catch (error) {
-                    if (attempt + 1 >= attempts || controller.signal.aborted) throw error
+                    if (
+                        attempt + 1 >= attempts ||
+                        controller.signal.aborted ||
+                        !retryableGetError(error)
+                    ) throw error
                 }
             }
             throw new Error('unreachable')

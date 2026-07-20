@@ -1,4 +1,5 @@
 import type { LogoSource, TokenLogoEntry } from './token-logos.js'
+import { setBoundedCacheEntry } from '../lib/bounded-cache.js'
 
 const TRUSTED_IMAGE_HOSTS = new Set([
     'assets.coingecko.com',
@@ -8,7 +9,10 @@ const TRUSTED_IMAGE_HOSTS = new Set([
     'raw.githubusercontent.com',
     'static.alchemyapi.io',
 ])
-const TRUSTED_LOCAL_IMAGES = new Set(['/icons/bnb.svg'])
+const TRUSTED_LOCAL_IMAGES = new Set([
+    '/icons/bnb.svg',
+    '/icons/tether-gold.png',
+])
 const SUCCESS_TTL_MS = 24 * 60 * 60 * 1000
 const FAILURE_TTL_MS = 60 * 60 * 1000
 const REQUEST_TIMEOUT_MS = 5_000
@@ -142,12 +146,12 @@ export function validateRemoteLogoUrl(
             } catch {
                 valid = false
             }
-            validationCache.set(url.toString(), {
+            setBoundedCacheEntry(validationCache, url.toString(), {
                 valid,
                 expiresAt:
                     Date.now() +
                     (valid ? SUCCESS_TTL_MS : FAILURE_TTL_MS),
-            })
+            }, 5_000)
             return valid
         } finally {
             releaseSlot()
@@ -168,7 +172,8 @@ export async function validateTokenLogoEntries(
 } | null> {
     for (const entry of entries) {
         const valid = entry.url.startsWith('/')
-            ? entry.source === 'local' && TRUSTED_LOCAL_IMAGES.has(entry.url)
+            ? ['curated', 'local'].includes(entry.source) &&
+                TRUSTED_LOCAL_IMAGES.has(entry.url)
             : await validateRemoteLogoUrl(entry.url, signal)
         if (valid) {
             return {

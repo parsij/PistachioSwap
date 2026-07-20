@@ -1,5 +1,6 @@
 import { getApiConfig } from '../../config.js'
 import { createTokenId, normalizeAddress } from '../../lib/address.js'
+import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import {
     isRecord,
     validateRemoteImageUrl,
@@ -69,7 +70,7 @@ function setCache(
     metadata: TokenMetadata | null,
 ) {
     const config = getApiConfig().alchemy
-    metadataCache.set(key, {
+    setBoundedCacheEntry(metadataCache, key, {
         metadata,
         expiresAt:
             Date.now() +

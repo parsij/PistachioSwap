@@ -1,5 +1,6 @@
 import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
+import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import {
     isRecord,
     validateRemoteImageUrl,
@@ -131,7 +132,7 @@ export async function getCoinGeckoToken(
     const token =
         parsedToken?.address === normalized ? parsedToken : null
 
-    tokenCache.set(cacheKey, {
+    setBoundedCacheEntry(tokenCache, cacheKey, {
         token,
         expiresAt:
             Date.now() +
@@ -205,7 +206,7 @@ export async function getCoinGeckoTokensBatch(
 
             for (const address of batch) {
                 const token = returned.get(address) ?? null
-                tokenCache.set(`${chainId}:${network}:${address}`, {
+                setBoundedCacheEntry(tokenCache, `${chainId}:${network}:${address}`, {
                     token,
                     expiresAt:
                         Date.now() +

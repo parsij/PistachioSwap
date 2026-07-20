@@ -4,15 +4,90 @@ import { getApiConfig } from '../config.js'
 import { normalizeAddress } from '../lib/address.js'
 import { getSafeError } from '../lib/errors.js'
 import {
+    getAlchemyPortfolioWalletTokens,
+    hasStaleAlchemyPortfolioWalletCache,
+} from '../providers/alchemy/portfolio-wallet-tokens.js'
+import {
+    getAlchemyPortfolioNetwork,
+} from '../providers/alchemy/portfolio-networks.js'
+import {
     getWalletTokens,
     WALLET_TOKEN_CLASSIFICATION_VERSION,
+    type WalletToken,
 } from '../providers/alchemy/wallet-tokens.js'
-import { getTokenDiscoveryChain } from '../token-discovery/registry.js'
+import {
+    ACTIVE_TOKEN_DISCOVERY_CHAINS,
+    getTokenDiscoveryChain,
+} from '../token-discovery/registry.js'
 
 type WalletTokenQuery = {
     chainId?: string
     address?: string
     includeZero?: string
+}
+
+async function legacyAllChainWalletTokens({
+    chainIds,
+    address,
+    includeZero,
+    signal,
+}: {
+    chainIds: readonly number[]
+    address: string
+    includeZero: boolean
+    signal: AbortSignal
+}) {
+    const tokens: WalletToken[] = []
+    const successfulChainIds: number[] = []
+    const chainErrors: Record<string, string> = {}
+    let cursor = 0
+    const workers = Array.from(
+        { length: Math.min(4, chainIds.length) },
+        async () => {
+            while (cursor < chainIds.length) {
+                const index = cursor
+                cursor += 1
+                const chainId = chainIds[index]
+                try {
+                    tokens.push(...await getWalletTokens({
+                        chainId,
+                        walletAddress: address,
+                        includeZero,
+                        signal,
+                    }))
+                    successfulChainIds.push(chainId)
+                } catch {
+                    chainErrors[String(chainId)] =
+                        'This network balance could not be refreshed.'
+                }
+            }
+        },
+    )
+    await Promise.all(workers)
+    if (successfulChainIds.length === 0 && chainIds.length > 0) {
+        throw new Error('Legacy wallet-token providers are unavailable.')
+    }
+    return {
+        classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+        address,
+        source: 'legacy' as const,
+        tokens,
+        queriedChainIds: [...chainIds],
+        successfulChainIds: successfulChainIds.sort((left, right) => left - right),
+        failedChainIds: Object.keys(chainErrors).map(Number).sort(
+            (left, right) => left - right,
+        ),
+        providerRejectedChainIds: [],
+        chainErrors,
+        batchErrors: [],
+        partial: Object.keys(chainErrors).length > 0,
+        stale: false,
+        diagnostics: {
+            pageCount: 0,
+            cacheStatus: 'miss' as const,
+            failureCode: null,
+        },
+    }
 }
 
 export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
@@ -26,7 +101,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                     properties: {
                         chainId: {
                             type: 'string',
-                            pattern: '^[1-9][0-9]*$',
+                            pattern: '^(?:all|[1-9][0-9]*)$',
                         },
                         address: {
                             type: 'string',
@@ -44,6 +119,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
             },
         },
         async (request, reply) => {
+            const startedAt = Date.now()
             const config = getApiConfig()
             const unsupportedParameters = Object.keys(request.query)
                 .filter((key) => !['chainId', 'address', 'includeZero'].includes(key))
@@ -56,12 +132,15 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                 })
             }
             const rawChainId = request.query.chainId ?? String(config.chainId)
-            const chainId = /^[1-9]\d*$/.test(rawChainId)
-                ? Number(rawChainId)
-                : Number.NaN
+            const allChains = rawChainId.toLowerCase() === 'all'
+            const chainId = allChains ? null : Number(rawChainId)
             const address = normalizeAddress(request.query.address)
 
-            if (!getTokenDiscoveryChain(chainId)?.active) {
+            if (
+                !allChains &&
+                (!Number.isSafeInteger(chainId) ||
+                    !getTokenDiscoveryChain(chainId!)?.active)
+            ) {
                 return reply.code(400).send({
                     error: {
                         code: 'UNSUPPORTED_CHAIN',
@@ -69,7 +148,6 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                     },
                 })
             }
-
             if (!address) {
                 return reply.code(400).send({
                     error: {
@@ -90,40 +168,125 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                 })
             }
 
+            const includeZero = request.query.includeZero === 'true'
+            const requestedChainIds = allChains
+                ? ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => chain.chainId)
+                : [chainId!]
+            const supportedChainIds = requestedChainIds.filter(
+                (requestedChainId) =>
+                    getAlchemyPortfolioNetwork(requestedChainId) !== null,
+            )
+            const unsupportedChainIds = requestedChainIds.filter(
+                (requestedChainId) =>
+                    getAlchemyPortfolioNetwork(requestedChainId) === null,
+            )
             const controller = new AbortController()
             const abort = () => controller.abort()
             request.raw.once('aborted', abort)
+
             try {
-                const tokens = await getWalletTokens({
-                    chainId,
-                    walletAddress: address,
-                    includeZero: request.query.includeZero === 'true',
-                    signal: controller.signal,
-                })
+                let result
+                if (
+                    config.alchemy.portfolio.enabled &&
+                    supportedChainIds.length > 0
+                ) {
+                    result = await getAlchemyPortfolioWalletTokens({
+                        walletAddress: address,
+                        chainIds: supportedChainIds,
+                        includeZero,
+                        signal: controller.signal,
+                    })
+                } else if (allChains) {
+                    result = await legacyAllChainWalletTokens({
+                        chainIds: requestedChainIds,
+                        address,
+                        includeZero,
+                        signal: controller.signal,
+                    })
+                } else {
+                    const tokens = await getWalletTokens({
+                        chainId: chainId!,
+                        walletAddress: address,
+                        includeZero,
+                        signal: controller.signal,
+                    })
+                    result = {
+                        classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+                        address,
+                        source: 'legacy-single-chain' as const,
+                        tokens,
+                        queriedChainIds: [chainId!],
+                        successfulChainIds: [chainId!],
+                        failedChainIds: [],
+                        providerRejectedChainIds: [],
+                        chainErrors: {},
+                        batchErrors: [],
+                        partial: false,
+                        stale: false,
+                        diagnostics: {
+                            pageCount: 0,
+                            cacheStatus: 'miss' as const,
+                            failureCode: null,
+                        },
+                    }
+                }
+
+                const response = {
+                    classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+                    ...(allChains ? {} : { chainId }),
+                    address,
+                    source: result.source,
+                    tokens: result.tokens,
+                    queriedChainIds: result.queriedChainIds,
+                    successfulChainIds: result.successfulChainIds,
+                    failedChainIds: result.failedChainIds,
+                    providerRejectedChainIds:
+                        result.providerRejectedChainIds ?? [],
+                    unsupportedChainIds,
+                    chainErrors: result.chainErrors,
+                    batchErrors: result.batchErrors,
+                    partial: result.partial,
+                    stale: result.stale,
+                }
                 if (process.env.NODE_ENV !== 'production') {
                     request.log.debug({
-                        classification: {
-                            total: tokens.length,
-                            primary: tokens.filter((token) => token.visibility === 'primary').length,
-                            hidden: tokens.filter((token) => token.visibility === 'hidden').length,
-                            unverifiedVisibility: tokens.filter((token) => token.visibility === 'unverified').length,
-                            established: tokens.filter((token) => token.recognitionStatus === 'established').length,
-                            recognized: tokens.filter((token) => token.recognitionStatus === 'recognized').length,
-                            unverified: tokens.filter((token) => token.recognitionStatus === 'unverified').length,
-                            high: tokens.filter((token) => token.securityStatus === 'high').length,
-                            blocked: tokens.filter((token) => token.securityStatus === 'blocked').length,
-                        },
-                    }, 'Wallet token classification')
+                        provider: result.source,
+                        addressSuffix: address.slice(-4),
+                        requestedChainIds,
+                        supportedChainIds,
+                        unsupportedChainIds,
+                        tokenCount: result.tokens.length,
+                        pageCount: result.diagnostics.pageCount,
+                        cacheStatus: result.diagnostics.cacheStatus,
+                        partial: result.partial,
+                        durationMs: Date.now() - startedAt,
+                        failureCode: result.diagnostics.failureCode,
+                    }, 'Wallet portfolio request completed')
                 }
                 reply.header('cache-control', 'private, no-store')
-                return {
-                    classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
-                    chainId,
-                    address,
-                    tokens,
-                }
+                return response
             } catch (error) {
                 const safe = getSafeError(error)
+                const staleEntryAvailable = hasStaleAlchemyPortfolioWalletCache({
+                    walletAddress: address,
+                    chainIds: supportedChainIds,
+                    includeZero,
+                })
+                const log = safe.body.error.code === 'ALCHEMY_PORTFOLIO_REQUEST_ABORTED'
+                    ? request.log.debug.bind(request.log)
+                    : request.log.warn.bind(request.log)
+                log({
+                    operation: allChains
+                        ? 'wallet-tokens-all-chain'
+                        : 'wallet-tokens-single-chain',
+                    classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+                    cacheVersion: `v${WALLET_TOKEN_CLASSIFICATION_VERSION}`,
+                    provider: config.alchemy.portfolio.enabled
+                        ? 'alchemy-portfolio'
+                        : 'legacy',
+                    safeCode: safe.body.error.code,
+                    staleEntryAvailable,
+                }, 'Wallet token request failed')
                 return reply.code(safe.statusCode).send(safe.body)
             } finally {
                 request.raw.off('aborted', abort)

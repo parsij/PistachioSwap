@@ -147,15 +147,15 @@ describe('0x Gasless v2 quote validation', () => {
         expect(result.approval).toBeNull()
     })
 
-    it('accepts an EIP-2612 approval and discloses its scope', () => {
+    it('accepts a bounded EIP-2612 approval and discloses its scope', () => {
         const result = gaslessInternals.validateProviderQuote(quote({
             allowanceTarget: permit2,
-            approval: approval(UINT256_MAX),
+            approval: approval(1_000_000n),
             issues: { allowance: { actual: '0', spender: permit2 }, balance: null, simulationIncomplete: false },
         }), input)
         expect(result.approvalRequired).toBe(true)
-        expect(result.approvalUnlimited).toBe(true)
-        expect(result.approvalAmount).toBe(UINT256_MAX)
+        expect(result.approvalUnlimited).toBe(false)
+        expect(result.approvalAmount).toBe('1000000')
     })
 
     it.each([
@@ -202,9 +202,9 @@ describe('0x Gasless v2 quote validation', () => {
         }), input)).toThrowError(expect.objectContaining({ code: 'ZEROX_GASLESS_RESPONSE_INVALID' }))
     })
 
-    it('rejects unlimited permits when policy is enabled', () => {
+    it('rejects unlimited permits by default', () => {
         const previous = process.env.GAS_ASSIST_REJECT_UNLIMITED_PERMITS
-        process.env.GAS_ASSIST_REJECT_UNLIMITED_PERMITS = 'true'
+        delete process.env.GAS_ASSIST_REJECT_UNLIMITED_PERMITS
         try {
             expect(() => gaslessInternals.validateProviderQuote(quote({
                 allowanceTarget: permit2,
@@ -349,6 +349,7 @@ describe('0x Gasless HTTP client', () => {
                 statusText: 'Bad Request',
                 body: providerBody,
             })
+            expect(fetcher).toHaveBeenCalledTimes(1)
         } finally {
             errorLog.mockRestore()
             if (previousKey === undefined) delete process.env.ZEROX_API_KEY
@@ -380,6 +381,7 @@ describe('0x Gasless HTTP client', () => {
             })
             expect(JSON.stringify(errorLog.mock.calls)).toContain('upstream failed; [REDACTED]')
             expect(JSON.stringify(errorLog.mock.calls)).not.toContain('secret-provider-key')
+            expect(fetcher).toHaveBeenCalledTimes(2)
         } finally {
             errorLog.mockRestore()
             if (previousKey === undefined) delete process.env.ZEROX_API_KEY

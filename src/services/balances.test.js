@@ -57,7 +57,7 @@ describe('exact spendable balance math', () => {
         expect(getNativeSpendableWei({
             balanceWei: parseEther('1'),
             estimatedFeeWei: parseEther('0.01'),
-        })).toBe(parseEther('0.988'))
+        })).toBe(parseEther('0.9875'))
         expect(getNativeSpendableWei({
             balanceWei: parseUnits('0.001', 18),
             fallbackReserveWei: parseUnits('0.001', 18),

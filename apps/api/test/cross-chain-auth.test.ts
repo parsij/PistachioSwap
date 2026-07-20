@@ -67,4 +67,32 @@ describe('cross-chain wallet authentication', () => {
         await expect(auth.authenticate(authorization))
             .rejects.toMatchObject({ code: 'AUTH_SESSION_INVALID' })
     })
+
+    it('bounds the in-memory challenge fallback and recovers after expiry', async () => {
+        let now = new Date('2026-07-19T12:00:00.000Z')
+        const auth = createCrossChainAuthService({
+            now: () => now,
+            maximumMemoryEntries: 1,
+        })
+        await auth.createChallenge({
+            walletAddress: account.address,
+            chainId: 56,
+            domain: 'swap.example',
+        })
+        await expect(auth.createChallenge({
+            walletAddress: account.address,
+            chainId: 56,
+            domain: 'swap.example',
+        })).rejects.toMatchObject({
+            code: 'AUTH_CAPACITY_REACHED',
+            statusCode: 503,
+        })
+
+        now = new Date(now.getTime() + 5 * 60 * 1_000 + 1)
+        await expect(auth.createChallenge({
+            walletAddress: account.address,
+            chainId: 56,
+            domain: 'swap.example',
+        })).resolves.toMatchObject({ chainId: 56 })
+    })
 })

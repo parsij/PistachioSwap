@@ -151,6 +151,7 @@ describe('excluded-provider and frontend-secret guards', () => {
             'debridge-dln',
             'relay',
             'chainflip',
+            '0x-cross-chain',
         ])
 
         const runtimeFiles = [

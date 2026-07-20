@@ -20,6 +20,7 @@ export async function coinGeckoRequest(
             code: 'COINGECKO_NOT_CONFIGURED',
             message: 'CoinGecko API is not configured.',
             statusCode: 503,
+            outcome: 'configuration',
         })
     }
 

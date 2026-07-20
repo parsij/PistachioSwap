@@ -1,0 +1,118 @@
+.cross-chain-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel);
+    background: var(--color-background);
+    color: var(--color-text);
+}
+
+.cross-chain-panel h2 { margin: 0 0 4px; font-size: 19px; }
+.cross-chain-heading { display: flex; flex-direction: column; gap: 5px; }
+.cross-chain-heading > span, .cross-chain-output > span, .cross-chain-meta span, .cross-chain-step-details > span { color: var(--color-muted); font-size: 11px; }
+.cross-chain-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.cross-chain-output { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 6px 0; }
+.cross-chain-output strong { max-width: 100%; font-size: clamp(24px, 7vw, 32px); line-height: 1.15; overflow-wrap: anywhere; }
+.cross-chain-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 10px 0; border-top: 1px solid var(--color-border); }
+.cross-chain-meta div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.cross-chain-meta strong { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.cross-chain-selectors, .cross-chain-amount-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.cross-chain-selector, .cross-chain-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: var(--color-muted); font-size: 12px; }
+.cross-chain-selector select, .cross-chain-field input {
+    width: 100%;
+    height: 42px;
+    min-width: 0;
+    padding: 0 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    outline: 0;
+    background: var(--color-panel);
+    color: var(--color-text);
+}
+.cross-chain-decimals { max-width: 100px; }
+.cross-chain-sort { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 8px; background: var(--color-panel); }
+.cross-chain-sort button, .cross-chain-back { padding: 7px 9px; border-radius: 6px; background: transparent; color: var(--color-muted); font-size: 12px; white-space: nowrap; }
+.cross-chain-sort button.active { background: var(--color-active-tab); color: var(--color-text); }
+.cross-chain-routes { display: flex; flex-direction: column; gap: 7px; }
+.cross-chain-route-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid transparent; border-radius: 8px; background: var(--color-panel); color: var(--color-text); text-align: left; }
+.cross-chain-route-card.selected { border-color: color-mix(in srgb, var(--color-accent) 55%, transparent); background: color-mix(in srgb, var(--color-panel) 92%, var(--color-accent)); }
+.cross-chain-route-card > span { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.cross-chain-route-card > span:last-child { align-items: end; text-align: right; }
+.cross-chain-route-card small, .cross-chain-status, .cross-chain-empty { color: var(--color-muted); font-size: 11px; }
+.cross-chain-review { display: flex; margin: 0; flex-direction: column; gap: 10px; }
+.cross-chain-review div { display: flex; justify-content: space-between; gap: 16px; }
+.cross-chain-review dt { color: var(--color-muted); font-size: 12px; }
+.cross-chain-review dd { margin: 0; font-size: 12px; text-align: right; overflow-wrap: anywhere; }
+.cross-chain-warning, .cross-chain-error { margin: 0; color: #ff8299; font-size: 12px; line-height: 1.45; }
+.cross-chain-cost-note { margin: 0; color: var(--color-muted); font-size: 11px; line-height: 1.45; }
+.chainflip-deposit { padding: 12px; border: 1px solid #8c6b32; border-radius: 9px; background: #2c2519; font-size: 12px; }
+.chainflip-deposit p { margin: 7px 0; color: #d1c3a8; line-height: 1.4; }
+.chainflip-deposit dl { display: flex; margin: 10px 0; flex-direction: column; gap: 7px; }
+.chainflip-deposit dl div { display: flex; justify-content: space-between; gap: 12px; }
+.chainflip-deposit dt { color: #d1c3a8; }
+.chainflip-deposit dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.chainflip-deposit code { display: block; overflow-wrap: anywhere; user-select: text; }
+.cross-chain-steps { display: flex; margin: 0; padding: 0; flex-direction: column; gap: 7px; list-style: none; }
+.cross-chain-steps li { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--color-border); border-radius: 9px; }
+.cross-chain-steps li > span { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--color-panel); font-size: 12px; }
+.cross-chain-steps li.complete > span { background: var(--color-accent); color: #122012; }
+.cross-chain-steps li div { display: flex; flex-direction: column; gap: 2px; }
+.cross-chain-steps small { color: var(--color-muted); }
+.cross-chain-success { margin: 0; color: var(--color-accent); font-size: 12px; }
+.cross-chain-details { border-top: 1px solid var(--color-border); }
+.cross-chain-details > button { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 11px 0 0; background: transparent; color: var(--color-muted); font-size: 12px; }
+.cross-chain-details-body { max-height: 300px; overflow: auto; padding-top: 12px; }
+.cross-chain-step-details { margin-top: 12px; }
+.cross-chain-step-details ol { margin: 7px 0 0; padding-left: 20px; color: var(--color-text); font-size: 12px; }
+.primary-action .cross-chain-spinner { width: 14px; height: 14px; margin-right: 8px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: cross-chain-spin 700ms linear infinite; }
+@keyframes cross-chain-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 520px) {
+    .cross-chain-selectors { grid-template-columns: 1fr; }
+    .cross-chain-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cross-chain-route-card > span:last-child { max-width: 60%; }
+}
+
+.cross-chain-inline-details { display: flex; flex-direction: column; gap: 8px; padding: 0 4px; color: var(--color-text); }
+.cross-chain-inline-path { color: var(--color-muted); font-size: 12px; }
+.cross-chain-inline-details dl { display: grid; margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.cross-chain-inline-details dl div { display: flex; min-width: 0; justify-content: space-between; gap: 8px; }
+.cross-chain-inline-details dt { color: var(--color-muted); font-size: 11px; }
+.cross-chain-inline-details dd { margin: 0; overflow: hidden; font-size: 11px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.cross-chain-inline-details details { color: var(--color-muted); font-size: 11px; }
+.cross-chain-inline-details summary { padding: 4px 0; cursor: pointer; }
+.buy-amount-loading { display: inline-block; width: 110px; height: 28px; border-radius: 6px; background: linear-gradient(90deg, var(--color-panel), var(--color-border), var(--color-panel)); background-size: 200% 100%; animation: cross-chain-shimmer 1.2s linear infinite; }
+@keyframes cross-chain-shimmer { to { background-position: -200% 0; } }
+.cross-chain-review-backdrop { position: fixed; inset: 0; z-index: 1100; background: var(--color-backdrop); animation: cross-chain-review-fade-in 140ms ease-out; }
+.cross-chain-review-dialog { position: fixed; z-index: 1101; top: 50%; left: 50%; display: flex; width: min(440px, calc(100vw - 24px)); max-height: min(680px, calc(100dvh - 32px)); flex-direction: column; gap: 16px; overflow: auto; padding: 18px; border: 1px solid var(--color-border); border-radius: var(--radius-dialog); outline: 0; background: var(--color-background); color: var(--color-text); box-shadow: var(--shadow-dialog); transform: translate(-50%, -50%); animation: cross-chain-review-dialog-in 160ms ease-out; }
+.cross-chain-review-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cross-chain-review-dialog h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.cross-chain-review-dialog header button { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 999px; background: var(--color-panel); color: var(--color-muted); font-size: 20px; line-height: 1; }
+.cross-chain-review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cross-chain-review-actions button { height: 42px; border-radius: 8px; background: var(--color-panel); color: var(--color-text); font-size: 13px; font-weight: 600; }
+.cross-chain-review-actions button.primary { background: var(--color-accent); }
+.cross-chain-review-actions button:disabled { cursor: not-allowed; opacity: .5; }
+@keyframes cross-chain-review-fade-in { from { opacity: 0; } }
+@keyframes cross-chain-review-dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 12px)); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .cross-chain-review-backdrop,
+    .cross-chain-review-dialog { animation: none; }
+}
+.swap-compact-details { padding: 0 4px; color: var(--color-text); font-size: 12px; }
+.swap-compact-details summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; color: var(--color-muted); list-style: none; }
+.swap-compact-details summary::-webkit-details-marker { display: none; }
+.swap-compact-details summary::after { content: "v"; flex: 0 0 auto; color: var(--color-muted); }
+.swap-compact-details[open] summary::after { transform: rotate(180deg); }
+.swap-compact-details summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swap-compact-details dl { display: flex; margin: 10px 0 0; flex-direction: column; gap: 8px; }
+.swap-compact-details dl div { display: flex; justify-content: space-between; gap: 14px; }
+.swap-compact-details dt { color: var(--color-muted); }
+.swap-compact-details dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+
+@media (max-width: 520px) {
+    .cross-chain-inline-details dl { grid-template-columns: 1fr; }
+    .cross-chain-review-actions { grid-template-columns: 1fr; }
+}

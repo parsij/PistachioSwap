@@ -38,12 +38,19 @@ function tradeInput(value: unknown, clientIp: string, includeSlippage: boolean):
     }
 }
 
-async function safe<T>(handler: () => Promise<T>, reply: { code(status: number): { send(body: unknown): unknown } }) {
+async function safe<T>(
+    handler: () => Promise<T>,
+    reply: { code(status: number): { send(body: unknown): unknown } },
+    fallbackAllowed = false,
+) {
     try {
         return await handler()
     } catch (error) {
         const response = gasAssistErrorBody(error)
-        return reply.code(response.statusCode).send(response.body)
+        return reply.code(response.statusCode).send({
+            ...response.body,
+            ...(fallbackAllowed ? { fallbackAllowed: true } : {}),
+        })
     }
 }
 
@@ -87,6 +94,7 @@ export const gasAssistRoutes: FastifyPluginAsync = async (app) => {
         (request, reply) => safe(
             () => service().quote(tradeInput(request.body, request.ip, true)),
             reply,
+            true,
         ),
     )
 

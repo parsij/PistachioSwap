@@ -1,5 +1,6 @@
 import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
+import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import {
     isRecord,
     validateRemoteImageUrl,
@@ -152,18 +153,18 @@ export function createMoralisWalletTokenService(
                     tokens,
                     pageCount,
                 }
-                cache.set(key, {
+                setBoundedCacheEntry(cache, key, {
                     result,
                     expiresAt: dependencies.now() + config.cacheTtlMs,
-                })
+                }, 1_000)
                 return result
             } catch {
                 const result = existing?.result ?? unavailableResult()
                 if (!signal?.aborted) {
-                    cache.set(key, {
+                    setBoundedCacheEntry(cache, key, {
                         result,
                         expiresAt: dependencies.now() + config.cacheTtlMs,
-                    })
+                    }, 1_000)
                 }
                 return result
             }

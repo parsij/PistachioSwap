@@ -1,11 +1,12 @@
 import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
+import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
 import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
 import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
 const PRICE_TTL_MS = 45_000
-const priceCache = new Map<string, { expiresAt: number; value: string | null }>()
+const priceCache = new Map<string, { expiresAt: number; observedAt: number; value: string | null }>()
 const pendingPrices = new Map<string, Promise<Map<string, string>>>()
 const nativePriceCache = new Map<number, { expiresAt: number; value: string | null }>()
 const pendingNativePrices = new Map<number, Promise<string | null>>()
@@ -104,8 +105,9 @@ export async function getTokenPrices({
         }
 
         for (const address of missing) {
-            priceCache.set(`${chainId}:${address}`, {
+            setBoundedCacheEntry(priceCache, `${chainId}:${address}`, {
                 expiresAt: Date.now() + PRICE_TTL_MS,
+                observedAt: Date.now(),
                 value: fetched.get(address) ?? null,
             })
         }
@@ -116,6 +118,25 @@ export async function getTokenPrices({
     for (const [address, value] of await request) prices.set(address, value)
 
     return prices
+}
+
+export async function getAuthoritativeTokenUsdPrice({
+    chainId,
+    address,
+    signal,
+}: {
+    chainId: number
+    address: string
+    signal?: AbortSignal
+}): Promise<{ priceUsd: string; observedAt: number; source: 'alchemy' } | null> {
+    const normalized = normalizeAddress(address)
+    if (!normalized) return null
+
+    await getTokenPrices({ chainId, addresses: [normalized], signal })
+    const cached = priceCache.get(`${chainId}:${normalized}`)
+    if (!cached || cached.expiresAt <= Date.now() || !cached.value) return null
+
+    return { priceUsd: cached.value, observedAt: cached.observedAt, source: 'alchemy' }
 }
 
 export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
@@ -179,7 +200,7 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
         .catch(() => null)
         .then((value) => value ?? coinGeckoPrice().catch(() => null))
         .then((value) => {
-            nativePriceCache.set(chainId, {
+            setBoundedCacheEntry(nativePriceCache, chainId, {
                 value,
                 expiresAt: Date.now() + PRICE_TTL_MS,
             })

@@ -8,6 +8,7 @@ import {
     type MarketToken,
     createMarketCatalogService,
     createMarketTokenRoutes,
+    filterEligibleVolumeTokens,
 } from '../src/modules/market-tokens.js'
 import {
     type CoinGeckoToken,
@@ -25,6 +26,7 @@ import {
     discoverTopPoolTokens,
 } from '../src/providers/geckoterminal/top-pools.js'
 import { validateRemoteLogoUrl } from '../src/providers/logo-validator.js'
+import { ACTIVE_TOKEN_DISCOVERY_CHAINS } from '../src/token-discovery/registry.js'
 
 const WBNB = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'
 const NOW = Date.parse('2026-07-13T00:00:00.000Z')
@@ -85,6 +87,36 @@ function market(
     }
 }
 
+function dexPaprikaToken(index: number) {
+    return {
+        provider: 'dexpaprika' as const,
+        chainId: 56,
+        address: address(index),
+        name: `DexPaprika ${index}`,
+        symbol: `DP${index}`,
+        decimals: 18,
+        priceUSD: '1',
+        marketPriceUSD: '1',
+        priceChange24hPercent: 1,
+        volume24hUsd: 100_000,
+        volume7dUsd: 700_000,
+        volume30dUsd: 3_000_000,
+        liquidityUsd: 250_000,
+        fdvUsd: 1_000_000,
+        transactions24h: 100,
+        poolsCount: 2,
+        createdAt: new Date(OLD_POOL).toISOString(),
+        hasProviderImage: true,
+        recognitionStatus: 'unverified' as const,
+        verifiedContract: false as const,
+        possibleSpam: null,
+        securityStatus: 'unknown' as const,
+        visibility: 'unverified' as const,
+        logoURI: null,
+        logoCandidates: [] as [],
+    }
+}
+
 function validLogo(entries: Array<{ url: string; source: string }>) {
     const first = entries[0]
     return Promise.resolve(
@@ -119,6 +151,10 @@ function serviceFor(
     )
 
     return createMarketCatalogService({
+        discoverDexPaprika: async () => ({
+            tokens: [], networkId: 'bsc', partial: false,
+            malformedCount: 0, hasNextPage: false,
+        }),
         discoverCandidates: async () => ({
             candidates,
             pagesCompleted: 3,
@@ -213,9 +249,9 @@ describe.sequential('established BSC market catalog', () => {
                 failedBatches: 0,
             }),
         })
-        await expect(service.getCatalog()).rejects.toMatchObject({
-            code: 'MARKET_CATALOG_EMPTY',
-        })
+        const { catalog } = await service.getCatalog()
+        expect(catalog.tokens).toEqual([])
+        expect(catalog.stats.exclusionReasons['coin-not-listed']).toBe(1)
     })
 
     it('uses exact GeckoTerminal CoinGecko metadata when the CoinGecko API is unavailable', async () => {
@@ -278,18 +314,23 @@ describe.sequential('established BSC market catalog', () => {
                 failedBatches: 0,
             }),
         })
-        await expect(service.getCatalog()).rejects.toMatchObject({
-            code: 'MARKET_CATALOG_EMPTY',
-        })
+        const { catalog } = await service.getCatalog()
+        expect(catalog.tokens).toEqual([])
+        expect(catalog.stats.exclusionReasons[reason]).toBe(1)
     })
 
-    it('excludes default tokens without a validated real image', async () => {
+    it('retains a non-established candidate when optional logo validation is unavailable', async () => {
         const service = serviceFor([candidate(1)], {
             validateLogos: async () => null,
         })
-        await expect(service.getCatalog()).rejects.toMatchObject({
-            code: 'MARKET_CATALOG_EMPTY',
-        })
+        const { catalog } = await service.getCatalog()
+        expect(catalog.tokens).toEqual([
+            expect.objectContaining({
+                address: address(1),
+                verificationStatus: 'recognized',
+            }),
+        ])
+        expect(catalog.stats.exclusionReasons['logo-unavailable']).toBe(1)
     })
 
     it('does not exclude a text-search token when its real image is missing', async () => {
@@ -413,7 +454,7 @@ describe.sequential('established BSC market catalog', () => {
         expect(catalog.tokens.every((token) => token.verificationStatus === 'established')).toBe(true)
     })
 
-    it('builds one hourly-ready combined catalog capped at 200 tokens', async () => {
+    it('builds one hourly-ready combined catalog capped at 100 tokens per chain', async () => {
         const service = serviceFor([
             candidate(1),
             candidate(2),
@@ -428,14 +469,19 @@ describe.sequential('established BSC market catalog', () => {
             )
         }
 
-        expect(combined.tokens.length).toBeLessThanOrEqual(200)
+        expect(combined.tokens.length).toBeLessThanOrEqual(
+            ACTIVE_TOKEN_DISCOVERY_CHAINS.length * 100,
+        )
         expect([...chainCounts.values()].every((count) => count <= 100))
             .toBe(true)
-        expect(combined.tokens.every((token) =>
+        const volumeTokens = combined.tokens.filter(
+            (token) => token.catalogSection === 'volume',
+        )
+        expect(volumeTokens.every((token) =>
             token.logoURI && token.volume24hUsd > 0,
         )).toBe(true)
-        expect(combined.tokens.map((token) => token.volume24hUsd))
-            .toEqual([...combined.tokens]
+        expect(volumeTokens.map((token) => token.volume24hUsd))
+            .toEqual([...volumeTokens]
                 .map((token) => token.volume24hUsd)
                 .sort((left, right) => right - left))
     })
@@ -531,14 +577,15 @@ describe.sequential('established BSC market catalog', () => {
         const stale = await service.getCatalog()
         expect(stale.stale).toBe(true)
         expect(stale.catalog.tokens).toEqual(first.catalog.tokens)
-        await expect(service.refreshCatalog()).rejects.toThrow(
-            'Gecko unavailable',
-        )
+        await expect(service.refreshCatalog()).resolves.toMatchObject({
+            tokens: first.catalog.tokens,
+            partial: true,
+        })
         const retained = await service.getCatalog()
         expect(retained.catalog.tokens).toEqual(first.catalog.tokens)
     })
 
-    it('retries an initial partial catalog after one minute', async () => {
+    it('serves an initial partial catalog until a scheduled refresh runs', async () => {
         let now = NOW
         const discover = vi.fn(async () => ({
             candidates: [candidate(1)],
@@ -556,7 +603,8 @@ describe.sequential('established BSC market catalog', () => {
         now += 2
         const stale = await service.getCatalog()
         expect(stale.stale).toBe(true)
-        await vi.waitFor(() => expect(discover).toHaveBeenCalledTimes(2))
+        expect(discover).toHaveBeenCalledTimes(1)
+        await service.refreshCatalog()
         await service.getCatalog()
         expect(discover).toHaveBeenCalledTimes(2)
     })
@@ -718,6 +766,161 @@ describe.sequential('established BSC market catalog', () => {
         expect(fetchMock.mock.calls[1][1].headers.range).toBe(
             'bytes=0-2097151',
         )
+    })
+
+    it('filters the volume list by exact trust, safety, and market activity', () => {
+        const volumeToken = (
+            index: number,
+            overrides: Partial<MarketToken> = {},
+        ): MarketToken => ({
+            id: `56:${address(index)}`,
+            chainId: 56,
+            address: address(index),
+            name: `Token ${index}`,
+            symbol: `T${index}`,
+            decimals: 18,
+            logoURI: null,
+            logoCandidates: [],
+            logoSource: null,
+            chainLogoURI: null,
+            coinGeckoId: `token-${index}`,
+            priceUSD: '1',
+            volume24hUsd: 500_000 - index,
+            liquidityUsd: 250_000,
+            transactions24h: 100,
+            pairCount: 1,
+            oldestPairCreatedAt: new Date(OLD_POOL).toISOString(),
+            marketUrl: null,
+            rank: null,
+            verificationStatus: 'established',
+            verificationReasons: ['coingecko-exact-contract'],
+            possibleSpam: false,
+            visibility: 'primary',
+            securityStatus: 'low',
+            ...overrides,
+        })
+        const { tokens, exclusionReasons } = filterEligibleVolumeTokens([
+            volumeToken(1),
+            volumeToken(2, { verificationStatus: 'recognized' }),
+            volumeToken(3, { verificationStatus: 'unverified' }),
+            volumeToken(4, { verificationReasons: ['symbol-match'] }),
+            volumeToken(5, { possibleSpam: true }),
+            volumeToken(6, { visibility: 'hidden' }),
+            volumeToken(7, { securityStatus: 'blocked' }),
+            volumeToken(8, { volume24hUsd: null }),
+            volumeToken(9, { liquidityUsd: 0 }),
+        ])
+        expect(tokens.map((token) => token.address)).toEqual([address(1), address(2)])
+        expect(exclusionReasons).toEqual({
+            unverified: 1,
+            missingTrustedContractMatch: 1,
+            possibleSpam: 1,
+            hidden: 1,
+            securityBlocked: 1,
+            missingVolume: 1,
+            insufficientLiquidity: 1,
+        })
+    })
+
+    it('admits official XAUt only when exact market thresholds pass', async () => {
+        const xaut = candidate(21, {
+            address: '0x21caef8a43163eea865baee23b9c2e327696a3bf',
+            name: 'Untrusted provider name',
+            symbol: 'XAUT',
+            decimals: 18,
+        })
+        const noCoinGecko = async () => ({
+            tokens: new Map(),
+            partial: true,
+            successfulBatches: 0,
+            failedBatches: 1,
+        })
+        const service = serviceFor([xaut], { fetchRecognized: noCoinGecko })
+        const { catalog } = await service.getCatalog(56)
+        expect(catalog.tokens).toEqual([
+            expect.objectContaining({
+                address: xaut.address,
+                name: 'Tether Gold',
+                symbol: 'XAUt',
+                decimals: 6,
+                verificationStatus: 'established',
+                verificationReasons: expect.arrayContaining([
+                    'curated-official-contract',
+                ]),
+                logoURI: '/icons/tether-gold.png',
+            }),
+        ])
+
+        const lowLiquidity = serviceFor([xaut], {
+            fetchRecognized: noCoinGecko,
+            fetchMarkets: async () => ({
+                markets: new Map([[xaut.address, market(21, {
+                    address: xaut.address,
+                    liquidityUsd: 0,
+                })]]),
+                partial: false,
+                successfulBatches: 1,
+                failedBatches: 0,
+            }),
+        })
+        expect((await lowLiquidity.getCatalog(56)).catalog.tokens).toEqual([])
+    })
+
+    it('serializes authoritative ranked and common sections with complete evidence', async () => {
+        const service = serviceFor([candidate(41)], {
+            discoverDexPaprika: async () => ({
+                tokens: [dexPaprikaToken(41)],
+                networkId: 'bsc', partial: false,
+                malformedCount: 0, hasNextPage: false,
+            }),
+        })
+        await service.refreshCatalog(56)
+        const response = await inject(service, '/v1/market-tokens?chainId=56&limit=100')
+        const body = response.json()
+        expect(body.schemaVersion).toBe(5)
+        expect(body.count).toBe(body.tokens.length)
+        expect(body.commonCount).toBe(body.commonTokens.length)
+        expect(body.tokens).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                canonicalId: `56:${address(41)}`,
+                catalogSection: 'volume',
+                recognitionStatus: 'established',
+                recognitionReasons: expect.arrayContaining(['coingecko-exact-contract']),
+                verifiedContract: true,
+                officialAsset: false,
+                possibleSpam: false,
+                spamStatus: 'clean',
+                visibility: 'primary',
+                marketSource: expect.any(String),
+            }),
+        ]))
+        const rankedIds = new Set(body.tokens.map((token: MarketToken) => token.canonicalId))
+        expect(body.commonTokens.every((token: MarketToken) =>
+            !rankedIds.has(token.canonicalId))).toBe(true)
+    })
+
+    it('gives every curated OP asset a non-generic trusted logo candidate', async () => {
+        const service = serviceFor([])
+        const response = await inject(service, '/v1/market-tokens?chainId=10')
+        const body = response.json()
+        expect(body.commonCount).toBe(body.commonTokens.length)
+        for (const token of body.commonTokens as MarketToken[]) {
+            expect(token.logoCandidates.some((url) =>
+                url !== '/icons/token-fallback.svg')).toBe(true)
+            expect(token.logoURI).not.toBe('/icons/token-fallback.svg')
+        }
+    })
+
+    it('deduplicates the Celo native ERC-20 alias in authoritative common tokens', async () => {
+        const response = await inject(serviceFor([]), '/v1/market-tokens?chainId=42220')
+        const body = response.json()
+        const ids = body.commonTokens.map((token: MarketToken) => token.canonicalId)
+        expect(new Set(ids).size).toBe(ids.length)
+        expect(body.commonCount).toBe(body.commonTokens.length)
+        expect(body.commonTokens.filter((token: MarketToken) => token.symbol === 'CELO'))
+            .toHaveLength(1)
+        const combined = await serviceFor([]).getCombinedCatalog()
+        expect(combined.chains['42220'].commonCount).toBe(1)
     })
 
     it('fails startup validation for invalid established-token numbers', () => {

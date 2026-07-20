@@ -1,6 +1,6 @@
 import Fastify from 'fastify'
 import { encodeFunctionData } from 'viem'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAcrossAdapter } from '../src/cross-chain/adapters/across/index.js'
 import {
@@ -8,14 +8,19 @@ import {
     mapChainflipStatus,
 } from '../src/cross-chain/adapters/chainflip/sdk-client.js'
 import { createDebridgeAdapter } from '../src/cross-chain/adapters/debridge/index.js'
-import { createRelayAdapter } from '../src/cross-chain/adapters/relay/index.js'
+import {
+    createRelayAdapter,
+    normalizeRelayCosts,
+} from '../src/cross-chain/adapters/relay/index.js'
+import { createZeroXCrossChainAdapter } from '../src/cross-chain/adapters/zero-x/index.js'
 import { createCrossChainAuthService } from '../src/cross-chain/auth.js'
 import { CrossChainRegistry } from '../src/cross-chain/registry.js'
 import { getPlatformFeeConfiguration } from '../src/cross-chain/fees.js'
 import { MemoryCrossChainRouteRepository } from '../src/cross-chain/repository.js'
-import { CrossChainRouteService } from '../src/cross-chain/service.js'
+import { CrossChainRouteService, routeResponse } from '../src/cross-chain/service.js'
 import type { HttpJson } from '../src/cross-chain/types.js'
 import {
+    CrossChainValidationError,
     validateCrossChainRequest,
     validateExactApprovalTransaction,
     validateProviderTransaction,
@@ -52,8 +57,107 @@ const approvalData = (spenderAddress = target, amount = 1000n) =>
 describe('cross-chain backend', () => {
     const previousEnv = { ...process.env }
 
+    beforeEach(() => {
+        process.env.ACROSS_API_KEY = 'test-key'
+        process.env.ACROSS_INTEGRATOR_ID = '0xdead'
+    })
+
     afterEach(() => {
         process.env = { ...previousEnv }
+    })
+
+    it('normalizes Relay costs without double-counting combined fee fields', () => {
+        const costs = normalizeRelayCosts({
+            fees: {
+                relayerService: { amountUsd: '0.02' },
+                relayerGas: { amountUsd: '0.03' },
+                relayer: { amountUsd: '999.99' },
+                app: { amountUsd: '0.01' },
+                subsidized: { amountUsd: '0.02' },
+                expandedPriceImpact: {
+                    execution: { usd: '-0.03' },
+                    swap: { usd: '-0.04' },
+                    relay: { usd: '-0.02' },
+                    app: { usd: '-0.01' },
+                    sponsored: { usd: '-0.02' },
+                },
+            },
+        })
+
+        expect(costs).toMatchObject({
+            sourceGasUsd: null,
+            destinationGasUsd: '0.03',
+            providerFeeUsd: '0.02',
+            appFeeUsd: '0.01',
+            swapImpactUsd: '0.04',
+            sponsoredUsd: '0.02',
+            routeCostUsd: '0.08',
+            totalEstimatedUsd: null,
+            confidence: 'quote',
+        })
+    })
+
+    it('falls back to narrow Relay fee fields and treats sponsorship as a reduction', () => {
+        expect(normalizeRelayCosts({
+            fees: {
+                relayerService: { amountUsd: '0.02' },
+                relayerGas: { amountUsd: '0.03' },
+                relayer: { amountUsd: '0.05' },
+                app: { amountUsd: '0.01' },
+                subsidized: { amountUsd: '0.04' },
+            },
+        })).toMatchObject({
+            destinationGasUsd: '0.03',
+            providerFeeUsd: '0.02',
+            appFeeUsd: '0.01',
+            sponsoredUsd: '0.04',
+            routeCostUsd: '0.02',
+        })
+    })
+
+    it('preserves normalized partial costs in the public route response', async () => {
+        const repository = new MemoryCrossChainRouteRepository()
+        const route = await repository.create(fixtureQuote({
+            provider: 'relay',
+            costs: {
+                sourceGasUsd: null,
+                sourceGasNative: null,
+                destinationGasUsd: '0.03',
+                providerFeeUsd: '0.01',
+                appFeeUsd: null,
+                swapImpactUsd: null,
+                sponsoredUsd: null,
+                routeCostUsd: '0.04',
+                totalEstimatedUsd: null,
+                currency: 'USD',
+                confidence: 'quote',
+            },
+            feeIncluded: true,
+            costBreakdownAvailable: true,
+        }))
+
+        expect(routeResponse(route)).toMatchObject({
+            provider: 'relay',
+            feeIncluded: true,
+            costBreakdownAvailable: true,
+            costs: {
+                destinationGasUsd: '0.03',
+                providerFeeUsd: '0.01',
+                routeCostUsd: '0.04',
+                totalEstimatedUsd: null,
+                confidence: 'quote',
+            },
+        })
+    })
+
+    it('fails closed when the in-memory route fallback reaches capacity', async () => {
+        const repository = new MemoryCrossChainRouteRepository(1)
+        await repository.create(fixtureQuote({ quoteId: 'first' }))
+        await expect(repository.create(fixtureQuote({ quoteId: 'second' })))
+            .rejects.toMatchObject({
+                code: 'ROUTE_CAPACITY_REACHED',
+                statusCode: 503,
+            })
     })
 
     it('caches capabilities and ranks by fee-adjusted minimum output', async () => {
@@ -67,6 +171,106 @@ describe('cross-chain backend', () => {
 
         expect(result.selectedQuote.provider).toBe('relay')
         expect(result.quotes).toHaveLength(2)
+    })
+
+    it('classifies configuration, chain-pair, and token-pair failures', async () => {
+        const adapter = fixtureAdapter('relay', '900')
+        adapter.getCapabilities = async () => ({
+            provider: 'relay',
+            available: false,
+            fetchedAt: new Date().toISOString(),
+            routes: [],
+            reason: 'not configured',
+        })
+        await expect(new CrossChainRegistry([adapter]).quote(request))
+            .rejects.toMatchObject({ code: 'CROSS_CHAIN_NOT_CONFIGURED' })
+
+        adapter.getCapabilities = async () => ({
+            provider: 'relay',
+            available: true,
+            fetchedAt: new Date().toISOString(),
+            routes: [{ sourceChainId: 56, destinationChainId: 1, transactionTargets: [target] }],
+        })
+        await expect(new CrossChainRegistry([adapter]).quote(request))
+            .rejects.toMatchObject({ code: 'CROSS_CHAIN_UNSUPPORTED_CHAIN_PAIR' })
+
+        adapter.getCapabilities = async () => ({
+            provider: 'relay',
+            available: true,
+            fetchedAt: new Date().toISOString(),
+            routes: [{
+                sourceChainId: 1,
+                destinationChainId: 8453,
+                sellTokens: ['0x0000000000000000000000000000000000000099'],
+                buyTokens: [destinationToken],
+                transactionTargets: [target],
+            }],
+        })
+        await expect(new CrossChainRegistry([adapter]).quote(request))
+            .rejects.toMatchObject({ code: 'CROSS_CHAIN_UNSUPPORTED_TOKEN_PAIR' })
+    })
+
+    it('normalizes 0x Cross Chain separately and tracks its provider quote id', async () => {
+        process.env.ZEROX_CROSS_CHAIN_ENABLED = 'true'
+        process.env.ZEROX_API_KEY = 'test-key'
+        process.env.PLATFORM_FEE_BPS = '0'
+        const sourceHash = `0x${'1'.repeat(64)}`
+        const destinationHash = `0x${'2'.repeat(64)}`
+        const urls: string[] = []
+        const http: HttpJson = async (url) => {
+            urls.push(url.toString())
+            if (url.pathname === '/cross-chain/sources') {
+                return { sources: [{ chainId: 1 }, { chainId: 8453 }] }
+            }
+            if (url.pathname === '/cross-chain/status') {
+                return { status: 'completed', destinationTxHash: destinationHash }
+            }
+            return {
+                quotes: [{
+                    quoteId: 'provider-quote-123',
+                    originChain: 1,
+                    destinationChain: 8453,
+                    sellToken: sourceToken,
+                    buyToken: destinationToken,
+                    sellAmount: '1000',
+                    buyAmount: '950',
+                    minimumBuyAmount: '940',
+                    allowanceTarget: target,
+                    transaction: {
+                        details: { to: relaySpender, data: '0x1234', value: '0' },
+                    },
+                    estimatedTimeSeconds: 120,
+                }],
+            }
+        }
+        const adapter = createZeroXCrossChainAdapter(http)
+        const capabilities = await adapter.getCapabilities()
+        const quote = await adapter.getQuote(request, capabilities)
+
+        expect(quote).toMatchObject({
+            provider: '0x-cross-chain',
+            buyAmount: '950',
+            minimumBuyAmount: '940',
+            statusId: '1:provider-quote-123',
+            transaction: { to: relaySpender, allowanceTarget: target },
+        })
+        expect(quote.quoteId).not.toBe('provider-quote-123')
+        expect(quote.steps.map((step) => step.type)).toEqual([
+            'approval',
+            'source-transaction',
+            'wait',
+            'destination',
+        ])
+
+        const status = await adapter.getStatus(quote.statusId!, undefined, sourceHash)
+        expect(status).toMatchObject({
+            status: 'completed',
+            sourceTransactionHash: sourceHash,
+            destinationTransactionHash: destinationHash,
+        })
+        expect(urls.some((url) => url.includes('/swap/'))).toBe(false)
+        expect(urls.some((url) => url.includes('/cross-chain/quotes'))).toBe(true)
+        expect(urls.some((url) => url.includes('originTxHash='))).toBe(true)
     })
 
     it('strictly normalizes the current frontend alias request', () => {
@@ -151,15 +355,14 @@ describe('cross-chain backend', () => {
 
     it('normalizes official Across allowance approvals in order and exactly', async () => {
         process.env.PLATFORM_FEE_BPS = '0'
-        const adapter = createAcrossAdapter(async (url) =>
-            url.pathname.endsWith('/available-routes')
+        const adapter = createAcrossAdapter(async (url) => {
+            if (url.pathname.endsWith('/swap/approval')) {
+                expect(url.searchParams.get('tradeType')).toBe('exactInput')
+            }
+            return url.pathname.endsWith('/swap/tokens')
                 ? [{
-                      originChainId: 1,
-                      destinationChainId: 8453,
-                      originToken: sourceToken,
-                      destinationToken,
-                      spokePoolAddress: target,
-                  }]
+                      chainId: 1, address: sourceToken,
+                  }, { chainId: 8453, address: destinationToken }]
                 : {
                       expectedOutputAmount: '900',
                       minOutputAmount: '890',
@@ -178,14 +381,113 @@ describe('cross-chain backend', () => {
                           value: '0',
                       }],
                       swapTx: { chainId: 1, to: target, data: '0x1234', value: '0' },
-                  },
-        )
+                  }
+        })
         const quote = await adapter.getQuote(request, await adapter.getCapabilities())
         expect(quote.steps.map(({ type, index }) => [type, index])).toEqual([
             ['approval', 0],
             ['source-transaction', 1],
         ])
         expect(quote.steps[0]?.transaction?.allowanceTarget).toBe(target)
+    })
+
+    it('rejects an Across expected allowance above the exact-input cap', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const adapter = createAcrossAdapter(async (url) => url.pathname.endsWith('/swap/tokens')
+            ? [{ chainId: 1, address: sourceToken }, { chainId: 8453, address: destinationToken }]
+            : {
+                  expectedOutputAmount: '900',
+                  checks: { allowance: { token: sourceToken, spender: target, actual: '0', expected: '1001' } },
+                  approvalTxns: [{ chainId: 1, to: sourceToken, data: approvalData(target, 1001n), value: '0' }],
+                  steps: { bridge: { tokenIn: { address: sourceToken }, inputAmount: '1001' } },
+                  swapTx: { chainId: 1, to: target, data: '0x1234', value: '0' },
+              })
+        await expect(adapter.getQuote(request, await adapter.getCapabilities()))
+            .rejects.toMatchObject({ code: 'ACROSS_APPROVAL_AMOUNT_INVALID' })
+    })
+
+    it('replaces an Across provider max approval with exact allowance metadata', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const adapter = createAcrossAdapter(async (url) => url.pathname.endsWith('/swap/tokens')
+            ? [{ chainId: 1, address: sourceToken }, { chainId: 8453, address: destinationToken }]
+            : {
+                  expectedOutputAmount: '900',
+                  checks: { allowance: { token: sourceToken, spender: target, actual: '0', expected: '1000' } },
+                  approvalTxns: [{ chainId: 1, to: sourceToken, data: approvalData(relaySpender, (2n ** 256n) - 1n), value: '0' }],
+                  swapTx: { chainId: 1, to: target, data: '0x1234', value: '0' },
+              })
+        const quote = await adapter.getQuote(request, await adapter.getCapabilities())
+        expect(quote.steps[0]?.transaction).toMatchObject({
+            chainId: 1,
+            to: sourceToken,
+            allowanceTarget: target,
+            data: approvalData(target, 1000n),
+            value: '0',
+        })
+    })
+
+    it('omits Across approval when allowance is already sufficient', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const adapter = createAcrossAdapter(async (url) => url.pathname.endsWith('/swap/tokens')
+            ? [{ chainId: 1, address: sourceToken }, { chainId: 8453, address: destinationToken }]
+            : {
+                  expectedOutputAmount: '900',
+                  checks: { allowance: { token: sourceToken, spender: target, actual: '1000', expected: '1000' } },
+                  approvalTxns: [{ chainId: 1, to: sourceToken, data: approvalData(target, (2n ** 256n) - 1n), value: '0' }],
+                  swapTx: { chainId: 1, to: target, data: '0x1234', value: '0' },
+              })
+        const quote = await adapter.getQuote(request, await adapter.getCapabilities())
+        expect(quote.steps.map((step) => step.type)).toEqual(['source-transaction'])
+    })
+
+    it('uses Across authoritative expected allowance instead of a stale request amount', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const adapter = createAcrossAdapter(async (url) =>
+            url.pathname.endsWith('/swap/tokens')
+                ? [{ chainId: 1, address: sourceToken }, { chainId: 8453, address: destinationToken }]
+                : {
+                      expectedOutputAmount: '900',
+                      minOutputAmount: '890',
+                      checks: { allowance: {
+                          token: sourceToken,
+                          spender: target,
+                          actual: '0',
+                          expected: '999',
+                      } },
+                      approvalTxns: [{
+                          chainId: 1,
+                          to: sourceToken,
+                          data: approvalData(target, 999n),
+                          value: '0',
+                      }],
+                      steps: { originSwap: { tokenIn: { address: sourceToken }, inputAmount: '999' } },
+                      swapTx: { chainId: 1, to: target, data: '0x1234', value: '0' },
+                  })
+
+        const quote = await adapter.getQuote(request, await adapter.getCapabilities())
+        expect(quote.steps[0]?.type).toBe('approval')
+        expect(quote.steps[0]?.transaction?.data).toBe(approvalData(target, 999n))
+    })
+
+    it('uses Across validation codes and rejects unlimited approval', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const adapter = createAcrossAdapter(async (url) =>
+            url.pathname.endsWith('/swap/tokens')
+                ? [{ chainId: 1, address: sourceToken }, { chainId: 8453, address: destinationToken }]
+                : {
+                      expectedOutputAmount: '900',
+                      checks: { allowance: {
+                          token: sourceToken,
+                          spender: target,
+                          actual: '0',
+                          expected: String((2n ** 256n) - 1n),
+                      } },
+                      approvalTxns: [],
+                      swapTx: { chainId: 1, to: target, data: '0x1234', value: '0' },
+                  })
+
+        await expect(adapter.getQuote(request, await adapter.getCapabilities()))
+            .rejects.toMatchObject({ code: 'ACROSS_APPROVAL_AMOUNT_INVALID' })
     })
 
     it('never emits an approval step for native input', async () => {
@@ -198,14 +500,10 @@ describe('cross-chain backend', () => {
             },
         }
         const adapter = createAcrossAdapter(async (url) =>
-            url.pathname.endsWith('/available-routes')
+            url.pathname.endsWith('/swap/tokens')
                 ? [{
-                      originChainId: 1,
-                      destinationChainId: 8453,
-                      originToken: nativeRequest.sourceAsset.address,
-                      destinationToken,
-                      spokePoolAddress: target,
-                  }]
+                      chainId: 1, address: nativeRequest.sourceAsset.address,
+                  }, { chainId: 8453, address: destinationToken }]
                 : {
                       expectedOutputAmount: '900',
                       minOutputAmount: '890',
@@ -227,13 +525,10 @@ describe('cross-chain backend', () => {
         process.env.TREASURY_ADDRESS = sender
         let quoteUrl: URL | null = null
         const http: HttpJson = async (url) => {
-            if (url.pathname.endsWith('/available-routes')) return [{
-                      originChainId: 1,
-                      destinationChainId: 8453,
-                      originToken: sourceToken,
-                      destinationToken,
-                      spokePoolAddress: target,
-                  }]
+            if (url.pathname.endsWith('/swap/tokens')) return [
+                { chainId: 1, address: sourceToken },
+                { chainId: 8453, address: destinationToken },
+            ]
             quoteUrl = url
             return {
                       id: 'across-status',
@@ -314,8 +609,17 @@ describe('cross-chain backend', () => {
         const http: HttpJson = async (url, options) => {
             if (url.pathname.endsWith('/chains')) return {
                       chains: [
-                          { id: 1, contracts: { approvalProxy: relaySpender, router: target } },
-                          { id: 8453, contracts: { router: destinationToken } },
+                          {
+                              id: 1,
+                              contracts: {
+                                  approvalProxy: relaySpender,
+                                  erc20Router: target,
+                              },
+                          },
+                          {
+                              id: 8453,
+                              contracts: { erc20Router: destinationToken },
+                          },
                       ],
                   }
             relayBody = options?.body as Record<string, unknown>
@@ -329,6 +633,7 @@ describe('cross-chain backend', () => {
                                       to: sourceToken,
                                       data: approvalData(relaySpender),
                                       value: '0',
+                                      gas: '60000',
                                   },
                               }],
                           },
@@ -341,13 +646,22 @@ describe('cross-chain backend', () => {
                                       to: target,
                                       data: '0x1234',
                                       value: '0',
+                                      gas: '65000',
                                   },
                               }],
                           },
                       ],
                       details: {
                           timeEstimate: 15,
-                          currencyOut: { amount: '900', minimumAmount: '890' },
+                          recipient: sender,
+                          currencyOut: {
+                              amount: '900',
+                              minimumAmount: '890',
+                              currency: {
+                                  chainId: 8453,
+                                  address: destinationToken,
+                              },
+                          },
                       },
                       fees: {},
                   }
@@ -364,27 +678,376 @@ describe('cross-chain backend', () => {
             sourceToken,
             target,
         ])
+        expect(quote.steps.map((step) => step.transaction?.gasEstimate)).toEqual([
+            '60000',
+            '65000',
+        ])
         expect(relayBody!.appFees).toEqual([{ recipient: sender, fee: '45' }])
         expect(quote.fees.filter(({ type }) => type === 'platform')).toEqual([
             expect.objectContaining({ amount: '4' }),
         ])
     })
 
-    it('fails closed when Across quote target is absent from capabilities', async () => {
+    it('validates Relay v2 approval calldata against the source-chain Depository', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const bnbUsdt = '0x55d398326f99059ff775485246999027b3197955'
+        const celoUsdt = '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e'
+        const depository = '0x4cd00e387622c35bddb9b4c962c136462338bc31'
+        const bnbToCelo = {
+            ...request,
+            sourceAsset: { chainId: 56, address: bnbUsdt, symbol: 'USDT', decimals: 18 },
+            destinationAsset: { chainId: 42220, address: celoUsdt, symbol: 'USDT', decimals: 6 },
+            amount: '1000000000000000000',
+        }
+        const http: HttpJson = async (url) => url.pathname.endsWith('/chains')
+            ? {
+                  chains: [56, 42220].map((id) => ({
+                      id,
+                      contracts: {},
+                      protocol: { v2: { depository } },
+                  })),
+              }
+            : {
+                  steps: [
+                      {
+                          id: 'authorize1',
+                          items: [{
+                              data: {
+                                  chainId: 56,
+                                  to: bnbUsdt,
+                                  data: approvalData(depository, 1_000_000_000_000_000_000n),
+                                  value: '0',
+                              },
+                          }],
+                      },
+                      {
+                          id: 'deposit',
+                          requestId: 'bnb-celo-relay',
+                          items: [{
+                              data: {
+                                  chainId: 56,
+                                  from: sender,
+                                  to: depository,
+                                  data: '0x1234',
+                                  value: '0',
+                              },
+                          }],
+                      },
+                  ],
+                  details: {
+                      recipient: sender,
+                      destinationChainId: 42220,
+                      currencyOut: {
+                          amount: '999000',
+                          minimumAmount: '990000',
+                          currency: { chainId: 42220, address: celoUsdt },
+                      },
+                  },
+                  fees: {},
+              }
+        const adapter = createRelayAdapter(http)
+        const quote = await adapter.getQuote(bnbToCelo, await adapter.getCapabilities())
+
+        expect(quote.steps[0]?.transaction).toMatchObject({
+            to: bnbUsdt,
+            allowanceTarget: depository,
+        })
+        expect(quote.steps[1]?.transaction?.to).toBe(depository)
+        expect(quote.request.destinationAsset.address).toBe(celoUsdt)
+        expect(quote.statusId).toBe('bnb-celo-relay')
+    })
+
+    it('rejects a Relay v2 spender that differs from the authoritative Depository', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const depository = '0x4cd00e387622c35bddb9b4c962c136462338bc31'
+        const http: HttpJson = async (url) => url.pathname.endsWith('/chains')
+            ? {
+                  chains: [1, 8453].map((id) => ({
+                      id,
+                      contracts: {},
+                      protocol: { v2: { depository } },
+                  })),
+              }
+            : {
+                  steps: [
+                      {
+                          id: 'approval',
+                          items: [{ data: {
+                              chainId: 1,
+                              to: sourceToken,
+                              data: approvalData(relaySpender),
+                              value: '0',
+                          } }],
+                      },
+                      {
+                          id: 'deposit',
+                          items: [{ data: {
+                              chainId: 1,
+                              to: depository,
+                              data: '0x1234',
+                              value: '0',
+                          } }],
+                      },
+                  ],
+                  details: {
+                      recipient: sender,
+                      currencyOut: {
+                          amount: '900',
+                          minimumAmount: '890',
+                          currency: { chainId: 8453, address: destinationToken },
+                      },
+                  },
+                  fees: {},
+              }
+        const adapter = createRelayAdapter(http)
+        await expect(adapter.getQuote(request, await adapter.getCapabilities()))
+            .rejects.toMatchObject({ code: 'RELAY_APPROVAL_TARGET_INVALID' })
+    })
+
+    it('does not mix Relay v2 Depository authority with legacy ApprovalProxy flows', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const depository = '0x4cd00e387622c35bddb9b4c962c136462338bc31'
+        const legacyRouter = target
+        const http: HttpJson = async (url) => url.pathname.endsWith('/chains')
+            ? {
+                  chains: [1, 8453].map((id) => ({
+                      id,
+                      contracts: {
+                          erc20Router: legacyRouter,
+                          approvalProxy: relaySpender,
+                      },
+                      protocol: { v2: { depository } },
+                  })),
+              }
+            : {
+                  steps: [
+                      {
+                          id: 'approval',
+                          items: [{ data: {
+                              chainId: 1,
+                              to: sourceToken,
+                              data: approvalData(depository),
+                              value: '0',
+                          } }],
+                      },
+                      {
+                          id: 'deposit',
+                          items: [{ data: {
+                              chainId: 1,
+                              to: legacyRouter,
+                              data: '0x1234',
+                              value: '0',
+                          } }],
+                      },
+                  ],
+                  details: {
+                      recipient: sender,
+                      currencyOut: {
+                          amount: '900',
+                          minimumAmount: '890',
+                          currency: { chainId: 8453, address: destinationToken },
+                      },
+                  },
+                  fees: {},
+              }
+        const adapter = createRelayAdapter(http)
+        await expect(adapter.getQuote(request, await adapter.getCapabilities()))
+            .rejects.toMatchObject({ code: 'RELAY_APPROVAL_TARGET_INVALID' })
+    })
+
+    it('returns RELAY_AUTHORITY_UNAVAILABLE when the selected flow lacks authority metadata', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const http: HttpJson = async (url) => url.pathname.endsWith('/chains')
+            ? {
+                  chains: [1, 8453].map((id) => ({
+                      id,
+                      contracts: { erc20Router: target },
+                  })),
+              }
+            : {
+                  steps: [
+                      {
+                          id: 'approve',
+                          items: [{ data: {
+                              chainId: 1,
+                              to: sourceToken,
+                              data: approvalData(relaySpender),
+                              value: '0',
+                          } }],
+                      },
+                      {
+                          id: 'deposit',
+                          items: [{ data: {
+                              chainId: 1,
+                              to: target,
+                              data: '0x1234',
+                              value: '0',
+                          } }],
+                      },
+                  ],
+                  details: {
+                      recipient: sender,
+                      currencyOut: {
+                          amount: '900',
+                          minimumAmount: '890',
+                          currency: { chainId: 8453, address: destinationToken },
+                      },
+                  },
+                  fees: {},
+              }
+        const adapter = createRelayAdapter(http)
+        await expect(adapter.getQuote(request, await adapter.getCapabilities()))
+            .rejects.toMatchObject({ code: 'RELAY_AUTHORITY_UNAVAILABLE' })
+    })
+
+    it('validates Relay v3 router and approval proxy independently', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const v3Router = '0x0000000000000000000000000000000000000007'
+        const v3Proxy = '0x0000000000000000000000000000000000000008'
+        const adapter = createRelayAdapter(async (url) => url.pathname.endsWith('/chains')
+            ? { chains: [1, 8453].map((id) => ({ id, contracts: { v3: { erc20Router: v3Router, approvalProxy: v3Proxy } } })) }
+            : {
+                  steps: [
+                      { id: 'approve', items: [{ data: { chainId: 1, to: sourceToken, data: approvalData(v3Proxy), value: '0' } }] },
+                      { id: 'deposit', items: [{ data: { chainId: 1, to: v3Router, data: '0x1234', value: '0' } }] },
+                  ],
+                  details: { recipient: sender, currencyOut: { amount: '900', minimumAmount: '890', currency: { chainId: 8453, address: destinationToken } } }, fees: {},
+              })
+        const quote = await adapter.getQuote(request, await adapter.getCapabilities())
+        expect(quote.steps.map((step) => step.transaction?.to)).toEqual([sourceToken, v3Router])
+    })
+
+    it('accepts Relay v3 ApprovalProxy source execution only after its matching approval', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const v3Proxy = '0xccc88a9d1b4ed6b0eaba998850414b24f1c315be'
+        const adapter = createRelayAdapter(async (url) => url.pathname.endsWith('/chains')
+            ? { chains: [1, 8453].map((id) => ({ id, contracts: { v3: { approvalProxy: v3Proxy } } })) }
+            : {
+                  steps: [
+                      { id: 'approve', items: [{ data: { chainId: 1, to: sourceToken, data: approvalData(v3Proxy), value: '0' } }] },
+                      { id: 'deposit', items: [{ data: { chainId: 1, to: v3Proxy, data: '0x1234', value: '0' } }] },
+                  ],
+                  details: { recipient: sender, currencyOut: { amount: '900', minimumAmount: '890', currency: { chainId: 8453, address: destinationToken } } }, fees: {},
+              })
+        const quote = await adapter.getQuote(request, await adapter.getCapabilities())
+        expect(quote.steps.map((step) => step.transaction?.to)).toEqual([sourceToken, v3Proxy])
+    })
+
+    it('rejects Relay ApprovalProxy authority supplied only by another chain', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const v3Proxy = '0xccc88a9d1b4ed6b0eaba998850414b24f1c315be'
+        const adapter = createRelayAdapter(async (url) => url.pathname.endsWith('/chains')
+            ? { chains: [
+                { id: 1, contracts: { erc20Router: target, approvalProxy: relaySpender } },
+                { id: 8453, contracts: { v3: { approvalProxy: v3Proxy } } },
+            ] }
+            : {
+                  steps: [
+                      { id: 'approve', items: [{ data: { chainId: 1, to: sourceToken, data: approvalData(v3Proxy), value: '0' } }] },
+                      { id: 'deposit', items: [{ data: { chainId: 1, to: v3Proxy, data: '0x1234', value: '0' } }] },
+                  ],
+                  details: { recipient: sender, currencyOut: { amount: '900', minimumAmount: '890', currency: { chainId: 8453, address: destinationToken } } }, fees: {},
+              })
+        await expect(adapter.getQuote(request, await adapter.getCapabilities()))
+            .rejects.toMatchObject({ code: 'RELAY_APPROVAL_TARGET_INVALID' })
+    })
+
+    it('does not return Relay destination transaction metadata as a wallet step', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const adapter = createRelayAdapter(async (url) => url.pathname.endsWith('/chains')
+            ? { chains: [1, 8453].map((id) => ({ id, contracts: { erc20Router: target, approvalProxy: relaySpender } })) }
+            : {
+                  steps: [
+                      { id: 'approve', items: [{ data: { chainId: 1, to: sourceToken, data: approvalData(relaySpender), value: '0' } }] },
+                      { id: 'deposit', items: [{ data: { chainId: 1, to: target, data: '0x1234', value: '0' } }] },
+                      { id: 'destination', items: [{ data: { chainId: 8453, to: destinationToken, data: '0x1234', value: '0' } }] },
+                  ],
+                  details: { recipient: sender, currencyOut: { amount: '900', minimumAmount: '890', currency: { chainId: 8453, address: destinationToken } } }, fees: {},
+              })
+        const quote = await adapter.getQuote(request, await adapter.getCapabilities())
+        expect(quote.steps).toHaveLength(2)
+        expect(quote.steps.every((step) => step.chainId === 1)).toBe(true)
+    })
+
+    it('rejects Relay solver and unknown transaction targets even when listed elsewhere in metadata', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const solver = '0x0000000000000000000000000000000000000009'
+        const adapter = createRelayAdapter(async (url) => url.pathname.endsWith('/chains')
+            ? { chains: [1, 8453].map((id) => ({ id, contracts: { erc20Router: target, approvalProxy: relaySpender }, solverAddresses: [solver] })) }
+            : {
+                  steps: [{ id: 'deposit', items: [{ data: { chainId: 1, to: solver, data: '0x1234', value: '0' } }] }],
+                  details: { recipient: sender, currencyOut: { amount: '900', minimumAmount: '890', currency: { chainId: 8453, address: destinationToken } } }, fees: {},
+              })
+        await expect(adapter.getQuote(request, await adapter.getCapabilities()))
+            .rejects.toMatchObject({ code: 'RELAY_ROUTE_MALFORMED' })
+    })
+
+    it('categorizes tiny provider minimum failures as amount-too-low', async () => {
+        const across = fixtureAdapter('across', '900')
+        const relay = fixtureAdapter('relay', '900')
+        across.getQuote = async () => { throw new Error('amount below minimum amount') }
+        relay.getQuote = async () => { throw new Error('amount too low') }
+        await expect(new CrossChainRegistry([across, relay]).quote({ ...request, amount: '12' }))
+            .rejects.toMatchObject({ code: 'CROSS_CHAIN_AMOUNT_TOO_LOW' })
+    })
+
+    it('keeps eligible and attempted provider diagnostics consistent on total failure', async () => {
+        const relay = fixtureAdapter('relay', '900')
+        relay.getQuote = async () => {
+            throw new Error('no route')
+        }
+        await expect(new CrossChainRegistry([relay]).quote(request)).rejects.toMatchObject({
+            eligibleProviders: ['relay'],
+            attemptedProviders: ['relay'],
+            failures: [{ provider: 'relay', code: 'NO_LIQUIDITY' }],
+        })
+    })
+
+    it('preserves another provider route when Relay validation fails', async () => {
+        const across = fixtureAdapter('across', '900')
+        const relay = fixtureAdapter('relay', '950')
+        relay.getQuote = async () => {
+            throw new Error('Relay returned a malformed route.')
+        }
+        const result = await new CrossChainRegistry([across, relay]).quote(request)
+
+        expect(result.quotes.map(({ provider }) => provider)).toEqual(['across'])
+        expect(result.eligibleProviders).toEqual(['across', 'relay'])
+        expect(result.attemptedProviders).toEqual(['across', 'relay'])
+        expect(result.failures).toEqual([expect.objectContaining({ provider: 'relay' })])
+    })
+
+    it('preserves a successful Relay route when Across validation fails', async () => {
+        const across = fixtureAdapter('across', '950')
+        const relay = fixtureAdapter('relay', '900')
+        across.getQuote = async () => {
+            throw new CrossChainValidationError(
+                'ACROSS_APPROVAL_AMOUNT_INVALID',
+                'Across returned an invalid approval amount.',
+            )
+        }
+        const result = await new CrossChainRegistry([across, relay]).quote(request)
+
+        expect(result.quotes.map(({ provider }) => provider)).toEqual(['relay'])
+        expect(result.failures).toEqual([{
+            provider: 'across',
+            code: 'ACROSS_APPROVAL_AMOUNT_INVALID',
+            reason: 'Across returned an invalid approval amount.',
+        }])
+    })
+
+    it('fails closed when Across returns a different destination token', async () => {
         process.env.PLATFORM_FEE_BPS = '0'
         const malicious = '0x0000000000000000000000000000000000000099'
         const adapter = createAcrossAdapter(async (url) =>
-            url.pathname.endsWith('/available-routes')
+            url.pathname.endsWith('/swap/tokens')
                 ? [{
-                      originChainId: 1,
-                      destinationChainId: 8453,
-                      originToken: sourceToken,
-                      destinationToken,
-                      spokePoolAddress: target,
-                  }]
+                      chainId: 1, address: sourceToken,
+                  }, { chainId: 8453, address: destinationToken }]
                 : {
                       expectedOutputAmount: '900',
                       minOutputAmount: '890',
+                      outputToken: malicious,
                       spokePoolAddress: malicious,
                       swapTx: {
                           chainId: 1,
@@ -396,7 +1059,7 @@ describe('cross-chain backend', () => {
         )
         await expect(
             adapter.getQuote(request, await adapter.getCapabilities()),
-        ).rejects.toThrow('capability metadata')
+        ).rejects.toThrow('different destination token')
     })
 
     it('marks fee collection incompatible without a treasury or mechanism', async () => {
@@ -555,6 +1218,33 @@ describe('cross-chain backend', () => {
         })
         expect(validPrepare.statusCode).toBe(200)
         expect(validPrepare.json().preparedRoute.transaction.to).toBe(target)
+        await app.close()
+    })
+
+    it('returns 200 from routes when one eligible provider succeeds', async () => {
+        const across = fixtureAdapter('across', '900')
+        const relay = fixtureAdapter('relay', '900')
+        across.getQuote = async () => {
+            throw new CrossChainValidationError(
+                'ACROSS_APPROVAL_AMOUNT_INVALID',
+                'Across returned an invalid approval amount.',
+            )
+        }
+        const app = Fastify()
+        await app.register(createCrossChainRoutes(
+            new CrossChainRouteService(
+                new CrossChainRegistry([across, relay]),
+                new MemoryCrossChainRouteRepository(),
+            ),
+            createCrossChainAuthService({ verifier: async () => true }),
+        ))
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/cross-chain/routes',
+            payload: request,
+        })
+        expect(response.statusCode).toBe(200)
+        expect(response.json().selectedRoute.provider).toBe('relay')
         await app.close()
     })
 

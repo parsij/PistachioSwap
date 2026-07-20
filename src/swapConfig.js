@@ -36,6 +36,25 @@ export const swapUiConfig = {
         defaultSlippageBps: Number(
             import.meta.env.VITE_DEFAULT_SLIPPAGE_BPS ?? 50,
         ),
+
+        // Deprecated: provider routing, not local fixed USD thresholds,
+        // determines whether same-chain amounts are quoteable.
+        deprecatedMinimumSwapUsd: String(
+            import.meta.env.VITE_MIN_SWAP_USD ?? '1',
+        ),
+
+        maxCostToInputBps: Number(
+            import.meta.env.VITE_MAX_COST_TO_INPUT_BPS ?? 5000,
+        ),
+
+        // Deprecated: retained only so old deployments can keep the env var
+        // without making small provider-routable swaps fail locally.
+        deprecatedMinimumOutputUsd: String(
+            import.meta.env.VITE_MIN_OUTPUT_USD ?? '0.01',
+        ),
+
+        requireSuccessfulSimulationBeforeSend:
+            import.meta.env.VITE_REQUIRE_SUCCESSFUL_SIMULATION_BEFORE_SEND !== 'false',
     },
 
     crossChain: {
@@ -43,10 +62,28 @@ export const swapUiConfig = {
     },
 
     wallet: {
+        /*
+         * Used only while no live quote fee can be converted into native units.
+         */
         nativeGasReserve:
             import.meta.env.VITE_NATIVE_GAS_RESERVE ??
             import.meta.env.VITE_NATIVE_GAS_RESERVE_BNB ??
-            '0.001',
+            '0.00005',
+
+        /*
+         * Live fee reserve:
+         *
+         * estimated fee + 25%, with a minimum extra buffer of
+         * 0.000005 native tokens.
+         */
+        nativeGasBufferBps: Number(
+            import.meta.env.VITE_NATIVE_GAS_BUFFER_BPS ??
+            2500,
+        ),
+
+        minimumNativeGasBuffer:
+            import.meta.env.VITE_MIN_NATIVE_GAS_BUFFER ??
+            '0.000005',
 
         explorerUrl: (
             import.meta.env.VITE_BSC_EXPLORER_URL ??

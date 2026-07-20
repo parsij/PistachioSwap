@@ -1,6 +1,6 @@
 import { getApiConfig } from '../src/config.js'
 import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../src/lib/address.js'
-import { ZERO_X_NATIVE_TOKEN_ADDRESS, normalizeProviderToken } from '../src/providers/quotes/provider-token.js'
+import { ZERO_X_NATIVE_TOKEN_ADDRESS, normalizeProviderToken } from '../src/features/quotes/providers/provider-token.js'
 import { buildGaslessQuery, type GaslessRequest } from '../src/providers/zero-x/gasless-client.js'
 import { getTokenDecimalsBatch } from '../src/providers/token-decimals.js'
 import { getTokenPrices } from '../src/providers/alchemy/token-prices.js'

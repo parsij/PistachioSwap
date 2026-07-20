@@ -1,5 +1,6 @@
 import { getApiConfig } from '../../config.js'
 import { isRecord } from '../../lib/http.js'
+import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import { coinGeckoRequest } from './coingecko-client.js'
 import {
     type CoinGeckoToken,
@@ -90,9 +91,9 @@ export async function searchCoinGeckoTokens(
         20,
     )
 
-    searchCache.set(cacheKey, {
+    setBoundedCacheEntry(searchCache, cacheKey, {
         tokens,
         expiresAt: Date.now() + config.searchTtlMs,
-    })
+    }, 500)
     return tokens
 }

@@ -3,6 +3,7 @@ export const CROSS_CHAIN_PROVIDERS = [
     'debridge-dln',
     'relay',
     'chainflip',
+    '0x-cross-chain',
 ] as const
 
 export type CrossChainProviderName = (typeof CROSS_CHAIN_PROVIDERS)[number]
@@ -43,6 +44,20 @@ export type ProviderCapability = {
     buyTokens?: readonly string[]
     transactionTargets: readonly string[]
     approvalSpenders?: readonly string[]
+    relayAuthority?: Readonly<{
+        legacy: Readonly<{
+            router: string | null
+            approvalProxy: string | null
+        }>
+        v3: Readonly<{
+            router: string | null
+            approvalProxy: string | null
+        }>
+        protocolV2: Readonly<{
+            depository: string | null
+        }>
+        solverAddresses: readonly string[]
+    }>
 }
 
 export type ProviderCapabilities = {
@@ -60,12 +75,27 @@ export type CrossChainFee = {
     includedInQuote?: boolean
 }
 
+export type CrossChainCosts = {
+    sourceGasUsd: string | null
+    sourceGasNative: string | null
+    destinationGasUsd: string | null
+    providerFeeUsd: string | null
+    appFeeUsd: string | null
+    swapImpactUsd: string | null
+    sponsoredUsd: string | null
+    routeCostUsd: string | null
+    totalEstimatedUsd: string | null
+    currency: 'USD'
+    confidence: 'quote' | 'prepared' | 'confirmed'
+}
+
 export type CrossChainTransaction = {
     chainId: number
     to: string
     data: string
     value: string
     allowanceTarget: string | null
+    gasEstimate?: string
 }
 
 export type CrossChainQuote = {
@@ -75,6 +105,9 @@ export type CrossChainQuote = {
     buyAmount: string
     minimumBuyAmount: string
     fees: readonly CrossChainFee[]
+    costs?: CrossChainCosts
+    feeIncluded?: boolean
+    costBreakdownAvailable?: boolean
     estimatedDurationSeconds: number | null
     executionModel: ExecutionModel
     steps: readonly CrossChainStep[]
@@ -144,6 +177,9 @@ export type PublicCrossChainRoute = {
     outputAmount: string
     minimumOutputAmount: string
     feeAmountUsd: string | null
+    costs: CrossChainCosts
+    feeIncluded: boolean
+    costBreakdownAvailable: boolean
     durationSeconds: number
     status: PublicRouteState
     providerStatus: string | null
@@ -184,6 +220,7 @@ export interface CrossChainAdapter {
     getStatus(
         statusId: string,
         signal?: AbortSignal,
+        sourceTransactionHash?: string,
     ): Promise<CrossChainStatusResult>
     prepare?(
         quote: CrossChainQuote,

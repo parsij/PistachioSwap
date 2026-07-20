@@ -60,8 +60,13 @@ export class CrossChainRouteService {
             routes: routes.map(routeResponse),
             failures: result.failures.map((failure) => ({
                 ...failure,
-                code: providerErrorCode(failure.provider, 'NO_ROUTE'),
             })),
+            diagnostics: {
+                eligibleProviders: result.eligibleProviders,
+                skippedProviders: result.skippedProviders,
+                attemptedProviders: result.attemptedProviders,
+                successfulRouteCount: routes.length,
+            },
         }
     }
 
@@ -112,6 +117,7 @@ export class CrossChainRouteService {
                     route.provider,
                     route.providerTrackingId,
                     signal,
+                    route.sourceTransactionHash ?? undefined,
                 )
                 route = await this.repository.updateProviderStatus(routeId, {
                     status: mapProviderStatus(status.status, route.status),

@@ -2,17 +2,31 @@ import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from './lib/address.js'
 import { CURATED_EVM_CHAIN_ID_SET } from './chains.js'
 
 const ALLOWED_CHAINS = CURATED_EVM_CHAIN_ID_SET
-const warnedInvalidAddressEntries = new Set<string>()
 
 function readInteger(
     name: string,
     fallback: number,
     minimum = 0,
 ) {
-    const parsed = Number(process.env[name])
-    return Number.isInteger(parsed) && parsed >= minimum
-        ? parsed
-        : fallback
+    const raw = process.env[name]?.trim()
+    if (!raw) return fallback
+
+    const parsed = Number(raw)
+    if (!Number.isInteger(parsed) || parsed < minimum) {
+        throw new Error(
+            `${name} must be an integer greater than or equal to ${minimum}.`,
+        )
+    }
+    return parsed
+}
+
+export function readServerPort(value = process.env.PORT) {
+    const raw = value?.trim() || '3001'
+    const port = Number(raw)
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+        throw new Error('PORT must be an integer between 1 and 65535.')
+    }
+    return port
 }
 
 function readConfiguredNumber(
@@ -69,34 +83,12 @@ function readAddressSetWithFallback(name: string, fallback: string[]) {
     return readAddressSet(name)
 }
 
-function readOptionalAddressSet(name: string) {
-    const values = new Set<string>()
-    const entries = (process.env[name] ?? '').split(',')
-
-    for (let index = 0; index < entries.length; index += 1) {
-        const raw = entries[index]
-        if (!raw.trim()) continue
-        const address = normalizeAddress(raw)
-        if (address) {
-            values.add(address)
-            continue
-        }
-
-        const warningKey = `${name}:${index}`
-        if (!warnedInvalidAddressEntries.has(warningKey)) {
-            warnedInvalidAddressEntries.add(warningKey)
-            console.warn(`${name} ignored an invalid address entry.`)
-        }
-    }
-
-    return values
-}
-
 function readBoolean(name: string, fallback: boolean) {
     const value = process.env[name]?.trim().toLowerCase()
+    if (!value) return fallback
     if (value === 'true') return true
     if (value === 'false') return false
-    return fallback
+    throw new Error(`${name} must be either true or false.`)
 }
 
 function readUrl(
@@ -208,6 +200,20 @@ export function getApiConfig() {
         throw new Error('PLATFORM_FEE_BPS cannot exceed 1000.')
     }
 
+    const platformFeeMaxBps = readConfiguredInteger(
+        'PLATFORM_FEE_MAX_BPS',
+        500,
+        1,
+        500,
+    )
+    const platformFeeMaxUsd = readNonnegativeDecimal(
+        'PLATFORM_FEE_MAX_USD',
+        '5',
+    )
+    if (platformFeeMaxUsd === '0') {
+        throw new Error('PLATFORM_FEE_MAX_USD must be greater than zero.')
+    }
+
     return {
         chainId: 56,
         allowedChains: ALLOWED_CHAINS,
@@ -225,6 +231,34 @@ export function getApiConfig() {
             apiKey: process.env.ALCHEMY_API_KEY?.trim() || null,
             network:
                 process.env.ALCHEMY_NETWORK?.trim() || 'bnb-mainnet',
+            portfolio: {
+                enabled: readBoolean('ALCHEMY_PORTFOLIO_ENABLED', false),
+                cacheTtlMs: readConfiguredInteger(
+                    'ALCHEMY_PORTFOLIO_CACHE_TTL_MS',
+                    180_000,
+                    1_000,
+                    86_400_000,
+                ),
+                staleTtlMs: readConfiguredInteger(
+                    'ALCHEMY_PORTFOLIO_STALE_TTL_MS',
+                    900_000,
+                    1_000,
+                    86_400_000,
+                ),
+                timeoutMs: readConfiguredInteger(
+                    'ALCHEMY_PORTFOLIO_TIMEOUT_MS',
+                    12_000,
+                    100,
+                    60_000,
+                ),
+                maxPages: readConfiguredInteger(
+                    'ALCHEMY_PORTFOLIO_MAX_PAGES',
+                    10,
+                    1,
+                    100,
+                ),
+                maxCacheEntries: 200,
+            },
             metadataTtlMs: readInteger(
                 'TOKEN_METADATA_CACHE_TTL_MS',
                 86_400_000,
@@ -260,6 +294,35 @@ export function getApiConfig() {
                 0,
             ),
             maxPages: 10,
+        },
+        dexPaprika: {
+            enabled: readBoolean('DEXPAPRIKA_ENABLED', true),
+            baseUrl: readUrl(
+                'DEXPAPRIKA_BASE_URL',
+                'https://api.dexpaprika.com',
+                ['api.dexpaprika.com'],
+            ),
+            timeoutMs: readConfiguredInteger(
+                'DEXPAPRIKA_TIMEOUT_MS', 10_000, 100, 60_000,
+            ),
+            cacheTtlMs: readConfiguredInteger(
+                'DEXPAPRIKA_CACHE_TTL_MS', 1_800_000, 1,
+            ),
+            staleTtlMs: readConfiguredInteger(
+                'DEXPAPRIKA_STALE_TTL_MS', 86_400_000, 1,
+            ),
+            perChainLimit: readConfiguredInteger(
+                'DEXPAPRIKA_PER_CHAIN_LIMIT', 100, 1, 100,
+            ),
+            minimumLiquidityUsd: readConfiguredNumber(
+                'DEXPAPRIKA_MIN_LIQUIDITY_USD', 100_000, 0,
+            ),
+            minimumTransactions24h: readConfiguredInteger(
+                'DEXPAPRIKA_MIN_TXNS_24H', 50, 0,
+            ),
+            refreshConcurrency: readConfiguredInteger(
+                'DEXPAPRIKA_REFRESH_CONCURRENCY', 2, 1, 3,
+            ),
         },
         coinGecko: {
             apiKey:
@@ -357,13 +420,25 @@ export function getApiConfig() {
         market: {
             catalogTtlMs: readConfiguredInteger(
                 'ESTABLISHED_TOKEN_CACHE_TTL_MS',
-                600_000,
+                1_800_000,
                 1,
             ),
             partialRetryMs: readConfiguredInteger(
                 'ESTABLISHED_TOKEN_PARTIAL_RETRY_MS',
-                60_000,
+                300_000,
                 1,
+            ),
+            refreshConcurrency: readConfiguredInteger(
+                'ESTABLISHED_TOKEN_REFRESH_CONCURRENCY',
+                2,
+                1,
+                3,
+            ),
+            routeRateLimitPerMinute: readConfiguredInteger(
+                'MARKET_TOKEN_ROUTE_RATE_LIMIT_PER_MINUTE',
+                240,
+                30,
+                2_000,
             ),
             staleTtlMs: readConfiguredInteger(
                 'ESTABLISHED_TOKEN_STALE_TTL_MS',
@@ -423,8 +498,8 @@ export function getApiConfig() {
             ),
         },
         walletTokens: {
-            allowlist: readOptionalAddressSet('WALLET_TOKEN_ALLOWLIST_56'),
-            blocklist: readOptionalAddressSet('WALLET_TOKEN_BLOCKLIST_56'),
+            allowlist: readAddressSet('WALLET_TOKEN_ALLOWLIST_56'),
+            blocklist: readAddressSet('WALLET_TOKEN_BLOCKLIST_56'),
             meaningfulLiquidityUsd: readConfiguredNumber(
                 'WALLET_TOKEN_MEANINGFUL_LIQUIDITY_USD',
                 10_000,
@@ -470,6 +545,10 @@ export function getApiConfig() {
                 routerAddress: normalizeAddress(
                     process.env.PANCAKESWAP_ROUTER_ADDRESS_56,
                 ),
+                permit2Address: normalizeAddress(
+                    process.env.PANCAKESWAP_PERMIT2_ADDRESS_56 ??
+                    '0x000000000022d473030f116ddee9f6b43ac78ba3',
+                ),
                 quoterAddress: normalizeAddress(
                     process.env.PANCAKESWAP_QUOTER_ADDRESS_56,
                 ),
@@ -499,6 +578,15 @@ export function getApiConfig() {
                 1_000,
                 60_000,
             ),
+            zeroX: {
+                enabled: readBoolean('ZEROX_CROSS_CHAIN_ENABLED', false),
+                apiKey: process.env.ZEROX_API_KEY?.trim() || null,
+                baseUrl: readUrl(
+                    'ZEROX_CROSS_CHAIN_API_BASE_URL',
+                    'https://api.0x.org',
+                    ['api.0x.org'],
+                ),
+            },
             across: {
                 enabled: readBoolean('ACROSS_ENABLED', true),
                 baseUrl: readUrl(
@@ -594,7 +682,7 @@ export function getApiConfig() {
             ),
             rejectUnlimitedPermits: readBoolean(
                 'GAS_ASSIST_REJECT_UNLIMITED_PERMITS',
-                false,
+                true,
             ),
             feeMode:
                 process.env.GAS_ASSIST_FEE_MODE?.trim() || 'percent-plus-fixed-capped',
@@ -881,6 +969,8 @@ export function getApiConfig() {
                 process.env.TREASURY_ADDRESS,
             ),
             platformFeeBps,
+            platformFeeMaxBps,
+            platformFeeMaxUsd,
             collectionMode:
                 process.env.FEE_COLLECTION_MODE?.trim() ||
                 'provider-affiliate',
@@ -897,10 +987,10 @@ export function getWalletTokenAddressPolicy(chainId: number) {
         throw new Error('Wallet-token policy chain is not enabled.')
     }
     return {
-        allowlist: readOptionalAddressSet(
+        allowlist: readAddressSet(
             `WALLET_TOKEN_ALLOWLIST_${chainId}`,
         ),
-        blocklist: readOptionalAddressSet(
+        blocklist: readAddressSet(
             `WALLET_TOKEN_BLOCKLIST_${chainId}`,
         ),
     }
@@ -925,6 +1015,15 @@ export function validateStartupConfig(config = getApiConfig()) {
     ])
     const validSponsorshipBillingModes = new Set(['prepaid'])
     const validApprovalModes = new Set(['exact', 'bounded-reusable'])
+
+    if (
+        config.alchemy.portfolio.enabled &&
+        !config.alchemy.apiKey
+    ) {
+        throw new Error(
+            'ALCHEMY_API_KEY is required when ALCHEMY_PORTFOLIO_ENABLED=true.',
+        )
+    }
 
     if (!validQuoteModes.has(config.quotes.mode)) {
         throw new Error('QUOTE_PROVIDER_MODE is invalid.')
@@ -969,7 +1068,10 @@ export function validateStartupConfig(config = getApiConfig()) {
     if (
         config.fees.platformFeeBps > 0 &&
         config.fees.collectionMode === 'provider-affiliate' &&
-        (!config.quotes.zeroX.enabled || !config.quotes.zeroX.apiKey)
+        !(
+            (config.quotes.zeroX.enabled && config.quotes.zeroX.apiKey) ||
+            (config.quotes.uniswap.enabled && config.quotes.uniswap.apiKey)
+        )
     ) {
         throw new Error(
             'provider-affiliate fee mode requires an enabled provider with documented affiliate-fee support.',

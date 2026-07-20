@@ -13,6 +13,7 @@
     "test:wallet-worker": "node tests/playwright/wallet-worker.integration.mjs"
   },
   "dependencies": {
+    "@fontsource/ubuntu": "^5.2.8",
     "@metamask/connect-multichain": "1.2.0",
     "@radix-ui/react-dialog": "^1.1.19",
     "@radix-ui/react-popover": "^1.1.19",
@@ -47,5 +48,11 @@
     "tailwindcss": "^4.3.2",
     "vite": "^8.1.1",
     "vitest": "^4.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@pancakeswap/swap-sdk-core>bn.js": "5.2.3",
+      "viem@2.37.13>ws": "8.21.0"
+    }
   }
 }

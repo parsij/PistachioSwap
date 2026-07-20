@@ -1,5 +1,5 @@
 import { getApiConfig } from '../../../config.js'
-import { NATIVE_TOKEN_ADDRESS } from '../../../lib/address.js'
+import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../../../lib/address.js'
 import { fetchJson, isRecord } from '../../../lib/http.js'
 import {
     getPlatformFeeConfiguration,
@@ -8,15 +8,23 @@ import {
 } from '../../fees.js'
 import type {
     CrossChainAdapter,
+    CrossChainRequest,
     HttpJson,
     ProviderCapabilities,
 } from '../../types.js'
 import {
     assertExactQuote,
+    CrossChainValidationError,
     normalizeUint,
     validateExactApprovalTransaction,
     validateProviderTransaction,
 } from '../../validation.js'
+import {
+    addUsdDecimals,
+    emptyCrossChainCosts,
+    normalizeUsdDecimal,
+    subtractUsdDecimal,
+} from '../../costs.js'
 
 export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapter {
     const config = getApiConfig().crossChain
@@ -39,9 +47,11 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
             const chains = array(isRecord(payload) ? payload.chains : payload)
             const metadata = chains.flatMap((chain) => {
                 const chainId = Number(chain.id ?? chain.chainId)
-                const contracts = isRecord(chain.contracts) ? chain.contracts : {}
-                const targets = collectContractAddresses(contracts)
-                return Number.isInteger(chainId) && targets.length ? [{ chainId, targets }] : []
+                const authority = relayAuthority(chain)
+                const targets = relayTransactionTargets(authority)
+                return Number.isInteger(chainId) && targets.length
+                    ? [{ chainId, targets, authority }]
+                    : []
             })
             const routes = metadata.flatMap((source) =>
                 metadata.filter((destination) => destination.chainId !== source.chainId)
@@ -49,7 +59,7 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
                         sourceChainId: source.chainId,
                         destinationChainId: destination.chainId,
                         transactionTargets: source.targets,
-                        approvalSpenders: source.targets,
+                        relayAuthority: source.authority,
                     })),
             )
             return {
@@ -90,6 +100,7 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
             if (!isRecord(payload)) throw new Error('Relay returned an invalid quote.')
             const details = isRecord(payload.details) ? payload.details : {}
             const currencyOut = isRecord(details.currencyOut) ? details.currencyOut : {}
+            verifyRelayDestination(currencyOut, details, request)
             const transactionSteps = normalizeTransactions(
                 payload.steps,
                 request,
@@ -102,6 +113,7 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
                 token: request.sourceAsset.address,
                 baseAmount: request.amount,
             })
+            const costs = normalizeRelayCosts(payload, details)
             return assertExactQuote({
                 provider: 'relay',
                 request,
@@ -111,6 +123,9 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
                     ...parseFees(payload.fees ?? details.fees, request.sourceAsset.address),
                     ...(appFee ? [appFee] : []),
                 ],
+                costs,
+                feeIncluded: true,
+                costBreakdownAvailable: relayCostBreakdownAvailable(costs),
                 estimatedDurationSeconds: finite(details.timeEstimate ?? payload.timeEstimate),
                 executionModel: 'evm-transaction',
                 steps: transactionSteps.map(({ requestId: _requestId, ...step }) => step),
@@ -144,6 +159,101 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
     }
 }
 
+export function normalizeRelayCosts(
+    payload: Record<string, unknown>,
+    details: Record<string, unknown> = {},
+) {
+    const fees = isRecord(payload.fees)
+        ? payload.fees
+        : isRecord(details.fees) ? details.fees : {}
+    const expanded = isRecord(fees.expandedPriceImpact)
+        ? fees.expandedPriceImpact
+        : isRecord(details.expandedPriceImpact)
+          ? details.expandedPriceImpact
+          : isRecord(payload.expandedPriceImpact) ? payload.expandedPriceImpact : {}
+
+    // Relay documents `relayer` as relayerService + relayerGas, so it is never
+    // added. Expanded execution overlaps relayerGas and is authoritative when
+    // present; minimum output is already net of quote costs and is not a fee.
+    const destinationGasUsd = impactUsd(expanded.execution) ?? feeUsd(fees.relayerGas)
+    const providerFeeUsd = impactUsd(expanded.relay) ?? feeUsd(fees.relayerService)
+    const appFeeUsd = impactUsd(expanded.app) ?? feeUsd(fees.app)
+    const swapImpactUsd = impactUsd(expanded.swap)
+    const sponsoredUsd = impactUsd(expanded.sponsored) ?? feeUsd(fees.subsidized)
+    const routeCostUsd = subtractUsdDecimal(
+        addUsdDecimals([
+            destinationGasUsd,
+            providerFeeUsd,
+            appFeeUsd,
+            swapImpactUsd,
+        ]),
+        sponsoredUsd,
+    )
+    return {
+        ...emptyCrossChainCosts('quote'),
+        destinationGasUsd,
+        providerFeeUsd,
+        appFeeUsd,
+        swapImpactUsd,
+        sponsoredUsd,
+        routeCostUsd,
+    }
+}
+
+function relayCostBreakdownAvailable(costs: ReturnType<typeof normalizeRelayCosts>) {
+    return [
+        costs.destinationGasUsd,
+        costs.providerFeeUsd,
+        costs.appFeeUsd,
+        costs.swapImpactUsd,
+        costs.sponsoredUsd,
+    ].some((value) => value !== null)
+}
+
+function impactUsd(value: unknown) {
+    if (!isRecord(value)) return null
+    // Relay reports costs as negative price impacts. The normalized model stores
+    // their non-negative magnitude so cost addition and sponsorship subtraction
+    // remain explicit and decimal-safe.
+    const usd = typeof value.usd === 'string'
+        ? value.usd.trim().replace(/^-/, '')
+        : value.usd
+    return normalizeUsdDecimal(usd)
+}
+
+function feeUsd(value: unknown) {
+    return isRecord(value) ? normalizeUsdDecimal(value.amountUsd) : null
+}
+
+function verifyRelayDestination(
+    currencyOut: Record<string, unknown>,
+    details: Record<string, unknown>,
+    request: CrossChainRequest,
+) {
+    const currency = isRecord(currencyOut.currency) ? currencyOut.currency : currencyOut
+    const token = normalizeAddress(currency.address ?? currency.contractAddress)
+    if (token !== request.destinationAsset.address) {
+        throw new CrossChainValidationError(
+            'RELAY_ROUTE_MALFORMED',
+            'Relay returned a different destination token.',
+        )
+    }
+    const chainId = currency.chainId ?? details.destinationChainId
+    if (Number(chainId) !== request.destinationAsset.chainId) {
+        throw new CrossChainValidationError(
+            'RELAY_ROUTE_MALFORMED',
+            'Relay returned the wrong destination chain.',
+        )
+    }
+    const recipient = normalizeAddress(details.recipient)
+    if (recipient !== request.recipient) {
+        throw new CrossChainValidationError(
+            'RELAY_ROUTE_MALFORMED',
+            'Relay returned a different destination recipient.',
+        )
+    }
+}
+
 function normalizeTransactions(
     value: unknown,
     request: Parameters<typeof validateProviderTransaction>[1],
@@ -159,11 +269,22 @@ function normalizeTransactions(
         transaction: ReturnType<typeof validateProviderTransaction>
         requestId: unknown
     }> = []
+    const route = capabilities.routes.find((candidate) =>
+        candidate.sourceChainId === request.sourceAsset.chainId &&
+        candidate.destinationChainId === request.destinationAsset.chainId,
+    )
+    if (!route?.relayAuthority) {
+        throw new CrossChainValidationError(
+            'RELAY_AUTHORITY_UNAVAILABLE',
+            'Relay authority metadata is unavailable for the source chain.',
+        )
+    }
+    const precedingApprovalSpenders = new Set<string>()
     for (const [stepIndex, step] of array(value).entries()) {
         for (const [itemIndex, item] of array(step.items).entries()) {
             const data = isRecord(item.data) ? item.data : item
             if (typeof data.to !== 'string') continue
-            const approval = /^(?:approve|approval)$/i.test(
+            const approval = /(?:approve|approval|authorize)/i.test(
                 String(step.id ?? step.kind ?? ''),
             )
             if (
@@ -171,10 +292,35 @@ function normalizeTransactions(
                 request.sourceAsset.address === NATIVE_TOKEN_ADDRESS
             ) continue
             const chainId = Number(data.chainId)
-            if (!Number.isInteger(chainId)) throw new Error('Relay transaction chain is invalid.')
+            if (!Number.isInteger(chainId)) {
+                throw new CrossChainValidationError(
+                    'RELAY_ROUTE_MALFORMED',
+                    'Relay transaction chain is invalid.',
+                )
+            }
+            // Destination steps describe post-bridge execution. They are not source-wallet
+            // transactions and must not be checked against source-chain authorities.
+            if (chainId !== request.sourceAsset.chainId) continue
             const transaction = approval
-                ? validateRelayApproval(data, request, capabilities)
-                : validateProviderTransaction(data, request, capabilities, chainId)
+                ? validateRelayApproval(data, request, route.relayAuthority)
+                : validateRelayDeposit(
+                    data,
+                    request,
+                    capabilities,
+                    chainId,
+                    precedingApprovalSpenders,
+                )
+            if (approval && transaction.allowanceTarget) {
+                precedingApprovalSpenders.add(transaction.allowanceTarget)
+            }
+            const sender = normalizeAddress(data.from)
+            if (sender && chainId === request.sourceAsset.chainId &&
+                sender !== request.ownerAddress) {
+                throw new CrossChainValidationError(
+                    'RELAY_ROUTE_MALFORMED',
+                    'Relay source transaction sender does not match the route owner.',
+                )
+            }
             result.push({
                 id: `${String(step.id ?? `step-${stepIndex}`)}-${itemIndex}`,
                 index: result.length,
@@ -190,44 +336,137 @@ function normalizeTransactions(
     return result
 }
 
-function validateRelayApproval(
+function validateRelayDeposit(
     value: unknown,
     request: Parameters<typeof validateProviderTransaction>[1],
     capabilities: ProviderCapabilities,
+    chainId: number,
+    precedingApprovalSpenders: ReadonlySet<string>,
 ) {
-    const route = capabilities.routes.find((candidate) =>
-        candidate.sourceChainId === request.sourceAsset.chainId &&
-        candidate.destinationChainId === request.destinationAsset.chainId,
-    )
-    if (!route?.approvalSpenders?.length) {
-        throw new Error('Relay approval spender metadata is unavailable for the source chain.')
+    try {
+        const transaction = validateProviderTransaction(value, request, capabilities, chainId)
+        const route = capabilities.routes.find((candidate) =>
+            candidate.sourceChainId === request.sourceAsset.chainId &&
+            candidate.destinationChainId === request.destinationAsset.chainId,
+        )
+        const authority = route?.relayAuthority
+        if (
+            transaction.to === authority?.legacy.approvalProxy ||
+            transaction.to === authority?.v3.approvalProxy
+        ) {
+            if (!precedingApprovalSpenders.has(transaction.to)) {
+                throw new CrossChainValidationError(
+                    'RELAY_ROUTE_MALFORMED',
+                    'Relay approval-proxy execution is missing its matching approval step.',
+                )
+            }
+        } else {
+            const requiredSpender = transaction.to === authority?.protocolV2.depository
+                ? authority.protocolV2.depository
+                : transaction.to === authority?.v3.router
+                  ? authority.v3.approvalProxy
+                  : authority?.legacy.approvalProxy
+            if (
+                precedingApprovalSpenders.size > 0 &&
+                requiredSpender &&
+                !precedingApprovalSpenders.has(requiredSpender)
+            ) {
+                throw new CrossChainValidationError(
+                    'RELAY_APPROVAL_TARGET_INVALID',
+                    'Relay approval spender does not match the source execution contract.',
+                )
+            }
+        }
+        return transaction
+    } catch (error) {
+        const target = isRecord(value) ? address(value.to) : null
+        const route = capabilities.routes.find((candidate) =>
+            candidate.sourceChainId === request.sourceAsset.chainId &&
+            candidate.destinationChainId === request.destinationAsset.chainId,
+        )
+        relayTargetDiagnostic(target, relayExpectedCategory(target, route?.relayAuthority ?? null))
+        if (error instanceof CrossChainValidationError) throw error
+        throw new CrossChainValidationError(
+            'RELAY_ROUTE_MALFORMED',
+            error instanceof Error ? error.message : 'Relay returned a malformed deposit transaction.',
+        )
+    }
+}
+
+function validateRelayApproval(
+    value: unknown,
+    request: Parameters<typeof validateProviderTransaction>[1],
+    authority: NonNullable<ProviderCapabilities['routes'][number]['relayAuthority']>,
+) {
+    const spenders = [
+        authority.legacy.approvalProxy,
+        authority.v3.approvalProxy,
+        authority.protocolV2.depository,
+    ].filter((value): value is string => value !== null)
+    if (!spenders.length) {
+        throw new CrossChainValidationError(
+            'RELAY_AUTHORITY_UNAVAILABLE',
+            'Relay approval authority metadata is unavailable for this route flow.',
+        )
     }
     return validateExactApprovalTransaction(value, {
         chainId: request.sourceAsset.chainId,
         token: request.sourceAsset.address,
-        spenders: route.approvalSpenders,
+        spenders,
         amount: request.amount,
     })
 }
 
-function collectContractAddresses(value: Record<string, unknown>): string[] {
-    const targets = new Set<string>()
-    const visit = (candidate: unknown) => {
-        const normalized = address(candidate)
-        if (normalized) {
-            targets.add(normalized)
-            return
-        }
-        if (isRecord(candidate)) {
-            for (const [key, nested] of Object.entries(candidate)) {
-                visit(key)
-                visit(nested)
-            }
-        }
+type RelayAuthority = NonNullable<ProviderCapabilities['routes'][number]['relayAuthority']>
+function relayAuthority(chain: Record<string, unknown>): RelayAuthority {
+    const contracts = isRecord(chain.contracts) ? chain.contracts : {}
+    const v3 = isRecord(contracts.v3) ? contracts.v3 : {}
+    const protocol = isRecord(chain.protocol) ? chain.protocol : {}
+    const protocolV2 = isRecord(protocol.v2) ? protocol.v2 : {}
+    return {
+        legacy: {
+            router: address(contracts.erc20Router),
+            approvalProxy: address(contracts.approvalProxy),
+        },
+        v3: {
+            router: address(v3.erc20Router ?? contracts.v3Erc20Router),
+            approvalProxy: address(v3.approvalProxy ?? contracts.v3ApprovalProxy),
+        },
+        protocolV2: {
+            depository: address(protocolV2.depository),
+        },
+        solverAddresses: Array.isArray(chain.solverAddresses)
+            ? chain.solverAddresses.map(address).filter((value): value is string => value !== null)
+            : [],
     }
-    visit(value)
-    return [...targets]
 }
+
+function relayExpectedCategory(target: string | null, authority: RelayAuthority | null) {
+    if (!authority) return 'source-chain-authority'
+    if (target === authority.protocolV2.depository) return 'protocol-v2-depository'
+    if (target === authority.v3.router) return 'v3-erc20-router'
+    if (target === authority.v3.approvalProxy) return 'v3-approval-proxy'
+    if (target === authority.legacy.router) return 'erc20-router'
+    if (target === authority.legacy.approvalProxy) return 'approval-proxy'
+    return 'source-execution-contract'
+}
+function relayTargetDiagnostic(target: string | null, expectedCategory: string) {
+    console.warn('[pistachio-api][relay-target-validation]', {
+        targetSuffix: target ? target.slice(-6) : null,
+        expectedContractCategory: expectedCategory,
+    })
+}
+
+function relayTransactionTargets(authority: RelayAuthority) {
+    return [...new Set([
+        authority.legacy.router,
+        authority.legacy.approvalProxy,
+        authority.v3.router,
+        authority.v3.approvalProxy,
+        authority.protocolV2.depository,
+    ].filter((value): value is string => value !== null))]
+}
+
 function array(value: unknown) {
     return Array.isArray(value) ? value.filter(isRecord) : []
 }

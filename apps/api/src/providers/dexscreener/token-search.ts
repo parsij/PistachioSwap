@@ -12,10 +12,10 @@ import {
     aggregateTokenMarkets,
 } from './token-markets.js'
 
-type SearchableToken = Pick<
-    TokenMarket,
-    'address' | 'name' | 'symbol' | 'volume24hUsd' | 'liquidityUsd'
->
+type SearchableToken = Pick<TokenMarket, 'address' | 'name' | 'symbol'> & {
+    volume24hUsd: number | null
+    liquidityUsd: number | null
+}
 
 function relevance(token: SearchableToken, query: string) {
     const addressQuery = normalizeAddress(query)
@@ -45,11 +45,11 @@ export function rankSearchResults<T extends SearchableToken>(
             if (relevanceDifference !== 0) return relevanceDifference
 
             const volumeDifference =
-                right.volume24hUsd - left.volume24hUsd
+                (right.volume24hUsd ?? -1) - (left.volume24hUsd ?? -1)
             if (volumeDifference !== 0) return volumeDifference
 
             const liquidityDifference =
-                right.liquidityUsd - left.liquidityUsd
+                (right.liquidityUsd ?? -1) - (left.liquidityUsd ?? -1)
             if (liquidityDifference !== 0) return liquidityDifference
 
             return left.symbol.localeCompare(right.symbol)

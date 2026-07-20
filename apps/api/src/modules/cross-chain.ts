@@ -9,6 +9,7 @@ import {
     type CrossChainAuthService,
 } from '../cross-chain/auth.js'
 import { CrossChainRouteService } from '../cross-chain/service.js'
+import { CrossChainQuoteError } from '../cross-chain/registry.js'
 import {
     CROSS_CHAIN_PROVIDERS,
     type CrossChainProviderName,
@@ -101,9 +102,44 @@ export function createCrossChainRoutes(
                 return sendError(reply, error)
             }
             try {
-                return reply.send(await service.quote(normalized, abortSignal(request)))
+                const result = await service.quote(normalized, abortSignal(request))
+                request.log.info({
+                    requestId: request.id,
+                    sourceChainId: normalized.sourceAsset.chainId,
+                    destinationChainId: normalized.destinationAsset.chainId,
+                    sellTokenSuffix: normalized.sourceAsset.address.slice(-6),
+                    buyTokenSuffix: normalized.destinationAsset.address.slice(-6),
+                    amountDigits: normalized.amount.length,
+                    eligibleProviders: result.diagnostics.eligibleProviders,
+                    skippedProviders: result.diagnostics.skippedProviders,
+                    attemptedProviders: result.diagnostics.attemptedProviders,
+                    providerFailures: result.failures,
+                    successfulRouteCount: result.routes.length,
+                }, 'Cross-chain route request completed')
+                return reply.send(result)
             } catch (error) {
-                return sendError(reply, error, 503, 'NO_CROSS_CHAIN_ROUTE')
+                request.log.warn({
+                    requestId: request.id,
+                    sourceChainId: normalized.sourceAsset.chainId,
+                    destinationChainId: normalized.destinationAsset.chainId,
+                    sellTokenSuffix: normalized.sourceAsset.address.slice(-6),
+                    buyTokenSuffix: normalized.destinationAsset.address.slice(-6),
+                    amountDigits: normalized.amount.length,
+                    eligibleProviders: error instanceof CrossChainQuoteError
+                        ? error.eligibleProviders
+                        : [],
+                    skippedProviders: error instanceof CrossChainQuoteError
+                        ? error.skippedProviders
+                        : [],
+                    attemptedProviders: error instanceof CrossChainQuoteError
+                        ? error.attemptedProviders
+                        : [],
+                    providerFailures: error instanceof CrossChainQuoteError
+                        ? error.failures
+                        : [],
+                    successfulRouteCount: 0,
+                }, 'Cross-chain route request failed')
+                return sendError(reply, error, 503, 'CROSS_CHAIN_NO_EXECUTABLE_ROUTE')
             }
         }
         app.post<{ Body: unknown }>('/v1/cross-chain/quote', quoteHandler)

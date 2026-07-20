@@ -116,6 +116,7 @@ export function createDebridgeAdapter(http: HttpJson = fetchJson): CrossChainAda
             const destinationOutput = isRecord(estimation.dstChainTokenOut)
                 ? estimation.dstChainTokenOut
                 : {}
+            verifyDebridgeDestination(destinationOutput, payload, request)
             const tx = isRecord(payload.tx) ? payload.tx : payload.transaction
             const buyAmount = normalizeUint(
                 destinationOutput.amount ?? payload.dstChainTokenOutAmount,
@@ -192,6 +193,29 @@ export function createDebridgeAdapter(http: HttpJson = fetchJson): CrossChainAda
                 destinationTransactionHash: text(value.dstChainTxHash),
             }
         },
+    }
+}
+
+function verifyDebridgeDestination(
+    destinationOutput: Record<string, unknown>,
+    payload: Record<string, unknown>,
+    request: CrossChainRequest,
+) {
+    const token = normalizeAddress(
+        destinationOutput.address ?? destinationOutput.tokenAddress,
+    )
+    if (token && token !== request.destinationAsset.address) {
+        throw new Error('deBridge returned a different destination token.')
+    }
+    const chainId = destinationOutput.originalChainId ?? payload.dstChainOriginalChainId
+    if (chainId !== undefined && Number(chainId) !== request.destinationAsset.chainId) {
+        throw new Error('deBridge returned the wrong destination chain.')
+    }
+    const recipient = normalizeAddress(
+        payload.dstChainTokenOutRecipient ?? payload.recipient,
+    )
+    if (recipient && recipient !== request.recipient) {
+        throw new Error('deBridge returned a different destination recipient.')
     }
 }
 

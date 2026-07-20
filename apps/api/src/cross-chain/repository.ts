@@ -13,6 +13,7 @@ import type {
     PublicCrossChainRoute,
     PublicRouteState,
 } from './types.js'
+import { emptyCrossChainCosts, normalizePublicCosts } from './costs.js'
 
 export interface CrossChainRouteRepository {
     create(quote: CrossChainQuote): Promise<PublicCrossChainRoute>
@@ -46,9 +47,18 @@ export type ProviderStatusUpdate = {
 export class MemoryCrossChainRouteRepository implements CrossChainRouteRepository {
     private readonly routes = new Map<string, PublicCrossChainRoute>()
 
+    constructor(private readonly maximumEntries = 5_000) {}
+
     async create(quote: CrossChainQuote) {
         const existing = [...this.routes.values()].find((route) => route.quoteId === quote.quoteId)
         if (existing) return clone(existing)
+        if (this.routes.size >= this.maximumEntries) {
+            throw routeError(
+                'ROUTE_CAPACITY_REACHED',
+                'Cross-chain route storage is temporarily at capacity.',
+                503,
+            )
+        }
         const now = new Date().toISOString()
         const route = toPublicRoute(quote, randomUUID(), now)
         this.routes.set(route.routeId, route)
@@ -160,7 +170,11 @@ class PostgresCrossChainRouteRepository implements CrossChainRouteRepository {
                 durationSeconds: quote.estimatedDurationSeconds ?? 0,
                 providerTrackingId: quote.statusId,
                 expiresAt: new Date(quote.expiresAt),
-                publicData: {},
+                publicData: {
+                    costs: normalizePublicCosts(quote.costs),
+                    feeIncluded: quote.feeIncluded === true,
+                    costBreakdownAvailable: quote.costBreakdownAvailable === true,
+                },
             }).returning()
             const steps = await tx.insert(crossChainRouteSteps).values(quote.steps.map((step) => ({
                 routeId: row.id,
@@ -326,6 +340,9 @@ function toPublicRoute(quote: CrossChainQuote, routeId: string, now: string): Pu
         outputAmount: quote.buyAmount,
         minimumOutputAmount: quote.minimumBuyAmount,
         feeAmountUsd: null,
+        costs: normalizePublicCosts(quote.costs),
+        feeIncluded: quote.feeIncluded === true,
+        costBreakdownAvailable: quote.costBreakdownAvailable === true,
         durationSeconds: quote.estimatedDurationSeconds ?? 0,
         status: 'quoted',
         providerStatus: null,
@@ -351,6 +368,9 @@ function rowToPublic(
     row: typeof crossChainRoutes.$inferSelect,
     steps: Array<typeof crossChainRouteSteps.$inferSelect>,
 ): PublicCrossChainRoute {
+    const publicData = row.publicData && typeof row.publicData === 'object' && !Array.isArray(row.publicData)
+        ? row.publicData as Record<string, unknown>
+        : {}
     return {
         routeId: row.id,
         publicRouteId: row.id,
@@ -365,6 +385,9 @@ function rowToPublic(
         outputAmount: row.outputAmount,
         minimumOutputAmount: row.minimumOutputAmount,
         feeAmountUsd: row.feeAmountUsd,
+        costs: normalizePublicCosts(publicData.costs ?? emptyCrossChainCosts()),
+        feeIncluded: publicData.feeIncluded === true,
+        costBreakdownAvailable: publicData.costBreakdownAvailable === true,
         durationSeconds: row.durationSeconds,
         status: row.status as PublicRouteState,
         providerStatus: row.providerStatus,
@@ -398,6 +421,9 @@ function terminal(status: PublicRouteState) {
     return ['completed', 'failed', 'refunded', 'expired'].includes(status)
 }
 
-export function routeError(code: string, message: string) {
-    return Object.assign(new Error(message), { code })
+export function routeError(code: string, message: string, statusCode?: number) {
+    return Object.assign(new Error(message), {
+        code,
+        ...(statusCode === undefined ? {} : { statusCode }),
+    })
 }

@@ -2,6 +2,20 @@ import { isAddress } from 'viem'
 
 export const NORMAL_SWAP_MODE = 'normal'
 export const ZERO_X_GASLESS_MODE = 'zero-x-gasless'
+export const SAME_CHAIN_STANDARD = 'SAME_CHAIN_STANDARD'
+export const SAME_CHAIN_GASLESS_OR_ASSISTED = 'SAME_CHAIN_GASLESS_OR_ASSISTED'
+export const CROSS_CHAIN = 'CROSS_CHAIN'
+
+export function deriveRoutingMode({
+    sellChainId,
+    buyChainId,
+    gasAssistPreferred = false,
+}) {
+    if (Number(sellChainId) !== Number(buyChainId)) return CROSS_CHAIN
+    return gasAssistPreferred
+        ? SAME_CHAIN_GASLESS_OR_ASSISTED
+        : SAME_CHAIN_STANDARD
+}
 
 export function getSwapExecutionMessage(reason) {
     return {

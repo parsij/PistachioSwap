@@ -47,7 +47,8 @@ vi.mock('../src/providers/moralis/wallet-token-spam.js', () => ({
     },
 }))
 
-vi.mock('../src/providers/recognition/curated-token-lists.js', () => ({
+vi.mock('../src/providers/recognition/curated-token-lists.js', async (importOriginal) => ({
+    ...await importOriginal(),
     getCuratedBscRecognition: mocks.getCuratedBscRecognition,
 }))
 
@@ -70,6 +71,25 @@ import {
 } from '../src/providers/alchemy/wallet-tokens.js'
 
 const wallet = '0x1000000000000000000000000000000000000042'
+const xautAddress = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
+const officialXaut = {
+    chainId: 56,
+    address: xautAddress,
+    name: 'Tether Gold',
+    symbol: 'XAUt',
+    decimals: 6,
+    issuer: 'Tether',
+    recognitionStatus: 'established' as const,
+    verifiedContract: true as const,
+    officialAsset: true as const,
+    coinGeckoId: 'tether-gold',
+    officialWebsite: 'https://gold.tether.to/',
+    logoURI: '/icons/tether-gold.png',
+    logoCandidates: [
+        '/icons/tether-gold.png',
+        'https://example.com/trusted-xaut-fallback.png',
+    ],
+}
 const tokenAddresses = Array.from(
     { length: 7 },
     (_, index) => `0x${(index + 101).toString(16).padStart(40, '0')}`,
@@ -115,7 +135,16 @@ describe('normalized wallet token response', () => {
         })
         mocks.getCachedAndRefresh.mockReturnValue(null)
         mocks.getCuratedBscRecognition.mockResolvedValue(new Map())
-        mocks.alchemyRpc.mockResolvedValue('0xde0b6b3a7640000')
+        mocks.alchemyRpc.mockImplementation(async (request) =>
+            request.method === 'alchemy_getTokenBalances'
+                ? {
+                      tokenBalances: tokenAddresses.map((address) => ({
+                          contractAddress: address,
+                          tokenBalance: '0xde0b6b3a7640000',
+                      })),
+                  }
+                : '0xde0b6b3a7640000',
+        )
         vi.stubGlobal('fetch', vi.fn(async () =>
             new Response(JSON.stringify({
                 data: {
@@ -155,7 +184,7 @@ describe('normalized wallet token response', () => {
         expect(unverified.every((token) =>
             token.valueUSD === null && token.trustedPriceUSD === null,
         )).toBe(true)
-        expect(tokens.every((token) => token.classificationVersion === 3)).toBe(true)
+        expect(tokens.every((token) => token.classificationVersion === 4)).toBe(true)
         expect(native).toMatchObject({
             symbol: 'BNB',
             balance: '1',
@@ -207,6 +236,63 @@ describe('normalized wallet token response', () => {
             priceConfidence: 'market',
         })
         expect(result?.marketPriceUSD).toBe('100000')
+    })
+
+    it('treats Portfolio metadata and prices as candidates while preserving spam classification', async () => {
+        const address = tokenAddresses[0]
+        mocks.getMoralisWalletTokens.mockResolvedValue({
+            available: true,
+            checkedAt: new Date(0).toISOString(),
+            pageCount: 1,
+            tokens: new Map([[address, {
+                chainId: 56,
+                address,
+                possibleSpam: true,
+                verifiedContract: false,
+                name: null,
+                symbol: null,
+                decimals: null,
+                logoURI: null,
+                priceUSD: null,
+                valueUSD: null,
+                source: 'moralis',
+            }]]),
+        })
+        const tokens = await getWalletTokens({
+            chainId: 56,
+            walletAddress: '0x1000000000000000000000000000000000000059',
+            inventory: {
+                balances: new Map([[address, 10n ** 18n]]),
+                nativeBalance: null,
+                pageCount: 1,
+                metadata: new Map([[address, {
+                    chainId: 56,
+                    address,
+                    name: 'Alchemy candidate',
+                    symbol: 'ALCH',
+                    decimals: 18,
+                    logoURI: 'https://example.com/alchemy.png',
+                }]]),
+                prices: new Map([[address, '9.5']]),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+        expect(tokens[0]).toMatchObject({
+            name: 'Alchemy candidate',
+            symbol: 'ALCH',
+            recognitionStatus: 'unverified',
+            spamStatus: 'possible-spam',
+            visibility: 'hidden',
+            priceUSD: '9.5',
+            marketPriceUSD: '9.5',
+            trustedPriceUSD: null,
+            valueUSD: null,
+            priceConfidence: 'market',
+        })
+        expect(tokens[0].verificationReasons)
+            .toContain('alchemy-portfolio-metadata')
+        expect(mocks.getTokenMetadataBatch).not.toHaveBeenCalled()
     })
 
     it('keeps a low-risk successful simulation unverified without exact recognition', async () => {
@@ -261,8 +347,8 @@ describe('normalized wallet token response', () => {
             chainId: 56,
             walletAddress: cachedWallet,
         })
-        expect(fetch).toHaveBeenCalled()
-        expect(tokens.every((token) => token.classificationVersion === 3)).toBe(true)
+        expect(mocks.alchemyRpc).toHaveBeenCalled()
+        expect(tokens.every((token) => token.classificationVersion === 4)).toBe(true)
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             recognitionStatus: 'unverified',
             visibility: 'unverified',
@@ -459,6 +545,103 @@ describe('normalized wallet token response', () => {
         expect(tokens.find((item) => item.address === tokenAddresses[1])).toMatchObject({
             recognitionStatus: 'unverified',
             visibility: 'unverified',
+        })
+    })
+
+    it('classifies official BNB XAUt before optional providers and preserves market pricing', async () => {
+        mocks.getCuratedBscRecognition.mockResolvedValue(new Map([[xautAddress, {
+            pancakeSwap: false,
+            trustWallet: false,
+            officialAsset: officialXaut,
+        }]]))
+        const tokens = await getWalletTokens({
+            chainId: 56,
+            walletAddress: '0x1000000000000000000000000000000000000060',
+            inventory: {
+                balances: new Map([[xautAddress, 1_500_000n]]),
+                nativeBalance: null,
+                pageCount: 1,
+                metadata: new Map([[xautAddress, {
+                    chainId: 56,
+                    address: xautAddress,
+                    name: 'Provider metadata mismatch',
+                    symbol: 'XAUT',
+                    decimals: 18,
+                    logoURI: 'https://example.com/untrusted-provider.png',
+                }]]),
+                prices: new Map([[xautAddress, '2400.25']]),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+        expect(tokens).toEqual([
+            expect.objectContaining({
+                classificationVersion: 4,
+                id: `56:${xautAddress}`,
+                name: 'Tether Gold',
+                symbol: 'XAUt',
+                decimals: 6,
+                rawBalance: '1500000',
+                balance: '1.5',
+                recognitionStatus: 'established',
+                recognitionReasons: expect.arrayContaining([
+                    'curated-official-contract',
+                ]),
+                verifiedContract: true,
+                officialAsset: true,
+                visibility: 'primary',
+                possibleSpam: false,
+                spamStatus: 'clean',
+                logoURI: '/icons/tether-gold.png',
+                logoSource: 'curated',
+                priceUSD: '2400.25',
+                marketPriceUSD: '2400.25',
+                trustedPriceUSD: null,
+                valueUSD: null,
+                priceConfidence: 'market',
+            }),
+        ])
+        expect(tokens[0].logoCandidates[1])
+            .toContain('trustwallet/assets/master/blockchains/smartchain')
+    })
+
+    it('keeps genuine high-risk findings on the official XAUt identity', async () => {
+        mocks.getCuratedBscRecognition.mockResolvedValue(new Map([[xautAddress, {
+            pancakeSwap: false,
+            trustWallet: false,
+            officialAsset: officialXaut,
+        }]]))
+        mocks.getCachedAndRefresh.mockReturnValue({
+            securityStatus: 'blocked',
+            securityScore: 100,
+            securityReasons: ['honeypot-confirmed'],
+            honeypot: {
+                available: true,
+                checkedAt: new Date(0).toISOString(),
+                risk: 'honeypot',
+                riskLevel: 100,
+                isHoneypot: true,
+            },
+            goPlus: { available: false, checkedAt: null, isHoneypot: null },
+        })
+        const [token] = await getWalletTokens({
+            chainId: 56,
+            walletAddress: '0x1000000000000000000000000000000000000061',
+            inventory: {
+                balances: new Map([[xautAddress, 1_000_000n]]),
+                nativeBalance: null,
+                pageCount: 1,
+                metadata: new Map(),
+                prices: new Map(),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+        expect(token).toMatchObject({
+            recognitionStatus: 'established',
+            verifiedContract: true,
+            securityStatus: 'blocked',
+            visibility: 'hidden',
         })
     })
 

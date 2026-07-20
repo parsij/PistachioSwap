@@ -154,6 +154,7 @@ export async function fetchTokenMarkets(
     const pairs: DexPair[] = []
     let successfulBatches = 0
     let failedBatches = 0
+    let lastError: unknown
 
     for (const batch of splitIntoChunks(unique, 30)) {
         const path =
@@ -163,11 +164,21 @@ export async function fetchTokenMarkets(
         try {
             pairs.push(...(await dexScreenerRequest(path, signal)))
             successfulBatches += 1
-        } catch {
+        } catch (error) {
             // Preserve successful address batches. Tokens in this failed
             // batch simply have no confirmed DexScreener market this refresh.
             failedBatches += 1
+            lastError = error
         }
+    }
+
+    if (
+        unique.length > 0 &&
+        successfulBatches === 0 &&
+        failedBatches > 0 &&
+        lastError
+    ) {
+        throw lastError
     }
 
     return {

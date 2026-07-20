@@ -6,8 +6,8 @@ import {
     CURATED_EVM_CHAINS,
     getCuratedEvmChain,
 } from './curatedEvmChains.js'
-import { getPistachioWalletFlags } from '../wallet/pistachio/featureFlags.js'
-import { pistachioWalletConnector } from '../wallet/pistachio/pistachioConnector.js'
+import { getPistachioWalletFlags } from '../features/passkey/services/featureFlags.js'
+import { pistachioWalletConnector } from '../features/passkey/services/pistachioConnector.js'
 
 const APPKIT_CONTEXT_KEY = Symbol.for(
     'pistachioswap.appkit.context',
