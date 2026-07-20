@@ -6,11 +6,12 @@ type RpcResponse = {
     error?: { code?: number; message?: string }
 }
 
-type PrivatePolicyConnection = {
+type PaymasterConnection = {
     rpcUrl: string | null
     policyId: string | null
     userAgent: string
     requestTimeoutMs: number
+    sponsorabilityMethod: 'pm_isSponsorable' | 'eth_isSponsorable'
 }
 
 function retryDelay(response: Response, attempt: number) {
@@ -29,17 +30,18 @@ function sleep(ms: number, signal?: AbortSignal) {
     })
 }
 
-function legacyConnection(): PrivatePolicyConnection {
+function legacyConnection(): PaymasterConnection {
     const config = getApiConfig().gasAssist
     return {
         rpcUrl: config.paymasterRpcUrl,
         policyId: config.paymasterPolicyId,
         userAgent: 'PistachioSwap/1.0',
         requestTimeoutMs: config.requestTimeoutMs,
+        sponsorabilityMethod: 'pm_isSponsorable',
     }
 }
 
-function prepaidConnection(): PrivatePolicyConnection {
+function prepaidConnection(): PaymasterConnection {
     const config = getApiConfig().sponsorship
     const baseUrl = config.privateRpcBaseUrl.replace(/\/+$/, '')
     return {
@@ -49,12 +51,13 @@ function prepaidConnection(): PrivatePolicyConnection {
         policyId: config.privatePolicyUuid,
         userAgent: config.userAgent,
         requestTimeoutMs: config.requestTimeoutMs,
+        sponsorabilityMethod: 'eth_isSponsorable',
     }
 }
 
 export function createPaymasterClient(
     fetcher: typeof fetch = fetch,
-    getConnection: () => PrivatePolicyConnection = legacyConnection,
+    getConnection: () => PaymasterConnection = legacyConnection,
 ) {
     async function rpc(method: string, params: unknown[], signal?: AbortSignal) {
         const connection = getConnection()
@@ -102,7 +105,8 @@ export function createPaymasterClient(
 
     return {
         async isSponsorable(transaction: Record<string, string>, signal?: AbortSignal) {
-            const result = await rpc('pm_isSponsorable', [transaction], signal)
+            const connection = getConnection()
+            const result = await rpc(connection.sponsorabilityMethod, [transaction], signal)
             if (typeof result === 'boolean') return result
             if (result && typeof result === 'object') {
                 const record = result as Record<string, unknown>
@@ -133,5 +137,6 @@ export const paymasterClient = createPaymasterClient()
 export const prepaidPaymasterClient = createPaymasterClient(fetch, prepaidConnection)
 
 export const paymasterInternals = {
+    legacyConnection,
     prepaidConnection,
 }
