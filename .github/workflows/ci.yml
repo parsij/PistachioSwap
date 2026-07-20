@@ -12,7 +12,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,11 +34,26 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Frontend tests
-        run: pnpm test
+      - name: Focused frontend MegaFuel tests
+        run: >-
+          pnpm exec vitest run
+          src/features/gas-assist/services/rawTransactionSigning.test.js
+          src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
+          src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
+          --reporter=verbose
 
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
+
+      - name: Focused API MegaFuel tests
+        run: >-
+          pnpm --filter @pistachio/api exec vitest run
+          test/prepaid-sponsorship.test.ts
+          test/megafuel-exact-payment.test.ts
+          --reporter=verbose
+
+      - name: Frontend tests
+        run: pnpm test
 
       - name: API tests
         run: pnpm --filter @pistachio/api test
