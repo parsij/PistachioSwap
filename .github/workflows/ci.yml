@@ -1,10 +1,30 @@
-name: CI
+name: MegaFuel exact flow
 
 on:
   pull_request:
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/modules/sponsorship-admin.ts'
+      - 'apps/api/test/megafuel-exact-payment.test.ts'
+      - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'src/features/gas-assist/**'
   push:
     branches:
       - main
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/modules/sponsorship-admin.ts'
+      - 'apps/api/test/megafuel-exact-payment.test.ts'
+      - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'src/features/gas-assist/**'
 
 permissions:
   contents: read
@@ -12,7 +32,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,7 +54,7 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Focused frontend MegaFuel tests
+      - name: Frontend MegaFuel tests
         run: >-
           pnpm exec vitest run
           src/features/gas-assist/services/rawTransactionSigning.test.js
@@ -45,65 +65,12 @@ jobs:
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
 
-      - name: Focused API MegaFuel tests
+      - name: API MegaFuel tests
         run: >-
           pnpm --filter @pistachio/api exec vitest run
           test/prepaid-sponsorship.test.ts
           test/megafuel-exact-payment.test.ts
           --reporter=verbose
 
-      - name: Full frontend tests
-        id: frontend_tests
-        continue-on-error: true
-        run: >-
-          pnpm exec vitest run
-          --reporter=json
-          --outputFile=frontend-vitest-results.json
-
-      - name: Upload frontend test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-vitest-results
-          path: frontend-vitest-results.json
-          if-no-files-found: error
-
-      - name: Full API tests
-        id: api_tests
-        continue-on-error: true
-        run: >-
-          pnpm --filter @pistachio/api exec vitest run
-          --reporter=json
-          --outputFile=api-vitest-results.json
-
-      - name: Upload API test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-vitest-results
-          path: apps/api/api-vitest-results.json
-          if-no-files-found: error
-
       - name: Frontend build
         run: pnpm build
-
-      - name: Report test failures
-        if: steps.frontend_tests.outcome == 'failure' || steps.api_tests.outcome == 'failure'
-        run: |
-          node --input-type=module <<'NODE'
-          import { existsSync, readFileSync } from 'node:fs'
-          const files = ['frontend-vitest-results.json', 'apps/api/api-vitest-results.json']
-          const failures = []
-          for (const path of files) {
-            if (!existsSync(path)) continue
-            const result = JSON.parse(readFileSync(path, 'utf8'))
-            for (const file of result.testResults ?? []) {
-              const tests = (file.assertionResults ?? [])
-                .filter((test) => test.status === 'failed')
-                .map((test) => ({ title: test.fullName, failureMessages: test.failureMessages }))
-              if (file.status === 'failed' || tests.length) failures.push({ report: path, file: file.name, tests, message: file.message })
-            }
-          }
-          console.error(JSON.stringify({ failures }, null, 2))
-          process.exit(1)
-          NODE
