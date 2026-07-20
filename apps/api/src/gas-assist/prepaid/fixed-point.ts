@@ -47,6 +47,7 @@ export type PrepaymentCalculation = {
     commercialFeeUsdMicros: bigint
     estimatedSponsoredGasUsdMicros: bigint
     gasReserveUsdMicros: bigint
+    conversionCostUsdMicros: bigint
     totalPrepaymentUsdMicros: bigint
 }
 
@@ -55,6 +56,7 @@ export function calculatePrepayment({
     paymentTransferGasUsdMicros,
     approvalGasUsdMicros,
     normalSwapGasUsdMicros,
+    conversionCostUsdMicros = 0n,
     flow,
     gasMultiplierBps,
     fixedFeeUsdMicros,
@@ -67,6 +69,7 @@ export function calculatePrepayment({
     paymentTransferGasUsdMicros: bigint
     approvalGasUsdMicros: bigint
     normalSwapGasUsdMicros: bigint
+    conversionCostUsdMicros?: bigint
     flow: SponsoredFlow
     gasMultiplierBps: number
     fixedFeeUsdMicros: bigint
@@ -80,6 +83,7 @@ export function calculatePrepayment({
         paymentTransferGasUsdMicros,
         approvalGasUsdMicros,
         normalSwapGasUsdMicros,
+        conversionCostUsdMicros,
         fixedFeeUsdMicros,
         commercialFeeCapUsdMicros,
     ]
@@ -112,21 +116,17 @@ export function calculatePrepayment({
         tradeNotionalUsdMicros * BigInt(platformFeeBps),
         BPS_DENOMINATOR,
     )
-    const uncappedCommercialFee = fixedFeeUsdMicros + platformFeeUsdMicros
-    const commercialFeeUsdMicros = uncappedCommercialFee < commercialFeeCapUsdMicros
-        ? uncappedCommercialFee
-        : commercialFeeCapUsdMicros
+    const commercialFeeUsdMicros = fixedFeeUsdMicros + platformFeeUsdMicros
 
     return {
         fixedServiceFeeUsdMicros: fixedFeeUsdMicros,
-        platformFeeUsdMicros:
-            commercialFeeUsdMicros > fixedFeeUsdMicros
-                ? commercialFeeUsdMicros - fixedFeeUsdMicros
-                : 0n,
+        platformFeeUsdMicros,
         commercialFeeUsdMicros,
         estimatedSponsoredGasUsdMicros,
         gasReserveUsdMicros,
-        totalPrepaymentUsdMicros: commercialFeeUsdMicros + gasReserveUsdMicros,
+        conversionCostUsdMicros,
+        totalPrepaymentUsdMicros:
+            commercialFeeUsdMicros + gasReserveUsdMicros + conversionCostUsdMicros,
     }
 }
 
