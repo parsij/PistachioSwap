@@ -1,4 +1,4 @@
-import { getGasAssistBaseUrl, signZeroXTypedData, submitGaslessQuote } from './gasAssist.js'
+import { getGasAssistBaseUrl } from './gasAssist.js'
 
 const sessions = new Map()
 
@@ -100,31 +100,9 @@ export function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, sign
     )
 }
 
-/** Requests the next prepared transaction required to continue a partially completed order. */
+/** Requests the next exact backend-prepared sponsored transaction. */
 export function prepareSponsorshipContinuation(quoteEndpoint, sessionToken, orderId, signal) {
     return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/continuation`, {}, { sessionToken, signal })
-}
-
-/**
- * Binds, signs, locally validates, and submits one prepared prepaid 0x transaction.
- * @returns {Promise<object>} Backend submission response and signed transaction evidence.
- * @throws For address/intent mismatch, wallet rejection, malformed signed bytes, or HTTP failure.
- * @sideEffects Invokes the selected wallet signer and performs an authenticated backend request.
- */
-export async function signAndSubmitPrepaidZeroX({
-    quoteEndpoint,
-    walletAddress,
-    walletClient,
-    quote,
-    signal,
-}) {
-    if (quote.approval) throw new Error('A fresh prepaid 0x quote cannot request another permit.')
-    const tradeSignature = await signZeroXTypedData(walletClient, walletAddress, quote.trade.eip712)
-    return submitGaslessQuote(quoteEndpoint, {
-        quoteId: quote.quoteId,
-        approvalSignature: null,
-        tradeSignature,
-    }, signal)
 }
 
 export const prepaidSponsorshipInternals = {
