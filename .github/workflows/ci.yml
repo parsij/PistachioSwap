@@ -52,11 +52,43 @@ jobs:
           test/megafuel-exact-payment.test.ts
           --reporter=verbose
 
-      - name: Frontend tests
-        run: pnpm test
+      - name: Full frontend tests
+        id: frontend_tests
+        continue-on-error: true
+        run: >-
+          pnpm exec vitest run
+          --reporter=json
+          --outputFile=frontend-vitest-results.json
+
+      - name: Upload frontend test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-vitest-results
+          path: frontend-vitest-results.json
+          if-no-files-found: error
 
       - name: API tests
         run: pnpm --filter @pistachio/api test
 
       - name: Frontend build
         run: pnpm build
+
+      - name: Report frontend test failures
+        if: steps.frontend_tests.outcome == 'failure'
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const result = JSON.parse(readFileSync('frontend-vitest-results.json', 'utf8'))
+          const failed = (result.testResults ?? [])
+            .filter((file) => file.status === 'failed' || (file.assertionResults ?? []).some((test) => test.status === 'failed'))
+            .map((file) => ({
+              file: file.name,
+              tests: (file.assertionResults ?? [])
+                .filter((test) => test.status === 'failed')
+                .map((test) => ({ title: test.fullName, failureMessages: test.failureMessages })),
+              message: file.message,
+            }))
+          console.error(JSON.stringify({ failed }, null, 2))
+          process.exit(1)
+          NODE
