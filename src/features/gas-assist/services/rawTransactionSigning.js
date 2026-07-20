@@ -5,7 +5,6 @@ import {
 } from './metamaskMultichain.js'
 
 const SUPPORTED_CONNECTOR_IDS = new Set([
-    'pistachio-embedded',
     'pistachio-local',
 ])
 
@@ -15,9 +14,7 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
     const supported =
         SUPPORTED_CONNECTOR_IDS.has(connectorId) &&
         typeof walletClient?.request === 'function'
-    const transport = supported
-        ? connectorId === 'pistachio-local' ? 'pistachio-local' : 'pistachio-embedded'
-        : null
+    const transport = supported ? 'pistachio-local' : null
     return Object.freeze({
         rawTransactionSigningSupported: supported,
         method: supported ? 'eth_signTransaction' : null,
@@ -26,7 +23,7 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
         scope: supported ? 'eip155:56' : null,
         account: null,
         approvedMethods: supported ? ['eth_signTransaction'] : [],
-        reasonCode: supported ? null : 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED',
+        reasonCode: supported ? null : 'PISTACHIO_WALLET_REQUIRED',
     })
 }
 
@@ -44,12 +41,13 @@ export async function signRawSponsoredTransaction({
     if (
         capability?.rawTransactionSigningSupported !== true ||
         capability.method !== 'eth_signTransaction' ||
+        capability.transport !== 'pistachio-local' ||
         typeof walletClient?.request !== 'function'
     ) {
         const error = new Error(
-            'This wallet cannot sign a private sponsored transaction without broadcasting it. Use a supported wallet or pay normal BNB gas.',
+            'Gas Assist requires Pistachio Wallet.',
         )
-        error.code = 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED'
+        error.code = 'PISTACHIO_WALLET_REQUIRED'
         throw error
     }
     const signedRawTransaction = await walletClient.request({
@@ -57,8 +55,8 @@ export async function signRawSponsoredTransaction({
         params: [transaction],
     })
     if (typeof signedRawTransaction !== 'string' || !/^0x[0-9a-f]+$/i.test(signedRawTransaction)) {
-        const error = new Error('The wallet returned an invalid signed transaction.')
-        error.code = 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED'
+        const error = new Error('Pistachio Wallet returned an invalid signed transaction.')
+        error.code = 'WALLET_RAW_TRANSACTION_MALFORMED'
         throw error
     }
     return signedRawTransaction
@@ -93,7 +91,7 @@ export async function signPreparedSponsoredTransaction({
                 appKitAddress: authenticatedWalletAddress,
                 isMetaMask,
             })
-        } else if (transport === 'pistachio-local' || transport === 'pistachio-embedded') {
+        } else if (transport === 'pistachio-local') {
             signedRawTransaction = await signRawSponsoredTransaction({
                 capability,
                 walletClient,
@@ -106,8 +104,8 @@ export async function signPreparedSponsoredTransaction({
                 multichainAccount: multichainAccount ?? authenticatedWalletAddress,
             })
         } else {
-            const error = new Error('This signing transport is not supported.')
-            error.code = 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED'
+            const error = new Error('Gas Assist requires Pistachio Wallet.')
+            error.code = 'PISTACHIO_WALLET_REQUIRED'
             throw error
         }
         return await submitSignedTransaction(signedRawTransaction)
