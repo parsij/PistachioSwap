@@ -224,7 +224,7 @@ export function verifyExactTransferReceipt({
     if (tokenTransfers.length !== 1 ||
         !isAddressEqual(tokenTransfers[0]!.from, wallet) ||
         !isAddressEqual(tokenTransfers[0]!.to, treasury) ||
-        tokenTransfers[0]!.value < requiredAmount) {
+        tokenTransfers[0]!.value !== requiredAmount) {
         throw new GasAssistError('PAYMENT_RECEIPT_SHORT', 'The treasury did not receive the exact required payment.', 409)
     }
     return tokenTransfers[0]!.value
