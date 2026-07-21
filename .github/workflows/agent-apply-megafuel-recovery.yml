@@ -2,7 +2,7 @@ name: Apply MegaFuel recovery patch
 
 on:
   issues:
-    types: [opened]
+    types: [reopened]
 
 permissions:
   contents: write
@@ -16,6 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Report start
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue comment '${{ github.event.issue.number }}' --body 'Trusted durable MegaFuel patch workflow started.'
+
       - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
@@ -84,3 +89,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh issue close '${{ github.event.issue.number }}' --comment 'Durable MegaFuel recovery changes were validated and committed.'
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue comment '${{ github.event.issue.number }}' --body 'Trusted durable MegaFuel patch workflow failed. The feature branch was not committed.'
