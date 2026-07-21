@@ -6,10 +6,38 @@ import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
 import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
 const PRICE_TTL_MS = 45_000
+const USD_PRICE_SCALE = 6
 const priceCache = new Map<string, { expiresAt: number; observedAt: number; value: string | null }>()
 const pendingPrices = new Map<string, Promise<Map<string, string>>>()
 const nativePriceCache = new Map<number, { expiresAt: number; value: string | null }>()
 const pendingNativePrices = new Map<number, Promise<string | null>>()
+
+function normalizeUsdPrice(value: string, scale = USD_PRICE_SCALE) {
+    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) || !Number.isInteger(scale) || scale < 0) {
+        return null
+    }
+
+    const [whole, fraction = ''] = value.split('.')
+    const base = 10n ** BigInt(scale)
+    const retainedFraction = fraction.slice(0, scale).padEnd(scale, '0')
+    let scaled = BigInt(whole) * base + BigInt(retainedFraction || '0')
+
+    if (fraction.length > scale && fraction[scale]! >= '5') {
+        scaled += 1n
+    }
+
+    if (scale === 0) return scaled.toString()
+
+    const normalizedWhole = scaled / base
+    const normalizedFraction = (scaled % base)
+        .toString()
+        .padStart(scale, '0')
+        .replace(/0+$/, '')
+
+    return normalizedFraction
+        ? `${normalizedWhole}.${normalizedFraction}`
+        : normalizedWhole.toString()
+}
 
 function readPrice(key: string) {
     const cached = priceCache.get(key)
@@ -65,43 +93,41 @@ export async function getTokenPrices({
     const request = (async () => {
         const fetched = new Map<string, string>()
         try {
-        const payload = await fetchJson(url, {
-            method: 'POST',
-            body: {
-                addresses: missing.map((address) => ({
-                    network: chain.providers.alchemyNetwork,
-                    address,
-                })),
-            },
-            signal,
-            timeoutMs: getApiConfig().requestTimeoutMs,
-            dedupeKey: `alchemy:prices:${requestKey}`,
-        })
+            const payload = await fetchJson(url, {
+                method: 'POST',
+                body: {
+                    addresses: missing.map((address) => ({
+                        network: chain.providers.alchemyNetwork,
+                        address,
+                    })),
+                },
+                signal,
+                timeoutMs: getApiConfig().requestTimeoutMs,
+                dedupeKey: `alchemy:prices:${requestKey}`,
+            })
 
-        if (!isRecord(payload) || !Array.isArray(payload.data)) {
-            return fetched
-        }
-
-        for (const item of payload.data) {
-            if (!isRecord(item) || !Array.isArray(item.prices)) continue
-            const address = normalizeAddress(item.address)
-            const usd = item.prices.find(
-                (price) =>
-                    isRecord(price) &&
-                    String(price.currency).toLowerCase() === 'usd',
-            )
-            const value = isRecord(usd) ? usd.value : null
-
-            if (
-                address &&
-                typeof value === 'string' &&
-                /^\d+(?:\.\d+)?$/.test(value)
-            ) {
-                fetched.set(address, value)
+            if (!isRecord(payload) || !Array.isArray(payload.data)) {
+                return fetched
             }
-        }
+
+            for (const item of payload.data) {
+                if (!isRecord(item) || !Array.isArray(item.prices)) continue
+                const address = normalizeAddress(item.address)
+                const usd = item.prices.find(
+                    (price) =>
+                        isRecord(price) &&
+                        String(price.currency).toLowerCase() === 'usd',
+                )
+                const value = isRecord(usd) && typeof usd.value === 'string'
+                    ? normalizeUsdPrice(usd.value)
+                    : null
+
+                if (address && value !== null) {
+                    fetched.set(address, value)
+                }
+            }
         } catch {
-        // Prices are optional; metadata and balances remain usable.
+            // Prices are optional; metadata and balances remain usable.
         }
 
         for (const address of missing) {
@@ -160,24 +186,22 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
             timeoutMs: getApiConfig().requestTimeoutMs,
             dedupeKey: `alchemy:prices:native:${chainId}`,
         })
-            const data = isRecord(payload) && Array.isArray(payload.data)
-                ? payload.data
-                : []
-            const native = data.find(
-                (item) => isRecord(item) && String(item.symbol).toUpperCase() === chain.native.symbol.toUpperCase(),
-            )
-            const usd = isRecord(native) && Array.isArray(native.prices)
-                ? native.prices.find(
-                      (price) =>
-                          isRecord(price) &&
-                          String(price.currency).toLowerCase() === 'usd',
-                  )
-                : null
-            return isRecord(usd) &&
-                typeof usd.value === 'string' &&
-                /^\d+(?:\.\d+)?$/.test(usd.value)
-                ? usd.value
-                : null
+        const data = isRecord(payload) && Array.isArray(payload.data)
+            ? payload.data
+            : []
+        const native = data.find(
+            (item) => isRecord(item) && String(item.symbol).toUpperCase() === chain.native.symbol.toUpperCase(),
+        )
+        const usd = isRecord(native) && Array.isArray(native.prices)
+            ? native.prices.find(
+                  (price) =>
+                      isRecord(price) &&
+                      String(price.currency).toLowerCase() === 'usd',
+              )
+            : null
+        return isRecord(usd) && typeof usd.value === 'string'
+            ? normalizeUsdPrice(usd.value)
+            : null
     }
     const coinGeckoPrice = async () => {
         const payload = await coinGeckoRequest(
@@ -191,9 +215,7 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
         const normalized = typeof value === 'string' || typeof value === 'number'
             ? String(value)
             : null
-        return normalized && /^\d+(?:\.\d+)?$/.test(normalized)
-            ? normalized
-            : null
+        return normalized ? normalizeUsdPrice(normalized) : null
     }
 
     const request = alchemyPrice()
@@ -216,4 +238,8 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
 
 export function getNativeBnbPrice(signal?: AbortSignal, chainId = 56) {
     return getNativeTokenPrice(chainId, signal)
+}
+
+export const tokenPriceInternals = {
+    normalizeUsdPrice,
 }
