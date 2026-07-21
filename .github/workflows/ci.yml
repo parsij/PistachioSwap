@@ -6,6 +6,7 @@ on:
       - '.github/workflows/ci.yml'
       - 'apps/api/.env.megafuel.example'
       - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'
       - 'apps/api/src/app.ts'
       - 'apps/api/src/config.ts'
       - 'apps/api/src/db/schema.ts'
@@ -20,6 +21,7 @@ on:
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
+      - 'apps/api/test/megafuel-durable-intents.test.ts'
       - 'apps/api/test/megafuel-exact-payment.test.ts'
       - 'apps/api/test/megafuel-normal-swap.test.ts'
       - 'apps/api/test/megafuel-two-policy.test.ts'
@@ -43,6 +45,7 @@ on:
       - '.github/workflows/ci.yml'
       - 'apps/api/.env.megafuel.example'
       - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'
       - 'apps/api/src/app.ts'
       - 'apps/api/src/config.ts'
       - 'apps/api/src/db/schema.ts'
@@ -57,6 +60,7 @@ on:
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
+      - 'apps/api/test/megafuel-durable-intents.test.ts'
       - 'apps/api/test/megafuel-exact-payment.test.ts'
       - 'apps/api/test/megafuel-normal-swap.test.ts'
       - 'apps/api/test/megafuel-two-policy.test.ts'
@@ -115,13 +119,31 @@ jobs:
           --reporter=verbose
 
       - name: API typecheck
-        run: pnpm --filter @pistachio/api typecheck
+        id: api_typecheck
+        continue-on-error: true
+        run: pnpm --filter @pistachio/api typecheck > api-typecheck.log 2>&1
+
+      - name: Upload API typecheck failure
+        if: steps.api_typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-typecheck-log
+          path: api-typecheck.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on API typecheck errors
+        if: steps.api_typecheck.outcome == 'failure'
+        run: |
+          cat api-typecheck.log
+          exit 1
 
       - name: API Gas Assist tests
         run: >-
           pnpm --filter @pistachio/api exec vitest run
           test/gasless-v2.test.ts
           test/prepaid-sponsorship.test.ts
+          test/megafuel-durable-intents.test.ts
           test/megafuel-exact-payment.test.ts
           test/megafuel-normal-swap.test.ts
           test/megafuel-two-policy.test.ts
