@@ -7,13 +7,14 @@ type RpcResponse = {
 }
 
 export type PrepaidPolicyScope = 'fee' | 'action'
+type SponsorabilityMethod = 'pm_isSponsorable' | 'eth_isSponsorable'
 
 type PaymasterConnection = {
     rpcUrl: string | null
     policyId: string | null
     userAgent: string
     requestTimeoutMs: number
-    sponsorabilityMethod: 'pm_isSponsorable' | 'eth_isSponsorable'
+    sponsorabilityMethods: readonly SponsorabilityMethod[]
 }
 
 function retryDelay(response: Response, attempt: number) {
@@ -39,7 +40,7 @@ function legacyConnection(): PaymasterConnection {
         policyId: config.paymasterPolicyId,
         userAgent: 'PistachioSwap/1.0',
         requestTimeoutMs: config.requestTimeoutMs,
-        sponsorabilityMethod: 'pm_isSponsorable',
+        sponsorabilityMethods: ['pm_isSponsorable'],
     }
 }
 
@@ -55,8 +56,19 @@ function prepaidConnection(scope: PrepaidPolicyScope): PaymasterConnection {
             : config.actionPolicyUuid,
         userAgent: config.userAgent,
         requestTimeoutMs: config.requestTimeoutMs,
-        sponsorabilityMethod: 'eth_isSponsorable',
+        sponsorabilityMethods: ['eth_isSponsorable', 'pm_isSponsorable'],
     }
+}
+
+function parseSponsorableResult(result: unknown) {
+    if (typeof result === 'boolean') return result
+    if (result && typeof result === 'object') {
+        const record = result as Record<string, unknown>
+        for (const key of ['sponsorable', 'isSponsorable', 'sponsored', 'eligible']) {
+            if (typeof record[key] === 'boolean') return record[key]
+        }
+    }
+    return false
 }
 
 export function createPaymasterClient(
@@ -96,6 +108,9 @@ export function createPaymasterClient(
                         body.error?.code === -32601 ? 'PAYMASTER_METHOD_UNAVAILABLE' : 'PAYMASTER_REJECTED',
                         'The paymaster rejected the exact sponsored transaction.',
                         response.status === 429 ? 429 : 502,
+                        body.error?.message
+                            ? { rpcMethod: method, providerMessage: body.error.message }
+                            : { rpcMethod: method },
                     )
                 }
                 return body.result
@@ -109,16 +124,33 @@ export function createPaymasterClient(
 
     return {
         async isSponsorable(transaction: Record<string, string>, signal?: AbortSignal) {
-            const connection = getConnection()
-            const result = await rpc(connection.sponsorabilityMethod, [transaction], signal)
-            if (typeof result === 'boolean') return result
-            if (result && typeof result === 'object') {
-                const record = result as Record<string, unknown>
-                for (const key of ['sponsorable', 'isSponsorable', 'sponsored', 'eligible']) {
-                    if (typeof record[key] === 'boolean') return record[key]
+            const methods = getConnection().sponsorabilityMethods
+            let lastMethodError: GasAssistError | null = null
+
+            for (const [index, method] of methods.entries()) {
+                try {
+                    return parseSponsorableResult(await rpc(method, [transaction], signal))
+                } catch (error) {
+                    const mayTryNextMethod =
+                        error instanceof GasAssistError &&
+                        error.code === 'PAYMASTER_METHOD_UNAVAILABLE' &&
+                        index < methods.length - 1
+
+                    if (!mayTryNextMethod) throw error
+
+                    lastMethodError = error
+                    console.warn('[megafuel-sponsorability-method-fallback]', {
+                        unavailableMethod: method,
+                        fallbackMethod: methods[index + 1],
+                    })
                 }
             }
-            return false
+
+            throw lastMethodError ?? new GasAssistError(
+                'PAYMASTER_METHOD_UNAVAILABLE',
+                'The paymaster does not expose a supported sponsorability method.',
+                502,
+            )
         },
         async getNonce(walletAddress: `0x${string}`, signal?: AbortSignal) {
             const result = await rpc('eth_getTransactionCount', [walletAddress, 'pending'], signal)
@@ -150,4 +182,5 @@ export const prepaidActionPaymasterClient = createPaymasterClient(
 export const paymasterInternals = {
     legacyConnection,
     prepaidConnection,
+    parseSponsorableResult,
 }
