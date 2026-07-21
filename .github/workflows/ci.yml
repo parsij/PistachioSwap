@@ -10,70 +10,32 @@ permissions:
   contents: write
 
 jobs:
-  apply-and-validate:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
           ref: feature/megafuel-exact-prepaid-flow
           fetch-depth: 0
+          show-progress: false
 
-      - name: Apply source changes
+      - name: Apply and persist exact failure
         run: |
-          python tools/apply_sponsored_uniswap_fallback.py
-          rm tools/apply_sponsored_uniswap_fallback.py
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.30.3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Frontend focused tests
-        run: >-
-          pnpm exec vitest run
-          src/features/gas-assist/hooks/useGasAssistController.test.jsx
-          src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
-          src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
-          src/services/swapExecutionMode.test.js
-          --reporter=verbose
-
-      - name: API typecheck
-        run: pnpm --filter @pistachio/api typecheck
-
-      - name: API focused tests
-        run: >-
-          pnpm --filter @pistachio/api exec vitest run
-          test/gasless-v2.test.ts
-          test/prepaid-sponsorship.test.ts
-          test/megafuel-exact-payment.test.ts
-          test/megafuel-normal-swap.test.ts
-          test/megafuel-two-policy.test.ts
-          --reporter=verbose
-
-      - name: Frontend build
-        run: pnpm build
-
-      - name: Commit validated source changes
-        run: |
-          git config user.name 'parsij'
-          git config user.email '205437194+parsij@users.noreply.github.com'
-          git add -A
-          git reset .github/workflows/ci.yml
-          git reset .github/workflows/apply-sponsored-uniswap-fallback.yml || true
-          git reset .github/workflows/apply-prepaid-value-fix.yml || true
-          git commit -m 'Use Uniswap before 0x for sponsored swaps'
-          git push origin HEAD:feature/megafuel-exact-prepaid-flow
+          set +e
+          python tools/apply_sponsored_uniswap_fallback.py > sponsored-fallback-apply.log 2>&1
+          status=$?
+          cat sponsored-fallback-apply.log
+          if [ "$status" -ne 0 ]; then
+            git config user.name 'parsij'
+            git config user.email '205437194+parsij@users.noreply.github.com'
+            git add sponsored-fallback-apply.log
+            git reset .github/workflows/ci.yml
+            git reset .github/workflows/apply-sponsored-uniswap-fallback.yml || true
+            git reset .github/workflows/apply-prepaid-value-fix.yml || true
+            git commit -m 'Record sponsored fallback patch failure'
+            git push origin HEAD:feature/megafuel-exact-prepaid-flow
+            exit "$status"
+          fi
+          exit 1
