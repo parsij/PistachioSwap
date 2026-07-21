@@ -7,13 +7,16 @@ on:
       - 'apps/api/.env.megafuel.example'
       - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
       - 'apps/api/src/app.ts'
+      - 'apps/api/src/config.ts'
       - 'apps/api/src/db/schema.ts'
       - 'apps/api/src/gas-assist/**'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/megafuel-exact-payment.test.ts'
       - 'apps/api/test/megafuel-normal-swap.test.ts'
+      - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
   push:
     branches:
@@ -23,13 +26,16 @@ on:
       - 'apps/api/.env.megafuel.example'
       - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
       - 'apps/api/src/app.ts'
+      - 'apps/api/src/config.ts'
       - 'apps/api/src/db/schema.ts'
       - 'apps/api/src/gas-assist/**'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/megafuel-exact-payment.test.ts'
       - 'apps/api/test/megafuel-normal-swap.test.ts'
+      - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
 
 permissions:
@@ -42,6 +48,34 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Export implementation sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: megafuel-source-snapshot
+          path: |
+            .github/workflows/ci.yml
+            apps/api/.env.megafuel.example
+            apps/api/src/config.ts
+            apps/api/src/db/schema.ts
+            apps/api/src/features/quotes/providers/zero-x-provider.ts
+            apps/api/src/features/quotes/types/types.ts
+            apps/api/src/gas-assist/paymaster.ts
+            apps/api/src/gas-assist/policy-management.ts
+            apps/api/src/gas-assist/prepaid/chain-client.ts
+            apps/api/src/gas-assist/prepaid/intent-service.ts
+            apps/api/src/gas-assist/prepaid/normal-swap.ts
+            apps/api/src/gas-assist/prepaid/order-service.ts
+            apps/api/src/modules/sponsorship-admin.ts
+            apps/api/src/modules/sponsorship-refunds-admin.ts
+            apps/api/src/modules/sponsorship.ts
+            apps/api/test/megafuel-exact-payment.test.ts
+            apps/api/test/megafuel-normal-swap.test.ts
+            apps/api/test/prepaid-sponsorship.test.ts
+            docs/megafuel-exact-payment-rollout.md
+            src/features/gas-assist/components/GasAssistPrepaymentDialog.jsx
+            src/features/gas-assist/hooks/usePrepaidSponsorship.js
+            src/features/gas-assist/services/prepaidSponsorship.js
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -77,6 +111,7 @@ jobs:
           test/prepaid-sponsorship.test.ts
           test/megafuel-exact-payment.test.ts
           test/megafuel-normal-swap.test.ts
+          test/megafuel-two-policy.test.ts
           --reporter=verbose
 
       - name: Frontend build
