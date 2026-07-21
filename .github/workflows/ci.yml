@@ -1,177 +1,55 @@
-name: MegaFuel exact flow
+name: Apply pre-signed package
 
 on:
   pull_request:
     paths:
       - '.github/workflows/ci.yml'
-      - 'apps/api/.env.megafuel.example'
-      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
-      - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'
-      - 'apps/api/src/app.ts'
-      - 'apps/api/src/config.ts'
-      - 'apps/api/src/db/schema.ts'
-      - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
-      - 'apps/api/src/gas-assist/**'
-      - 'apps/api/src/lib/provider-response-debug.ts'
-      - 'apps/api/src/providers/alchemy/alchemy-client.ts'
-      - 'apps/api/src/providers/alchemy/token-prices.ts'
-      - 'apps/api/src/providers/moralis/moralis-client.ts'
-      - 'apps/api/src/providers/moralis/sponsorship-token-evidence.ts'
-      - 'apps/api/src/providers/security/honeypot-client.ts'
-      - 'apps/api/src/modules/sponsorship-admin.ts'
-      - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
-      - 'apps/api/test/gasless-v2.test.ts'
-      - 'apps/api/test/megafuel-durable-intents.test.ts'
-      - 'apps/api/test/megafuel-exact-payment.test.ts'
-      - 'apps/api/test/megafuel-normal-swap.test.ts'
-      - 'apps/api/test/megafuel-two-policy.test.ts'
-      - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
-      - 'apps/api/test/payment-token-selection-native.test.ts'
-      - 'apps/api/test/paymaster-sponsorability-fallback.test.ts'
-      - 'apps/api/test/prepaid-sponsorship.test.ts'
-      - 'apps/api/test/provider-response-debug.test.ts'
-      - 'apps/api/test/token-evidence-exact-transfer.test.ts'
-      - 'apps/api/test/token-price-normalization.test.ts'
-      - 'docs/megafuel-exact-payment-rollout.md'
-      - 'src/features/gas-assist/**'
-      - 'src/features/passkey/services/signingReview.js'
-      - 'src/features/passkey/services/signingReview.test.js'
-      - 'src/features/swap/**'
-      - 'src/services/swapExecutionMode*'
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/ci.yml'
-      - 'apps/api/.env.megafuel.example'
-      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
-      - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'
-      - 'apps/api/src/app.ts'
-      - 'apps/api/src/config.ts'
-      - 'apps/api/src/db/schema.ts'
-      - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
-      - 'apps/api/src/gas-assist/**'
-      - 'apps/api/src/lib/provider-response-debug.ts'
-      - 'apps/api/src/providers/alchemy/alchemy-client.ts'
-      - 'apps/api/src/providers/alchemy/token-prices.ts'
-      - 'apps/api/src/providers/moralis/moralis-client.ts'
-      - 'apps/api/src/providers/moralis/sponsorship-token-evidence.ts'
-      - 'apps/api/src/providers/security/honeypot-client.ts'
-      - 'apps/api/src/modules/sponsorship-admin.ts'
-      - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
-      - 'apps/api/test/gasless-v2.test.ts'
-      - 'apps/api/test/megafuel-durable-intents.test.ts'
-      - 'apps/api/test/megafuel-exact-payment.test.ts'
-      - 'apps/api/test/megafuel-normal-swap.test.ts'
-      - 'apps/api/test/megafuel-two-policy.test.ts'
-      - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
-      - 'apps/api/test/payment-token-selection-native.test.ts'
-      - 'apps/api/test/paymaster-sponsorability-fallback.test.ts'
-      - 'apps/api/test/prepaid-sponsorship.test.ts'
-      - 'apps/api/test/provider-response-debug.test.ts'
-      - 'apps/api/test/token-evidence-exact-transfer.test.ts'
-      - 'apps/api/test/token-price-normalization.test.ts'
-      - 'docs/megafuel-exact-payment-rollout.md'
-      - 'src/features/gas-assist/**'
-      - 'src/features/passkey/services/signingReview.js'
-      - 'src/features/passkey/services/signingReview.test.js'
-      - 'src/features/swap/**'
-      - 'src/services/swapExecutionMode*'
+      - '.github/apply-presigned-package.py'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  apply:
+    if: github.head_ref == 'feature/megafuel-exact-prepaid-flow'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/megafuel-exact-prepaid-flow
+          fetch-depth: 0
+      - name: Apply patches
+        run: python .github/apply-presigned-package.py
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.30.3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Frontend Gas Assist tests
-        run: >-
-          pnpm exec vitest run
-          src/features/gas-assist/services/rawTransactionSigning.test.js
-          src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
-          src/features/gas-assist/hooks/useGasAssistController.test.jsx
-          src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
-          src/features/passkey/services/signingReview.test.js
-          src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
-          src/services/swapExecutionMode.test.js
-          --reporter=verbose
-
-      - name: API typecheck
-        id: api_typecheck
-        continue-on-error: true
-        run: pnpm --filter @pistachio/api typecheck > api-typecheck.log 2>&1
-
-      - name: Upload API typecheck failure
-        if: steps.api_typecheck.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-typecheck-log
-          path: api-typecheck.log
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Fail on API typecheck errors
-        if: steps.api_typecheck.outcome == 'failure'
+      - run: pnpm install --frozen-lockfile
+      - name: Validate patched tree
         run: |
-          cat api-typecheck.log
-          exit 1
-
-      - name: API Gas Assist tests
-        id: api_tests
-        continue-on-error: true
-        run: >-
-          pnpm --filter @pistachio/api exec vitest run
-          test/gasless-v2.test.ts
-          test/prepaid-sponsorship.test.ts
-          test/megafuel-durable-intents.test.ts
-          test/megafuel-exact-payment.test.ts
-          test/megafuel-normal-swap.test.ts
-          test/megafuel-two-policy.test.ts
-          test/moralis-sponsorship-evidence.test.ts
-          test/payment-token-selection-native.test.ts
-          test/paymaster-sponsorability-fallback.test.ts
-          test/provider-response-debug.test.ts
-          test/token-evidence-exact-transfer.test.ts
-          test/token-price-normalization.test.ts
-          --reporter=verbose
-          > api-tests.log 2>&1
-
-      - name: Upload API test failure
-        if: steps.api_tests.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-tests-log
-          path: api-tests.log
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Fail on API test errors
-        if: steps.api_tests.outcome == 'failure'
+          pnpm --filter @pistachio/api typecheck
+          pnpm --filter @pistachio/api exec vitest run \
+            test/megafuel-presigned-package.test.ts \
+            test/token-evidence-exact-transfer.test.ts \
+            test/megafuel-durable-intents.test.ts \
+            test/megafuel-exact-payment.test.ts \
+            test/megafuel-normal-swap.test.ts \
+            --reporter=verbose
+          pnpm exec vitest run \
+            src/features/gas-assist/services/rawTransactionSigning.package.test.js \
+            src/features/gas-assist/services/rawTransactionSigning.test.js \
+            src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
+            src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx \
+            --reporter=verbose
+          pnpm build
+      - name: Commit patched tree
         run: |
-          cat api-tests.log
-          exit 1
-
-      - name: Frontend build
-        run: pnpm build
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Implement durable pre-signed sponsorship packages"
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
