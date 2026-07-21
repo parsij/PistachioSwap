@@ -78,3 +78,5 @@ jobs:
           git reset .github/workflows/apply-prepaid-value-fix.yml || true
           git commit -m 'Use Uniswap before 0x for sponsored swaps'
           git push origin HEAD:feature/megafuel-exact-prepaid-flow
+
+# Trigger after workflow registration.
