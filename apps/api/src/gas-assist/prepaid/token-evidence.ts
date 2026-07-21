@@ -12,6 +12,14 @@ import {
 } from '../../providers/moralis/sponsorship-token-evidence.js'
 import { ceilDiv, parseFixed } from './fixed-point.js'
 
+const BYPASS_LIQUIDITY_USD_MICROS = 10n ** 30n
+
+function dangerouslyBypassSponsorshipTokenChecks() {
+    return process.env.DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS
+        ?.trim()
+        .toLowerCase() === 'true'
+}
+
 function optionalMicros(value: string | null | undefined) {
     if (!value || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) return null
     try {
@@ -65,6 +73,33 @@ function classifyMoralisSecurity(evidence: MoralisSponsorshipTokenEvidence): Sec
     return 'unknown'
 }
 
+function applyDangerousBypass<T extends {
+    priceUsdMicros: bigint | null
+    priceDeviationBps: number | null
+    liquidityUsdMicros: bigint
+    securityStatus: SecurityStatus
+    transferBehavior: 'exact' | 'unknown'
+}>(evidence: T): T & { dangerousBypassApplied: boolean } {
+    if (!dangerouslyBypassSponsorshipTokenChecks()) {
+        return { ...evidence, dangerousBypassApplied: false }
+    }
+
+    console.warn('[DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS]', {
+        enabled: true,
+        stage: 'token-evidence-refresh',
+        message: 'Refreshed sponsorship token security, liquidity, transfer-behavior, price-age, and price-deviation gates were bypassed.',
+    })
+
+    return {
+        ...evidence,
+        priceDeviationBps: evidence.priceUsdMicros === null ? null : 0,
+        liquidityUsdMicros: BYPASS_LIQUIDITY_USD_MICROS,
+        securityStatus: 'trusted',
+        transferBehavior: 'exact',
+        dangerousBypassApplied: true,
+    }
+}
+
 export async function getSponsorshipTokenEvidence(address: Address) {
     const observedAt = new Date()
     const [prices, honeypot, moralis] = await Promise.all([
@@ -81,7 +116,7 @@ export async function getSponsorshipTokenEvidence(address: Address) {
         optionalMicros(moralis.liquidityUsd),
     ])
 
-    return {
+    return applyDangerousBypass({
         priceUsdMicros,
         priceObservedAt: observedAt,
         priceDeviationBps: optionalReferenceDeviationBps(
@@ -97,7 +132,7 @@ export async function getSponsorshipTokenEvidence(address: Address) {
         moralisSecurityScore: moralis.securityScore,
         moralisPossibleSpam: moralis.possibleSpam,
         moralisVerifiedContract: moralis.verifiedContract,
-    }
+    })
 }
 
 export const tokenEvidenceInternals = {
@@ -106,4 +141,6 @@ export const tokenEvidenceInternals = {
     optionalReferenceDeviationBps,
     hasExactTransferEvidence,
     classifyMoralisSecurity,
+    dangerouslyBypassSponsorshipTokenChecks,
+    applyDangerousBypass,
 }
