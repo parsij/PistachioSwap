@@ -755,11 +755,21 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             await client.query(
                 `INSERT INTO sponsorship_usage
                  (usage_date,chain_id,scope_type,scope_hash,sponsored_gas_usd_micros,reverted_attempts,token_action_counts)
-                 VALUES ((now() at time zone 'utc')::date,56,$1,$2,$3,$4,jsonb_build_object($5,1))
+                 VALUES ((now() at time zone 'utc')::date,56,$1,$2,$3,$4,jsonb_build_object($5::text,1))
                  ON CONFLICT (usage_date,chain_id,scope_type,scope_hash)
                  DO UPDATE SET sponsored_gas_usd_micros=sponsorship_usage.sponsored_gas_usd_micros+EXCLUDED.sponsored_gas_usd_micros,
                                reverted_attempts=sponsorship_usage.reverted_attempts+EXCLUDED.reverted_attempts,
-                               token_action_counts=sponsorship_usage.token_action_counts || EXCLUDED.token_action_counts,
+                               token_action_counts=jsonb_set(
+                                   sponsorship_usage.token_action_counts,
+                                   ARRAY[$5::text],
+                                   to_jsonb(
+                                       COALESCE(
+                                           (sponsorship_usage.token_action_counts ->> $5::text)::integer,
+                                           0
+                                       )+1
+                                   ),
+                                   true
+                               ),
                                updated_at=now()`,
                 [scopeType, scopeHash, gasUsdMicros.toString(), reverted ? 1 : 0, `${order.paymentToken}:${intent.action}`],
             )

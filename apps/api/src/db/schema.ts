@@ -468,7 +468,14 @@ export const sponsorshipTransactionIntents = pgTable(
         maxFeePerGas: numeric('max_fee_per_gas', { precision: 78, scale: 0 }),
         maxPriorityFeePerGas: numeric('max_priority_fee_per_gas', { precision: 78, scale: 0 }),
         expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+        signedRawTransaction: text('signed_raw_transaction'),
         signedRawTransactionHash: text('signed_raw_transaction_hash'),
+        signedAt: timestamp('signed_at', { withTimezone: true }),
+        firstBroadcastAt: timestamp('first_broadcast_at', { withTimezone: true }),
+        lastBroadcastAt: timestamp('last_broadcast_at', { withTimezone: true }),
+        submittedAt: timestamp('submitted_at', { withTimezone: true }),
+        finalizedAt: timestamp('finalized_at', { withTimezone: true }),
+        broadcastAttempts: integer('broadcast_attempts').notNull().default(0),
         transactionHash: text('transaction_hash'),
         submissionAttempts: integer('submission_attempts').notNull().default(0),
         failureCode: text('failure_code'),
@@ -479,9 +486,67 @@ export const sponsorshipTransactionIntents = pgTable(
         uniqueIndex('sponsorship_intents_order_action_idx').on(table.orderId, table.action),
         index('sponsorship_intents_wallet_nonce_idx').on(table.walletAddress, table.nonce),
         index('sponsorship_intents_expiry_idx').on(table.status, table.expiresAt),
+        index('sponsorship_intents_recovery_idx')
+            .on(table.status, table.lastBroadcastAt, table.expiresAt)
+            .where(sql`${table.status} IN ('submitting','submitted','unknown')`),
         check('sponsorship_intents_chain_check', sql`${table.chainId} = 56`),
         check('sponsorship_intents_value_gas_check', sql`
             ${table.nativeValue} = 0 AND ${table.gasLimit} > 0 AND ${table.gasPrice} = 0
+        `),
+        check('sponsorship_intents_broadcast_attempts_check', sql`
+            ${table.broadcastAttempts} BETWEEN 0 AND 3
+        `),
+        check('sponsorship_intents_signed_raw_transaction_check', sql`
+            ${table.signedRawTransaction} IS NULL OR (
+                ${table.signedRawTransaction} ~ '^0x[0-9a-f]+$' AND
+                (length(${table.signedRawTransaction}) - 2) % 2 = 0 AND
+                ${table.signedRawTransactionHash} ~ '^0x[0-9a-f]{64}$' AND
+                ${table.signedAt} IS NOT NULL
+            )
+        `),
+    ],
+)
+
+export const sponsorshipIntentEvents = pgTable(
+    'sponsorship_intent_events',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        intentId: uuid('intent_id')
+            .notNull()
+            .references(() => sponsorshipTransactionIntents.id),
+        orderId: uuid('order_id')
+            .notNull()
+            .references(() => sponsorshipOrders.id),
+        action: text('action').notNull(),
+        eventType: text('event_type').notNull(),
+        previousStatus: text('previous_status'),
+        status: text('status').notNull(),
+        transactionHash: text('transaction_hash'),
+        details: jsonb('details').notNull().default({}),
+        createdAt: timestamp('created_at', { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+    },
+    (table) => [
+        index('sponsorship_intent_events_intent_idx').on(
+            table.intentId,
+            table.createdAt,
+        ),
+        index('sponsorship_intent_events_order_idx').on(
+            table.orderId,
+            table.createdAt,
+        ),
+        check('sponsorship_intent_events_action_check', sql`
+            ${table.action} IN (
+                'fee-payment-transfer','token-approval','normal-swap'
+            )
+        `),
+        check('sponsorship_intent_events_event_type_check', sql`
+            ${table.eventType} IN (
+                'intent-created','raw-transaction-received',
+                'broadcast-attempted','transaction-hash-recorded',
+                'status-changed'
+            )
         `),
     ],
 )
