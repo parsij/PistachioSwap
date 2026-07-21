@@ -1,43 +1,85 @@
-# MegaFuel exact payment rollout
+# MegaFuel exact prepaid flow
 
-This branch hardens the prepaid fee-payment and approval stages. It does not enable generic MegaFuel-sponsored swaps.
+This branch implements an exact, backend-authoritative BNB Chain flow for Pistachio Wallet:
+
+```text
+2-minute fee quote
+→ exact sponsored ERC-20 payment to treasury
+→ confirmed exact receipt
+→ fresh 5-minute grant
+→ exact sponsored approval
+→ fresh exact 0x AllowanceHolder quote
+→ exact sponsored 0x Settler transaction
+```
+
+The feature remains disabled by the example configuration. No migration or mainnet operation is performed automatically.
 
 ## Security boundary
 
-The browser never chooses the payment token, treasury, raw amount, nonce, gas limit, or calldata. The backend prepares a legacy BNB Chain transaction with zero gas price. Pistachio Wallet signs the complete transaction without broadcasting it. The backend parses the signed bytes, recovers the signer, compares every field with the stored one-time intent, decodes the ERC-20 call, and submits only an exact match through the private MegaFuel policy.
+The frontend never chooses the payment token, treasury, raw payment amount, approval target, approval amount, blockchain nonce, swap target, swap calldata, native value, or gas limit.
 
-A user-created dust transfer, underpayment, overpayment, changed recipient, changed token, changed nonce, changed gas limit, or changed calldata is rejected before `eth_sendRawTransaction` is called.
+For every sponsored action:
 
-## Private policy settings
+1. The backend creates a one-time database intent.
+2. The backend prepares a legacy BNB Chain transaction with `gasPrice=0`.
+3. Pistachio Wallet reviews and signs the complete raw transaction without broadcasting it.
+4. The backend parses the returned bytes and recovers the signer.
+5. Every field must match the stored intent exactly.
+6. The backend revalidates the business action and gas reserve.
+7. Only the backend submits the exact signed bytes through the private MegaFuel policy.
 
-Use one private BSC Mainnet policy. Keep the API key and policy UUID in `apps/api/.env` only.
+A dust payment, underpayment, overpayment, changed recipient, changed token, changed nonce, changed gas limit, changed approval, changed swap target, or changed calldata is rejected before `eth_sendRawTransaction` is called.
+
+## Fee calculation
+
+The backend calculates:
+
+```text
+sponsoredGasUsd =
+    feeTransferGasUsd
+  + approvalGasUsd
+  + exactSwapGasUsd
+
+gasReserveUsd = sponsoredGasUsd × 1.5
+
+commercialFeeUsd = $0.067 + 3% of gross trade notional
+
+totalPrepaymentUsd =
+    gasReserveUsd
+  + commercialFeeUsd
+  + estimated payment-token-to-BNB conversion cost
+```
+
+The conversion estimate includes route loss, conversion swap gas, and conversion approval gas. USD values are converted to the chosen payment token using integer arithmetic and ceiling division. When the payment token is also the sell token, the exact prepayment is deducted from the gross input before the final sponsored swap quote is created.
+
+## Private policy
+
+Use one private BSC Mainnet policy. Keep the NodeReal API key and policy UUID in `apps/api/.env` only.
 
 Recommended whitelist entries:
 
-- `ToAccountWhitelist`: enabled payment and approval token contracts.
-- `ContractMethodSigWhitelist`: `0xa9059cbb` and `0x095ea7b3`.
+- `ToAccountWhitelist`: enabled payment and approval token contracts plus the validated 0x Settler target.
+- `ContractMethodSigWhitelist`: `0xa9059cbb`, `0x095ea7b3`, and the exact validated 0x swap selector.
 - `BEP20ReceiverWhiteList`: the configured treasury address.
 
-The localhost admin API synchronizes these values. The policy remains defense in depth. Exact calldata arguments are still enforced by the backend.
+The local admin API synchronizes payment and approval token contracts. The swap preparation step adds only the configured 0x Settler and the selector from the validated fresh quote. Policy matching is defense in depth; exact calldata arguments remain enforced by the backend.
 
 ## Environment
 
-Copy the relevant values from `apps/api/.env.megafuel.example` into `apps/api/.env`. Keep:
+Copy values from `apps/api/.env.megafuel.example` into `apps/api/.env`. Keep these disabled during review:
 
 ```text
-MEGAFUEL_EMERGENCY_DISABLED=true
 MEGAFUEL_PREPAID_ENABLED=false
+MEGAFUEL_EMERGENCY_DISABLED=true
 ```
 
-until migration and tests are complete.
-
-Generate the local admin token with:
+Generate the localhost admin token with:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Store it as `SPONSORSHIP_ADMIN_TOKEN` in the backend environment.
+Store it as `SPONSORSHIP_ADMIN_TOKEN` in the backend environment. Never use a `VITE_` variable for NodeReal credentials or the admin token.
 
 ## Database
 
@@ -49,16 +91,21 @@ apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql
 
 It adds:
 
-- a two-minute payment-quote timestamp,
-- a fee-confirmation timestamp,
-- a fresh five-minute post-payment grant timestamp,
-- token-to-BNB conversion-cost accounting storage.
+- the two-minute payment quote timestamp,
+- the fee confirmation timestamp,
+- the fresh five-minute post-payment grant timestamp,
+- conversion-cost accounting,
+- pending refund records.
 
-The migration has not been applied by repository code or CI.
+Repository code and CI do not apply this migration.
 
 ## Local token API
 
-The API accepts only localhost connections and a bearer token.
+These routes accept only localhost connections with:
+
+```http
+Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN
+```
 
 List tokens:
 
@@ -67,7 +114,7 @@ curl -s http://127.0.0.1:3001/admin/sponsorship/tokens \
   -H "Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN"
 ```
 
-Add a token:
+Add and synchronize a token:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:3001/admin/sponsorship/tokens \
@@ -80,7 +127,7 @@ curl -sS -X POST http://127.0.0.1:3001/admin/sponsorship/tokens \
     "enabled":true,
     "feePaymentEnabled":true,
     "approvalSponsorshipEnabled":true,
-    "normalSwapSponsorshipEnabled":false,
+    "normalSwapSponsorshipEnabled":true,
     "isStablecoin":false,
     "priority":100,
     "minimumLiquidityUsd":"0",
@@ -90,7 +137,7 @@ curl -sS -X POST http://127.0.0.1:3001/admin/sponsorship/tokens \
   }'
 ```
 
-Disable a token before removing it:
+Disable before removal:
 
 ```bash
 curl -sS -X PATCH \
@@ -98,38 +145,72 @@ curl -sS -X PATCH \
   -H "Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   --data '{"enabled":false}'
-```
 
-Remove it:
-
-```bash
 curl -sS -X DELETE \
   http://127.0.0.1:3001/admin/sponsorship/tokens/0x0000000000000000000000000000000000000001 \
   -H "Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN"
 ```
 
-Synchronize all enabled rows to MegaFuel:
+Synchronize all enabled tokens:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:3001/admin/sponsorship/tokens/sync \
   -H "Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN"
 ```
 
-## Required validation
+## Failure refunds
 
-Run without starting either server:
+After a confirmed upfront payment, approval or swap failure creates one pending refund record:
+
+```text
+refundable token amount =
+    received payment
+  - actual sponsored gas converted to the payment token
+  - estimated refund-transfer gas converted to the payment token
+```
+
+The fixed `$0.067`, the 3% charge, unused 1.5× reserve, and unused conversion reserve are not retained on a failed order.
+
+No treasury private key is placed on the API server. Refund broadcasting remains an operator action. The local API lists pending refunds and records a separately sent refund transaction hash:
+
+```bash
+curl -s http://127.0.0.1:3001/admin/sponsorship/refunds?status=pending \
+  -H "Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN"
+
+curl -sS -X POST \
+  http://127.0.0.1:3001/admin/sponsorship/refunds/ORDER_ID/mark-sent \
+  -H "Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"transactionHash":"0xREFUND_TRANSACTION_HASH"}'
+```
+
+Mark an item for manual review without sending anything:
+
+```bash
+curl -sS -X POST \
+  http://127.0.0.1:3001/admin/sponsorship/refunds/ORDER_ID/mark-needs-review \
+  -H "Authorization: Bearer $SPONSORSHIP_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"reason":"Manual accounting review"}'
+```
+
+## Validation
+
+The repository workflow runs without starting either server:
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm lint
-pnpm test
+pnpm exec vitest run \
+  src/features/gas-assist/services/rawTransactionSigning.test.js \
+  src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
+  src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
 pnpm --filter @pistachio/api typecheck
-pnpm --filter @pistachio/api test
+pnpm --filter @pistachio/api exec vitest run \
+  test/prepaid-sponsorship.test.ts \
+  test/megafuel-exact-payment.test.ts \
+  test/megafuel-normal-swap.test.ts
 pnpm build
 ```
 
-Do not enable the private policy path until the exact-payment tests pass and a test wallet proves that a signed dust transfer is rejected before the paymaster submission mock is called.
-
-## Deliberately disabled
-
-The final generic MegaFuel-sponsored swap is still disabled. The existing post-approval 0x Gasless continuation remains in place. Exact normal-swap target validation, swap gas reservation, receipt settlement, and refund processing require a separate audited change before mainnet activation.
+Do not enable the policy path until the migration is reviewed and applied to a test database, exact-payment rejection is observed before the paymaster call, exact approval and swap flows complete with a canary wallet, and failure refund accounting is reconciled manually.
