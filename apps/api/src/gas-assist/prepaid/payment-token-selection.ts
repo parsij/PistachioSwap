@@ -36,6 +36,12 @@ export type CandidateRejection = {
     code: string
 }
 
+function dangerouslyBypassSponsorshipTokenChecks() {
+    return process.env.DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS
+        ?.trim()
+        .toLowerCase() === 'true'
+}
+
 function relationshipRank(address: string, sellToken: string, buyToken: string) {
     if (address === sellToken) return 1
     if (buyToken !== NATIVE_TOKEN_ADDRESS && address === buyToken) return 2
@@ -61,6 +67,12 @@ export function evaluatePaymentTokenCandidate({
         return 'PAYMENT_TOKEN_DECIMALS_MISMATCH'
     }
     if (candidate.priceUsdMicros <= 0n) return 'PAYMENT_TOKEN_PRICE_UNAVAILABLE'
+
+    if (dangerouslyBypassSponsorshipTokenChecks()) {
+        if (candidate.balanceRaw < requiredPaymentRaw) return 'PAYMENT_TOKEN_BALANCE_LOW'
+        return null
+    }
+
     const ageMilliseconds = now.getTime() - candidate.priceObservedAt.getTime()
     if (ageMilliseconds < 0 || ageMilliseconds > candidate.maximumPriceAgeSeconds * 1_000) {
         return 'PAYMENT_TOKEN_PRICE_STALE'
@@ -161,6 +173,7 @@ export function selectPaymentToken({
             console.warn('[sponsorship-payment-token-selection-rejected]', {
                 sellToken: normalizedSell,
                 buyToken: normalizedBuy,
+                dangerousBypassEnabled: dangerouslyBypassSponsorshipTokenChecks(),
                 configuredMinimumLiquidityUsdMicros: configuredMinimumLiquidityUsdMicros.toString(),
                 requiredPaymentRawByToken: Object.fromEntries(
                     [...requiredPaymentRawByToken.entries()].map(([address, amount]) => [address, amount.toString()]),
@@ -182,6 +195,16 @@ export function selectPaymentToken({
         }
         return { selection: null, rejections }
     }
+
+    if (dangerouslyBypassSponsorshipTokenChecks()) {
+        console.warn('[DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS]', {
+            enabled: true,
+            tokenAddress: candidate.tokenAddress,
+            symbol: candidate.symbol,
+            message: 'Security, liquidity, transfer-behavior, price-age, and price-deviation gates were bypassed for this whitelisted payment token.',
+        })
+    }
+
     return {
         selection: {
             candidate,
@@ -193,4 +216,8 @@ export function selectPaymentToken({
         },
         rejections,
     }
+}
+
+export const paymentTokenSelectionInternals = {
+    dangerouslyBypassSponsorshipTokenChecks,
 }
