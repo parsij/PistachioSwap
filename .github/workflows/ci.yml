@@ -7,7 +7,7 @@ on:
       - 'tools/apply_gas_assist_routing_fix.py'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnose:
@@ -20,23 +20,23 @@ jobs:
           ref: feature/megafuel-exact-prepaid-flow
           fetch-depth: 0
 
-      - name: Apply or persist exact failure
+      - name: Apply and capture exact result
+        id: apply
+        shell: bash
         run: |
           set +e
           python tools/apply_gas_assist_routing_fix.py > routing-fix-apply.log 2>&1
           status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
           cat routing-fix-apply.log
-          if [ "$status" -ne 0 ]; then
-            git config user.name 'parsij'
-            git config user.email '205437194+parsij@users.noreply.github.com'
-            git add routing-fix-apply.log
-            git commit -m 'Record Gas Assist routing patch failure'
-            git push origin HEAD:feature/megafuel-exact-prepaid-flow
-            exit "$status"
-          fi
-          echo 'Patch application unexpectedly succeeded during diagnostic run.' > routing-fix-apply.log
-          git config user.name 'parsij'
-          git config user.email '205437194+parsij@users.noreply.github.com'
-          git add routing-fix-apply.log
-          git commit -m 'Record Gas Assist routing patch result'
-          git push origin HEAD:feature/megafuel-exact-prepaid-flow
+          exit 0
+
+      - name: Upload diagnostic log
+        uses: actions/upload-artifact@v4
+        with:
+          name: routing-fix-apply-log
+          path: routing-fix-apply.log
+
+      - name: Fail when patch application failed
+        if: ${{ steps.apply.outputs.status != '0' }}
+        run: exit 1
