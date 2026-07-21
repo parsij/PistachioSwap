@@ -1,0 +1,128 @@
+diff --git a/apps/api/src/gas-assist/prepaid/intent-service.ts b/apps/api/src/gas-assist/prepaid/intent-service.ts
+index 680ac88..be86ed8 100644
+--- a/apps/api/src/gas-assist/prepaid/intent-service.ts
++++ b/apps/api/src/gas-assist/prepaid/intent-service.ts
+@@ -13,8 +13,12 @@ import { getPool } from '../../db/client.js'
+ import { NATIVE_TOKEN_ADDRESS } from '../../lib/address.js'
+ import { GasAssistError } from '../errors.js'
+ import { approveAbi, buildExactApproval, hashPrivateScope, UINT256_MAX } from '../exact-approval.js'
+-import { prepaidPaymasterClient } from '../paymaster.js'
+-import { megaFuelPolicyManagement } from '../policy-management.js'
++import {
++    prepaidActionPaymasterClient,
++    prepaidFeePaymasterClient,
++    type PrepaidPolicyScope,
++} from '../paymaster.js'
++import { megaFuelActionPolicyManagement } from '../policy-management.js'
+ import {
+     buildPaymentTransfer,
+     createPrepaidChainClient,
+@@ -84,7 +88,8 @@ type Dependencies = {
+     database: Pool
+     now: () => Date
+     chain: ReturnType<typeof createPrepaidChainClient>
+-    paymaster: typeof prepaidPaymasterClient
++    feePaymaster: typeof prepaidFeePaymasterClient
++    actionPaymaster: typeof prepaidActionPaymasterClient
+     getEvidence: typeof getSponsorshipTokenEvidence
+     quoteNormal: typeof getExactSponsoredZeroXQuote
+ }
+@@ -94,12 +99,24 @@ function defaults(database: Pool): Dependencies {
+         database,
+         now: () => new Date(),
+         chain: createPrepaidChainClient(),
+-        paymaster: prepaidPaymasterClient,
++        feePaymaster: prepaidFeePaymasterClient,
++        actionPaymaster: prepaidActionPaymasterClient,
+         getEvidence: getSponsorshipTokenEvidence,
+         quoteNormal: getExactSponsoredZeroXQuote,
+     }
+ }
+ 
++
++function policyScopeForAction(action: IntentRow['action']): PrepaidPolicyScope {
++    return action === 'fee-payment-transfer' ? 'fee' : 'action'
++}
++
++function paymasterForAction(dependencies: Dependencies, action: IntentRow['action']) {
++    return policyScopeForAction(action) === 'fee'
++        ? dependencies.feePaymaster
++        : dependencies.actionPaymaster
++}
++
+ function orderQuery(lock = false) {
+     return `SELECT id,status,wallet_address AS "walletAddress",sell_token AS "sellToken",buy_token AS "buyToken",
+                    gross_input_amount_raw::text AS "grossInputAmountRaw",net_swap_amount_raw::text AS "netSwapAmountRaw",
+@@ -241,7 +258,8 @@ async function persistPreparedIntent({
+         gasLimit: estimate.gasLimit,
+         nonce,
+     })
+-    if (!await dependencies.paymaster.isSponsorable(transaction)) {
++    const paymaster = paymasterForAction(dependencies, action)
++    if (!await paymaster.isSponsorable(transaction)) {
+         throw new GasAssistError('PAYMASTER_REJECTED', 'MegaFuel declined the exact sponsored transaction.', 409)
+     }
+     const configuredExpiry = dependencies.now().getTime() +
+@@ -391,7 +409,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies>
+             recalculated.totalPrepaymentUsdMicros !== BigInt(order.totalPrepaymentUsdMicros)) {
+             throw new GasAssistError('ORDER_REQUOTE_REQUIRED', 'Price or gas changed; review a fresh sponsorship order.', 409)
+         }
+-        const nonce = await dependencies.paymaster.getNonce(order.walletAddress)
++        const nonce = await dependencies.feePaymaster.getNonce(order.walletAddress)
+         return persistPreparedIntent({
+             dependencies,
+             order,
+@@ -433,7 +451,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies>
+             data,
+             maximumGas: BigInt(config.maximumApprovalGas),
+         })
+-        const nonce = await dependencies.paymaster.getNonce(order.walletAddress)
++        const nonce = await dependencies.actionPaymaster.getNonce(order.walletAddress)
+         return persistPreparedIntent({
+             dependencies,
+             order,
+@@ -583,7 +601,8 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies>
+         await assertBusinessAction(intent, order)
+         await reestimateSubmission(order, intent)
+         await recheckSubmissionLimits(order, clientIp)
+-        const sponsorable = await dependencies.paymaster.isSponsorable(unsignedTransaction({
++        const paymaster = paymasterForAction(dependencies, intent.action)
++        const sponsorable = await paymaster.isSponsorable(unsignedTransaction({
+             walletAddress: order.walletAddress,
+             transactionTo: intent.transactionTo,
+             transactionData: intent.transactionData,
+@@ -639,7 +658,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies>
+             throw new GasAssistError('INTENT_EXPIRED', 'The sponsored intent expired before submission.', 409)
+         }
+         try {
+-            providerHash = await dependencies.paymaster.submit(signedRawTransaction)
++            providerHash = await paymaster.submit(signedRawTransaction)
+         } catch {
+             await dependencies.database.query(
+                 `UPDATE sponsorship_transaction_intents SET status='unknown',transaction_hash=$2,failure_code='SUBMISSION_RESULT_UNKNOWN',updated_at=now()
+@@ -1041,8 +1060,8 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies>
+         if (consumedGas + estimate.gasUsdMicros > BigInt(order.gasReserveUsdMicros)) {
+             throw new GasAssistError('GAS_RESERVE_EXCEEDED', 'The fresh swap gas exceeds the funded sponsorship reserve.', 409)
+         }
+-        await megaFuelPolicyManagement.add('ToAccountWhitelist', [quote.transaction.to])
+-        await megaFuelPolicyManagement.add('ContractMethodSigWhitelist', [quoteSelector(quote)])
++        await megaFuelActionPolicyManagement.add('ToAccountWhitelist', [quote.transaction.to])
++        await megaFuelActionPolicyManagement.add('ContractMethodSigWhitelist', [quoteSelector(quote)])
+         const refreshedSnapshot = {
+             ...order.providerQuoteSnapshot,
+             quote: {
+@@ -1082,7 +1101,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies>
+             ],
+         )
+         order = await loadOrder(dependencies.database, order.id, order.walletAddress)
+-        const nonce = await dependencies.paymaster.getNonce(order.walletAddress)
++        const nonce = await dependencies.actionPaymaster.getNonce(order.walletAddress)
+         return persistPreparedIntent({
+             dependencies,
+             order,
+@@ -1178,4 +1197,5 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies>
+ 
+ export const sponsorshipIntentInternals = {
+     unsignedTransaction,
++    policyScopeForAction,
+ }
