@@ -11,8 +11,12 @@ on:
       - 'apps/api/src/db/schema.ts'
       - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
       - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/lib/provider-response-debug.ts'
+      - 'apps/api/src/providers/alchemy/alchemy-client.ts'
       - 'apps/api/src/providers/alchemy/token-prices.ts'
+      - 'apps/api/src/providers/moralis/moralis-client.ts'
       - 'apps/api/src/providers/moralis/sponsorship-token-evidence.ts'
+      - 'apps/api/src/providers/security/honeypot-client.ts'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
@@ -22,6 +26,7 @@ on:
       - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'apps/api/test/provider-response-debug.test.ts'
       - 'apps/api/test/token-evidence-exact-transfer.test.ts'
       - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
@@ -40,8 +45,12 @@ on:
       - 'apps/api/src/db/schema.ts'
       - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
       - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/lib/provider-response-debug.ts'
+      - 'apps/api/src/providers/alchemy/alchemy-client.ts'
       - 'apps/api/src/providers/alchemy/token-prices.ts'
+      - 'apps/api/src/providers/moralis/moralis-client.ts'
       - 'apps/api/src/providers/moralis/sponsorship-token-evidence.ts'
+      - 'apps/api/src/providers/security/honeypot-client.ts'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
@@ -51,6 +60,7 @@ on:
       - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'apps/api/test/provider-response-debug.test.ts'
       - 'apps/api/test/token-evidence-exact-transfer.test.ts'
       - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
@@ -110,6 +120,7 @@ jobs:
           test/megafuel-two-policy.test.ts
           test/moralis-sponsorship-evidence.test.ts
           test/payment-token-selection-native.test.ts
+          test/provider-response-debug.test.ts
           test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
           --reporter=verbose
