@@ -46,8 +46,10 @@ function sanitizeProviderValue(value: unknown, depth = 0): unknown {
     return String(value)
 }
 
+type SponsorshipProvider = 'alchemy' | 'coingecko' | 'honeypot' | 'moralis'
+
 export function logProviderResponse(
-    provider: 'alchemy' | 'honeypot' | 'moralis',
+    provider: SponsorshipProvider,
     operation: string,
     response: unknown,
 ) {
