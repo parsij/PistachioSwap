@@ -1,0 +1,1 @@
+Apply the reviewed durable MegaFuel intent recovery patch from the trusted pull_request_target workflow.
