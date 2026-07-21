@@ -6,15 +6,14 @@ import { getApiConfig } from '../../config.js'
 import { getPool } from '../../db/client.js'
 import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../../lib/address.js'
 import { getNativeBnbPrice, getTokenPrices } from '../../providers/alchemy/token-prices.js'
-import { gaslessService } from '../gasless-service.js'
 import { GasAssistError } from '../errors.js'
 import { buildExactApproval } from '../exact-approval.js'
 import { hashPrivateScope } from '../exact-approval.js'
 import { buildPaymentTransfer, createPrepaidChainClient } from './chain-client.js'
 import {
-    getExactSponsoredZeroXQuote,
+    getExactSponsoredQuote,
     quoteGasLimit,
-    type ExactSponsoredZeroXQuote,
+    type ExactSponsoredQuote,
 } from './normal-swap.js'
 import {
     calculatePrepayment,
@@ -67,8 +66,6 @@ type GasEstimate = {
     observedAt: Date
 }
 
-type PrepaidGaslessProbe = Awaited<ReturnType<ReturnType<typeof gaslessService>['probePrepaid']>>
-
 type Dependencies = {
     database: Pool
     now: () => Date
@@ -76,15 +73,6 @@ type Dependencies = {
     getDecimals(token: Address): Promise<number>
     getPrice(token: string): Promise<{ priceUsdMicros: bigint; observedAt: Date }>
     getEvidence: typeof getSponsorshipTokenEvidence
-    probeGasless(input: {
-        chainId: number
-        walletAddress: string
-        sellToken: string
-        buyToken: string
-        sellAmount: string
-        slippageBps: number
-        clientIp: string
-    }): Promise<PrepaidGaslessProbe>
     quoteNormal(input: {
         wallet: Address
         sellToken: Address
@@ -93,7 +81,7 @@ type Dependencies = {
         sellTokenDecimals: number
         buyTokenDecimals: number
         slippageBps: number
-    }): Promise<ExactSponsoredZeroXQuote>
+    }): Promise<ExactSponsoredQuote>
     estimateAction(input: {
         wallet: Address
         to: Address
@@ -120,8 +108,7 @@ function defaultDependencies(database: Pool): Dependencies {
             return { priceUsdMicros: parseFixed(price), observedAt: new Date() }
         },
         getEvidence: getSponsorshipTokenEvidence,
-        probeGasless: (input) => gaslessService().probePrepaid(input),
-        quoteNormal: getExactSponsoredZeroXQuote,
+        quoteNormal: getExactSponsoredQuote,
         estimateAction: chain.estimateSponsoredAction,
         priceGasLimit: chain.priceGasLimit,
         getAllowance: chain.getAllowance,
@@ -367,8 +354,8 @@ async function reserveAndInsertOrder({
               provider_fees,expected_output_raw,minimum_output_raw,requires_approval,approval_spender,
               approval_amount_raw,sponsored_flow,billing_mode,expires_at,idempotency_key,ip_hash)
              VALUES ('quoted',$1,56,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-                     $20,'0x',$21,$22,$23::jsonb,$24::jsonb,$25,$26,true,$27,$28,
-                     'normal-sponsored-swap','prepaid-megafuel',$29,$30,$31)
+                     $20,$21,$22,$23,$24::jsonb,$25::jsonb,$26,$27,true,$28,$29,
+                      'normal-sponsored-swap','prepaid-megafuel',$30,$31,$32)
              RETURNING id`,
             values,
         )
@@ -456,21 +443,6 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
             throw new GasAssistError('GROSS_TRADE_VALUE_UNECONOMIC', 'The gross trade value is outside the sponsored range.')
         }
 
-        const initialProbe = await dependencies.probeGasless({
-            chainId: 56,
-            walletAddress,
-            sellToken: input.sellToken,
-            buyToken: input.buyToken,
-            sellAmount: input.grossInputAmount.toString(),
-            slippageBps: input.slippageBps,
-            clientIp,
-        })
-        if (initialProbe.route === 'direct') {
-            throw new GasAssistError('DIRECT_GASLESS_AVAILABLE', '0x Gasless can execute directly; prepaid sponsorship is not required.', 409)
-        }
-        if (initialProbe.route !== 'onchain-approval') {
-            throw new GasAssistError('NO_SPONSORED_ROUTE', 'The selected trade does not require the exact prepaid approval flow.', 409)
-        }
         if (!config.sponsorship.normalSwapSponsorEnabled) {
             throw new GasAssistError('NORMAL_SWAP_SPONSORSHIP_DISABLED', 'Exact MegaFuel swap sponsorship is disabled.', 503)
         }
@@ -486,7 +458,7 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
             buyTokenDecimals: buyDecimals,
             slippageBps: input.slippageBps,
         })
-        const spender = assertSafeZeroXSpender(initialQuote.allowanceTarget)
+        const spender = initialQuote.allowanceTarget
         const [approvalEstimate, initialSwapEstimate] = await Promise.all([
             dependencies.estimateAction({
                 wallet: walletAddress,
@@ -730,12 +702,14 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
                 finalApprovalEstimate.gasUsdMicros.toString(),
                 finalSwapEstimate.gasUsdMicros.toString(),
                 config.sponsorship.gasMultiplierBps,
+                finalQuote.provider,
                 finalQuote.quoteId,
                 finalQuote.expiresAt,
                 JSON.stringify({
-                    route: '0x-normal-sponsored-swap',
+                    route: `${finalQuote.provider}-normal-sponsored-swap`,
                     slippageBps: input.slippageBps,
                     quote: {
+                        provider: finalQuote.provider,
                         quoteId: finalQuote.quoteId,
                         expiresAt: finalQuote.expiresAt,
                         sellToken: finalQuote.sellToken,
@@ -770,6 +744,7 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
                     },
                     conversion: {
                         costUsdMicros: finalConversion.costUsdMicros.toString(),
+                        provider: finalConversion.quote.provider,
                         quoteId: finalConversion.quote.quoteId,
                         expiresAt: finalConversion.quote.expiresAt,
                         inputAmountRaw: finalConversion.quote.sellAmount,

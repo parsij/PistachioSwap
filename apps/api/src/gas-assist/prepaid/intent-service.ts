@@ -10,7 +10,7 @@ import {
 
 import { getApiConfig } from '../../config.js'
 import { getPool } from '../../db/client.js'
-import { NATIVE_TOKEN_ADDRESS } from '../../lib/address.js'
+import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../../lib/address.js'
 import { GasAssistError } from '../errors.js'
 import { approveAbi, buildExactApproval, hashPrivateScope, UINT256_MAX } from '../exact-approval.js'
 import {
@@ -34,7 +34,7 @@ import {
     usdMicrosToTokenRawCeil,
 } from './fixed-point.js'
 import { getSponsorshipTokenEvidence } from './token-evidence.js'
-import { getExactSponsoredZeroXQuote, quoteGasLimit, quoteSelector } from './normal-swap.js'
+import { getExactSponsoredQuote, quoteGasLimit, quoteSelector } from './normal-swap.js'
 
 type OrderRow = {
     id: string
@@ -91,7 +91,7 @@ type Dependencies = {
     feePaymaster: typeof prepaidFeePaymasterClient
     actionPaymaster: typeof prepaidActionPaymasterClient
     getEvidence: typeof getSponsorshipTokenEvidence
-    quoteNormal: typeof getExactSponsoredZeroXQuote
+    quoteNormal: typeof getExactSponsoredQuote
 }
 
 function defaults(database: Pool): Dependencies {
@@ -102,7 +102,7 @@ function defaults(database: Pool): Dependencies {
         feePaymaster: prepaidFeePaymasterClient,
         actionPaymaster: prepaidActionPaymasterClient,
         getEvidence: getSponsorshipTokenEvidence,
-        quoteNormal: getExactSponsoredZeroXQuote,
+        quoteNormal: getExactSponsoredQuote,
     }
 }
 
@@ -366,9 +366,11 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             buyTokenDecimals: buyDecimals,
             slippageBps: Number(order.providerQuoteSnapshot.slippageBps),
         })
-        if (!isAddressEqual(currentQuote.allowanceTarget, order.approvalSpender) ||
+        const reviewedQuote = order.providerQuoteSnapshot.quote as Record<string, unknown> | undefined
+        if (currentQuote.provider !== String(reviewedQuote?.provider ?? '') ||
+            !isAddressEqual(currentQuote.allowanceTarget, order.approvalSpender) ||
             BigInt(currentQuote.minimumBuyAmount) < BigInt(order.minimumOutputRaw)) {
-            throw new GasAssistError('ORDER_REQUOTE_REQUIRED', 'The 0x route changed; review a fresh sponsorship order.', 409)
+            throw new GasAssistError('ORDER_REQUOTE_REQUIRED', 'The sponsored route changed; review a fresh sponsorship order.', 409)
         }
         const [paymentEstimate, approvalEstimate, swapEstimate] = await Promise.all([
             dependencies.chain.estimateSponsoredAction({
@@ -505,12 +507,10 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                 String(quote?.sellAmount ?? '') !== order.netSwapAmountRaw ||
                 String(quote?.allowanceTarget ?? '').toLowerCase() !== order.approvalSpender.toLowerCase() ||
                 Date.parse(String(quote?.expiresAt ?? '')) <= dependencies.now().getTime()) {
-                throw new GasAssistError('SIGNED_TRANSACTION_MISMATCH', 'The signed swap does not match the fresh authorized 0x quote.', 409)
+                throw new GasAssistError('SIGNED_TRANSACTION_MISMATCH', 'The signed swap does not match the fresh authorized sponsored quote.', 409)
             }
-            const config = getApiConfig().sponsorship
-            if (!config.zeroXSettlerAddress ||
-                !isAddressEqual(intent.transactionTo, config.zeroXSettlerAddress as Address)) {
-                throw new GasAssistError('UNSAFE_SWAP_TARGET', 'The sponsored swap target is not the configured 0x Settler.', 409)
+            if (!['uniswap', '0x'].includes(String(quote?.provider ?? ''))) {
+                throw new GasAssistError('SPONSORED_PROVIDER_UNSUPPORTED', 'The stored sponsored provider is unsupported.', 409)
             }
             const [allowance, balance] = await Promise.all([
                 dependencies.chain.getAllowance(order.sellToken, order.walletAddress, order.approvalSpender),
@@ -946,9 +946,11 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                     [order.id, intent.transactionHash],
                 )
             } else {
-                const config = getApiConfig().sponsorship
+                const quote = order.providerQuoteSnapshot.quote as Record<string, unknown> | undefined
+                const expectedTransaction = quote?.transaction as Record<string, unknown> | undefined
+                const expectedTarget = String(expectedTransaction?.to ?? '')
                 if (!isAddressEqual(transaction.from, order.walletAddress) || !transaction.to ||
-                    !config.zeroXSettlerAddress || !isAddressEqual(transaction.to, config.zeroXSettlerAddress as Address)) {
+                    !normalizeAddress(expectedTarget) || !isAddressEqual(transaction.to, expectedTarget as Address)) {
                     await client.query(
                         `UPDATE sponsorship_transaction_intents SET status='unknown',failure_code='SWAP_RECEIPT_INVALID',updated_at=now() WHERE id=$1`,
                         [intent.id],
@@ -1045,9 +1047,11 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             buyTokenDecimals: buyDecimals,
             slippageBps: Number(order.providerQuoteSnapshot.slippageBps),
         })
-        if (!isAddressEqual(quote.allowanceTarget, order.approvalSpender) ||
+        const reviewedQuote = order.providerQuoteSnapshot.quote as Record<string, unknown> | undefined
+        if (quote.provider !== String(reviewedQuote?.provider ?? '') ||
+            !isAddressEqual(quote.allowanceTarget, order.approvalSpender) ||
             BigInt(quote.minimumBuyAmount) < BigInt(order.minimumOutputRaw)) {
-            throw new GasAssistError('FRESH_QUOTE_OUTSIDE_SLIPPAGE', 'The fresh 0x quote moved beyond the reviewed minimum output.', 409)
+            throw new GasAssistError('FRESH_QUOTE_OUTSIDE_SLIPPAGE', 'The fresh sponsored quote moved beyond the reviewed route or minimum output.', 409)
         }
         const estimate = await dependencies.chain.estimateSponsoredAction({
             wallet: order.walletAddress,
@@ -1065,6 +1069,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
         const refreshedSnapshot = {
             ...order.providerQuoteSnapshot,
             quote: {
+                provider: quote.provider,
                 quoteId: quote.quoteId,
                 expiresAt: quote.expiresAt,
                 sellToken: quote.sellToken,

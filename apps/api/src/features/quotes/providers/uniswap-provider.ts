@@ -289,7 +289,7 @@ export function validateUniswapIntegratorFee({
     }
 }
 
-export function createUniswapProvider(): QuoteProvider {
+export function createUniswapProvider({ applyPlatformFee = true }: { applyPlatformFee?: boolean } = {}): QuoteProvider {
     const config = getApiConfig()
 
     return {
@@ -303,7 +303,7 @@ export function createUniswapProvider(): QuoteProvider {
 
         async getQuote(request, signal) {
             const mode = request.mode ?? 'EXACT_INPUT'
-            const integratorFee = resolveUniswapIntegratorFee()
+            const integratorFee = applyPlatformFee ? resolveUniswapIntegratorFee() : null
 
             if (!config.quotes.uniswap.apiKey) {
                 throw new ProviderError({

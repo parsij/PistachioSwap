@@ -854,6 +854,10 @@ export function getApiConfig() {
                 'MEGAFUEL_NORMAL_SWAP_SPONSOR_ENABLED',
                 false,
             ),
+            sponsoredSwapProviders: (process.env.MEGAFUEL_SPONSORED_SWAP_PROVIDERS ?? 'uniswap,0x')
+                .split(',')
+                .map((value) => value.trim().toLowerCase())
+                .filter(Boolean),
             approvalMode:
                 process.env.MEGAFUEL_APPROVAL_MODE?.trim().toLowerCase() ||
                 'exact',
@@ -1017,6 +1021,7 @@ export function validateStartupConfig(config = getApiConfig()) {
     ])
     const validSponsorshipBillingModes = new Set(['prepaid'])
     const validApprovalModes = new Set(['exact', 'bounded-reusable'])
+    const validSponsoredSwapProviders = new Set(['uniswap', '0x'])
 
     if (
         config.alchemy.portfolio.enabled &&
@@ -1102,6 +1107,10 @@ export function validateStartupConfig(config = getApiConfig()) {
     }
     if (!validApprovalModes.has(config.sponsorship.approvalMode)) {
         throw new Error('MEGAFUEL_APPROVAL_MODE is invalid.')
+    }
+    if (config.sponsorship.sponsoredSwapProviders.length === 0 ||
+        config.sponsorship.sponsoredSwapProviders.some((provider) => !validSponsoredSwapProviders.has(provider))) {
+        throw new Error('MEGAFUEL_SPONSORED_SWAP_PROVIDERS must contain only uniswap and/or 0x.')
     }
     if (
         config.sponsorship.approvalMode === 'bounded-reusable' &&
