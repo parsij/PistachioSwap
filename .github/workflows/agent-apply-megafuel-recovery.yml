@@ -2,7 +2,7 @@ name: Apply MegaFuel recovery patch
 
 on:
   pull_request_target:
-    types: [synchronize]
+    types: [reopened, synchronize]
     branches: [main]
     paths:
       - '.github/agent-megafuel-trigger.txt'
