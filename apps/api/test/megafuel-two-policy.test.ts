@@ -1,0 +1,83 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import {
+    createPaymasterClient,
+    paymasterInternals,
+} from '../src/gas-assist/paymaster.js'
+import {
+    createMegaFuelPolicyManagement,
+    policyManagementInternals,
+} from '../src/gas-assist/policy-management.js'
+import { sponsorshipIntentInternals } from '../src/gas-assist/prepaid/intent-service.js'
+
+function jsonResponse(result: unknown) {
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+    })
+}
+
+describe('two-policy MegaFuel routing', () => {
+    beforeEach(() => {
+        vi.stubEnv('MEGAFUEL_API_KEY', 'test-api-key')
+        vi.stubEnv('MEGAFUEL_FEE_POLICY_UUID', 'fee-policy-uuid')
+        vi.stubEnv('MEGAFUEL_ACTION_POLICY_UUID', 'action-policy-uuid')
+        vi.stubEnv('MEGAFUEL_PRIVATE_RPC_BASE_URL', 'https://open-platform-ap.nodereal.io')
+        vi.stubEnv('MEGAFUEL_USER_AGENT', 'PistachioWallet/Test')
+    })
+
+    afterEach(() => {
+        vi.unstubAllEnvs()
+        vi.restoreAllMocks()
+    })
+
+    it('routes fee payment only to the fee policy and approval/swap only to the action policy', () => {
+        expect(sponsorshipIntentInternals.policyScopeForAction('fee-payment-transfer')).toBe('fee')
+        expect(sponsorshipIntentInternals.policyScopeForAction('token-approval')).toBe('action')
+        expect(sponsorshipIntentInternals.policyScopeForAction('normal-swap')).toBe('action')
+    })
+
+    it('builds different private-policy connections for fee and action sponsorship', () => {
+        const fee = paymasterInternals.prepaidConnection('fee')
+        const action = paymasterInternals.prepaidConnection('action')
+        expect(fee.policyId).toBe('fee-policy-uuid')
+        expect(action.policyId).toBe('action-policy-uuid')
+        expect(fee.policyId).not.toBe(action.policyId)
+        expect(fee.rpcUrl).toBe(action.rpcUrl)
+    })
+
+    it('sends the selected policy UUID in sponsored RPC headers', async () => {
+        const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            expect(new Headers(init?.headers).get('x-megafuel-policy-uuid')).toBe('fee-policy-uuid')
+            return jsonResponse(true)
+        })
+        const client = createPaymasterClient(fetcher as typeof fetch, () => paymasterInternals.prepaidConnection('fee'))
+        await expect(client.isSponsorable({ from: '0x1' })).resolves.toBe(true)
+        expect(fetcher).toHaveBeenCalledOnce()
+    })
+
+    it('routes whitelist mutations to the selected policy UUID', async () => {
+        const bodies: Record<string, unknown>[] = []
+        const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            bodies.push(JSON.parse(String(init?.body)))
+            return jsonResponse(true)
+        })
+        await createMegaFuelPolicyManagement('fee', fetcher as typeof fetch)
+            .add('ContractMethodSigWhitelist', ['0xa9059cbb'])
+        await createMegaFuelPolicyManagement('action', fetcher as typeof fetch)
+            .add('ContractMethodSigWhitelist', ['0x095ea7b3'])
+
+        expect(bodies[0]?.params).toEqual([expect.objectContaining({
+            policyUuid: 'fee-policy-uuid',
+            whitelistType: 'ContractMethodSigWhitelist',
+            values: ['0xa9059cbb'],
+        })])
+        expect(bodies[1]?.params).toEqual([expect.objectContaining({
+            policyUuid: 'action-policy-uuid',
+            whitelistType: 'ContractMethodSigWhitelist',
+            values: ['0x095ea7b3'],
+        })])
+        expect(policyManagementInternals.managementConnection('fee').policyUuid)
+            .not.toBe(policyManagementInternals.managementConnection('action').policyUuid)
+    })
+})
