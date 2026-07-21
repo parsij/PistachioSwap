@@ -2,6 +2,7 @@ import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
 import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
+import { logProviderResponse } from '../../lib/provider-response-debug.js'
 import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
 const CACHE_TTL_MS = 60_000
@@ -150,6 +151,7 @@ export async function getMoralisSponsorshipTokenEvidence(
                 notFoundAsNull: true,
                 dedupeKey: `moralis:sponsorship-token-evidence:${key}`,
             })
+            logProviderResponse('moralis', `sponsorship-token-evidence:${chainId}:${normalized}`, payload)
 
             const value = normalizeMoralisSponsorshipTokenEvidence(payload, normalized, checkedAt)
             setBoundedCacheEntry(cache, key, {
@@ -157,7 +159,8 @@ export async function getMoralisSponsorshipTokenEvidence(
                 value,
             }, 1_000)
             return value
-        } catch {
+        } catch (error) {
+            logProviderResponse('moralis', `sponsorship-token-evidence-error:${chainId}:${normalized}`, error)
             const value = unavailableEvidence(normalized, checkedAt)
             if (!signal?.aborted) {
                 setBoundedCacheEntry(cache, key, {
