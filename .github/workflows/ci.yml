@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/ci.yml'
       - '.github/apply-presigned-package.py'
+      - '.github/fix-presigned-validation.py'
 
 permissions:
   contents: write
@@ -20,7 +21,9 @@ jobs:
           ref: feature/megafuel-exact-prepaid-flow
           fetch-depth: 0
       - name: Apply patches
-        run: python .github/apply-presigned-package.py
+        run: |
+          python .github/apply-presigned-package.py
+          python .github/fix-presigned-validation.py
       - uses: pnpm/action-setup@v4
         with:
           version: 10.30.3
