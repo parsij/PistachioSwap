@@ -5,6 +5,7 @@ import { GasAssistError, gasAssistErrorBody } from '../gas-assist/errors.js'
 import { createWalletAuthService } from '../gas-assist/prepaid/auth.js'
 import { createSponsorshipIntentService } from '../gas-assist/prepaid/intent-service.js'
 import { createSponsorshipOrderService } from '../gas-assist/prepaid/order-service.js'
+import { createSponsorshipPackageService } from '../gas-assist/prepaid/package-service.js'
 
 function exactObject(value: unknown, allowed: string[], required: string[] = allowed) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -37,6 +38,7 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
     const auth = () => createWalletAuthService()
     const orders = () => createSponsorshipOrderService()
     const intents = () => createSponsorshipIntentService()
+    const packages = () => createSponsorshipPackageService()
 
     app.get('/v1/sponsorship/config', async () => {
         const config = getApiConfig().sponsorship
@@ -45,6 +47,7 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
             chainId: 56,
             orderTtlSeconds: config.orderTtlSeconds,
             actionIntentTtlSeconds: config.actionIntentTtlSeconds,
+            packageTtlSeconds: 15 * 60,
             gasMultiplierBps: config.gasMultiplierBps,
             fixedFeeUsd: config.fixedFeeUsd,
             platformFeeBps: config.platformFeeBps,
@@ -102,6 +105,56 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
                 walletAddress: session.walletAddress,
                 clientIp: request.ip,
                 idempotencyKey: String(request.headers['idempotency-key'] ?? ''),
+            })
+        }, reply),
+    )
+
+    app.post<{ Params: { orderId: string }; Body: unknown }>(
+        '/v1/sponsorship/orders/:orderId/package/prepare',
+        { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+        (request, reply) => safe(async () => {
+            exactObject(request.body, [], [])
+            const session = await auth().authenticate(request.headers.authorization)
+            return packages().prepare(
+                request.params.orderId,
+                session.walletAddress,
+            )
+        }, reply),
+    )
+
+    app.post<{ Params: { orderId: string }; Body: unknown }>(
+        '/v1/sponsorship/orders/:orderId/package/submit',
+        { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+        (request, reply) => safe(async () => {
+            const body = exactObject(request.body, ['signedTransactions'])
+            if (!Array.isArray(body.signedTransactions)) {
+                throw new GasAssistError(
+                    'INVALID_REQUEST',
+                    'signedTransactions must be an array.',
+                )
+            }
+            const session = await auth().authenticate(request.headers.authorization)
+            return packages().submitSignedPackage({
+                orderId: request.params.orderId,
+                walletAddress: session.walletAddress,
+                clientIp: request.ip,
+                signedTransactions: body.signedTransactions.map((value) => {
+                    const item = exactObject(value, [
+                        'intentId',
+                        'action',
+                        'signedRawTransaction',
+                    ])
+                    return {
+                        intentId: String(item.intentId ?? ''),
+                        action: String(item.action ?? '') as
+                            | 'fee-payment-transfer'
+                            | 'token-approval'
+                            | 'normal-swap',
+                        signedRawTransaction: String(
+                            item.signedRawTransaction ?? '',
+                        ),
+                    }
+                }),
             })
         }, reply),
     )
@@ -165,6 +218,7 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
                 ...(await orders().get(request.params.orderId, session.walletAddress)),
                 currentRequiredAction: refreshed.currentRequiredAction,
                 confirmationCount: refreshed.confirmationCount,
+                preSignedPackage: refreshed.preSignedPackage ?? false,
             }
         }, reply),
     )
