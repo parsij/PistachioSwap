@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { providerResponseDebugInternals } from '../src/lib/provider-response-debug.js'
 
-const { sanitizeProviderValue } = providerResponseDebugInternals
+const { sanitizeProviderString, sanitizeProviderValue } = providerResponseDebugInternals
 
 describe('provider response debug redaction', () => {
     it('redacts secrets recursively without hiding token metadata', () => {
@@ -23,6 +23,14 @@ describe('provider response debug redaction', () => {
                 symbol: 'XAUT',
             },
         })
+    })
+
+    it('redacts API keys embedded inside error URLs and bearer text', () => {
+        expect(sanitizeProviderString(
+            'GET https://api.g.alchemy.com/prices/v1/real-secret/tokens/by-symbol?apiKey=another-secret Bearer abc.def',
+        )).toBe(
+            'GET https://api.g.alchemy.com/prices/v1/[REDACTED]/tokens/by-symbol?apiKey=[REDACTED] Bearer [REDACTED]',
+        )
     })
 
     it('truncates very long strings', () => {
