@@ -4,6 +4,9 @@ import rateLimit from '@fastify/rate-limit'
 
 import { validateStartupConfig } from './config.js'
 import { closeDatabase } from './db/client.js'
+import { gasAssistErrorBody } from './gas-assist/errors.js'
+import { createWalletAuthService } from './gas-assist/prepaid/auth.js'
+import { createDurableSponsorshipIntentService } from './gas-assist/prepaid/durable-intent-service.js'
 import { assertGasAssistReady } from './gas-assist/readiness.js'
 import { gasAssistRoutes } from './modules/gas-assist.js'
 import { crossChainRoutes } from './modules/cross-chain.js'
@@ -48,7 +51,9 @@ export function createApp() {
             },
         },
     })
+    const durableSponsorship = createDurableSponsorshipIntentService()
     let stopMarketCatalogRefresh: (() => void) | null = null
+    let stopSponsorshipRecovery: (() => void) | null = null
 
     app.register(cors, {
         origin(origin, callback) {
@@ -64,6 +69,51 @@ export function createApp() {
         max: 120,
         timeWindow: '1 minute',
     })
+
+    app.addHook('preHandler', async (request, reply) => {
+        const route = request.routeOptions.url
+        const sponsorshipEnabled = config.sponsorship.enabled
+        const submitRoute =
+            request.method === 'POST' &&
+            route === '/v1/sponsorship/intents/:intentId/submit'
+        const orderRoute =
+            request.method === 'GET' &&
+            route === '/v1/sponsorship/orders/:orderId'
+
+        if (!sponsorshipEnabled || (!submitRoute && !orderRoute)) return
+
+        try {
+            const session = await createWalletAuthService().authenticate(
+                request.headers.authorization,
+            )
+            if (submitRoute) {
+                if (config.sponsorship.emergencyDisabled) return
+                const body = request.body as
+                    | Record<string, unknown>
+                    | null
+                    | undefined
+                const params = request.params as { intentId?: string }
+                await durableSponsorship.captureSignedIntent({
+                    intentId: String(params.intentId ?? ''),
+                    signedRawTransaction: String(
+                        body?.signedRawTransaction ?? '',
+                    ),
+                    walletAddress: session.walletAddress,
+                })
+                return
+            }
+
+            const params = request.params as { orderId?: string }
+            await durableSponsorship.reconcileOrder(
+                String(params.orderId ?? ''),
+                session.walletAddress,
+            )
+        } catch (error) {
+            const response = gasAssistErrorBody(error)
+            return reply.code(response.statusCode).send(response.body)
+        }
+    })
+
     app.register(marketTokenRoutes)
     app.register(walletTokenRoutes)
     app.register(sameChainQuoteRoutes)
@@ -77,6 +127,40 @@ export function createApp() {
     app.addHook('onReady', async () => {
         await assertGasAssistReady()
         if (process.env.NODE_ENV !== 'test') {
+            if (config.sponsorship.enabled) {
+                let recoveryRunning = false
+                const runRecovery = async () => {
+                    if (recoveryRunning) return
+                    recoveryRunning = true
+                    try {
+                        const summary = await durableSponsorship
+                            .recoverPendingIntents()
+                        if (summary.reconciled > 0 ||
+                            summary.rebroadcast > 0 ||
+                            summary.failed > 0) {
+                            app.log.info({
+                                subsystem: 'sponsorship-recovery',
+                                ...summary,
+                            }, 'Durable sponsorship intents reconciled')
+                        }
+                    } catch (error) {
+                        app.log.warn({
+                            subsystem: 'sponsorship-recovery',
+                            err: error,
+                        }, 'Durable sponsorship recovery pass failed')
+                    } finally {
+                        recoveryRunning = false
+                    }
+                }
+                const interval = setInterval(
+                    () => void runRecovery(),
+                    5_000,
+                )
+                interval.unref()
+                void runRecovery()
+                stopSponsorshipRecovery = () => clearInterval(interval)
+            }
+
             marketCatalogService.setPersistenceWarningHandler((code) => {
                 app.log.warn({
                     subsystem: 'market-catalog-persistence',
@@ -101,6 +185,8 @@ export function createApp() {
         }
     })
     app.addHook('onClose', async () => {
+        stopSponsorshipRecovery?.()
+        stopSponsorshipRecovery = null
         stopMarketCatalogRefresh?.()
         stopMarketCatalogRefresh = null
         marketCatalogService.setPersistenceWarningHandler(null)
