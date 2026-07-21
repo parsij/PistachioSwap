@@ -397,6 +397,7 @@ export const sponsorshipOrders = pgTable(
         platformFeeUsdMicros: bigint('platform_fee_usd_micros', { mode: 'bigint' }).notNull(),
         commercialFeeUsdMicros: bigint('commercial_fee_usd_micros', { mode: 'bigint' }).notNull(),
         gasReserveUsdMicros: bigint('gas_reserve_usd_micros', { mode: 'bigint' }).notNull(),
+        conversionCostUsdMicros: bigint('conversion_cost_usd_micros', { mode: 'bigint' }).notNull().default(0n),
         totalPrepaymentUsdMicros: bigint('total_prepayment_usd_micros', { mode: 'bigint' }).notNull(),
         estimatedPaymentGasUsdMicros: bigint('estimated_payment_gas_usd_micros', { mode: 'bigint' }).notNull(),
         estimatedApprovalGasUsdMicros: bigint('estimated_approval_gas_usd_micros', { mode: 'bigint' }).notNull(),
@@ -415,6 +416,9 @@ export const sponsorshipOrders = pgTable(
         sponsoredFlow: text('sponsored_flow').notNull(),
         billingMode: text('billing_mode').notNull(),
         expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+        paymentQuoteExpiresAt: timestamp('payment_quote_expires_at', { withTimezone: true }).notNull(),
+        grantExpiresAt: timestamp('grant_expires_at', { withTimezone: true }),
+        feeConfirmedAt: timestamp('fee_confirmed_at', { withTimezone: true }),
         paymentTransactionHash: text('payment_transaction_hash'),
         approvalTransactionHash: text('approval_transaction_hash'),
         swapTransactionHash: text('swap_transaction_hash'),
@@ -437,7 +441,8 @@ export const sponsorshipOrders = pgTable(
             ${table.grossInputAmountRaw} > 0 AND ${table.netSwapAmountRaw} > 0 AND
             ${table.netSwapAmountRaw} <= ${table.grossInputAmountRaw} AND ${table.paymentAmountRaw} > 0 AND
             ${table.tradeNotionalUsdMicros} > 0 AND ${table.commercialFeeUsdMicros} >= 0 AND
-            ${table.gasReserveUsdMicros} >= 0 AND ${table.totalPrepaymentUsdMicros} > 0
+            ${table.gasReserveUsdMicros} >= 0 AND ${table.conversionCostUsdMicros} >= 0 AND
+            ${table.totalPrepaymentUsdMicros} > 0
         `),
         check('sponsorship_orders_billing_check', sql`${table.billingMode} = 'prepaid-megafuel'`),
     ],
@@ -521,6 +526,35 @@ export const sponsorshipWalletCredits = pgTable(
         index('sponsorship_wallet_credits_wallet_idx').on(table.walletAddress, table.chainId),
         check('sponsorship_wallet_credits_nonnegative_check', sql`
             ${table.availableTokenAmountRaw} >= 0 AND ${table.availableUsdMicros} >= 0
+        `),
+    ],
+)
+
+export const sponsorshipRefunds = pgTable(
+    'sponsorship_refunds',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        orderId: uuid('order_id').notNull().references(() => sponsorshipOrders.id),
+        walletAddress: text('wallet_address').notNull(),
+        chainId: integer('chain_id').notNull(),
+        tokenAddress: text('token_address').notNull(),
+        grossPaymentRaw: numeric('gross_payment_raw', { precision: 78, scale: 0 }).notNull(),
+        actualSponsoredGasUsdMicros: bigint('actual_sponsored_gas_usd_micros', { mode: 'bigint' }).notNull(),
+        estimatedRefundGasUsdMicros: bigint('estimated_refund_gas_usd_micros', { mode: 'bigint' }).notNull(),
+        refundableTokenAmountRaw: numeric('refundable_token_amount_raw', { precision: 78, scale: 0 }).notNull(),
+        status: text('status').notNull().default('pending'),
+        reason: text('reason').notNull(),
+        refundTransactionHash: text('refund_transaction_hash'),
+        createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    },
+    (table) => [
+        uniqueIndex('sponsorship_refunds_order_idx').on(table.orderId),
+        index('sponsorship_refunds_status_idx').on(table.status, table.createdAt),
+        check('sponsorship_refunds_chain_check', sql`${table.chainId} = 56`),
+        check('sponsorship_refunds_amount_check', sql`
+            ${table.grossPaymentRaw} > 0 AND ${table.actualSponsoredGasUsdMicros} >= 0 AND
+            ${table.estimatedRefundGasUsdMicros} >= 0 AND ${table.refundableTokenAmountRaw} >= 0
         `),
     ],
 )

@@ -12,6 +12,11 @@ import { buildExactApproval } from '../exact-approval.js'
 import { hashPrivateScope } from '../exact-approval.js'
 import { buildPaymentTransfer, createPrepaidChainClient } from './chain-client.js'
 import {
+    getExactSponsoredZeroXQuote,
+    quoteGasLimit,
+    type ExactSponsoredZeroXQuote,
+} from './normal-swap.js'
+import {
     calculatePrepayment,
     formatFixed,
     parseFixed,
@@ -80,12 +85,24 @@ type Dependencies = {
         slippageBps: number
         clientIp: string
     }): Promise<PrepaidGaslessProbe>
+    quoteNormal(input: {
+        wallet: Address
+        sellToken: Address
+        buyToken: string
+        sellAmount: bigint
+        sellTokenDecimals: number
+        buyTokenDecimals: number
+        slippageBps: number
+    }): Promise<ExactSponsoredZeroXQuote>
     estimateAction(input: {
         wallet: Address
         to: Address
         data: Hex
+        value?: bigint
         maximumGas: bigint
     }): Promise<GasEstimate>
+    priceGasLimit(gasLimit: bigint, maximumGas: bigint): Promise<GasEstimate>
+    getAllowance(token: Address, owner: Address, spender: Address): Promise<bigint>
 }
 
 function defaultDependencies(database: Pool): Dependencies {
@@ -104,7 +121,10 @@ function defaultDependencies(database: Pool): Dependencies {
         },
         getEvidence: getSponsorshipTokenEvidence,
         probeGasless: (input) => gaslessService().probePrepaid(input),
+        quoteNormal: getExactSponsoredZeroXQuote,
         estimateAction: chain.estimateSponsoredAction,
+        priceGasLimit: chain.priceGasLimit,
+        getAllowance: chain.getAllowance,
     }
 }
 
@@ -169,6 +189,64 @@ function assertSafeZeroXSpender(spenderValue: string) {
     return spender as Address
 }
 
+async function estimateTokenToBnbConversionCost({
+    dependencies,
+    token,
+    tokenDecimals,
+    tokenPriceUsdMicros,
+    amountRaw,
+}: {
+    dependencies: Dependencies
+    token: Address
+    tokenDecimals: number
+    tokenPriceUsdMicros: bigint
+    amountRaw: bigint
+}) {
+    const config = getApiConfig()
+    const treasury = config.fees.treasuryAddress as Address | null
+    if (!treasury) throw new GasAssistError('TREASURY_NOT_CONFIGURED', 'The treasury is not configured.', 503)
+    const bnbPrice = await dependencies.getPrice(NATIVE_TOKEN_ADDRESS)
+    const quote = await dependencies.quoteNormal({
+        wallet: treasury,
+        sellToken: token,
+        buyToken: NATIVE_TOKEN_ADDRESS,
+        sellAmount: amountRaw,
+        sellTokenDecimals: tokenDecimals,
+        buyTokenDecimals: 18,
+        slippageBps: 100,
+    })
+    const swapGas = await dependencies.priceGasLimit(
+        quoteGasLimit(quote),
+        BigInt(config.sponsorship.maximumSwapGas),
+    )
+    const allowance = await dependencies.getAllowance(token, treasury, quote.allowanceTarget)
+    const approvalGas = allowance >= amountRaw
+        ? null
+        : await dependencies.estimateAction({
+              wallet: treasury,
+              to: token,
+              data: buildExactApproval(quote.allowanceTarget, amountRaw),
+              maximumGas: BigInt(config.sponsorship.maximumApprovalGas),
+          })
+    const inputUsd = tokenRawToUsdMicrosFloor({
+        amountRaw,
+        tokenPriceUsdMicros,
+        tokenDecimals,
+    })
+    const outputUsd = tokenRawToUsdMicrosFloor({
+        amountRaw: BigInt(quote.buyAmount),
+        tokenPriceUsdMicros: bnbPrice.priceUsdMicros,
+        tokenDecimals: 18,
+    })
+    const routeLossUsdMicros = inputUsd > outputUsd ? inputUsd - outputUsd : 0n
+    return {
+        costUsdMicros: routeLossUsdMicros + swapGas.gasUsdMicros + (approvalGas?.gasUsdMicros ?? 0n),
+        quote,
+        swapGas,
+        approvalGas,
+    }
+}
+
 async function publicOrder(database: Pool | PoolClient, orderId: string, walletAddress: string) {
     const result = await database.query<Record<string, unknown>>(
         `SELECT id,status,wallet_address AS "walletAddress",chain_id AS "chainId",sell_token AS "sellToken",
@@ -183,6 +261,7 @@ async function publicOrder(database: Pool | PoolClient, orderId: string, walletA
                 platform_fee_usd_micros::text AS "platformFeeUsdMicros",
                 commercial_fee_usd_micros::text AS "commercialFeeUsdMicros",
                 gas_reserve_usd_micros::text AS "gasReserveUsdMicros",
+                conversion_cost_usd_micros::text AS "conversionCostUsdMicros",
                 total_prepayment_usd_micros::text AS "totalPrepaymentUsdMicros",
                 estimated_payment_gas_usd_micros::text AS "estimatedPaymentGasUsdMicros",
                 estimated_approval_gas_usd_micros::text AS "estimatedApprovalGasUsdMicros",
@@ -192,6 +271,8 @@ async function publicOrder(database: Pool | PoolClient, orderId: string, walletA
                 minimum_output_raw::text AS "minimumOutputRaw",requires_approval AS "requiresApproval",
                 approval_spender AS "approvalSpender",approval_amount_raw::text AS "approvalAmountRaw",
                 sponsored_flow AS "sponsoredFlow",billing_mode AS "billingMode",expires_at AS "expiresAt",
+                payment_quote_expires_at AS "paymentQuoteExpiresAt",grant_expires_at AS "grantExpiresAt",
+                fee_confirmed_at AS "feeConfirmedAt",
                 payment_transaction_hash AS "paymentTransactionHash",
                 approval_transaction_hash AS "approvalTransactionHash",swap_transaction_hash AS "swapTransactionHash",
                 rejection_code AS "safeErrorCode",created_at AS "createdAt"
@@ -280,14 +361,14 @@ async function reserveAndInsertOrder({
              (status,wallet_address,chain_id,sell_token,buy_token,gross_input_amount_raw,net_swap_amount_raw,
               payment_token,payment_token_reason,payment_amount_raw,payment_token_decimals,
               trade_notional_usd_micros,fixed_service_fee_usd_micros,platform_fee_usd_micros,
-              commercial_fee_usd_micros,gas_reserve_usd_micros,total_prepayment_usd_micros,
+              commercial_fee_usd_micros,gas_reserve_usd_micros,conversion_cost_usd_micros,total_prepayment_usd_micros,
               estimated_payment_gas_usd_micros,estimated_approval_gas_usd_micros,estimated_swap_gas_usd_micros,
               gas_multiplier_bps,quote_provider,provider_quote_id,provider_quote_expires_at,provider_quote_snapshot,
               provider_fees,expected_output_raw,minimum_output_raw,requires_approval,approval_spender,
               approval_amount_raw,sponsored_flow,billing_mode,expires_at,idempotency_key,ip_hash)
-             VALUES ('quoted',$1,56,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,0,
-                     $18,'0x-gasless',NULL,NULL,$19::jsonb,$20::jsonb,$21,$22,true,$23,$24,
-                     'zero-x-gasless-after-approval','prepaid-megafuel',$25,$26,$27)
+             VALUES ('quoted',$1,56,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+                     $20,'0x',$21,$22,$23::jsonb,$24::jsonb,$25,$26,true,$27,$28,
+                     'normal-sponsored-swap','prepaid-megafuel',$29,$30,$31)
              RETURNING id`,
             values,
         )
@@ -358,8 +439,8 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
             dependencies.getPrice(input.sellToken),
         ])
         const sellRule = rows.find((row) => row.tokenAddress === input.sellToken)
-        if (!sellRule || !sellRule.approvalSponsorshipEnabled) {
-            throw new GasAssistError('SELL_TOKEN_NOT_WHITELISTED', 'The sell token is not enabled for approval sponsorship.', 403)
+        if (!sellRule || !sellRule.approvalSponsorshipEnabled || !sellRule.normalSwapSponsorshipEnabled) {
+            throw new GasAssistError('SELL_TOKEN_NOT_WHITELISTED', 'The sell token is not enabled for exact approval and swap sponsorship.', 403)
         }
         if (sellDecimals !== sellRule.decimals) {
             throw new GasAssistError('PAYMENT_TOKEN_DECIMALS_MISMATCH', 'Sell-token decimals do not match the sponsorship whitelist.', 409)
@@ -388,18 +469,36 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
             throw new GasAssistError('DIRECT_GASLESS_AVAILABLE', '0x Gasless can execute directly; prepaid sponsorship is not required.', 409)
         }
         if (initialProbe.route !== 'onchain-approval') {
-            if (!config.sponsorship.normalSwapSponsorEnabled) {
-                throw new GasAssistError('NO_SPONSORED_ROUTE', '0x Gasless cannot execute and normal swap sponsorship is disabled.', 409)
-            }
-            throw new GasAssistError('NORMAL_SWAP_VALIDATION_UNAVAILABLE', 'Normal swap sponsorship remains disabled until provider calldata validation is complete.', 503)
+            throw new GasAssistError('NO_SPONSORED_ROUTE', 'The selected trade does not require the exact prepaid approval flow.', 409)
         }
-        const spender = assertSafeZeroXSpender(initialProbe.spender)
-        const approvalEstimate = await dependencies.estimateAction({
+        if (!config.sponsorship.normalSwapSponsorEnabled) {
+            throw new GasAssistError('NORMAL_SWAP_SPONSORSHIP_DISABLED', 'Exact MegaFuel swap sponsorship is disabled.', 503)
+        }
+        const buyDecimals = input.buyToken === NATIVE_TOKEN_ADDRESS
+            ? 18
+            : await dependencies.getDecimals(input.buyToken as Address)
+        const initialQuote = await dependencies.quoteNormal({
             wallet: walletAddress,
-            to: input.sellToken as Address,
-            data: buildExactApproval(spender, input.grossInputAmount),
-            maximumGas: BigInt(config.sponsorship.maximumApprovalGas),
+            sellToken: input.sellToken as Address,
+            buyToken: input.buyToken,
+            sellAmount: input.grossInputAmount,
+            sellTokenDecimals: sellDecimals,
+            buyTokenDecimals: buyDecimals,
+            slippageBps: input.slippageBps,
         })
+        const spender = assertSafeZeroXSpender(initialQuote.allowanceTarget)
+        const [approvalEstimate, initialSwapEstimate] = await Promise.all([
+            dependencies.estimateAction({
+                wallet: walletAddress,
+                to: input.sellToken as Address,
+                data: buildExactApproval(spender, input.grossInputAmount),
+                maximumGas: BigInt(config.sponsorship.maximumApprovalGas),
+            }),
+            dependencies.priceGasLimit(
+                quoteGasLimit(initialQuote),
+                BigInt(config.sponsorship.maximumSwapGas),
+            ),
+        ])
 
         const evidenceRows = await Promise.all(rows.filter((row) => row.feePaymentEnabled).map(async (row) => {
             const address = row.tokenAddress as Address
@@ -420,8 +519,8 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
                 tradeNotionalUsdMicros,
                 paymentTransferGasUsdMicros: paymentEstimate.gasUsdMicros,
                 approvalGasUsdMicros: approvalEstimate.gasUsdMicros,
-                normalSwapGasUsdMicros: 0n,
-                flow: 'zero-x-gasless-after-approval',
+                normalSwapGasUsdMicros: initialSwapEstimate.gasUsdMicros,
+                flow: 'normal-sponsored-swap',
                 gasMultiplierBps: config.sponsorship.gasMultiplierBps,
                 fixedFeeUsdMicros: parseFixed(config.sponsorship.fixedFeeUsd),
                 platformFeeBps: config.sponsorship.platformFeeBps,
@@ -484,15 +583,25 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
         let paymentAmountRaw = selected.requiredPaymentRaw
         let calculation: PrepaymentCalculation = selected.calculation
         let netSwapAmountRaw = input.grossInputAmount
-        let finalProbe: PrepaidGaslessProbe = initialProbe
+        let finalQuote = initialQuote
         let finalPaymentEstimate = selected.paymentEstimate
         let finalApprovalEstimate = approvalEstimate
+        let finalSwapEstimate = initialSwapEstimate
+        let finalConversion = await estimateTokenToBnbConversionCost({
+            dependencies,
+            token: selected.row.tokenAddress as Address,
+            tokenDecimals: selected.row.decimals,
+            tokenPriceUsdMicros: selected.evidence.priceUsdMicros!,
+            amountRaw: paymentAmountRaw,
+        })
         for (let attempt = 0; attempt < 3; attempt += 1) {
             if (selected.row.tokenAddress === input.sellToken) {
                 if (paymentAmountRaw >= input.grossInputAmount) {
                     throw new GasAssistError('PAYMENT_EXCEEDS_GROSS_INPUT', 'The sponsorship payment leaves no positive swap amount.')
                 }
                 netSwapAmountRaw = input.grossInputAmount - paymentAmountRaw
+            } else {
+                netSwapAmountRaw = input.grossInputAmount
             }
             const netTradeUsdMicros = tokenRawToUsdMicrosFloor({
                 amountRaw: netSwapAmountRaw,
@@ -502,23 +611,20 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
             if (netTradeUsdMicros < parseFixed(config.sponsorship.minimumNetTradeUsd)) {
                 throw new GasAssistError('NET_TRADE_VALUE_UNECONOMIC', 'The net trade value is below the sponsored minimum.')
             }
-            const nextProbe = await dependencies.probeGasless({
-                chainId: 56,
-                walletAddress,
-                sellToken: input.sellToken,
+            const nextQuote = await dependencies.quoteNormal({
+                wallet: walletAddress,
+                sellToken: input.sellToken as Address,
                 buyToken: input.buyToken,
-                sellAmount: netSwapAmountRaw.toString(),
+                sellAmount: netSwapAmountRaw,
+                sellTokenDecimals: sellDecimals,
+                buyTokenDecimals: buyDecimals,
                 slippageBps: input.slippageBps,
-                clientIp,
             })
-            if (nextProbe.route === 'direct') {
-                throw new GasAssistError('DIRECT_GASLESS_AVAILABLE', 'The net amount can execute directly through 0x Gasless; prepaid sponsorship is not required.', 409)
+            if (!isAddressEqual(nextQuote.allowanceTarget, spender)) {
+                throw new GasAssistError('ROUTE_CHANGED', 'The authoritative 0x approval target changed during calculation.', 409)
             }
-            if (nextProbe.route !== 'onchain-approval' || !isAddressEqual(assertSafeZeroXSpender(nextProbe.spender), spender)) {
-                throw new GasAssistError('ROUTE_CHANGED', 'The authoritative 0x approval route changed during calculation.', 409)
-            }
-            finalProbe = nextProbe
-            ;[finalPaymentEstimate, finalApprovalEstimate] = await Promise.all([
+            finalQuote = nextQuote
+            ;[finalPaymentEstimate, finalApprovalEstimate, finalSwapEstimate] = await Promise.all([
                 dependencies.estimateAction({
                     wallet: walletAddress,
                     to: selected.row.tokenAddress as Address,
@@ -531,13 +637,42 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
                     data: buildExactApproval(spender, netSwapAmountRaw),
                     maximumGas: BigInt(config.sponsorship.maximumApprovalGas),
                 }),
+                dependencies.priceGasLimit(
+                    quoteGasLimit(nextQuote),
+                    BigInt(config.sponsorship.maximumSwapGas),
+                ),
             ])
+            const withoutConversion = calculatePrepayment({
+                tradeNotionalUsdMicros,
+                paymentTransferGasUsdMicros: finalPaymentEstimate.gasUsdMicros,
+                approvalGasUsdMicros: finalApprovalEstimate.gasUsdMicros,
+                normalSwapGasUsdMicros: finalSwapEstimate.gasUsdMicros,
+                conversionCostUsdMicros: 0n,
+                flow: 'normal-sponsored-swap',
+                gasMultiplierBps: config.sponsorship.gasMultiplierBps,
+                fixedFeeUsdMicros: parseFixed(config.sponsorship.fixedFeeUsd),
+                platformFeeBps: config.sponsorship.platformFeeBps,
+                commercialFeeCapUsdMicros: parseFixed(config.sponsorship.commercialFeeCapUsd),
+            })
+            const preliminaryPayment = usdMicrosToTokenRawCeil({
+                usdMicros: withoutConversion.totalPrepaymentUsdMicros,
+                tokenPriceUsdMicros: selected.evidence.priceUsdMicros!,
+                tokenDecimals: selected.row.decimals,
+            })
+            finalConversion = await estimateTokenToBnbConversionCost({
+                dependencies,
+                token: selected.row.tokenAddress as Address,
+                tokenDecimals: selected.row.decimals,
+                tokenPriceUsdMicros: selected.evidence.priceUsdMicros!,
+                amountRaw: preliminaryPayment,
+            })
             calculation = calculatePrepayment({
                 tradeNotionalUsdMicros,
                 paymentTransferGasUsdMicros: finalPaymentEstimate.gasUsdMicros,
                 approvalGasUsdMicros: finalApprovalEstimate.gasUsdMicros,
-                normalSwapGasUsdMicros: 0n,
-                flow: 'zero-x-gasless-after-approval',
+                normalSwapGasUsdMicros: finalSwapEstimate.gasUsdMicros,
+                conversionCostUsdMicros: finalConversion.costUsdMicros,
+                flow: 'normal-sponsored-swap',
                 gasMultiplierBps: config.sponsorship.gasMultiplierBps,
                 fixedFeeUsdMicros: parseFixed(config.sponsorship.fixedFeeUsd),
                 platformFeeBps: config.sponsorship.platformFeeBps,
@@ -558,13 +693,9 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
         if (calculation.commercialFeeUsdMicros <= finalPaymentEstimate.gasUsdMicros + parseFixed(config.sponsorship.minimumCommercialOverPaymentGasUsd)) {
             throw new GasAssistError('PAYMENT_TRANSFER_UNECONOMIC', 'The commercial payment is too small relative to payment gas.')
         }
-        if (finalProbe.route !== 'onchain-approval') throw new GasAssistError('ROUTE_CHANGED', 'The final 0x route is no longer sponsorable.', 409)
         const buyPrice = await dependencies.getPrice(input.buyToken)
-        const buyDecimals = input.buyToken === NATIVE_TOKEN_ADDRESS
-            ? 18
-            : await dependencies.getDecimals(input.buyToken as Address)
         const minimumOutputUsdMicros = tokenRawToUsdMicrosFloor({
-            amountRaw: BigInt(finalProbe.minimumBuyAmount),
+            amountRaw: BigInt(finalQuote.minimumBuyAmount),
             tokenPriceUsdMicros: buyPrice.priceUsdMicros,
             tokenDecimals: buyDecimals,
         })
@@ -593,13 +724,28 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
                 calculation.platformFeeUsdMicros.toString(),
                 calculation.commercialFeeUsdMicros.toString(),
                 calculation.gasReserveUsdMicros.toString(),
+                calculation.conversionCostUsdMicros.toString(),
                 calculation.totalPrepaymentUsdMicros.toString(),
                 finalPaymentEstimate.gasUsdMicros.toString(),
                 finalApprovalEstimate.gasUsdMicros.toString(),
+                finalSwapEstimate.gasUsdMicros.toString(),
                 config.sponsorship.gasMultiplierBps,
+                finalQuote.quoteId,
+                finalQuote.expiresAt,
                 JSON.stringify({
-                    route: '0x-gasless-after-approval',
+                    route: '0x-normal-sponsored-swap',
                     slippageBps: input.slippageBps,
+                    quote: {
+                        quoteId: finalQuote.quoteId,
+                        expiresAt: finalQuote.expiresAt,
+                        sellToken: finalQuote.sellToken,
+                        buyToken: finalQuote.buyToken,
+                        sellAmount: finalQuote.sellAmount,
+                        buyAmount: finalQuote.buyAmount,
+                        minimumBuyAmount: finalQuote.minimumBuyAmount,
+                        allowanceTarget: finalQuote.allowanceTarget,
+                        transaction: finalQuote.transaction,
+                    },
                     paymentPriceUsdMicros: selected.evidence.priceUsdMicros!.toString(),
                     paymentPriceObservedAt: selected.evidence.priceObservedAt.toISOString(),
                     paymentLiquidityUsdMicros: selected.evidence.liquidityUsdMicros.toString(),
@@ -616,10 +762,26 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
                         gasUsdMicros: finalApprovalEstimate.gasUsdMicros.toString(),
                         observedAt: finalApprovalEstimate.observedAt.toISOString(),
                     },
+                    swapGas: {
+                        gasLimit: finalSwapEstimate.gasLimit.toString(),
+                        currentGasPrice: finalSwapEstimate.currentGasPrice.toString(),
+                        gasUsdMicros: finalSwapEstimate.gasUsdMicros.toString(),
+                        observedAt: finalSwapEstimate.observedAt.toISOString(),
+                    },
+                    conversion: {
+                        costUsdMicros: finalConversion.costUsdMicros.toString(),
+                        quoteId: finalConversion.quote.quoteId,
+                        expiresAt: finalConversion.quote.expiresAt,
+                        inputAmountRaw: finalConversion.quote.sellAmount,
+                        expectedBnbRaw: finalConversion.quote.buyAmount,
+                        minimumBnbRaw: finalConversion.quote.minimumBuyAmount,
+                        swapGasUsdMicros: finalConversion.swapGas.gasUsdMicros.toString(),
+                        approvalGasUsdMicros: finalConversion.approvalGas?.gasUsdMicros.toString() ?? '0',
+                    },
                 }),
-                JSON.stringify(finalProbe.fees),
-                finalProbe.buyAmount,
-                finalProbe.minimumBuyAmount,
+                JSON.stringify({ platformFee: finalQuote.platformFee }),
+                finalQuote.buyAmount,
+                finalQuote.minimumBuyAmount,
                 spender,
                 netSwapAmountRaw.toString(),
                 expiresAt,
@@ -636,6 +798,7 @@ export function createSponsorshipOrderService(overrides: Partial<Dependencies> =
                 platformFee: formatFixed(calculation.platformFeeUsdMicros),
                 commercialFee: formatFixed(calculation.commercialFeeUsdMicros),
                 gasReserve: formatFixed(calculation.gasReserveUsdMicros),
+                conversionCost: formatFixed(calculation.conversionCostUsdMicros),
                 totalPrepayment: formatFixed(calculation.totalPrepaymentUsdMicros),
             },
             commercialFeeCapUsd: config.sponsorship.commercialFeeCapUsd,

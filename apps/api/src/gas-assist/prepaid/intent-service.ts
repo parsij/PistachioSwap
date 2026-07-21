@@ -10,10 +10,11 @@ import {
 
 import { getApiConfig } from '../../config.js'
 import { getPool } from '../../db/client.js'
-import { gaslessService } from '../gasless-service.js'
+import { NATIVE_TOKEN_ADDRESS } from '../../lib/address.js'
 import { GasAssistError } from '../errors.js'
 import { approveAbi, buildExactApproval, hashPrivateScope, UINT256_MAX } from '../exact-approval.js'
 import { prepaidPaymasterClient } from '../paymaster.js'
+import { megaFuelPolicyManagement } from '../policy-management.js'
 import {
     buildPaymentTransfer,
     createPrepaidChainClient,
@@ -29,6 +30,7 @@ import {
     usdMicrosToTokenRawCeil,
 } from './fixed-point.js'
 import { getSponsorshipTokenEvidence } from './token-evidence.js'
+import { getExactSponsoredZeroXQuote, quoteGasLimit, quoteSelector } from './normal-swap.js'
 
 type OrderRow = {
     id: string
@@ -49,15 +51,22 @@ type OrderRow = {
     totalPrepaymentUsdMicros: string
     estimatedPaymentGasUsdMicros: string
     estimatedApprovalGasUsdMicros: string
+    estimatedSwapGasUsdMicros: string
+    conversionCostUsdMicros: string
     actualSponsoredGasUsdMicros: string | null
     gasMultiplierBps: number
     approvalSpender: Address
     approvalAmountRaw: string
     expiresAt: Date
+    paymentQuoteExpiresAt: Date
+    grantExpiresAt: Date | null
+    feeConfirmedAt: Date | null
     providerQuoteSnapshot: Record<string, unknown>
+    expectedOutputRaw: string
     minimumOutputRaw: string
     ipHash: string
     providerQuoteId: string | null
+    providerQuoteExpiresAt: Date | null
 }
 
 type IntentRow = StoredIntentTemplate & {
@@ -77,6 +86,7 @@ type Dependencies = {
     chain: ReturnType<typeof createPrepaidChainClient>
     paymaster: typeof prepaidPaymasterClient
     getEvidence: typeof getSponsorshipTokenEvidence
+    quoteNormal: typeof getExactSponsoredZeroXQuote
 }
 
 function defaults(database: Pool): Dependencies {
@@ -86,6 +96,7 @@ function defaults(database: Pool): Dependencies {
         chain: createPrepaidChainClient(),
         paymaster: prepaidPaymasterClient,
         getEvidence: getSponsorshipTokenEvidence,
+        quoteNormal: getExactSponsoredZeroXQuote,
     }
 }
 
@@ -101,11 +112,16 @@ function orderQuery(lock = false) {
                    total_prepayment_usd_micros::text AS "totalPrepaymentUsdMicros",
                    estimated_payment_gas_usd_micros::text AS "estimatedPaymentGasUsdMicros",
                    estimated_approval_gas_usd_micros::text AS "estimatedApprovalGasUsdMicros",
+                   estimated_swap_gas_usd_micros::text AS "estimatedSwapGasUsdMicros",
+                   conversion_cost_usd_micros::text AS "conversionCostUsdMicros",
                    actual_sponsored_gas_usd_micros::text AS "actualSponsoredGasUsdMicros",
                    gas_multiplier_bps AS "gasMultiplierBps",approval_spender AS "approvalSpender",
                    approval_amount_raw::text AS "approvalAmountRaw",expires_at AS "expiresAt",
-                   provider_quote_snapshot AS "providerQuoteSnapshot",minimum_output_raw::text AS "minimumOutputRaw",
-                   ip_hash AS "ipHash",provider_quote_id AS "providerQuoteId"
+                   payment_quote_expires_at AS "paymentQuoteExpiresAt",grant_expires_at AS "grantExpiresAt",
+                   fee_confirmed_at AS "feeConfirmedAt",provider_quote_snapshot AS "providerQuoteSnapshot",
+                   expected_output_raw::text AS "expectedOutputRaw",minimum_output_raw::text AS "minimumOutputRaw",
+                   ip_hash AS "ipHash",provider_quote_id AS "providerQuoteId",
+                   provider_quote_expires_at AS "providerQuoteExpiresAt"
             FROM sponsorship_orders WHERE id=$1 AND wallet_address=$2${lock ? ' FOR UPDATE' : ''}`
 }
 
@@ -138,6 +154,7 @@ function unsignedTransaction(intent: {
     walletAddress: Address
     transactionTo: Address
     transactionData: Hex
+    nativeValue?: bigint
     nonce: bigint
     gasLimit: bigint
 }) {
@@ -145,7 +162,7 @@ function unsignedTransaction(intent: {
         from: intent.walletAddress,
         to: intent.transactionTo,
         data: intent.transactionData,
-        value: '0x0',
+        value: toHex(intent.nativeValue ?? 0n),
         chainId: toHex(56),
         nonce: toHex(intent.nonce),
         gas: toHex(intent.gasLimit),
@@ -203,6 +220,7 @@ async function persistPreparedIntent({
     action,
     to,
     data,
+    nativeValue = 0n,
     estimate,
     nonce,
 }: {
@@ -211,6 +229,7 @@ async function persistPreparedIntent({
     action: IntentRow['action']
     to: Address
     data: Hex
+    nativeValue?: bigint
     estimate: { gasLimit: bigint }
     nonce: bigint
 }) {
@@ -218,22 +237,33 @@ async function persistPreparedIntent({
         walletAddress: order.walletAddress,
         transactionTo: to,
         transactionData: data,
+        nativeValue,
         gasLimit: estimate.gasLimit,
         nonce,
     })
     if (!await dependencies.paymaster.isSponsorable(transaction)) {
         throw new GasAssistError('PAYMASTER_REJECTED', 'MegaFuel declined the exact sponsored transaction.', 409)
     }
-    const expiresAt = new Date(
-        dependencies.now().getTime() + getApiConfig().sponsorship.actionIntentTtlSeconds * 1_000,
-    )
+    const configuredExpiry = dependencies.now().getTime() +
+        getApiConfig().sponsorship.actionIntentTtlSeconds * 1_000
+    const expiresAt = new Date(Math.min(configuredExpiry, order.expiresAt.getTime()))
+    if (expiresAt <= dependencies.now()) {
+        throw new GasAssistError('ORDER_EXPIRED', 'The sponsorship grant expired.', 409)
+    }
+    const expectedStatus = {
+        'fee-payment-transfer': 'quoted',
+        'token-approval': 'payment-confirmed',
+        'normal-swap': 'approval-confirmed',
+    }[action]
+    const preparedStatus = {
+        'fee-payment-transfer': 'payment-prepared',
+        'token-approval': 'approval-preparing',
+        'normal-swap': 'swap-preparing',
+    }[action]
     const client = await dependencies.database.connect()
     try {
         await client.query('BEGIN')
         const locked = await loadOrder(client, order.id, order.walletAddress, true)
-        const expectedStatus = action === 'fee-payment-transfer'
-            ? 'quoted'
-            : 'payment-confirmed'
         if (locked.status !== expectedStatus) {
             throw new GasAssistError('ORDER_STATE_CONFLICT', 'The order is not ready for this sponsored action.', 409)
         }
@@ -246,13 +276,24 @@ async function persistPreparedIntent({
              (order_id,action,status,wallet_address,transaction_to,transaction_data,transaction_data_hash,
               native_value,chain_id,nonce,transaction_type,gas_limit,gas_price,expires_at)
              VALUES ($1,$2,'prepared',$3,$4,$5,$6,
-                     0,56,$7,'legacy',$8,0,$9)
+                     $7,56,$8,'legacy',$9,0,$10)
              RETURNING id`,
-            [order.id, action, order.walletAddress, to, data, keccak256(data), nonce.toString(), estimate.gasLimit.toString(), expiresAt],
+            [
+                order.id,
+                action,
+                order.walletAddress,
+                to,
+                data,
+                keccak256(data),
+                nativeValue.toString(),
+                nonce.toString(),
+                estimate.gasLimit.toString(),
+                expiresAt,
+            ],
         )
         await client.query(
             `UPDATE sponsorship_orders SET status=$2,updated_at=now() WHERE id=$1`,
-            [order.id, action === 'fee-payment-transfer' ? 'payment-prepared' : 'approval-preparing'],
+            [order.id, preparedStatus],
         )
         await client.query('COMMIT')
         return {
@@ -292,7 +333,26 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             BigInt(order.paymentAmountRaw),
         )
         const approvalData = buildExactApproval(order.approvalSpender, BigInt(order.approvalAmountRaw))
-        const [paymentEstimate, approvalEstimate] = await Promise.all([
+        const [sellDecimals, buyDecimals] = await Promise.all([
+            dependencies.chain.getTokenDecimals(order.sellToken),
+            order.buyToken === NATIVE_TOKEN_ADDRESS
+                ? Promise.resolve(18)
+                : dependencies.chain.getTokenDecimals(order.buyToken as Address),
+        ])
+        const currentQuote = await dependencies.quoteNormal({
+            wallet: order.walletAddress,
+            sellToken: order.sellToken,
+            buyToken: order.buyToken,
+            sellAmount: BigInt(order.netSwapAmountRaw),
+            sellTokenDecimals: sellDecimals,
+            buyTokenDecimals: buyDecimals,
+            slippageBps: Number(order.providerQuoteSnapshot.slippageBps),
+        })
+        if (!isAddressEqual(currentQuote.allowanceTarget, order.approvalSpender) ||
+            BigInt(currentQuote.minimumBuyAmount) < BigInt(order.minimumOutputRaw)) {
+            throw new GasAssistError('ORDER_REQUOTE_REQUIRED', 'The 0x route changed; review a fresh sponsorship order.', 409)
+        }
+        const [paymentEstimate, approvalEstimate, swapEstimate] = await Promise.all([
             dependencies.chain.estimateSponsoredAction({
                 wallet: order.walletAddress,
                 to: order.paymentToken,
@@ -305,13 +365,18 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                 data: approvalData,
                 maximumGas: BigInt(config.maximumApprovalGas),
             }),
+            dependencies.chain.priceGasLimit(
+                quoteGasLimit(currentQuote),
+                BigInt(config.maximumSwapGas),
+            ),
         ])
         const recalculated = calculatePrepayment({
             tradeNotionalUsdMicros: BigInt(order.tradeNotionalUsdMicros),
             paymentTransferGasUsdMicros: paymentEstimate.gasUsdMicros,
             approvalGasUsdMicros: approvalEstimate.gasUsdMicros,
-            normalSwapGasUsdMicros: 0n,
-            flow: 'zero-x-gasless-after-approval',
+            normalSwapGasUsdMicros: swapEstimate.gasUsdMicros,
+            conversionCostUsdMicros: BigInt(order.conversionCostUsdMicros),
+            flow: 'normal-sponsored-swap',
             gasMultiplierBps: order.gasMultiplierBps,
             fixedFeeUsdMicros: BigInt(order.fixedServiceFeeUsdMicros),
             platformFeeBps: config.platformFeeBps,
@@ -409,7 +474,39 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             if (balance < amount) throw new GasAssistError('INSUFFICIENT_TOKEN_BALANCE', 'The sell-token balance no longer covers the exact approval.', 409)
             return
         }
-        throw new GasAssistError('NORMAL_SWAP_SPONSORSHIP_DISABLED', 'Generic transaction sponsorship is not supported.', 409)
+        if (intent.action === 'normal-swap') {
+            const quote = order.providerQuoteSnapshot.quote as Record<string, unknown> | undefined
+            const transaction = quote?.transaction as Record<string, unknown> | undefined
+            const transactionTo = String(transaction?.to ?? '')
+            const transactionData = String(transaction?.data ?? '')
+            const transactionValue = String(transaction?.value ?? '')
+            if (!transactionTo || !transactionData || !/^\d+$/.test(transactionValue) ||
+                !isAddressEqual(intent.transactionTo, transactionTo as Address) ||
+                intent.transactionData.toLowerCase() !== transactionData.toLowerCase() ||
+                BigInt(intent.nativeValue) !== BigInt(transactionValue) ||
+                String(quote?.sellAmount ?? '') !== order.netSwapAmountRaw ||
+                String(quote?.allowanceTarget ?? '').toLowerCase() !== order.approvalSpender.toLowerCase() ||
+                Date.parse(String(quote?.expiresAt ?? '')) <= dependencies.now().getTime()) {
+                throw new GasAssistError('SIGNED_TRANSACTION_MISMATCH', 'The signed swap does not match the fresh authorized 0x quote.', 409)
+            }
+            const config = getApiConfig().sponsorship
+            if (!config.zeroXSettlerAddress ||
+                !isAddressEqual(intent.transactionTo, config.zeroXSettlerAddress as Address)) {
+                throw new GasAssistError('UNSAFE_SWAP_TARGET', 'The sponsored swap target is not the configured 0x Settler.', 409)
+            }
+            const [allowance, balance] = await Promise.all([
+                dependencies.chain.getAllowance(order.sellToken, order.walletAddress, order.approvalSpender),
+                dependencies.chain.getBalance(order.sellToken, order.walletAddress),
+            ])
+            if (allowance < BigInt(order.approvalAmountRaw)) {
+                throw new GasAssistError('ALLOWANCE_NOT_CONFIRMED', 'The exact approval is no longer sufficient.', 409)
+            }
+            if (balance < BigInt(order.netSwapAmountRaw)) {
+                throw new GasAssistError('INSUFFICIENT_TOKEN_BALANCE', 'The sell-token balance no longer covers the exact swap.', 409)
+            }
+            return
+        }
+        throw new GasAssistError('UNSUPPORTED_SPONSORED_ACTION', 'The sponsored transaction action is unsupported.', 409)
     }
 
     async function reestimateSubmission(order: OrderRow, intent: IntentRow) {
@@ -423,6 +520,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             wallet: order.walletAddress,
             to: intent.transactionTo,
             data: intent.transactionData,
+            value: BigInt(intent.nativeValue),
             maximumGas,
         })
         const reservedGas = BigInt(order.gasReserveUsdMicros)
@@ -489,6 +587,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             walletAddress: order.walletAddress,
             transactionTo: intent.transactionTo,
             transactionData: intent.transactionData,
+            nativeValue: BigInt(intent.nativeValue),
             nonce: BigInt(intent.nonce),
             gasLimit: BigInt(intent.gasLimit),
         }))
@@ -511,7 +610,11 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             )
             await client.query(
                 `UPDATE sponsorship_orders SET status=$2,updated_at=now() WHERE id=$1`,
-                [order.id, intent.action === 'fee-payment-transfer' ? 'payment-submitting' : 'approval-submitted'],
+                [order.id, {
+                    'fee-payment-transfer': 'payment-submitting',
+                    'token-approval': 'approval-submitted',
+                    'normal-swap': 'swap-submitted',
+                }[intent.action]],
             )
             await client.query('COMMIT')
         } catch (error) {
@@ -530,7 +633,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             )
             await dependencies.database.query(
                 `UPDATE sponsorship_orders SET status='expired',rejection_code='ORDER_EXPIRED',updated_at=now()
-                 WHERE id=$1 AND status IN ('payment-submitting','approval-submitted')`,
+                 WHERE id=$1 AND status IN ('payment-submitting','approval-submitted','swap-submitted')`,
                 [order.id],
             )
             throw new GasAssistError('INTENT_EXPIRED', 'The sponsored intent expired before submission.', 409)
@@ -572,19 +675,43 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             `UPDATE sponsorship_orders SET status=$2,
                     payment_transaction_hash=CASE WHEN $3='fee-payment-transfer' THEN $4 ELSE payment_transaction_hash END,
                     approval_transaction_hash=CASE WHEN $3='token-approval' THEN $4 ELSE approval_transaction_hash END,
+                    swap_transaction_hash=CASE WHEN $3='normal-swap' THEN $4 ELSE swap_transaction_hash END,
                     updated_at=now() WHERE id=$1`,
-            [order.id, intent.action === 'fee-payment-transfer' ? 'payment-submitted' : 'approval-submitted', intent.action, providerHash],
+            [order.id, {
+                'fee-payment-transfer': 'payment-submitted',
+                'token-approval': 'approval-submitted',
+                'normal-swap': 'swap-submitted',
+            }[intent.action], intent.action, providerHash],
         )
         return { status: 'submitted', transactionHash: providerHash }
     }
 
-    async function actualGasUsd(receipt: { gasUsed: bigint; effectiveGasPrice: bigint }) {
+    async function actualGasUsd(
+        receipt: { gasUsed: bigint; effectiveGasPrice: bigint },
+        order: OrderRow,
+        intent: IntentRow,
+    ) {
         const bnbPrice = await (async () => {
             const value = await import('../../providers/alchemy/token-prices.js').then(({ getNativeBnbPrice }) => getNativeBnbPrice())
             if (!value) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'BNB price is unavailable for gas settlement.', 503)
             return parseFixed(value)
         })()
-        return ceilDiv(receipt.gasUsed * receipt.effectiveGasPrice * bnbPrice, 10n ** 18n)
+        const snapshotKey = {
+            'fee-payment-transfer': 'paymentGas',
+            'token-approval': 'approvalGas',
+            'normal-swap': 'swapGas',
+        }[intent.action]
+        const snapshot = order.providerQuoteSnapshot[snapshotKey] as Record<string, unknown> | undefined
+        const fallbackGasPrice = /^\d+$/.test(String(snapshot?.currentGasPrice ?? ''))
+            ? BigInt(String(snapshot?.currentGasPrice))
+            : 0n
+        const effectiveGasPrice = receipt.effectiveGasPrice > 0n
+            ? receipt.effectiveGasPrice
+            : fallbackGasPrice
+        if (effectiveGasPrice <= 0n) {
+            throw new GasAssistError('SPONSORED_GAS_COST_UNKNOWN', 'The sponsored gas cost cannot be reconciled safely yet.', 503)
+        }
+        return ceilDiv(receipt.gasUsed * effectiveGasPrice * bnbPrice, 10n ** 18n)
     }
 
     async function chargeGas(client: PoolClient, order: OrderRow, intent: IntentRow, gasUsdMicros: bigint, reverted: boolean) {
@@ -620,29 +747,44 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
         }
     }
 
-    async function createWalletCredit(client: PoolClient, order: OrderRow, includePlatform: boolean, reason: string) {
-        const actualGas = BigInt(order.actualSponsoredGasUsdMicros ?? '0')
-        const unusedGas = BigInt(order.gasReserveUsdMicros) > actualGas
-            ? BigInt(order.gasReserveUsdMicros) - actualGas
-            : 0n
-        const creditUsd = unusedGas + (includePlatform ? BigInt(order.platformFeeUsdMicros) : 0n)
-        if (creditUsd === 0n) return
-        const tokenAmount = proportionalRawFloor(
-            BigInt(order.paymentAmountRaw),
-            creditUsd,
-            BigInt(order.totalPrepaymentUsdMicros),
-        )
+    async function createPendingRefund(
+        client: PoolClient,
+        order: OrderRow,
+        reason: string,
+        actualGasUsdMicros = BigInt(order.actualSponsoredGasUsdMicros ?? '0'),
+    ) {
+        const refundGasUsdMicros = BigInt(order.estimatedPaymentGasUsdMicros)
+        const paymentPriceUsdMicros = BigInt(String(order.providerQuoteSnapshot.paymentPriceUsdMicros))
+        const nonrefundableRaw = usdMicrosToTokenRawCeil({
+            usdMicros: actualGasUsdMicros + refundGasUsdMicros,
+            tokenPriceUsdMicros: paymentPriceUsdMicros,
+            tokenDecimals: order.paymentTokenDecimals,
+        })
+        const paidRaw = BigInt(order.paymentAmountRaw)
+        const refundableRaw = paidRaw > nonrefundableRaw ? paidRaw - nonrefundableRaw : 0n
         await client.query(
-            `INSERT INTO sponsorship_wallet_credits
-             (wallet_address,chain_id,token_address,available_token_amount_raw,available_usd_micros,source_order_id)
-             VALUES ($1,56,$2,$3,$4,$5) ON CONFLICT (source_order_id) DO NOTHING`,
-            [order.walletAddress, order.paymentToken, tokenAmount.toString(), creditUsd.toString(), order.id],
+            `INSERT INTO sponsorship_refunds
+             (order_id,wallet_address,chain_id,token_address,gross_payment_raw,
+              actual_sponsored_gas_usd_micros,estimated_refund_gas_usd_micros,
+              refundable_token_amount_raw,status,reason)
+             VALUES ($1,$2,56,$3,$4,$5,$6,$7,'pending',$8)
+             ON CONFLICT (order_id) DO NOTHING`,
+            [
+                order.id,
+                order.walletAddress,
+                order.paymentToken,
+                order.paymentAmountRaw,
+                actualGasUsdMicros.toString(),
+                refundGasUsdMicros.toString(),
+                refundableRaw.toString(),
+                reason,
+            ],
         )
         await client.query(
             `INSERT INTO sponsorship_ledger
              (order_id,wallet_address,entry_type,usd_micros,token_address,token_amount_raw,failure_reason)
-             VALUES ($1,$2,'walletCredit',$3,$4,$5,$6)`,
-            [order.id, order.walletAddress, creditUsd.toString(), order.paymentToken, tokenAmount.toString(), reason],
+             VALUES ($1,$2,'refundPending',0,$3,$4,$5)`,
+            [order.id, order.walletAddress, order.paymentToken, refundableRaw.toString(), reason],
         )
     }
 
@@ -655,7 +797,7 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
             return null
         }
         const transaction = await dependencies.chain.getTransaction(intent.transactionHash)
-        const gasUsdMicros = await actualGasUsd(receipt)
+        const gasUsdMicros = await actualGasUsd(receipt, order, intent)
         const client = await dependencies.database.connect()
         try {
             await client.query('BEGIN')
@@ -665,22 +807,37 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                 await client.query('COMMIT')
                 return null
             }
+            const actualGasAfter = BigInt(lockedOrder.actualSponsoredGasUsdMicros ?? '0') + gasUsdMicros
+            await chargeGas(client, lockedOrder, lockedIntent, gasUsdMicros, receipt.status !== 'success')
+            lockedOrder.actualSponsoredGasUsdMicros = actualGasAfter.toString()
+
             if (receipt.status !== 'success') {
-                await chargeGas(client, lockedOrder, lockedIntent, gasUsdMicros, true)
-                lockedOrder.actualSponsoredGasUsdMicros = (
-                    BigInt(lockedOrder.actualSponsoredGasUsdMicros ?? '0') + gasUsdMicros
-                ).toString()
-                await client.query(`UPDATE sponsorship_transaction_intents SET status='reverted',failure_code='TRANSACTION_REVERTED',updated_at=now() WHERE id=$1`, [intent.id])
+                await client.query(
+                    `UPDATE sponsorship_transaction_intents
+                     SET status='reverted',failure_code='TRANSACTION_REVERTED',updated_at=now() WHERE id=$1`,
+                    [intent.id],
+                )
                 if (intent.action === 'fee-payment-transfer') {
-                    await client.query(`UPDATE sponsorship_orders SET status='failed',rejection_code='PAYMENT_REVERTED',updated_at=now() WHERE id=$1`, [order.id])
+                    await client.query(
+                        `UPDATE sponsorship_orders SET status='failed',rejection_code='PAYMENT_REVERTED',updated_at=now() WHERE id=$1`,
+                        [order.id],
+                    )
                 } else {
-                    await createWalletCredit(client, lockedOrder, true, 'approval-reverted')
-                    await client.query(`UPDATE sponsorship_orders SET status='failed',rejection_code='APPROVAL_REVERTED',updated_at=now() WHERE id=$1`, [order.id])
+                    await createPendingRefund(
+                        client,
+                        lockedOrder,
+                        intent.action === 'token-approval' ? 'approval-reverted' : 'swap-reverted',
+                        actualGasAfter,
+                    )
+                    await client.query(
+                        `UPDATE sponsorship_orders SET status='failed',rejection_code=$2,updated_at=now() WHERE id=$1`,
+                        [order.id, intent.action === 'token-approval' ? 'APPROVAL_REVERTED' : 'SWAP_REVERTED'],
+                    )
                 }
                 await client.query('COMMIT')
                 return { status: 'reverted' }
             }
-            await chargeGas(client, lockedOrder, lockedIntent, gasUsdMicros, false)
+
             if (intent.action === 'fee-payment-transfer') {
                 let received: bigint
                 try {
@@ -710,9 +867,10 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                     await client.query('COMMIT')
                     return { status: 'rejected' }
                 }
+                const reserveAndConversionUsd = BigInt(order.gasReserveUsdMicros) + BigInt(order.conversionCostUsdMicros)
                 const reserveRaw = proportionalRawFloor(
                     BigInt(order.paymentAmountRaw),
-                    BigInt(order.gasReserveUsdMicros),
+                    reserveAndConversionUsd,
                     BigInt(order.totalPrepaymentUsdMicros),
                 )
                 const commercialRaw = BigInt(order.paymentAmountRaw) - reserveRaw
@@ -721,24 +879,37 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                     BigInt(order.fixedServiceFeeUsdMicros),
                     BigInt(order.commercialFeeUsdMicros),
                 )
+                const grantExpiresAt = new Date(
+                    dependencies.now().getTime() + 5 * 60 * 1_000,
+                )
                 await client.query(
                     `INSERT INTO sponsorship_ledger (order_id,wallet_address,entry_type,usd_micros,token_address,token_amount_raw)
-                     VALUES ($1,$2,'gasReserve',$3,$4,$5),($1,$2,'commercialFeeReserve',$6,$4,$7),($1,$2,'serviceFeeSettled',$8,$4,$9)`,
-                    [order.id, order.walletAddress, order.gasReserveUsdMicros, order.paymentToken, reserveRaw.toString(), order.commercialFeeUsdMicros, commercialRaw.toString(), order.fixedServiceFeeUsdMicros, serviceRaw.toString()],
+                     VALUES ($1,$2,'gasAndConversionReserve',$3,$4,$5),
+                            ($1,$2,'commercialFeeReserve',$6,$4,$7),
+                            ($1,$2,'serviceFeeReserved',$8,$4,$9)`,
+                    [
+                        order.id,
+                        order.walletAddress,
+                        reserveAndConversionUsd.toString(),
+                        order.paymentToken,
+                        reserveRaw.toString(),
+                        order.commercialFeeUsdMicros,
+                        commercialRaw.toString(),
+                        order.fixedServiceFeeUsdMicros,
+                        serviceRaw.toString(),
+                    ],
                 )
                 await client.query(
                     `UPDATE sponsorship_orders SET status='payment-confirmed',actual_payment_received_raw=$2,
-                            payment_transaction_hash=$3,updated_at=now() WHERE id=$1`,
-                    [order.id, received.toString(), intent.transactionHash],
+                            payment_transaction_hash=$3,fee_confirmed_at=now(),grant_expires_at=$4,
+                            expires_at=$4,updated_at=now() WHERE id=$1`,
+                    [order.id, received.toString(), intent.transactionHash, grantExpiresAt],
                 )
             } else if (intent.action === 'token-approval') {
                 const allowance = await dependencies.chain.getAllowance(order.sellToken, order.walletAddress, order.approvalSpender)
                 if (!isAddressEqual(transaction.from, order.walletAddress) || !transaction.to ||
                     !isAddressEqual(transaction.to, order.sellToken) || allowance < BigInt(order.approvalAmountRaw)) {
-                    lockedOrder.actualSponsoredGasUsdMicros = (
-                        BigInt(lockedOrder.actualSponsoredGasUsdMicros ?? '0') + gasUsdMicros
-                    ).toString()
-                    await createWalletCredit(client, lockedOrder, true, 'approval-receipt-invalid')
+                    await createPendingRefund(client, lockedOrder, 'approval-receipt-invalid', actualGasAfter)
                     await client.query(
                         `UPDATE sponsorship_transaction_intents SET status='rejected',failure_code='APPROVAL_RECEIPT_INVALID',updated_at=now() WHERE id=$1`,
                         [intent.id],
@@ -755,8 +926,57 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                             provider_quote_id=NULL,provider_quote_expires_at=NULL,updated_at=now() WHERE id=$1`,
                     [order.id, intent.transactionHash],
                 )
+            } else {
+                const config = getApiConfig().sponsorship
+                if (!isAddressEqual(transaction.from, order.walletAddress) || !transaction.to ||
+                    !config.zeroXSettlerAddress || !isAddressEqual(transaction.to, config.zeroXSettlerAddress as Address)) {
+                    await client.query(
+                        `UPDATE sponsorship_transaction_intents SET status='unknown',failure_code='SWAP_RECEIPT_INVALID',updated_at=now() WHERE id=$1`,
+                        [intent.id],
+                    )
+                    await client.query(
+                        `UPDATE sponsorship_orders SET status='unknown',rejection_code='SWAP_RECEIPT_INVALID',updated_at=now() WHERE id=$1`,
+                        [order.id],
+                    )
+                    await client.query('COMMIT')
+                    return { status: 'unknown' }
+                }
+                const reserveRaw = proportionalRawFloor(
+                    BigInt(order.paymentAmountRaw),
+                    BigInt(order.gasReserveUsdMicros) + BigInt(order.conversionCostUsdMicros),
+                    BigInt(order.totalPrepaymentUsdMicros),
+                )
+                const commercialRaw = BigInt(order.paymentAmountRaw) - reserveRaw
+                const serviceRaw = proportionalRawFloor(
+                    commercialRaw,
+                    BigInt(order.fixedServiceFeeUsdMicros),
+                    BigInt(order.commercialFeeUsdMicros),
+                )
+                const platformRaw = commercialRaw - serviceRaw
+                await client.query(
+                    `INSERT INTO sponsorship_ledger (order_id,wallet_address,entry_type,usd_micros,token_address,token_amount_raw)
+                     VALUES ($1,$2,'serviceFeeSettled',$3,$4,$5),
+                            ($1,$2,'platformFeeSettled',$6,$4,$7)`,
+                    [
+                        order.id,
+                        order.walletAddress,
+                        order.fixedServiceFeeUsdMicros,
+                        order.paymentToken,
+                        serviceRaw.toString(),
+                        order.platformFeeUsdMicros,
+                        platformRaw.toString(),
+                    ],
+                )
+                await client.query(
+                    `UPDATE sponsorship_orders SET status='completed',swap_transaction_hash=$2,
+                            platform_fee_settled_at=now(),completed_at=now(),updated_at=now() WHERE id=$1`,
+                    [order.id, intent.transactionHash],
+                )
             }
-            await client.query(`UPDATE sponsorship_transaction_intents SET status='confirmed',updated_at=now() WHERE id=$1`, [intent.id])
+            await client.query(
+                `UPDATE sponsorship_transaction_intents SET status='confirmed',updated_at=now() WHERE id=$1`,
+                [intent.id],
+            )
             await client.query('COMMIT')
             return { status: 'confirmed' }
         } catch (error) {
@@ -767,107 +987,112 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
         }
     }
 
-    async function prepareContinuation(orderId: string, walletAddress: string, clientIp: string) {
-        const client = await dependencies.database.connect()
-        let order: OrderRow
-        try {
-            await client.query('BEGIN')
-            order = await loadOrder(client, orderId, walletAddress, true)
-            if (order.status !== 'approval-confirmed') throw new GasAssistError('APPROVAL_NOT_CONFIRMED', 'The sponsored approval must confirm first.', 409)
-            if (order.expiresAt <= dependencies.now()) throw new GasAssistError('ORDER_EXPIRED', 'The sponsorship order expired.', 409)
-            await client.query(`UPDATE sponsorship_orders SET status='swap-preparing',updated_at=now() WHERE id=$1`, [order.id])
-            await client.query('COMMIT')
-        } catch (error) {
-            await client.query('ROLLBACK').catch(() => undefined)
-            throw error
-        } finally {
-            client.release()
+    async function prepareContinuation(orderId: string, walletAddress: string, _clientIp: string) {
+        const config = getApiConfig().sponsorship
+        if (!config.normalSwapSponsorEnabled || config.emergencyDisabled) {
+            throw new GasAssistError('NORMAL_SWAP_SPONSORSHIP_DISABLED', 'Exact MegaFuel swap sponsorship is disabled.', 503)
         }
-        let quote
-        try {
-            quote = await gaslessService().quotePrepaid({
-                chainId: 56,
-                walletAddress,
-                sellToken: order.sellToken,
-                buyToken: order.buyToken,
-                sellAmount: order.netSwapAmountRaw,
-                slippageBps: Number(order.providerQuoteSnapshot.slippageBps),
-                clientIp,
-            }, order.id)
-        } catch (error) {
-            await dependencies.database.query(
-                `UPDATE sponsorship_orders SET status='approval-confirmed',updated_at=now()
-                 WHERE id=$1 AND status='swap-preparing' AND provider_quote_id IS NULL`,
-                [order.id],
-            )
-            throw error
+        let order = await loadOrder(dependencies.database, orderId, walletAddress)
+        if (order.status !== 'approval-confirmed') {
+            throw new GasAssistError('APPROVAL_NOT_CONFIRMED', 'The exact sponsored approval must confirm first.', 409)
         }
-        if (quote.sellAmount !== order.netSwapAmountRaw || BigInt(quote.minBuyAmount) < BigInt(order.minimumOutputRaw)) {
-            await dependencies.database.query(
-                `UPDATE sponsorship_orders SET status='rejected',rejection_code='FRESH_QUOTE_OUTSIDE_SLIPPAGE',updated_at=now() WHERE id=$1`,
-                [order.id],
-            )
+        if (order.expiresAt <= dependencies.now()) {
+            throw new GasAssistError('ORDER_EXPIRED', 'The five-minute sponsorship grant expired.', 409)
+        }
+        const rule = await dependencies.database.query<{ enabled: boolean; swapEnabled: boolean }>(
+            `SELECT enabled,normal_swap_sponsorship_enabled AS "swapEnabled"
+             FROM sponsorship_payment_tokens WHERE chain_id=56 AND token_address=$1`,
+            [order.sellToken],
+        )
+        if (!rule.rows[0]?.enabled || !rule.rows[0].swapEnabled) {
+            throw new GasAssistError('SELL_TOKEN_NOT_WHITELISTED', 'The sell token is no longer enabled for exact swap sponsorship.', 409)
+        }
+        const [sellDecimals, buyDecimals, allowance] = await Promise.all([
+            dependencies.chain.getTokenDecimals(order.sellToken),
+            order.buyToken === NATIVE_TOKEN_ADDRESS
+                ? Promise.resolve(18)
+                : dependencies.chain.getTokenDecimals(order.buyToken as Address),
+            dependencies.chain.getAllowance(order.sellToken, order.walletAddress, order.approvalSpender),
+        ])
+        if (allowance < BigInt(order.approvalAmountRaw)) {
+            throw new GasAssistError('ALLOWANCE_NOT_CONFIRMED', 'The exact approval is no longer sufficient.', 409)
+        }
+        const quote = await dependencies.quoteNormal({
+            wallet: order.walletAddress,
+            sellToken: order.sellToken,
+            buyToken: order.buyToken,
+            sellAmount: BigInt(order.netSwapAmountRaw),
+            sellTokenDecimals: sellDecimals,
+            buyTokenDecimals: buyDecimals,
+            slippageBps: Number(order.providerQuoteSnapshot.slippageBps),
+        })
+        if (!isAddressEqual(quote.allowanceTarget, order.approvalSpender) ||
+            BigInt(quote.minimumBuyAmount) < BigInt(order.minimumOutputRaw)) {
             throw new GasAssistError('FRESH_QUOTE_OUTSIDE_SLIPPAGE', 'The fresh 0x quote moved beyond the reviewed minimum output.', 409)
         }
-        await dependencies.database.query(
-            `UPDATE sponsorship_orders SET status='swap-preparing',provider_quote_id=$2,
-                    provider_quote_expires_at=$3,provider_fees=$4::jsonb,expected_output_raw=$5,
-                    minimum_output_raw=$6,updated_at=now()
-             WHERE id=$1 AND status='swap-preparing' AND provider_quote_id IS NULL`,
-            [order.id, quote.quoteId, quote.expiresAt, JSON.stringify(quote.fees), quote.buyAmount, quote.minBuyAmount],
-        )
-        return quote
-    }
-
-    async function settleGasless(order: OrderRow) {
-        if (!order.providerQuoteId || order.status !== 'swap-preparing') return
-        const stored = await gaslessService().load(order.providerQuoteId)
-        if (!stored?.tradeHash) return
-        const status = await gaslessService().status(stored.tradeHash)
-        if (!['confirmed', 'failed'].includes(status.status)) return
-        const client = await dependencies.database.connect()
-        try {
-            await client.query('BEGIN')
-            const locked = await loadOrder(client, order.id, order.walletAddress, true)
-            if (locked.status !== 'swap-preparing') {
-                await client.query('COMMIT')
-                return
-            }
-            if (status.status === 'confirmed') {
-                const reserveRaw = proportionalRawFloor(
-                    BigInt(locked.paymentAmountRaw),
-                    BigInt(locked.gasReserveUsdMicros),
-                    BigInt(locked.totalPrepaymentUsdMicros),
-                )
-                const commercialRaw = BigInt(locked.paymentAmountRaw) - reserveRaw
-                const serviceRaw = proportionalRawFloor(
-                    commercialRaw,
-                    BigInt(locked.fixedServiceFeeUsdMicros),
-                    BigInt(locked.commercialFeeUsdMicros),
-                )
-                const platformRaw = commercialRaw - serviceRaw
-                await client.query(
-                    `INSERT INTO sponsorship_ledger (order_id,wallet_address,entry_type,usd_micros,token_address,token_amount_raw)
-                     VALUES ($1,$2,'platformFeeSettled',$3,$4,$5)`,
-                    [locked.id, locked.walletAddress, locked.platformFeeUsdMicros, locked.paymentToken, platformRaw.toString()],
-                )
-                await createWalletCredit(client, locked, false, 'unused-gas-after-success')
-                await client.query(
-                    `UPDATE sponsorship_orders SET status='completed',swap_transaction_hash=$2,
-                            platform_fee_settled_at=now(),completed_at=now(),updated_at=now() WHERE id=$1`,
-                    [locked.id, status.transactionHash],
-                )
-            } else {
-                await createWalletCredit(client, locked, true, 'zero-x-provider-failure')
-                await client.query(`UPDATE sponsorship_orders SET status='failed',rejection_code='ZEROX_TRADE_FAILED',updated_at=now() WHERE id=$1`, [locked.id])
-            }
-            await client.query('COMMIT')
-        } catch (error) {
-            await client.query('ROLLBACK').catch(() => undefined)
-            throw error
-        } finally {
-            client.release()
+        const estimate = await dependencies.chain.estimateSponsoredAction({
+            wallet: order.walletAddress,
+            to: quote.transaction.to,
+            data: quote.transaction.data,
+            value: BigInt(quote.transaction.value),
+            maximumGas: BigInt(config.maximumSwapGas),
+        })
+        const consumedGas = BigInt(order.actualSponsoredGasUsdMicros ?? '0')
+        if (consumedGas + estimate.gasUsdMicros > BigInt(order.gasReserveUsdMicros)) {
+            throw new GasAssistError('GAS_RESERVE_EXCEEDED', 'The fresh swap gas exceeds the funded sponsorship reserve.', 409)
         }
+        await megaFuelPolicyManagement.add('ToAccountWhitelist', [quote.transaction.to])
+        await megaFuelPolicyManagement.add('ContractMethodSigWhitelist', [quoteSelector(quote)])
+        const refreshedSnapshot = {
+            ...order.providerQuoteSnapshot,
+            quote: {
+                quoteId: quote.quoteId,
+                expiresAt: quote.expiresAt,
+                sellToken: quote.sellToken,
+                buyToken: quote.buyToken,
+                sellAmount: quote.sellAmount,
+                buyAmount: quote.buyAmount,
+                minimumBuyAmount: quote.minimumBuyAmount,
+                allowanceTarget: quote.allowanceTarget,
+                transaction: quote.transaction,
+            },
+            swapGas: {
+                gasLimit: estimate.gasLimit.toString(),
+                currentGasPrice: estimate.currentGasPrice.toString(),
+                gasUsdMicros: estimate.gasUsdMicros.toString(),
+                observedAt: estimate.observedAt.toISOString(),
+            },
+        }
+        await dependencies.database.query(
+            `UPDATE sponsorship_orders SET provider_quote_id=$2,provider_quote_expires_at=$3,
+                    provider_quote_snapshot=$4::jsonb,provider_fees=$5::jsonb,
+                    expected_output_raw=$6,minimum_output_raw=$7,
+                    estimated_swap_gas_usd_micros=$8,updated_at=now()
+             WHERE id=$1 AND wallet_address=$9 AND status='approval-confirmed'`,
+            [
+                order.id,
+                quote.quoteId,
+                quote.expiresAt,
+                JSON.stringify(refreshedSnapshot),
+                JSON.stringify({ platformFee: quote.platformFee }),
+                quote.buyAmount,
+                quote.minimumBuyAmount,
+                estimate.gasUsdMicros.toString(),
+                order.walletAddress,
+            ],
+        )
+        order = await loadOrder(dependencies.database, order.id, order.walletAddress)
+        const nonce = await dependencies.paymaster.getNonce(order.walletAddress)
+        return persistPreparedIntent({
+            dependencies,
+            order,
+            action: 'normal-swap',
+            to: quote.transaction.to,
+            data: quote.transaction.data,
+            nativeValue: BigInt(quote.transaction.value),
+            estimate,
+            nonce,
+        })
     }
 
     async function refreshOrder(orderId: string, walletAddress: string) {
@@ -885,15 +1110,20 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
         )
         for (const intent of intents.rows) await refreshIntent(intent, order)
         order = await loadOrder(dependencies.database, orderId, walletAddress)
-        await settleGasless(order)
-        order = await loadOrder(dependencies.database, orderId, walletAddress)
         if (order.expiresAt <= dependencies.now() && !['completed', 'expired', 'rejected', 'failed'].includes(order.status)) {
             const client = await dependencies.database.connect()
             try {
                 await client.query('BEGIN')
                 const locked = await loadOrder(client, order.id, order.walletAddress, true)
-                if (locked.status.includes('confirmed') || ['approval-preparing', 'approval-submitted', 'swap-preparing'].includes(locked.status)) {
-                    await createWalletCredit(client, locked, true, 'order-abandoned-or-expired')
+                if ([
+                    'payment-confirmed',
+                    'approval-preparing',
+                    'approval-submitted',
+                    'approval-confirmed',
+                    'swap-preparing',
+                    'swap-submitted',
+                ].includes(locked.status)) {
+                    await createPendingRefund(client, locked, 'order-abandoned-or-expired')
                 }
                 await client.query(`UPDATE sponsorship_orders SET status='expired',rejection_code='ORDER_EXPIRED',updated_at=now() WHERE id=$1`, [locked.id])
                 await client.query(
@@ -929,8 +1159,9 @@ export function createSponsorshipIntentService(overrides: Partial<Dependencies> 
                 'payment-confirmed': 'prepare-approval',
                 'approval-preparing': 'sign-approval',
                 'approval-submitted': 'wait-approval-confirmation',
-                'approval-confirmed': 'request-fresh-zero-x-quote',
-                'swap-preparing': 'sign-zero-x-typed-data',
+                'approval-confirmed': 'prepare-sponsored-swap',
+                'swap-preparing': 'sign-sponsored-swap',
+                'swap-submitted': 'wait-swap-confirmation',
             }[updated.status] ?? null,
             confirmationCount: confirmations.length ? Math.min(...confirmations) : 0,
         }
