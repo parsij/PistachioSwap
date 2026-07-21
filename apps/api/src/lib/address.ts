@@ -1,9 +1,11 @@
+import type { Address } from 'viem'
+
 export const NATIVE_TOKEN_ADDRESS =
     '0x0000000000000000000000000000000000000000'
 
 export function normalizeAddress(
     value: unknown,
-): string | null {
+): Address | null {
     if (typeof value !== 'string') {
         return null
     }
@@ -11,7 +13,7 @@ export function normalizeAddress(
     const address = value.trim().toLowerCase()
 
     return /^0x[a-f0-9]{40}$/.test(address)
-        ? address
+        ? address as Address
         : null
 }
 
