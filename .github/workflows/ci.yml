@@ -7,12 +7,12 @@ on:
       - 'tools/apply_gas_assist_routing_fix.py'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  apply-and-validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@v4
@@ -20,23 +20,171 @@ jobs:
           ref: feature/megafuel-exact-prepaid-flow
           fetch-depth: 0
 
-      - name: Apply and capture exact result
-        id: apply
-        shell: bash
+      - name: Apply Gas Assist routing implementation
         run: |
-          set +e
-          python tools/apply_gas_assist_routing_fix.py > routing-fix-apply.log 2>&1
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          cat routing-fix-apply.log
-          exit 0
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_gas_assist_routing_fix.py')
+          source = path.read_text()
+          marker = '\nreplace_once(\n    ".github/workflows/ci.yml",'
+          if marker not in source:
+              raise RuntimeError('CI-tail marker was not found in the staged routing script.')
+          implementation = source.split(marker, 1)[0]
+          exec(compile(implementation, str(path), 'exec'))
+          PY
+          rm -f tools/apply_gas_assist_routing_fix.py
+          rm -f .github/workflows/apply-gas-assist-routing-fix.yml
+          rm -f routing-fix-apply.log
 
-      - name: Upload diagnostic log
-        uses: actions/upload-artifact@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
-          name: routing-fix-apply-log
-          path: routing-fix-apply.log
+          version: 10.30.3
 
-      - name: Fail when patch application failed
-        if: ${{ steps.apply.outputs.status != '0' }}
-        run: exit 1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Frontend Gas Assist routing tests
+        run: >-
+          pnpm exec vitest run
+          src/features/gas-assist/services/rawTransactionSigning.test.js
+          src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
+          src/features/gas-assist/hooks/useGasAssistController.test.jsx
+          src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
+          src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
+          src/services/swapExecutionMode.test.js
+          --reporter=verbose
+
+      - name: API typecheck
+        run: pnpm --filter @pistachio/api typecheck
+
+      - name: API MegaFuel tests
+        run: >-
+          pnpm --filter @pistachio/api exec vitest run
+          test/prepaid-sponsorship.test.ts
+          test/megafuel-exact-payment.test.ts
+          test/megafuel-normal-swap.test.ts
+          test/megafuel-two-policy.test.ts
+          --reporter=verbose
+
+      - name: Frontend build
+        run: pnpm build
+
+      - name: Install final read-only CI workflow
+        run: |
+          cat > .github/workflows/ci.yml <<'EOF'
+          name: MegaFuel exact flow
+
+          on:
+            pull_request:
+              paths:
+                - '.github/workflows/ci.yml'
+                - 'apps/api/.env.megafuel.example'
+                - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+                - 'apps/api/src/app.ts'
+                - 'apps/api/src/config.ts'
+                - 'apps/api/src/db/schema.ts'
+                - 'apps/api/src/gas-assist/**'
+                - 'apps/api/src/modules/sponsorship-admin.ts'
+                - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
+                - 'apps/api/test/megafuel-exact-payment.test.ts'
+                - 'apps/api/test/megafuel-normal-swap.test.ts'
+                - 'apps/api/test/megafuel-two-policy.test.ts'
+                - 'apps/api/test/prepaid-sponsorship.test.ts'
+                - 'docs/megafuel-exact-payment-rollout.md'
+                - 'src/features/gas-assist/**'
+                - 'src/features/swap/**'
+                - 'src/services/swapExecutionMode*'
+            push:
+              branches:
+                - main
+              paths:
+                - '.github/workflows/ci.yml'
+                - 'apps/api/.env.megafuel.example'
+                - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+                - 'apps/api/src/app.ts'
+                - 'apps/api/src/config.ts'
+                - 'apps/api/src/db/schema.ts'
+                - 'apps/api/src/gas-assist/**'
+                - 'apps/api/src/modules/sponsorship-admin.ts'
+                - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
+                - 'apps/api/test/megafuel-exact-payment.test.ts'
+                - 'apps/api/test/megafuel-normal-swap.test.ts'
+                - 'apps/api/test/megafuel-two-policy.test.ts'
+                - 'apps/api/test/prepaid-sponsorship.test.ts'
+                - 'docs/megafuel-exact-payment-rollout.md'
+                - 'src/features/gas-assist/**'
+                - 'src/features/swap/**'
+                - 'src/services/swapExecutionMode*'
+
+          permissions:
+            contents: read
+
+          jobs:
+            validate:
+              runs-on: ubuntu-latest
+              timeout-minutes: 20
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+
+                - name: Set up pnpm
+                  uses: pnpm/action-setup@v4
+                  with:
+                    version: 10.30.3
+
+                - name: Set up Node.js
+                  uses: actions/setup-node@v4
+                  with:
+                    node-version: 24
+                    cache: pnpm
+
+                - name: Install dependencies
+                  run: pnpm install --frozen-lockfile
+
+                - name: Lint
+                  run: pnpm lint
+
+                - name: Frontend Gas Assist routing tests
+                  run: >-
+                    pnpm exec vitest run
+                    src/features/gas-assist/services/rawTransactionSigning.test.js
+                    src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
+                    src/features/gas-assist/hooks/useGasAssistController.test.jsx
+                    src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
+                    src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
+                    src/services/swapExecutionMode.test.js
+                    --reporter=verbose
+
+                - name: API typecheck
+                  run: pnpm --filter @pistachio/api typecheck
+
+                - name: API MegaFuel tests
+                  run: >-
+                    pnpm --filter @pistachio/api exec vitest run
+                    test/prepaid-sponsorship.test.ts
+                    test/megafuel-exact-payment.test.ts
+                    test/megafuel-normal-swap.test.ts
+                    test/megafuel-two-policy.test.ts
+                    --reporter=verbose
+
+                - name: Frontend build
+                  run: pnpm build
+          EOF
+
+      - name: Commit validated implementation
+        run: |
+          git config user.name 'parsij'
+          git config user.email '205437194+parsij@users.noreply.github.com'
+          git add -A
+          git commit -m 'Route low-BNB swaps through prepaid Gas Assist'
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
