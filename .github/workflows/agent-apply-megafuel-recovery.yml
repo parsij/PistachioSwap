@@ -1,0 +1,89 @@
+name: Apply MegaFuel recovery patch
+
+on:
+  pull_request_target:
+    types: [synchronize]
+    branches: [main]
+    paths:
+      - '.github/agent-megafuel-trigger.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/megafuel-exact-prepaid-flow'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Verify and apply reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_workflow='.github/workflows/agent-megafuel-durable-recovery.yml'
+          if [[ ! -f "$patch_workflow" ]]; then
+            echo 'Patch workflow was already consumed.'
+            exit 0
+          fi
+          test "$(git hash-object "$patch_workflow")" = '66ee520ab3c9f2a799cd456cc359d4950c380693'
+          awk '
+            /- name: Apply durable intent patch/ { seen=1; next }
+            seen && /^[[:space:]]+run: \|$/ { capture=1; next }
+            capture && /^      - name:/ { exit }
+            capture { sub(/^          /, ""); print }
+          ' "$patch_workflow" > /tmp/apply-durable-intents.sh
+          test -s /tmp/apply-durable-intents.sh
+          bash /tmp/apply-durable-intents.sh
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: API typecheck
+        run: pnpm --filter @pistachio/api typecheck
+
+      - name: Durable MegaFuel tests
+        run: >-
+          pnpm --filter @pistachio/api exec vitest run
+          test/megafuel-durable-intents.test.ts
+          test/prepaid-sponsorship.test.ts
+          test/megafuel-exact-payment.test.ts
+          test/megafuel-normal-swap.test.ts
+          test/megafuel-two-policy.test.ts
+          --reporter=verbose
+
+      - name: Commit verified feature changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/agent-megafuel-durable-recovery.yml
+          rm -f .github/agent-megafuel-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No feature changes remain to commit.'
+            exit 0
+          fi
+          git commit -m 'Persist and recover signed MegaFuel intents'
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
