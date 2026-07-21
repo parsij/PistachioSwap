@@ -1,12 +1,15 @@
 import type { Address } from 'viem'
 
 import { getTokenPrices } from '../../providers/alchemy/token-prices.js'
-import { getCoinGeckoToken } from '../../providers/coingecko/token-data.js'
-import { tokenSecurityService } from '../../providers/security/token-security.js'
-import type {
-    GoPlusTokenSecurity,
-    HoneypotTokenSecurity,
-} from '../../providers/security/types.js'
+import {
+    getHoneypotTokenSecurity,
+    unavailableHoneypotSecurity,
+} from '../../providers/security/honeypot-token-security.js'
+import type { HoneypotTokenSecurity, SecurityStatus } from '../../providers/security/types.js'
+import {
+    getMoralisSponsorshipTokenEvidence,
+    type MoralisSponsorshipTokenEvidence,
+} from '../../providers/moralis/sponsorship-token-evidence.js'
 import { ceilDiv, parseFixed } from './fixed-point.js'
 
 function optionalMicros(value: string | null | undefined) {
@@ -30,11 +33,6 @@ function deviationBps(primary: bigint, reference: bigint | null) {
 
 function optionalReferenceDeviationBps(primary: bigint | null, reference: bigint | null) {
     if (primary === null || primary <= 0n) return null
-
-    // Alchemy is the authoritative billing price. CoinGecko is an optional
-    // cross-check, so a missing CoinGecko mapping must not remove a manually
-    // whitelisted payment token. When the reference exists, its deviation is
-    // still enforced by the token's configured maximum deviation.
     return reference === null || reference <= 0n
         ? 0
         : deviationBps(primary, reference)
@@ -45,61 +43,60 @@ function isZeroDecimal(value: string | null) {
     return parsed === 0n
 }
 
-function hasExactTransferEvidence({
-    honeypot,
-    goPlus,
-}: {
-    honeypot: HoneypotTokenSecurity
-    goPlus: GoPlusTokenSecurity
-}) {
-    const honeypotConfirmsExactTransfer =
-        honeypot.available &&
+function hasExactTransferEvidence(honeypot: HoneypotTokenSecurity) {
+    return honeypot.available &&
         honeypot.simulationSuccess === true &&
         isZeroDecimal(honeypot.transferTaxPercent) &&
         isZeroDecimal(honeypot.sellTaxPercent)
+}
 
-    if (!honeypotConfirmsExactTransfer) return false
+function classifyMoralisSecurity(evidence: MoralisSponsorshipTokenEvidence): SecurityStatus {
+    if (!evidence.available) return 'unknown'
+    if (evidence.possibleSpam === true) return 'blocked'
 
-    // Honeypot.is supplies an actual transfer/sell simulation. When GoPlus is
-    // disabled or temporarily unavailable, that successful zero-tax simulation
-    // is sufficient for a manually enabled payment token. If GoPlus is present,
-    // it must not contradict the simulation with mutable-tax or balance controls.
-    if (!goPlus.available) return true
-
-    return isZeroDecimal(goPlus.transferTaxFraction) &&
-        goPlus.ownerCanChangeBalance === false &&
-        goPlus.taxModifiable === false
+    const score = evidence.securityScore
+    if (score !== null && score < 20) return 'blocked'
+    if (score !== null && score < 50) return 'high'
+    if (score !== null && score < 70) return 'caution'
+    if (evidence.verifiedContract === false) return 'caution'
+    if (score !== null && score >= 80 && evidence.verifiedContract === true) return 'trusted'
+    if (score !== null && score >= 70) return 'low'
+    if (evidence.verifiedContract === true) return 'low'
+    return 'unknown'
 }
 
 export async function getSponsorshipTokenEvidence(address: Address) {
     const observedAt = new Date()
-    const [prices, coinGecko, security] = await Promise.all([
+    const [prices, honeypot, moralis] = await Promise.all([
         getTokenPrices({ addresses: [address] }),
-        getCoinGeckoToken(address),
-        tokenSecurityService.refresh(address),
+        getHoneypotTokenSecurity(address).catch(() => unavailableHoneypotSecurity(address)),
+        getMoralisSponsorshipTokenEvidence(address),
     ])
+
     const price = prices.get(address.toLowerCase())
     const priceUsdMicros = optionalMicros(price)
-    const marketPriceUsdMicros = optionalMicros(coinGecko?.priceUSD)
+    const moralisPriceUsdMicros = optionalMicros(moralis.priceUsd)
     const liquidityUsdMicros = maximum([
-        optionalMicros(security.honeypot.liquidityUsd),
-        optionalMicros(security.goPlus.dexLiquidityUsd),
+        optionalMicros(honeypot.liquidityUsd),
+        optionalMicros(moralis.liquidityUsd),
     ])
-    const exactTransferKnown = hasExactTransferEvidence({
-        honeypot: security.honeypot,
-        goPlus: security.goPlus,
-    })
 
     return {
         priceUsdMicros,
         priceObservedAt: observedAt,
         priceDeviationBps: optionalReferenceDeviationBps(
             priceUsdMicros,
-            marketPriceUsdMicros,
+            moralisPriceUsdMicros,
         ),
         liquidityUsdMicros,
-        securityStatus: security.securityStatus,
-        transferBehavior: exactTransferKnown ? 'exact' as const : 'unknown' as const,
+        securityStatus: classifyMoralisSecurity(moralis),
+        transferBehavior: hasExactTransferEvidence(honeypot)
+            ? 'exact' as const
+            : 'unknown' as const,
+        moralisAvailable: moralis.available,
+        moralisSecurityScore: moralis.securityScore,
+        moralisPossibleSpam: moralis.possibleSpam,
+        moralisVerifiedContract: moralis.verifiedContract,
     }
 }
 
@@ -108,4 +105,5 @@ export const tokenEvidenceInternals = {
     deviationBps,
     optionalReferenceDeviationBps,
     hasExactTransferEvidence,
+    classifyMoralisSecurity,
 }
