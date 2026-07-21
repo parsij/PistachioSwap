@@ -30,22 +30,42 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Validate patched tree
+        id: validate
+        continue-on-error: true
         run: |
-          pnpm --filter @pistachio/api typecheck
-          pnpm --filter @pistachio/api exec vitest run \
-            test/megafuel-presigned-package.test.ts \
-            test/token-evidence-exact-transfer.test.ts \
-            test/megafuel-durable-intents.test.ts \
-            test/megafuel-exact-payment.test.ts \
-            test/megafuel-normal-swap.test.ts \
-            --reporter=verbose
-          pnpm exec vitest run \
-            src/features/gas-assist/services/rawTransactionSigning.package.test.js \
-            src/features/gas-assist/services/rawTransactionSigning.test.js \
-            src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
-            src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx \
-            --reporter=verbose
-          pnpm build
+          set -o pipefail
+          {
+            echo '=== API typecheck ==='
+            pnpm --filter @pistachio/api typecheck
+            echo '=== API focused tests ==='
+            pnpm --filter @pistachio/api exec vitest run \
+              test/megafuel-presigned-package.test.ts \
+              test/token-evidence-exact-transfer.test.ts \
+              test/megafuel-durable-intents.test.ts \
+              test/megafuel-exact-payment.test.ts \
+              test/megafuel-normal-swap.test.ts \
+              --reporter=verbose
+            echo '=== Frontend focused tests ==='
+            pnpm exec vitest run \
+              src/features/gas-assist/services/rawTransactionSigning.package.test.js \
+              src/features/gas-assist/services/rawTransactionSigning.test.js \
+              src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
+              src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx \
+              --reporter=verbose
+            echo '=== Frontend build ==='
+            pnpm build
+          } 2>&1 | tee presigned-package-validation.log
+      - name: Upload validation log
+        if: steps.validate.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: presigned-package-validation-log
+          path: presigned-package-validation.log
+          retention-days: 3
+          if-no-files-found: error
+      - name: Fail validation
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
       - name: Commit patched tree
         run: |
           git config user.name github-actions[bot]
