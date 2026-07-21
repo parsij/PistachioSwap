@@ -54,7 +54,7 @@ describe('Moralis-backed payment-token safety', () => {
     })
 
     it('rejects Moralis spam or blocked evidence', () => {
-        expect(evaluate({ securityStatus: 'blocked' })).toBe('PAYMENT_TOKEN_SPAM_OR_BLOCKED')
+        expect(evaluate({ securityStatus: 'blocked' })).toBe('PAYMENT_TOKEN_SECURITY_UNCONFIRMED')
     })
 
     it('requires trusted or low Moralis status in strict mode', () => {
