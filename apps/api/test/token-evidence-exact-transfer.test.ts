@@ -5,7 +5,10 @@ import { unavailableHoneypotSecurity } from '../src/providers/security/honeypot-
 import { tokenEvidenceInternals } from '../src/gas-assist/prepaid/token-evidence.js'
 
 const address = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
-const { hasExactTransferEvidence } = tokenEvidenceInternals
+const {
+    hasExactTransferEvidence,
+    optionalReferenceDeviationBps,
+} = tokenEvidenceInternals
 
 function successfulHoneypot() {
     return {
@@ -16,6 +19,20 @@ function successfulHoneypot() {
         transferTaxPercent: '0',
     }
 }
+
+describe('payment-token price reference evidence', () => {
+    it('allows an authoritative price when the optional reference is unavailable', () => {
+        expect(optionalReferenceDeviationBps(4_000_000_000n, null)).toBe(0)
+    })
+
+    it('still calculates deviation when the optional reference is available', () => {
+        expect(optionalReferenceDeviationBps(4_000_000_000n, 3_960_000_000n)).toBe(100)
+    })
+
+    it('rejects a missing authoritative price', () => {
+        expect(optionalReferenceDeviationBps(null, 4_000_000_000n)).toBeNull()
+    })
+})
 
 describe('exact sponsorship-transfer evidence', () => {
     it('accepts a successful zero-tax Honeypot simulation when GoPlus is unavailable', () => {
