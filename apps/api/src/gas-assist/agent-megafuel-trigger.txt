@@ -1,0 +1,1 @@
+Trigger the existing MegaFuel exact flow CI, then apply the reviewed durable signed-intent patch.
