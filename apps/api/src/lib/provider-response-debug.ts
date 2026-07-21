@@ -5,17 +5,25 @@ const MAX_SERIALIZED_LENGTH = 60_000
 
 const SENSITIVE_KEY = /(?:api[_-]?key|authorization|cookie|access[_-]?token|private[_-]?key|secret|password|mnemonic|recovery[_-]?phrase|signature|signed[_-]?raw[_-]?transaction)/i
 
+function sanitizeProviderString(value: string) {
+    const redacted = value
+        .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+        .replace(/([?&](?:api[_-]?key|key|token|secret|access_token)=)[^&\s]+/gi, '$1[REDACTED]')
+        .replace(/(\/prices\/v1\/)[^/\s]+/gi, '$1[REDACTED]')
+        .replace(/(open-platform[^/\s]*\/)[^/\s]+(\/megafuel\/)/gi, '$1[REDACTED]$2')
+
+    return redacted.length > MAX_STRING_LENGTH
+        ? `${redacted.slice(0, MAX_STRING_LENGTH)}...[TRUNCATED]`
+        : redacted
+}
+
 function sanitizeProviderValue(value: unknown, depth = 0): unknown {
     if (depth > MAX_DEPTH) return '[MAX_DEPTH_REACHED]'
     if (value === null || value === undefined || typeof value === 'boolean' || typeof value === 'number') {
         return value
     }
     if (typeof value === 'bigint') return value.toString()
-    if (typeof value === 'string') {
-        return value.length > MAX_STRING_LENGTH
-            ? `${value.slice(0, MAX_STRING_LENGTH)}...[TRUNCATED]`
-            : value
-    }
+    if (typeof value === 'string') return sanitizeProviderString(value)
     if (Array.isArray(value)) {
         const items = value
             .slice(0, MAX_ARRAY_ITEMS)
@@ -29,8 +37,8 @@ function sanitizeProviderValue(value: unknown, depth = 0): unknown {
     if (value instanceof Error) {
         return {
             name: value.name,
-            message: value.message,
-            stack: value.stack,
+            message: sanitizeProviderString(value.message),
+            stack: value.stack ? sanitizeProviderString(value.stack) : undefined,
             cause: sanitizeProviderValue(value.cause, depth + 1),
         }
     }
@@ -43,7 +51,7 @@ function sanitizeProviderValue(value: unknown, depth = 0): unknown {
         }
         return result
     }
-    return String(value)
+    return sanitizeProviderString(String(value))
 }
 
 type SponsorshipProvider = 'alchemy' | 'coingecko' | 'honeypot' | 'moralis'
@@ -70,5 +78,6 @@ export function logProviderResponse(
 }
 
 export const providerResponseDebugInternals = {
+    sanitizeProviderString,
     sanitizeProviderValue,
 }
