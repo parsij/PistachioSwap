@@ -1,0 +1,76 @@
+name: Apply Gas Assist routing fix
+
+on:
+  push:
+    branches:
+      - feature/megafuel-exact-prepaid-flow
+    paths:
+      - 'tools/apply_gas_assist_routing_fix.py'
+      - '.github/workflows/apply-gas-assist-routing-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.repository == 'parsij/PistachioSwap'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/megafuel-exact-prepaid-flow
+          fetch-depth: 0
+
+      - name: Apply routing fix
+        run: python tools/apply_gas_assist_routing_fix.py
+
+      - name: Remove one-shot files
+        run: |
+          rm tools/apply_gas_assist_routing_fix.py
+          rm .github/workflows/apply-gas-assist-routing-fix.yml
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate routing and confirmation flow
+        run: |
+          set -euo pipefail
+          pnpm lint
+          pnpm exec vitest run \
+            src/features/gas-assist/services/rawTransactionSigning.test.js \
+            src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
+            src/features/gas-assist/hooks/useGasAssistController.test.jsx \
+            src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx \
+            src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx \
+            src/services/swapExecutionMode.test.js \
+            --reporter=verbose
+          pnpm --filter @pistachio/api typecheck
+          pnpm --filter @pistachio/api exec vitest run \
+            test/prepaid-sponsorship.test.ts \
+            test/megafuel-exact-payment.test.ts \
+            test/megafuel-normal-swap.test.ts \
+            test/megafuel-two-policy.test.ts \
+            --reporter=verbose
+          pnpm build
+
+      - name: Commit validated fix
+        run: |
+          set -euo pipefail
+          git config user.name 'parsij'
+          git config user.email '205437194+parsij@users.noreply.github.com'
+          git add -A
+          git commit -m 'Route low-BNB swaps through prepaid Gas Assist'
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
