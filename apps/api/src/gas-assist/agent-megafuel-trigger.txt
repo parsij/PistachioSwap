@@ -1,1 +1,1 @@
-Trigger run 2: apply the reviewed durable MegaFuel signed-intent recovery patch after CI.
+Trigger run 3: apply the durable MegaFuel signed-intent recovery patch after successful CI.
