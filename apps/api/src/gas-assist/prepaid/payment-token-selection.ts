@@ -1,4 +1,4 @@
-import { normalizeAddress } from '../../lib/address.js'
+import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../../lib/address.js'
 
 export type PaymentTokenCandidate = {
     chainId: number
@@ -38,7 +38,7 @@ export type CandidateRejection = {
 
 function relationshipRank(address: string, sellToken: string, buyToken: string) {
     if (address === sellToken) return 1
-    if (address === buyToken) return 2
+    if (buyToken !== NATIVE_TOKEN_ADDRESS && address === buyToken) return 2
     return 3
 }
 
@@ -102,7 +102,9 @@ export function selectPaymentToken({
     configuredMinimumLiquidityUsdMicros: bigint
 }): { selection: PaymentTokenSelection | null; rejections: CandidateRejection[] } {
     const normalizedSell = normalizeAddress(sellToken)
-    const normalizedBuy = normalizeAddress(buyToken)
+    const normalizedBuy = buyToken === NATIVE_TOKEN_ADDRESS
+        ? NATIVE_TOKEN_ADDRESS
+        : normalizeAddress(buyToken)
     if (!normalizedSell || !normalizedBuy) {
         return { selection: null, rejections: [] }
     }
