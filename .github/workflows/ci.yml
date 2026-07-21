@@ -12,12 +12,14 @@ on:
       - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
       - 'apps/api/src/gas-assist/**'
       - 'apps/api/src/providers/alchemy/token-prices.ts'
+      - 'apps/api/src/providers/moralis/sponsorship-token-evidence.ts'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
       - 'apps/api/test/megafuel-exact-payment.test.ts'
       - 'apps/api/test/megafuel-normal-swap.test.ts'
       - 'apps/api/test/megafuel-two-policy.test.ts'
+      - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
       - 'apps/api/test/token-evidence-exact-transfer.test.ts'
@@ -39,12 +41,14 @@ on:
       - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
       - 'apps/api/src/gas-assist/**'
       - 'apps/api/src/providers/alchemy/token-prices.ts'
+      - 'apps/api/src/providers/moralis/sponsorship-token-evidence.ts'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
       - 'apps/api/test/megafuel-exact-payment.test.ts'
       - 'apps/api/test/megafuel-normal-swap.test.ts'
       - 'apps/api/test/megafuel-two-policy.test.ts'
+      - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
       - 'apps/api/test/token-evidence-exact-transfer.test.ts'
@@ -104,6 +108,7 @@ jobs:
           test/megafuel-exact-payment.test.ts
           test/megafuel-normal-swap.test.ts
           test/megafuel-two-policy.test.ts
+          test/moralis-sponsorship-evidence.test.ts
           test/payment-token-selection-native.test.ts
           test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
