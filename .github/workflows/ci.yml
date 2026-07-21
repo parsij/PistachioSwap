@@ -25,6 +25,7 @@ on:
       - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
+      - 'apps/api/test/paymaster-sponsorability-fallback.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
       - 'apps/api/test/provider-response-debug.test.ts'
       - 'apps/api/test/token-evidence-exact-transfer.test.ts'
@@ -59,6 +60,7 @@ on:
       - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/moralis-sponsorship-evidence.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
+      - 'apps/api/test/paymaster-sponsorability-fallback.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
       - 'apps/api/test/provider-response-debug.test.ts'
       - 'apps/api/test/token-evidence-exact-transfer.test.ts'
@@ -120,6 +122,7 @@ jobs:
           test/megafuel-two-policy.test.ts
           test/moralis-sponsorship-evidence.test.ts
           test/payment-token-selection-native.test.ts
+          test/paymaster-sponsorability-fallback.test.ts
           test/provider-response-debug.test.ts
           test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
