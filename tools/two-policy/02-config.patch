@@ -1,0 +1,35 @@
+diff --git a/apps/api/src/config.ts b/apps/api/src/config.ts
+index 52e9a5e..dc95fa8 100644
+--- a/apps/api/src/config.ts
++++ b/apps/api/src/config.ts
+@@ -761,8 +761,10 @@ export function getApiConfig() {
+                 'prepaid',
+             chainId: readConfiguredInteger('MEGAFUEL_CHAIN_ID', 56, 1),
+             apiKey: process.env.MEGAFUEL_API_KEY?.trim() || null,
+-            privatePolicyUuid:
+-                process.env.MEGAFUEL_PRIVATE_POLICY_UUID?.trim() || null,
++            feePolicyUuid:
++                process.env.MEGAFUEL_FEE_POLICY_UUID?.trim() || null,
++            actionPolicyUuid:
++                process.env.MEGAFUEL_ACTION_POLICY_UUID?.trim() || null,
+             privateRpcBaseUrl: readUrl(
+                 'MEGAFUEL_PRIVATE_RPC_BASE_URL',
+                 'https://open-platform-ap.nodereal.io',
+@@ -1118,8 +1120,15 @@ export function validateStartupConfig(config = getApiConfig()) {
+             errors.push('GAS_ASSIST_MODE must be zero-x-gasless')
+         }
+         if (!config.quotes.zeroX.apiKey) errors.push('ZEROX_API_KEY is required')
+-        if (!config.sponsorship.privatePolicyUuid) {
+-            errors.push('MEGAFUEL_PRIVATE_POLICY_UUID is required')
++        if (!config.sponsorship.feePolicyUuid) {
++            errors.push('MEGAFUEL_FEE_POLICY_UUID is required')
++        }
++        if (!config.sponsorship.actionPolicyUuid) {
++            errors.push('MEGAFUEL_ACTION_POLICY_UUID is required')
++        }
++        if (config.sponsorship.feePolicyUuid && config.sponsorship.actionPolicyUuid &&
++            config.sponsorship.feePolicyUuid === config.sponsorship.actionPolicyUuid) {
++            errors.push('MEGAFUEL_FEE_POLICY_UUID and MEGAFUEL_ACTION_POLICY_UUID must be different')
+         }
+         if (!config.sponsorship.databaseConfigured) errors.push('DATABASE_URL is required')
+         if (!config.fees.treasuryAddress || config.fees.treasuryAddress === NATIVE_TOKEN_ADDRESS) {
