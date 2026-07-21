@@ -8,7 +8,7 @@ on:
       - '.github/fix-presigned-validation.py'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apply:
@@ -69,30 +69,21 @@ jobs:
       - name: Fail validation
         if: steps.validate.outcome == 'failure'
         run: exit 1
-      - name: Package validated tree
+      - name: Restore bootstrap files
         run: |
-          git diff --name-status HEAD > presigned-final-name-status.txt
-          python <<'PY'
-          from pathlib import Path
-          import subprocess
-          import tarfile
-
-          paths = subprocess.check_output([
-              'git', 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD',
-          ], text=True).splitlines()
-          with tarfile.open('presigned-final-files.tar.gz', 'w:gz') as archive:
-              for value in paths:
-                  path = Path(value)
-                  if path.is_file():
-                      archive.add(path, arcname=value)
-          PY
-      - name: Upload validated tree
-        uses: actions/upload-artifact@v4
-        with:
-          name: presigned-package-validated-tree
-          path: |
-            presigned-final-name-status.txt
-            presigned-final-files.tar.gz
-            presigned-package-validation.log
-          retention-days: 3
-          if-no-files-found: error
+          git checkout HEAD -- \
+            .github/workflows/ci.yml \
+            .github/workflows/agent-presigned-package.yml \
+            .github/apply-presigned-package.py \
+            .github/fix-presigned-validation.py
+      - name: Commit validated application tree
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          if git diff --cached --name-only | grep -E '^\.github/(workflows/|apply-presigned-package\.py$|fix-presigned-validation\.py$)'; then
+            echo 'Bootstrap files unexpectedly changed' >&2
+            exit 1
+          fi
+          git commit -m "Implement durable pre-signed sponsorship packages"
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
