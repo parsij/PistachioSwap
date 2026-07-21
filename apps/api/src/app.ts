@@ -7,6 +7,7 @@ import { closeDatabase } from './db/client.js'
 import { gasAssistErrorBody } from './gas-assist/errors.js'
 import { createWalletAuthService } from './gas-assist/prepaid/auth.js'
 import { createDurableSponsorshipIntentService } from './gas-assist/prepaid/durable-intent-service.js'
+import { createSponsorshipPackageService } from './gas-assist/prepaid/package-service.js'
 import { assertGasAssistReady } from './gas-assist/readiness.js'
 import { gasAssistRoutes } from './modules/gas-assist.js'
 import { crossChainRoutes } from './modules/cross-chain.js'
@@ -42,6 +43,7 @@ export function createApp() {
                     'req.headers.0x-api-key',
                     'req.body.signedTransaction',
                     'req.body.signedRawTransaction',
+                    'req.body.signedTransactions[*].signedRawTransaction',
                     'req.body.approvalSignature',
                     'req.body.tradeSignature',
                     'req.body.signature',
@@ -57,6 +59,13 @@ export function createApp() {
     const getDurableSponsorship = () => {
         durableSponsorship ??= createDurableSponsorshipIntentService()
         return durableSponsorship
+    }
+    let sponsorshipPackages: ReturnType<
+        typeof createSponsorshipPackageService
+    > | null = null
+    const getSponsorshipPackages = () => {
+        sponsorshipPackages ??= createSponsorshipPackageService()
+        return sponsorshipPackages
     }
     let stopMarketCatalogRefresh: (() => void) | null = null
     let stopSponsorshipRecovery: (() => void) | null = null
@@ -111,10 +120,13 @@ export function createApp() {
             }
 
             const params = request.params as { orderId?: string }
-            await durable.reconcileOrder(
-                String(params.orderId ?? ''),
+            const orderId = String(params.orderId ?? '')
+            await durable.reconcileOrder(orderId, session.walletAddress)
+            await getSponsorshipPackages().advanceOrder(
+                orderId,
                 session.walletAddress,
             )
+            await durable.reconcileOrder(orderId, session.walletAddress)
         } catch (error) {
             const response = gasAssistErrorBody(error)
             return reply.code(response.statusCode).send(response.body)
@@ -136,19 +148,30 @@ export function createApp() {
         if (process.env.NODE_ENV !== 'test') {
             if (config.sponsorship.enabled) {
                 const durable = getDurableSponsorship()
+                const packages = getSponsorshipPackages()
                 let recoveryRunning = false
                 const runRecovery = async () => {
                     if (recoveryRunning) return
                     recoveryRunning = true
                     try {
+                        const packagesBefore =
+                            await packages.advancePendingPackages()
                         const summary = await durable.recoverPendingIntents()
+                        const packagesAfter =
+                            await packages.advancePendingPackages()
                         if (summary.reconciled > 0 ||
                             summary.rebroadcast > 0 ||
-                            summary.failed > 0) {
+                            summary.failed > 0 ||
+                            packagesBefore.started > 0 ||
+                            packagesAfter.started > 0 ||
+                            packagesBefore.failed > 0 ||
+                            packagesAfter.failed > 0) {
                             app.log.info({
                                 subsystem: 'sponsorship-recovery',
-                                ...summary,
-                            }, 'Durable sponsorship intents reconciled')
+                                durable: summary,
+                                packagesBefore,
+                                packagesAfter,
+                            }, 'Durable sponsorship package recovery advanced')
                         }
                     } catch (error) {
                         app.log.warn({
