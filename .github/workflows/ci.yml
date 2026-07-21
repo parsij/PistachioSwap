@@ -20,6 +20,7 @@ on:
       - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'apps/api/test/token-evidence-exact-transfer.test.ts'
       - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
@@ -46,6 +47,7 @@ on:
       - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/payment-token-selection-native.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'apps/api/test/token-evidence-exact-transfer.test.ts'
       - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
@@ -103,6 +105,7 @@ jobs:
           test/megafuel-normal-swap.test.ts
           test/megafuel-two-policy.test.ts
           test/payment-token-selection-native.test.ts
+          test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
           --reporter=verbose
 
