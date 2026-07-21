@@ -28,6 +28,18 @@ function deviationBps(primary: bigint, reference: bigint | null) {
     return Number(ceilDiv(difference * 10_000n, primary))
 }
 
+function optionalReferenceDeviationBps(primary: bigint | null, reference: bigint | null) {
+    if (primary === null || primary <= 0n) return null
+
+    // Alchemy is the authoritative billing price. CoinGecko is an optional
+    // cross-check, so a missing CoinGecko mapping must not remove a manually
+    // whitelisted payment token. When the reference exists, its deviation is
+    // still enforced by the token's configured maximum deviation.
+    return reference === null || reference <= 0n
+        ? 0
+        : deviationBps(primary, reference)
+}
+
 function isZeroDecimal(value: string | null) {
     const parsed = optionalMicros(value)
     return parsed === 0n
@@ -81,9 +93,10 @@ export async function getSponsorshipTokenEvidence(address: Address) {
     return {
         priceUsdMicros,
         priceObservedAt: observedAt,
-        priceDeviationBps: priceUsdMicros === null
-            ? null
-            : deviationBps(priceUsdMicros, marketPriceUsdMicros),
+        priceDeviationBps: optionalReferenceDeviationBps(
+            priceUsdMicros,
+            marketPriceUsdMicros,
+        ),
         liquidityUsdMicros,
         securityStatus: security.securityStatus,
         transferBehavior: exactTransferKnown ? 'exact' as const : 'unknown' as const,
@@ -93,5 +106,6 @@ export async function getSponsorshipTokenEvidence(address: Address) {
 export const tokenEvidenceInternals = {
     optionalMicros,
     deviationBps,
+    optionalReferenceDeviationBps,
     hasExactTransferEvidence,
 }
