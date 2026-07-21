@@ -3,6 +3,10 @@ import type { Address } from 'viem'
 import { getTokenPrices } from '../../providers/alchemy/token-prices.js'
 import { getCoinGeckoToken } from '../../providers/coingecko/token-data.js'
 import { tokenSecurityService } from '../../providers/security/token-security.js'
+import type {
+    GoPlusTokenSecurity,
+    HoneypotTokenSecurity,
+} from '../../providers/security/types.js'
 import { ceilDiv, parseFixed } from './fixed-point.js'
 
 function optionalMicros(value: string | null | undefined) {
@@ -29,6 +33,32 @@ function isZeroDecimal(value: string | null) {
     return parsed === 0n
 }
 
+function hasExactTransferEvidence({
+    honeypot,
+    goPlus,
+}: {
+    honeypot: HoneypotTokenSecurity
+    goPlus: GoPlusTokenSecurity
+}) {
+    const honeypotConfirmsExactTransfer =
+        honeypot.available &&
+        honeypot.simulationSuccess === true &&
+        isZeroDecimal(honeypot.transferTaxPercent) &&
+        isZeroDecimal(honeypot.sellTaxPercent)
+
+    if (!honeypotConfirmsExactTransfer) return false
+
+    // Honeypot.is supplies an actual transfer/sell simulation. When GoPlus is
+    // disabled or temporarily unavailable, that successful zero-tax simulation
+    // is sufficient for a manually enabled payment token. If GoPlus is present,
+    // it must not contradict the simulation with mutable-tax or balance controls.
+    if (!goPlus.available) return true
+
+    return isZeroDecimal(goPlus.transferTaxFraction) &&
+        goPlus.ownerCanChangeBalance === false &&
+        goPlus.taxModifiable === false
+}
+
 export async function getSponsorshipTokenEvidence(address: Address) {
     const observedAt = new Date()
     const [prices, coinGecko, security] = await Promise.all([
@@ -43,15 +73,10 @@ export async function getSponsorshipTokenEvidence(address: Address) {
         optionalMicros(security.honeypot.liquidityUsd),
         optionalMicros(security.goPlus.dexLiquidityUsd),
     ])
-    const exactTransferKnown =
-        security.honeypot.available &&
-        security.honeypot.simulationSuccess === true &&
-        isZeroDecimal(security.honeypot.transferTaxPercent) &&
-        isZeroDecimal(security.honeypot.sellTaxPercent) &&
-        security.goPlus.available &&
-        isZeroDecimal(security.goPlus.transferTaxFraction) &&
-        security.goPlus.ownerCanChangeBalance === false &&
-        security.goPlus.taxModifiable === false
+    const exactTransferKnown = hasExactTransferEvidence({
+        honeypot: security.honeypot,
+        goPlus: security.goPlus,
+    })
 
     return {
         priceUsdMicros,
@@ -68,4 +93,5 @@ export async function getSponsorshipTokenEvidence(address: Address) {
 export const tokenEvidenceInternals = {
     optionalMicros,
     deviationBps,
+    hasExactTransferEvidence,
 }
