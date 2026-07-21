@@ -6,13 +6,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
     gasAssist: null,
     prepaid: null,
+    gasAssistArgs: null,
+    prepaidArgs: null,
 }))
 
 vi.mock('./useZeroXGaslessSwap.js', () => ({
-    useZeroXGaslessSwap: () => mocks.gasAssist,
+    useZeroXGaslessSwap: (args) => {
+        mocks.gasAssistArgs = args
+        return mocks.gasAssist
+    },
 }))
 vi.mock('./usePrepaidSponsorship.js', () => ({
-    usePrepaidSponsorship: () => mocks.prepaid,
+    usePrepaidSponsorship: (args) => {
+        mocks.prepaidArgs = args
+        return mocks.prepaid
+    },
 }))
 
 import { useGasAssistController } from './useGasAssistController.js'
@@ -41,38 +49,35 @@ const baseProps = {
     onConfirmed: vi.fn(),
 }
 
-describe('Gas Assist route ownership', () => {
+describe('exact prepaid Gas Assist route ownership', () => {
     beforeEach(() => {
-        mocks.gasAssist = {
-            quote: null,
-            quoteStatus: 'error',
-            quoteError: { code: 'ONCHAIN_APPROVAL_REQUIRED', message: 'Approval required.' },
-        }
+        mocks.gasAssist = { quote: null, quoteStatus: 'idle', quoteError: null }
         mocks.prepaid = {
             config: { enabled: true },
             configStatus: 'success',
             configError: null,
         }
+        mocks.gasAssistArgs = null
+        mocks.prepaidArgs = null
     })
 
-    it('never falls back to the normal quote when prepaid approval is required', () => {
+    it('uses prepaid sponsorship immediately and never calls the provider-integrator quote path', () => {
         const { result } = renderHook(() => useGasAssistController(baseProps))
+        expect(mocks.prepaidArgs.required).toBe(true)
+        expect(mocks.gasAssistArgs.quoteEnabled).toBe(false)
         expect(result.current.executionMode).toBe('zero-x-gasless')
         expect(result.current.prepaidRequired).toBe(true)
         expect(result.current.activeQuote).toEqual({ prepaidSponsorshipRequired: true })
         expect(result.current.activeQuoteStatus).toBe('success')
     })
 
-    it('fails closed instead of exposing a normal SwapProxy quote on Gas Assist errors', () => {
-        mocks.gasAssist = {
-            quote: null,
-            quoteStatus: 'error',
-            quoteError: { code: 'NO_SPONSORED_ROUTE', message: 'No sponsored route.' },
-        }
-        mocks.prepaid = { config: null, configStatus: 'error', configError: null }
+    it('fails closed when prepaid sponsorship is disabled instead of exposing a normal SwapProxy quote', () => {
+        mocks.prepaid = { config: { enabled: false }, configStatus: 'success', configError: null }
         const { result } = renderHook(() => useGasAssistController(baseProps))
+        expect(mocks.gasAssistArgs.quoteEnabled).toBe(false)
         expect(result.current.executionMode).toBe('zero-x-gasless')
         expect(result.current.activeQuote).toBeNull()
         expect(result.current.activeQuoteStatus).toBe('error')
+        expect(baseProps.setVisibleStatus).toHaveBeenCalledWith(expect.stringContaining('SPONSORSHIP_UNAVAILABLE'))
     })
 })

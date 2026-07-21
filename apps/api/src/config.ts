@@ -664,7 +664,7 @@ export function getApiConfig() {
             ),
             minimumSellUsd: readPositiveDecimal(
                 'GAS_ASSIST_MIN_SELL_USD',
-                '1',
+                '0.10',
             ),
             minimumUserOutputUsd: readPositiveDecimal(
                 'GAS_ASSIST_MIN_USER_OUTPUT_USD',
@@ -820,7 +820,7 @@ export function getApiConfig() {
             ),
             minimumGrossTradeUsd: readPositiveDecimal(
                 'MEGAFUEL_MIN_GROSS_TRADE_USD',
-                '1',
+                '0.10',
             ),
             minimumNetTradeUsd: readPositiveDecimal(
                 'MEGAFUEL_MIN_NET_TRADE_USD',

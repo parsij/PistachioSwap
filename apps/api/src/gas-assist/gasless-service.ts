@@ -389,7 +389,11 @@ function normalizeInput(input: GaslessInput) {
     return { chainId: 56 as const, walletAddress, sellToken, buyToken, sellAmount, slippageBps, clientIp: input.clientIp }
 }
 
-async function preliminary(input: ReturnType<typeof normalizeInput>, dependencies: Dependencies) {
+async function preliminary(
+    input: ReturnType<typeof normalizeInput>,
+    dependencies: Dependencies,
+    minimumSellUsd = getApiConfig().gasAssist.minimumSellUsd,
+) {
     const config = getApiConfig()
     const [{ balance, decimals }, sellPrice, buyDecimals, buyPrice] = await Promise.all([
         dependencies.getBalanceAndDecimals(input.walletAddress as Address, input.sellToken as Address),
@@ -404,7 +408,7 @@ async function preliminary(input: ReturnType<typeof normalizeInput>, dependencie
     if (!buyPrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A trusted buy-token price is unavailable.', 503)
     const feePlan = calculateFeePlan(input.sellAmount, decimals, sellPrice, config.gasAssist)
     const sellUsd = feePlan.sellValueUsd
-    assertAtLeast(sellUsd, config.gasAssist.minimumSellUsd, 'SELL_VALUE_TOO_LOW', 'The sell value is below the Gas Assist minimum.')
+    assertAtLeast(sellUsd, minimumSellUsd, 'SELL_VALUE_TOO_LOW', 'The sell value is below the Gas Assist minimum.')
     if (sellUsd < decimalScale('0.10')) throw new GasAssistError('SELL_VALUE_TOO_LOW', 'Gas Assist never accepts balances worth less than $0.10.')
     return { decimals, sellPrice, sellUsd, buyDecimals, buyPrice, feePlan }
 }
@@ -524,7 +528,11 @@ export function createGaslessService(overrides: Partial<Dependencies> = {}) {
     async function probePrepaid(raw: GaslessInput) {
         assertMode()
         const input = normalizeInput(raw)
-        const { sellUsd, buyDecimals, buyPrice } = await preliminary(input, dependencies)
+        const { sellUsd, buyDecimals, buyPrice } = await preliminary(
+            input,
+            dependencies,
+            getApiConfig().sponsorship.minimumGrossTradeUsd,
+        )
         const payload = await dependencies.client.getGaslessPrice(providerRequest(input))
         if (
             payload.liquidityAvailable !== true ||
