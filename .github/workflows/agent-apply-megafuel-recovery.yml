@@ -1,15 +1,18 @@
 name: Apply MegaFuel recovery patch
 
 on:
-  workflow_run:
-    workflows: ['MegaFuel exact flow']
-    types: [completed]
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   apply:
+    if: >-
+      github.event.issue.title == 'agent: apply durable MegaFuel recovery' &&
+      contains(github.event.issue.body, 'DURABLE-MEGAFUEL-20260721-6F4C')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -26,10 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           patch_workflow='.github/workflows/agent-megafuel-durable-recovery.yml'
-          if [[ ! -f "$patch_workflow" ]]; then
-            echo 'Patch workflow was already consumed.'
-            exit 0
-          fi
+          test -f "$patch_workflow"
           test "$(git hash-object "$patch_workflow")" = '66ee520ab3c9f2a799cd456cc359d4950c380693'
           awk '
             /- name: Apply durable intent patch/ { seen=1; next }
@@ -77,9 +77,10 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          if git diff --cached --quiet; then
-            echo 'No feature changes remain to commit.'
-            exit 0
-          fi
           git commit -m 'Persist and recover signed MegaFuel intents'
           git push origin HEAD:feature/megafuel-exact-prepaid-flow
+
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue close '${{ github.event.issue.number }}' --comment 'Durable MegaFuel recovery changes were validated and committed.'
