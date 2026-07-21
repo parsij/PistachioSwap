@@ -11,6 +11,7 @@ on:
       - 'apps/api/src/db/schema.ts'
       - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
       - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/providers/alchemy/token-prices.ts'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
@@ -18,6 +19,7 @@ on:
       - 'apps/api/test/megafuel-normal-swap.test.ts'
       - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
       - 'src/features/swap/**'
@@ -34,6 +36,7 @@ on:
       - 'apps/api/src/db/schema.ts'
       - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
       - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/providers/alchemy/token-prices.ts'
       - 'apps/api/src/modules/sponsorship-admin.ts'
       - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
       - 'apps/api/test/gasless-v2.test.ts'
@@ -41,6 +44,7 @@ on:
       - 'apps/api/test/megafuel-normal-swap.test.ts'
       - 'apps/api/test/megafuel-two-policy.test.ts'
       - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
       - 'src/features/swap/**'
@@ -96,6 +100,7 @@ jobs:
           test/megafuel-exact-payment.test.ts
           test/megafuel-normal-swap.test.ts
           test/megafuel-two-policy.test.ts
+          test/token-price-normalization.test.ts
           --reporter=verbose
 
       - name: Frontend build
