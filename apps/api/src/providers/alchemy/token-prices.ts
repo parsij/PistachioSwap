@@ -3,8 +3,9 @@ import { normalizeAddress } from '../../lib/address.js'
 import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
 import { logProviderResponse } from '../../lib/provider-response-debug.js'
-import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
 import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
+import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
+import { getMoralisSponsorshipTokenEvidence } from '../moralis/sponsorship-token-evidence.js'
 
 const PRICE_TTL_MS = 45_000
 const USD_PRICE_SCALE = 6
@@ -12,6 +13,12 @@ const priceCache = new Map<string, { expiresAt: number; observedAt: number; valu
 const pendingPrices = new Map<string, Promise<Map<string, string>>>()
 const nativePriceCache = new Map<number, { expiresAt: number; value: string | null }>()
 const pendingNativePrices = new Map<number, Promise<string | null>>()
+
+type NativePriceProvider = 'alchemy' | 'moralis' | 'coingecko'
+type NativePriceSource = {
+    provider: NativePriceProvider
+    load: () => Promise<string | null>
+}
 
 function normalizeUsdPrice(value: string, scale = USD_PRICE_SCALE) {
     if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) || !Number.isInteger(scale) || scale < 0) {
@@ -38,6 +45,41 @@ function normalizeUsdPrice(value: string, scale = USD_PRICE_SCALE) {
     return normalizedFraction
         ? `${normalizedWhole}.${normalizedFraction}`
         : normalizedWhole.toString()
+}
+
+async function resolveNativePriceSources(
+    chainId: number,
+    sources: NativePriceSource[],
+): Promise<{ value: string; provider: NativePriceProvider } | null> {
+    for (const source of sources) {
+        try {
+            const value = await source.load()
+            if (value) {
+                if (process.env.DEBUG_SPONSORSHIP_PROVIDER_RESPONSES === 'true') {
+                    console.log('[sponsorship-native-price-selected]', {
+                        chainId,
+                        provider: source.provider,
+                        value,
+                    })
+                }
+                return { value, provider: source.provider }
+            }
+
+            logProviderResponse(source.provider, `native-price-unusable:${chainId}`, {
+                reason: 'Provider returned no usable USD price.',
+            })
+        } catch (error) {
+            logProviderResponse(source.provider, `native-price-error:${chainId}`, error)
+        }
+    }
+
+    if (process.env.DEBUG_SPONSORSHIP_PROVIDER_RESPONSES === 'true') {
+        console.warn('[sponsorship-native-price-unavailable]', {
+            chainId,
+            providersTried: sources.map((source) => source.provider),
+        })
+    }
+    return null
 }
 
 function readPrice(key: string) {
@@ -128,8 +170,8 @@ export async function getTokenPrices({
                     fetched.set(address, value)
                 }
             }
-        } catch {
-            // Prices are optional; metadata and balances remain usable.
+        } catch (error) {
+            logProviderResponse('alchemy', `token-prices-error:${chainId}`, error)
         }
 
         for (const address of missing) {
@@ -171,6 +213,13 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
     const chain = requireActiveTokenDiscoveryChain(chainId)
     const cached = nativePriceCache.get(chainId)
     if (cached && cached.expiresAt > Date.now()) {
+        if (process.env.DEBUG_SPONSORSHIP_PROVIDER_RESPONSES === 'true') {
+            console.log('[sponsorship-native-price-cache-hit]', {
+                chainId,
+                value: cached.value,
+                expiresAt: new Date(cached.expiresAt).toISOString(),
+            })
+        }
         return cached.value
     }
     const pending = pendingNativePrices.get(chainId)
@@ -207,11 +256,25 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
             ? normalizeUsdPrice(usd.value)
             : null
     }
+
+    const moralisPrice = async () => {
+        const evidence = await getMoralisSponsorshipTokenEvidence(
+            chain.wrappedNative.address,
+            signal,
+            chainId,
+        )
+        return evidence.available && evidence.priceUsd
+            ? normalizeUsdPrice(evidence.priceUsd)
+            : null
+    }
+
     const coinGeckoPrice = async () => {
         const payload = await coinGeckoRequest(
             `/simple/price?ids=${encodeURIComponent(chain.native.coinGeckoId)}&vs_currencies=usd`,
             { signal },
         )
+        logProviderResponse('coingecko', `native-price:${chainId}:${chain.native.coinGeckoId}`, payload)
+
         const native = isRecord(payload) && isRecord(payload[chain.native.coinGeckoId])
             ? payload[chain.native.coinGeckoId]
             : null
@@ -222,10 +285,13 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
         return normalized ? normalizeUsdPrice(normalized) : null
     }
 
-    const request = alchemyPrice()
-        .catch(() => null)
-        .then((value) => value ?? coinGeckoPrice().catch(() => null))
-        .then((value) => {
+    const request = resolveNativePriceSources(chainId, [
+        { provider: 'alchemy', load: alchemyPrice },
+        { provider: 'moralis', load: moralisPrice },
+        { provider: 'coingecko', load: coinGeckoPrice },
+    ])
+        .then((result) => {
+            const value = result?.value ?? null
             setBoundedCacheEntry(nativePriceCache, chainId, {
                 value,
                 expiresAt: Date.now() + PRICE_TTL_MS,
@@ -246,4 +312,5 @@ export function getNativeBnbPrice(signal?: AbortSignal, chainId = 56) {
 
 export const tokenPriceInternals = {
     normalizeUsdPrice,
+    resolveNativePriceSources,
 }
