@@ -1,0 +1,48 @@
+diff --git a/apps/api/src/gas-assist/paymaster.ts b/apps/api/src/gas-assist/paymaster.ts
+index 39ccb75..7be2665 100644
+--- a/apps/api/src/gas-assist/paymaster.ts
++++ b/apps/api/src/gas-assist/paymaster.ts
+@@ -6,6 +6,8 @@ type RpcResponse = {
+     error?: { code?: number; message?: string }
+ }
+ 
++export type PrepaidPolicyScope = 'fee' | 'action'
++
+ type PaymasterConnection = {
+     rpcUrl: string | null
+     policyId: string | null
+@@ -41,14 +43,16 @@ function legacyConnection(): PaymasterConnection {
+     }
+ }
+ 
+-function prepaidConnection(): PaymasterConnection {
++function prepaidConnection(scope: PrepaidPolicyScope): PaymasterConnection {
+     const config = getApiConfig().sponsorship
+     const baseUrl = config.privateRpcBaseUrl.replace(/\/+$/, '')
+     return {
+         rpcUrl: config.apiKey
+             ? `${baseUrl}/${encodeURIComponent(config.apiKey)}/megafuel/56`
+             : null,
+-        policyId: config.privatePolicyUuid,
++        policyId: scope === 'fee'
++            ? config.feePolicyUuid
++            : config.actionPolicyUuid,
+         userAgent: config.userAgent,
+         requestTimeoutMs: config.requestTimeoutMs,
+         sponsorabilityMethod: 'eth_isSponsorable',
+@@ -134,7 +138,14 @@ export function createPaymasterClient(
+ }
+ 
+ export const paymasterClient = createPaymasterClient()
+-export const prepaidPaymasterClient = createPaymasterClient(fetch, prepaidConnection)
++export const prepaidFeePaymasterClient = createPaymasterClient(
++    fetch,
++    () => prepaidConnection('fee'),
++)
++export const prepaidActionPaymasterClient = createPaymasterClient(
++    fetch,
++    () => prepaidConnection('action'),
++)
+ 
+ export const paymasterInternals = {
+     legacyConnection,
