@@ -2,6 +2,7 @@ import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
 import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
+import { logProviderResponse } from '../../lib/provider-response-debug.js'
 import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
 import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
@@ -105,6 +106,7 @@ export async function getTokenPrices({
                 timeoutMs: getApiConfig().requestTimeoutMs,
                 dedupeKey: `alchemy:prices:${requestKey}`,
             })
+            logProviderResponse('alchemy', `token-prices:${chainId}`, payload)
 
             if (!isRecord(payload) || !Array.isArray(payload.data)) {
                 return fetched
@@ -186,6 +188,8 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
             timeoutMs: getApiConfig().requestTimeoutMs,
             dedupeKey: `alchemy:prices:native:${chainId}`,
         })
+        logProviderResponse('alchemy', `native-price:${chainId}:${chain.native.symbol}`, payload)
+
         const data = isRecord(payload) && Array.isArray(payload.data)
             ? payload.data
             : []
