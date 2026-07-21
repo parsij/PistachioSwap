@@ -1,0 +1,361 @@
+name: Apply durable MegaFuel recovery
+
+on:
+  push:
+    branches:
+      - feature/megafuel-exact-prepaid-flow
+    paths:
+      - '.github/workflows/agent-megafuel-durable-recovery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/megafuel-exact-prepaid-flow
+          fetch-depth: 0
+
+      - name: Apply durable intent patch
+        shell: bash
+        run: |
+          python <<'PY'
+          MIGRATION = "ALTER TABLE sponsorship_transaction_intents\n  ADD COLUMN signed_raw_transaction text,\n  ADD COLUMN signed_at timestamptz,\n  ADD COLUMN first_broadcast_at timestamptz,\n  ADD COLUMN last_broadcast_at timestamptz,\n  ADD COLUMN submitted_at timestamptz,\n  ADD COLUMN finalized_at timestamptz,\n  ADD COLUMN broadcast_attempts integer NOT NULL DEFAULT 0\n    CHECK (broadcast_attempts BETWEEN 0 AND 3);\n\nALTER TABLE sponsorship_transaction_intents\n  ADD CONSTRAINT sponsorship_intents_signed_raw_transaction_check CHECK (\n    signed_raw_transaction IS NULL OR (\n      signed_raw_transaction ~ '^0x[0-9a-f]+$' AND\n      (length(signed_raw_transaction) - 2) % 2 = 0 AND\n      signed_raw_transaction_hash ~ '^0x[0-9a-f]{64}$' AND\n      signed_at IS NOT NULL\n    )\n  );\n\nCREATE INDEX sponsorship_intents_recovery_idx\n  ON sponsorship_transaction_intents (status, last_broadcast_at, expires_at)\n  WHERE status IN ('submitting','submitted','unknown');\n\nCREATE TABLE sponsorship_intent_events (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  intent_id uuid NOT NULL REFERENCES sponsorship_transaction_intents(id),\n  order_id uuid NOT NULL REFERENCES sponsorship_orders(id),\n  action text NOT NULL CHECK (action IN ('fee-payment-transfer','token-approval','normal-swap')),\n  event_type text NOT NULL CHECK (event_type IN (\n    'intent-created','raw-transaction-received','broadcast-attempted',\n    'transaction-hash-recorded','status-changed'\n  )),\n  previous_status text,\n  status text NOT NULL,\n  transaction_hash text,\n  details jsonb NOT NULL DEFAULT '{}'::jsonb,\n  created_at timestamptz NOT NULL DEFAULT now()\n);\n\nCREATE INDEX sponsorship_intent_events_intent_idx\n  ON sponsorship_intent_events (intent_id, created_at);\n\nCREATE INDEX sponsorship_intent_events_order_idx\n  ON sponsorship_intent_events (order_id, created_at);\n\nCREATE OR REPLACE FUNCTION sponsorship_set_intent_lifecycle_timestamps()\nRETURNS trigger LANGUAGE plpgsql AS $$\nBEGIN\n  IF NEW.status IN ('confirmed','reverted','expired','rejected')\n     AND NEW.status IS DISTINCT FROM OLD.status THEN\n    NEW.finalized_at := COALESCE(NEW.finalized_at, now());\n  END IF;\n  RETURN NEW;\nEND;\n$$;\n\nCREATE TRIGGER sponsorship_intents_lifecycle_timestamps_trigger\nBEFORE UPDATE OF status ON sponsorship_transaction_intents\nFOR EACH ROW EXECUTE FUNCTION sponsorship_set_intent_lifecycle_timestamps();\n\nCREATE OR REPLACE FUNCTION sponsorship_log_intent_events()\nRETURNS trigger LANGUAGE plpgsql AS $$\nBEGIN\n  IF TG_OP = 'INSERT' THEN\n    INSERT INTO sponsorship_intent_events\n      (intent_id,order_id,action,event_type,status,transaction_hash,details)\n    VALUES\n      (NEW.id,NEW.order_id,NEW.action,'intent-created',NEW.status,NEW.transaction_hash,\n       jsonb_build_object('nonce',NEW.nonce::text,'expiresAt',NEW.expires_at));\n    RETURN NEW;\n  END IF;\n\n  IF NEW.signed_at IS DISTINCT FROM OLD.signed_at THEN\n    INSERT INTO sponsorship_intent_events\n      (intent_id,order_id,action,event_type,previous_status,status,transaction_hash)\n    VALUES\n      (NEW.id,NEW.order_id,NEW.action,'raw-transaction-received',OLD.status,NEW.status,\n       COALESCE(NEW.transaction_hash,NEW.signed_raw_transaction_hash));\n  END IF;\n\n  IF NEW.broadcast_attempts IS DISTINCT FROM OLD.broadcast_attempts THEN\n    INSERT INTO sponsorship_intent_events\n      (intent_id,order_id,action,event_type,previous_status,status,transaction_hash,details)\n    VALUES\n      (NEW.id,NEW.order_id,NEW.action,'broadcast-attempted',OLD.status,NEW.status,\n       COALESCE(NEW.transaction_hash,NEW.signed_raw_transaction_hash),\n       jsonb_build_object('attempt',NEW.broadcast_attempts));\n  END IF;\n\n  IF NEW.transaction_hash IS DISTINCT FROM OLD.transaction_hash THEN\n    INSERT INTO sponsorship_intent_events\n      (intent_id,order_id,action,event_type,previous_status,status,transaction_hash)\n    VALUES\n      (NEW.id,NEW.order_id,NEW.action,'transaction-hash-recorded',OLD.status,NEW.status,\n       NEW.transaction_hash);\n  END IF;\n\n  IF NEW.status IS DISTINCT FROM OLD.status THEN\n    INSERT INTO sponsorship_intent_events\n      (intent_id,order_id,action,event_type,previous_status,status,transaction_hash,details)\n    VALUES\n      (NEW.id,NEW.order_id,NEW.action,'status-changed',OLD.status,NEW.status,\n       COALESCE(NEW.transaction_hash,NEW.signed_raw_transaction_hash),\n       jsonb_build_object('failureCode',NEW.failure_code));\n  END IF;\n\n  RETURN NEW;\nEND;\n$$;\n\nCREATE TRIGGER sponsorship_intents_event_log_insert_trigger\nAFTER INSERT ON sponsorship_transaction_intents\nFOR EACH ROW EXECUTE FUNCTION sponsorship_log_intent_events();\n\nCREATE TRIGGER sponsorship_intents_event_log_update_trigger\nAFTER UPDATE ON sponsorship_transaction_intents\nFOR EACH ROW EXECUTE FUNCTION sponsorship_log_intent_events();\n"
+
+          RECOVERY_TS = "import type { Pool } from 'pg'\nimport type { Hex } from 'viem'\n\nimport { getApiConfig } from '../../config.js'\nimport { getPool } from '../../db/client.js'\nimport {\n    prepaidActionPaymasterClient,\n    prepaidFeePaymasterClient,\n} from '../paymaster.js'\nimport { createPrepaidChainClient } from './chain-client.js'\nimport { createSponsorshipIntentService } from './intent-service.js'\n\ntype SponsorshipAction = 'fee-payment-transfer' | 'token-approval' | 'normal-swap'\n\ntype RecoveryRow = {\n    id: string\n    orderId: string\n    action: SponsorshipAction\n    status: 'submitting' | 'submitted' | 'unknown'\n    walletAddress: `0x${string}`\n    signedRawTransaction: Hex | null\n    transactionHash: Hex\n    broadcastAttempts: number\n    lastBroadcastAt: Date | null\n    expiresAt: Date\n}\n\nconst MAX_BROADCAST_ATTEMPTS = 3\nconst RETRY_DELAY_MS = 15_000\n\nfunction submittedOrderStatus(action: SponsorshipAction) {\n    return {\n        'fee-payment-transfer': 'payment-submitted',\n        'token-approval': 'approval-submitted',\n        'normal-swap': 'swap-submitted',\n    }[action]\n}\n\nfunction canRetryBroadcast(\n    intent: Pick<RecoveryRow, 'status' | 'signedRawTransaction' | 'broadcastAttempts' | 'lastBroadcastAt' | 'expiresAt'>,\n    now = new Date(),\n) {\n    if (!['submitting', 'unknown'].includes(intent.status) || !intent.signedRawTransaction) return false\n    if (intent.broadcastAttempts >= MAX_BROADCAST_ATTEMPTS || intent.expiresAt <= now) return false\n    return !intent.lastBroadcastAt ||\n        now.getTime() - intent.lastBroadcastAt.getTime() >= RETRY_DELAY_MS\n}\n\nfunction paymasterForAction(action: SponsorshipAction) {\n    return action === 'fee-payment-transfer'\n        ? prepaidFeePaymasterClient\n        : prepaidActionPaymasterClient\n}\n\nasync function markSubmitted(database: Pool, intent: RecoveryRow, transactionHash: Hex) {\n    const client = await database.connect()\n    try {\n        await client.query('BEGIN')\n        await client.query(\n            `UPDATE sponsorship_transaction_intents\n             SET status='submitted',transaction_hash=$2,submitted_at=COALESCE(submitted_at,now()),\n                 failure_code=NULL,updated_at=now()\n             WHERE id=$1 AND status IN ('submitting','submitted','unknown')`,\n            [intent.id, transactionHash],\n        )\n        await client.query(\n            `UPDATE sponsorship_orders SET status=$2,\n                    payment_transaction_hash=CASE WHEN $3='fee-payment-transfer' THEN $4 ELSE payment_transaction_hash END,\n                    approval_transaction_hash=CASE WHEN $3='token-approval' THEN $4 ELSE approval_transaction_hash END,\n                    swap_transaction_hash=CASE WHEN $3='normal-swap' THEN $4 ELSE swap_transaction_hash END,\n                    rejection_code=NULL,updated_at=now()\n             WHERE id=$1 AND status NOT IN ('completed','expired','rejected','failed')`,\n            [intent.orderId, submittedOrderStatus(intent.action), intent.action, transactionHash],\n        )\n        await client.query('COMMIT')\n    } catch (error) {\n        await client.query('ROLLBACK').catch(() => undefined)\n        throw error\n    } finally {\n        client.release()\n    }\n}\n\nasync function markUnknown(database: Pool, intent: RecoveryRow, failureCode: string) {\n    const client = await database.connect()\n    try {\n        await client.query('BEGIN')\n        await client.query(\n            `UPDATE sponsorship_transaction_intents\n             SET status='unknown',failure_code=$2,updated_at=now()\n             WHERE id=$1 AND status IN ('submitting','unknown')`,\n            [intent.id, failureCode],\n        )\n        await client.query(\n            `UPDATE sponsorship_orders SET status='unknown',rejection_code=$2,updated_at=now()\n             WHERE id=$1 AND status NOT IN ('completed','expired','rejected','failed')`,\n            [intent.orderId, failureCode],\n        )\n        await client.query('COMMIT')\n    } catch (error) {\n        await client.query('ROLLBACK').catch(() => undefined)\n        throw error\n    } finally {\n        client.release()\n    }\n}\n\nexport function createSponsorshipRecoveryService(database: Pool = getPool()) {\n    const chain = createPrepaidChainClient()\n    const intents = createSponsorshipIntentService({ database })\n\n    async function recoverPendingIntents(limit = 25) {\n        const config = getApiConfig().sponsorship\n        const summary = {\n            scanned: 0,\n            reconciled: 0,\n            rebroadcast: 0,\n            waiting: 0,\n            failed: 0,\n        }\n        if (!config.enabled || config.emergencyDisabled) return summary\n\n        const candidates = await database.query<RecoveryRow>(\n            `SELECT i.id,i.order_id AS \"orderId\",i.action,i.status,\n                    i.wallet_address AS \"walletAddress\",\n                    i.signed_raw_transaction AS \"signedRawTransaction\",\n                    COALESCE(i.transaction_hash,i.signed_raw_transaction_hash) AS \"transactionHash\",\n                    i.broadcast_attempts AS \"broadcastAttempts\",\n                    i.last_broadcast_at AS \"lastBroadcastAt\",\n                    i.expires_at AS \"expiresAt\"\n             FROM sponsorship_transaction_intents i\n             WHERE (\n                 i.status='submitted' AND i.transaction_hash IS NOT NULL\n             ) OR (\n                 i.status IN ('submitting','unknown') AND\n                 i.signed_raw_transaction IS NOT NULL AND\n                 COALESCE(i.transaction_hash,i.signed_raw_transaction_hash) IS NOT NULL\n             )\n             ORDER BY i.updated_at\n             LIMIT $1`,\n            [Math.max(1, Math.min(limit, 100))],\n        )\n\n        for (const candidate of candidates.rows) {\n            summary.scanned += 1\n\n            try {\n                const refreshed = await intents.refreshOrder(candidate.orderId, candidate.walletAddress)\n                if (['completed', 'expired', 'rejected', 'failed'].includes(refreshed.order.status)) {\n                    summary.reconciled += 1\n                    continue\n                }\n            } catch {\n                // Receipt or price reconciliation can be temporarily unavailable.\n            }\n\n            const latestResult = await database.query<RecoveryRow>(\n                `SELECT id,order_id AS \"orderId\",action,status,wallet_address AS \"walletAddress\",\n                        signed_raw_transaction AS \"signedRawTransaction\",\n                        COALESCE(transaction_hash,signed_raw_transaction_hash) AS \"transactionHash\",\n                        broadcast_attempts AS \"broadcastAttempts\",\n                        last_broadcast_at AS \"lastBroadcastAt\",expires_at AS \"expiresAt\"\n                 FROM sponsorship_transaction_intents\n                 WHERE id=$1`,\n                [candidate.id],\n            )\n            const latest = latestResult.rows[0]\n            if (!latest || !['submitting', 'submitted', 'unknown'].includes(latest.status)) {\n                summary.reconciled += 1\n                continue\n            }\n            if (latest.status === 'submitted') {\n                summary.waiting += 1\n                continue\n            }\n            if (!canRetryBroadcast(latest)) {\n                summary.waiting += 1\n                continue\n            }\n\n            try {\n                await chain.getTransaction(latest.transactionHash)\n                await markSubmitted(database, latest, latest.transactionHash)\n                summary.reconciled += 1\n                continue\n            } catch {\n                // The exact hash is not visible on the public RPC yet.\n            }\n\n            const claimed = await database.query(\n                `UPDATE sponsorship_transaction_intents\n                 SET broadcast_attempts=broadcast_attempts+1,last_broadcast_at=now(),updated_at=now()\n                 WHERE id=$1 AND status IN ('submitting','unknown')\n                   AND signed_raw_transaction IS NOT NULL\n                   AND broadcast_attempts < $2\n                   AND expires_at > now()\n                   AND (last_broadcast_at IS NULL OR last_broadcast_at <= $3)\n                 RETURNING id`,\n                [\n                    latest.id,\n                    MAX_BROADCAST_ATTEMPTS,\n                    new Date(Date.now() - RETRY_DELAY_MS),\n                ],\n            )\n            if (claimed.rowCount !== 1) {\n                summary.waiting += 1\n                continue\n            }\n\n            try {\n                const providerHash = await paymasterForAction(latest.action).submit(\n                    latest.signedRawTransaction!,\n                )\n                if (providerHash.toLowerCase() !== latest.transactionHash.toLowerCase()) {\n                    await markUnknown(database, latest, 'PAYMASTER_HASH_MISMATCH')\n                    summary.failed += 1\n                    continue\n                }\n                await markSubmitted(database, latest, providerHash)\n                summary.rebroadcast += 1\n            } catch {\n                try {\n                    await chain.getTransaction(latest.transactionHash)\n                    await markSubmitted(database, latest, latest.transactionHash)\n                    summary.reconciled += 1\n                } catch {\n                    await markUnknown(database, latest, 'RECOVERY_SUBMISSION_UNKNOWN')\n                    summary.failed += 1\n                }\n            }\n        }\n\n        return summary\n    }\n\n    return { recoverPendingIntents }\n}\n\nexport const sponsorshipRecoveryInternals = {\n    MAX_BROADCAST_ATTEMPTS,\n    RETRY_DELAY_MS,\n    canRetryBroadcast,\n    submittedOrderStatus,\n}\n"
+
+          TEST_TS = "import { readFileSync } from 'node:fs'\nimport { fileURLToPath } from 'node:url'\n\nimport { describe, expect, it } from 'vitest'\n\nimport { sponsorshipRecoveryInternals } from '../src/gas-assist/prepaid/sponsorship-recovery.js'\n\nconst migrationPath = fileURLToPath(\n    new URL('../drizzle/0005_durable_sponsorship_intents.sql', import.meta.url),\n)\n\ndescribe('durable MegaFuel intent recovery', () => {\n    it('only retries exact signed transactions that are still recoverable', () => {\n        const now = new Date('2026-07-21T20:00:00.000Z')\n        const recoverable = {\n            status: 'unknown' as const,\n            signedRawTransaction: '0x01' as const,\n            broadcastAttempts: 1,\n            lastBroadcastAt: new Date(now.getTime() - 15_001),\n            expiresAt: new Date(now.getTime() + 60_000),\n        }\n        expect(sponsorshipRecoveryInternals.canRetryBroadcast(recoverable, now)).toBe(true)\n        expect(sponsorshipRecoveryInternals.canRetryBroadcast({\n            ...recoverable,\n            broadcastAttempts: sponsorshipRecoveryInternals.MAX_BROADCAST_ATTEMPTS,\n        }, now)).toBe(false)\n        expect(sponsorshipRecoveryInternals.canRetryBroadcast({\n            ...recoverable,\n            expiresAt: now,\n        }, now)).toBe(false)\n        expect(sponsorshipRecoveryInternals.canRetryBroadcast({\n            ...recoverable,\n            status: 'submitted',\n        }, now)).toBe(false)\n    })\n\n    it('maps each signed action to its durable submitted order step', () => {\n        expect(sponsorshipRecoveryInternals.submittedOrderStatus('fee-payment-transfer')).toBe('payment-submitted')\n        expect(sponsorshipRecoveryInternals.submittedOrderStatus('token-approval')).toBe('approval-submitted')\n        expect(sponsorshipRecoveryInternals.submittedOrderStatus('normal-swap')).toBe('swap-submitted')\n    })\n\n    it('migrates raw transaction persistence and append-only step events', () => {\n        const migration = readFileSync(migrationPath, 'utf8')\n        expect(migration).toContain('signed_raw_transaction text')\n        expect(migration).toContain('broadcast_attempts integer')\n        expect(migration).toContain('CREATE TABLE sponsorship_intent_events')\n        expect(migration).toContain('raw-transaction-received')\n        expect(migration).toContain('broadcast-attempted')\n        expect(migration).toContain('status-changed')\n    })\n})\n"
+
+          
+          from pathlib import Path
+          import textwrap
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected exactly one match, found {count}")
+              file.write_text(text.replace(old, new, 1))
+
+          def replace_count(path: str, old: str, new: str, expected: int) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise RuntimeError(f"{path}: expected {expected} matches, found {count}")
+              file.write_text(text.replace(old, new))
+
+          Path("apps/api/drizzle/0005_durable_sponsorship_intents.sql").write_text(MIGRATION)
+          Path("apps/api/src/gas-assist/prepaid/sponsorship-recovery.ts").write_text(RECOVERY_TS)
+          Path("apps/api/test/megafuel-durable-intents.test.ts").write_text(TEST_TS)
+
+          replace_once(
+              "apps/api/src/gas-assist/prepaid/intent-service.ts",
+              """        if (!/^0x[0-9a-f]+$/i.test(signedRawTransaction)) {
+                  throw new GasAssistError('SIGNED_TRANSACTION_MISMATCH', 'The signed transaction is malformed.')
+              }
+              const intent = await loadIntent(dependencies.database, intentId, walletAddress)""",
+              """        if (!/^0x[0-9a-f]+$/i.test(signedRawTransaction)) {
+                  throw new GasAssistError('SIGNED_TRANSACTION_MISMATCH', 'The signed transaction is malformed.')
+              }
+              const normalizedSignedRawTransaction = signedRawTransaction.toLowerCase() as Hex
+              const intent = await loadIntent(dependencies.database, intentId, walletAddress)""",
+          )
+
+          replace_once(
+              "apps/api/src/gas-assist/prepaid/intent-service.ts",
+              "const verification = await validateSignedIntent(signedRawTransaction, intent)",
+              "const verification = await validateSignedIntent(normalizedSignedRawTransaction, intent)",
+          )
+
+          replace_once(
+              "apps/api/src/gas-assist/prepaid/intent-service.ts",
+              """            await client.query(
+                      `UPDATE sponsorship_transaction_intents
+                       SET status='submitting',submission_attempts=1,signed_raw_transaction_hash=$2,updated_at=now()
+                       WHERE id=$1`,
+                      [intent.id, verification.transactionHash],
+                  )""",
+              """            await client.query(
+                      `UPDATE sponsorship_transaction_intents
+                       SET status='submitting',submission_attempts=1,
+                           signed_raw_transaction_hash=$2,signed_raw_transaction=$3,
+                           signed_at=COALESCE(signed_at,now()),transaction_hash=$2,
+                           broadcast_attempts=broadcast_attempts+1,
+                           first_broadcast_at=COALESCE(first_broadcast_at,now()),
+                           last_broadcast_at=now(),updated_at=now()
+                       WHERE id=$1`,
+                      [intent.id, verification.transactionHash, normalizedSignedRawTransaction],
+                  )""",
+          )
+
+          replace_once(
+              "apps/api/src/gas-assist/prepaid/intent-service.ts",
+              "providerHash = await paymaster.submit(signedRawTransaction)",
+              "providerHash = await paymaster.submit(normalizedSignedRawTransaction)",
+          )
+
+          replace_once(
+              "apps/api/src/gas-assist/prepaid/intent-service.ts",
+              """        await dependencies.database.query(
+                  `UPDATE sponsorship_transaction_intents SET status='submitted',transaction_hash=$2,updated_at=now()
+                   WHERE id=$1 AND status='submitting'`,
+                  [intent.id, providerHash],
+              )""",
+              """        await dependencies.database.query(
+                  `UPDATE sponsorship_transaction_intents
+                   SET status='submitted',transaction_hash=$2,
+                       submitted_at=COALESCE(submitted_at,now()),updated_at=now()
+                   WHERE id=$1 AND status='submitting'`,
+                  [intent.id, providerHash],
+              )""",
+          )
+
+          replace_once(
+              "apps/api/src/gas-assist/prepaid/intent-service.ts",
+              """                `INSERT INTO sponsorship_usage
+                       (usage_date,chain_id,scope_type,scope_hash,sponsored_gas_usd_micros,reverted_attempts,token_action_counts)
+                       VALUES ((now() at time zone 'utc')::date,56,$1,$2,$3,$4,jsonb_build_object($5,1))
+                       ON CONFLICT (usage_date,chain_id,scope_type,scope_hash)
+                       DO UPDATE SET sponsored_gas_usd_micros=sponsorship_usage.sponsored_gas_usd_micros+EXCLUDED.sponsored_gas_usd_micros,
+                                     reverted_attempts=sponsorship_usage.reverted_attempts+EXCLUDED.reverted_attempts,
+                                     token_action_counts=sponsorship_usage.token_action_counts || EXCLUDED.token_action_counts,
+                                     updated_at=now()`""",
+              """                `INSERT INTO sponsorship_usage
+                       (usage_date,chain_id,scope_type,scope_hash,sponsored_gas_usd_micros,reverted_attempts,token_action_counts)
+                       VALUES ((now() at time zone 'utc')::date,56,$1,$2,$3,$4,jsonb_build_object($5::text,1))
+                       ON CONFLICT (usage_date,chain_id,scope_type,scope_hash)
+                       DO UPDATE SET sponsored_gas_usd_micros=sponsorship_usage.sponsored_gas_usd_micros+EXCLUDED.sponsored_gas_usd_micros,
+                                     reverted_attempts=sponsorship_usage.reverted_attempts+EXCLUDED.reverted_attempts,
+                                     token_action_counts=jsonb_set(
+                                         sponsorship_usage.token_action_counts,
+                                         ARRAY[$5::text],
+                                         to_jsonb(COALESCE((sponsorship_usage.token_action_counts ->> $5::text)::integer,0)+1),
+                                         true
+                                     ),
+                                     updated_at=now()`""",
+          )
+
+          replace_once(
+              "apps/api/src/db/schema.ts",
+              """        signedRawTransactionHash: text('signed_raw_transaction_hash'),
+              transactionHash: text('transaction_hash'),
+              submissionAttempts: integer('submission_attempts').notNull().default(0),
+              failureCode: text('failure_code'),""",
+              """        signedRawTransactionHash: text('signed_raw_transaction_hash'),
+              signedRawTransaction: text('signed_raw_transaction'),
+              signedAt: timestamp('signed_at', { withTimezone: true }),
+              firstBroadcastAt: timestamp('first_broadcast_at', { withTimezone: true }),
+              lastBroadcastAt: timestamp('last_broadcast_at', { withTimezone: true }),
+              submittedAt: timestamp('submitted_at', { withTimezone: true }),
+              finalizedAt: timestamp('finalized_at', { withTimezone: true }),
+              transactionHash: text('transaction_hash'),
+              submissionAttempts: integer('submission_attempts').notNull().default(0),
+              broadcastAttempts: integer('broadcast_attempts').notNull().default(0),
+              failureCode: text('failure_code'),""",
+          )
+
+          replace_once(
+              "apps/api/src/db/schema.ts",
+              """export const sponsorshipLedger = pgTable(
+              'sponsorship_ledger',""",
+              """export const sponsorshipIntentEvents = pgTable(
+              'sponsorship_intent_events',
+              {
+                  id: uuid('id').primaryKey().defaultRandom(),
+                  intentId: uuid('intent_id').notNull().references(() => sponsorshipTransactionIntents.id),
+                  orderId: uuid('order_id').notNull().references(() => sponsorshipOrders.id),
+                  action: text('action').notNull(),
+                  eventType: text('event_type').notNull(),
+                  previousStatus: text('previous_status'),
+                  status: text('status').notNull(),
+                  transactionHash: text('transaction_hash'),
+                  details: jsonb('details').notNull().default({}),
+                  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+              },
+              (table) => [
+                  index('sponsorship_intent_events_intent_idx').on(table.intentId, table.createdAt),
+                  index('sponsorship_intent_events_order_idx').on(table.orderId, table.createdAt),
+              ],
+          )
+
+          export const sponsorshipLedger = pgTable(
+              'sponsorship_ledger',""",
+          )
+
+          replace_once(
+              "apps/api/src/app.ts",
+              """import { assertGasAssistReady } from './gas-assist/readiness.js'
+          import { gasAssistRoutes } from './modules/gas-assist.js'""",
+              """import { assertGasAssistReady } from './gas-assist/readiness.js'
+          import { createSponsorshipRecoveryService } from './gas-assist/prepaid/sponsorship-recovery.js'
+          import { gasAssistRoutes } from './modules/gas-assist.js'""",
+          )
+
+          replace_once(
+              "apps/api/src/app.ts",
+              """    let stopMarketCatalogRefresh: (() => void) | null = null
+          """,
+              """    let stopMarketCatalogRefresh: (() => void) | null = null
+              let stopSponsorshipRecovery: (() => void) | null = null
+          """,
+          )
+
+          replace_once(
+              "apps/api/src/app.ts",
+              """        if (process.env.NODE_ENV !== 'test') {
+                  marketCatalogService.setPersistenceWarningHandler((code) => {""",
+              """        if (process.env.NODE_ENV !== 'test') {
+                  if (config.sponsorship.enabled && !config.sponsorship.emergencyDisabled) {
+                      const recovery = createSponsorshipRecoveryService()
+                      let recoveryRunning = false
+                      const runRecovery = async () => {
+                          if (recoveryRunning) return
+                          recoveryRunning = true
+                          try {
+                              const summary = await recovery.recoverPendingIntents()
+                              if (summary.rebroadcast > 0 || summary.reconciled > 0 || summary.failed > 0) {
+                                  app.log.info({
+                                      subsystem: 'sponsorship-recovery',
+                                      ...summary,
+                                  }, 'Durable sponsorship intents reconciled')
+                              }
+                          } catch (error) {
+                              app.log.warn({
+                                  subsystem: 'sponsorship-recovery',
+                                  err: error,
+                              }, 'Durable sponsorship recovery pass failed')
+                          } finally {
+                              recoveryRunning = false
+                          }
+                      }
+                      const interval = setInterval(() => void runRecovery(), 5_000)
+                      interval.unref()
+                      void runRecovery()
+                      stopSponsorshipRecovery = () => clearInterval(interval)
+                  }
+
+                  marketCatalogService.setPersistenceWarningHandler((code) => {""",
+          )
+
+          replace_once(
+              "apps/api/src/app.ts",
+              """    app.addHook('onClose', async () => {
+                  stopMarketCatalogRefresh?.()
+                  stopMarketCatalogRefresh = null""",
+              """    app.addHook('onClose', async () => {
+                  stopSponsorshipRecovery?.()
+                  stopSponsorshipRecovery = null
+                  stopMarketCatalogRefresh?.()
+                  stopMarketCatalogRefresh = null""",
+          )
+
+          replace_once(
+              ".github/workflows/ci.yml",
+              """      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+                - 'apps/api/src/app.ts'""",
+              """      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+                - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'
+                - 'apps/api/src/app.ts'""",
+          )
+          replace_once(
+              ".github/workflows/ci.yml",
+              """      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+                - 'apps/api/src/app.ts'""",
+              """      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+                - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'
+                - 'apps/api/src/app.ts'""",
+          )
+          replace_once(
+              ".github/workflows/ci.yml",
+              """      - 'apps/api/test/megafuel-exact-payment.test.ts'
+                - 'apps/api/test/megafuel-normal-swap.test.ts'""",
+              """      - 'apps/api/test/megafuel-durable-intents.test.ts'
+                - 'apps/api/test/megafuel-exact-payment.test.ts'
+                - 'apps/api/test/megafuel-normal-swap.test.ts'""",
+          )
+          replace_once(
+              ".github/workflows/ci.yml",
+              """      - 'apps/api/test/megafuel-exact-payment.test.ts'
+                - 'apps/api/test/megafuel-normal-swap.test.ts'""",
+              """      - 'apps/api/test/megafuel-durable-intents.test.ts'
+                - 'apps/api/test/megafuel-exact-payment.test.ts'
+                - 'apps/api/test/megafuel-normal-swap.test.ts'""",
+          )
+          replace_once(
+              ".github/workflows/ci.yml",
+              """          test/prepaid-sponsorship.test.ts
+                test/megafuel-exact-payment.test.ts""",
+              """          test/prepaid-sponsorship.test.ts
+                test/megafuel-durable-intents.test.ts
+                test/megafuel-exact-payment.test.ts""",
+          )
+
+          replace_once(
+              "docs/megafuel-exact-payment-rollout.md",
+              """apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql
+          ```""",
+              """apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql
+          apps/api/drizzle/0005_durable_sponsorship_intents.sql
+          ```""",
+          )
+
+          replace_once(
+              "docs/megafuel-exact-payment-rollout.md",
+              """Repository code and CI do not apply this migration.
+          """,
+              """Repository code and CI do not apply these migrations.
+
+          ## Durable signed intent recovery
+
+          Each Pistachio Wallet signature is stored against its one-time intent before the backend broadcasts it. The fee payment, exact approval, and exact swap raw transactions are kept separately, along with their transaction hashes, broadcast attempts, timestamps, and an append-only `sponsorship_intent_events` history.
+
+          A backend recovery loop checks pending intents every five seconds. If the browser closes after a signed raw transaction reaches the API, the backend can safely reconcile or rebroadcast those exact same bytes. Replaying the exact bytes cannot create a different transaction because the signer, nonce, target, calldata, amount, gas limit, and transaction hash are already fixed.
+
+          The backend still cannot sign a future step on the user's behalf. If the browser closes before Pistachio Wallet signs the approval or swap intent, the user must reconnect and continue from the SQL-backed current step.
+          """,
+          )
+          PY
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: API typecheck
+        run: pnpm --filter @pistachio/api typecheck
+
+      - name: Durable MegaFuel tests
+        run: >-
+          pnpm --filter @pistachio/api exec vitest run
+          test/megafuel-durable-intents.test.ts
+          test/prepaid-sponsorship.test.ts
+          test/megafuel-exact-payment.test.ts
+          test/megafuel-normal-swap.test.ts
+          test/megafuel-two-policy.test.ts
+          --reporter=verbose
+
+      - name: Commit verified changes
+        shell: bash
+        run: |
+          rm .github/workflows/agent-megafuel-durable-recovery.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Persist and recover signed MegaFuel intents"
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
