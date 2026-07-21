@@ -139,6 +139,8 @@ jobs:
           exit 1
 
       - name: API Gas Assist tests
+        id: api_tests
+        continue-on-error: true
         run: >-
           pnpm --filter @pistachio/api exec vitest run
           test/gasless-v2.test.ts
@@ -154,6 +156,22 @@ jobs:
           test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
           --reporter=verbose
+          > api-tests.log 2>&1
+
+      - name: Upload API test failure
+        if: steps.api_tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-tests-log
+          path: api-tests.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on API test errors
+        if: steps.api_tests.outcome == 'failure'
+        run: |
+          cat api-tests.log
+          exit 1
 
       - name: Frontend build
         run: pnpm build
