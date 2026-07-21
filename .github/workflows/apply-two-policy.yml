@@ -1,0 +1,72 @@
+name: Apply two-policy MegaFuel implementation
+
+on:
+  push:
+    branches:
+      - feature/megafuel-exact-prepaid-flow
+    paths:
+      - '.github/workflows/apply-two-policy.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.repository == 'parsij/PistachioSwap'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/megafuel-exact-prepaid-flow
+          fetch-depth: 0
+
+      - name: Apply staged two-policy patches
+        run: |
+          set -euo pipefail
+          git apply --check tools/two-policy/*.patch
+          git apply tools/two-policy/*.patch
+          rm -rf tools/two-policy
+          rm .github/workflows/apply-two-policy.yml
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate implementation
+        run: |
+          set -euo pipefail
+          pnpm lint
+          pnpm exec vitest run \
+            src/features/gas-assist/services/rawTransactionSigning.test.js \
+            src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
+            src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx \
+            --reporter=verbose
+          pnpm --filter @pistachio/api typecheck
+          pnpm --filter @pistachio/api exec vitest run \
+            test/prepaid-sponsorship.test.ts \
+            test/megafuel-exact-payment.test.ts \
+            test/megafuel-normal-swap.test.ts \
+            test/megafuel-two-policy.test.ts \
+            --reporter=verbose
+          pnpm build
+
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'parsij'
+          git config user.email '205437194+parsij@users.noreply.github.com'
+          git add -A
+          git commit -m 'Split MegaFuel fee and action policies'
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
