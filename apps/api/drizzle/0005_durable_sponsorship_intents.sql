@@ -18,6 +18,24 @@ ALTER TABLE sponsorship_transaction_intents
     )
   );
 
+ALTER TABLE sponsorship_ledger
+  DROP CONSTRAINT sponsorship_ledger_entry_type_check;
+
+ALTER TABLE sponsorship_ledger
+  ADD CONSTRAINT sponsorship_ledger_entry_type_check CHECK (entry_type IN (
+    'gasReserve',
+    'gasAndConversionReserve',
+    'commercialFeeReserve',
+    'serviceFeeReserved',
+    'actualGasConsumed',
+    'serviceFeeSettled',
+    'platformFeeSettled',
+    'refundPending',
+    'unusedGasCredit',
+    'walletCredit',
+    'adjustment'
+  ));
+
 CREATE INDEX sponsorship_intents_recovery_idx
   ON sponsorship_transaction_intents (status, last_broadcast_at, expires_at)
   WHERE status IN ('submitting','submitted','unknown');
