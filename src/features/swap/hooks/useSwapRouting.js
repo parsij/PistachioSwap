@@ -1,4 +1,7 @@
+import { parseEther } from 'viem'
 import { useGasAssistConfig } from '../../gas-assist/hooks/useGasAssistConfig.js'
+import { DEFAULT_NATIVE_GAS_RESERVE_WEI } from '../../../services/balances.js'
+import { swapUiConfig } from '../../../swapConfig.js'
 import {
     deriveRoutingMode,
     deriveSwapExecution,
@@ -7,6 +10,15 @@ import {
     SAME_CHAIN_GASLESS_OR_ASSISTED,
     ZERO_X_GASLESS_MODE,
 } from '../../../services/swapExecutionMode.js'
+
+function minimumNormalGasBalance() {
+    try {
+        const parsed = parseEther(String(swapUiConfig.wallet.nativeGasReserve))
+        return parsed > 0n ? parsed : DEFAULT_NATIVE_GAS_RESERVE_WEI
+    } catch {
+        return DEFAULT_NATIVE_GAS_RESERVE_WEI
+    }
+}
 
 /**
  * Derives the existing same-chain, Gas Assist, or cross-chain routing mode.
@@ -35,6 +47,7 @@ export function useSwapRouting({ quoteEndpoint, walletState, nativeBalance, sell
         sellAmount: activeAmountIn,
         gasAssistConfig: gasAssistConfig.config,
         gasAssistConfigStatus: gasAssistConfig.status,
+        minimumNativeBalance: minimumNormalGasBalance(),
     })
     const nonBscExecution = nativeBalance.status === 'success'
         ? { mode: NORMAL_SWAP_MODE, reason: null }

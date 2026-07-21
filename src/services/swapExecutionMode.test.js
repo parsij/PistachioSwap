@@ -23,6 +23,7 @@ const base = {
     sellAmount: '1000000',
     gasAssistConfig: { enabled: true, mode: 'zero-x-gasless' },
     gasAssistConfigStatus: 'success',
+    minimumNativeBalance: 100n,
 }
 
 describe('swap execution mode', () => {
@@ -45,9 +46,10 @@ describe('swap execution mode', () => {
         })
     })
 
-    it('selects Gasless only for an eligible zero-BNB wallet', () => {
-        expect(deriveSwapExecution(base).mode).toBe('zero-x-gasless')
-        expect(deriveSwapExecution({ ...base, nativeBalance: 1n }).mode).toBe('normal')
+    it('selects Gas Assist when BNB is zero or below the configured normal-gas reserve', () => {
+        expect(deriveSwapExecution(base)).toEqual({ mode: 'zero-x-gasless', reason: 'insufficient-native-balance' })
+        expect(deriveSwapExecution({ ...base, nativeBalance: 99n })).toEqual({ mode: 'zero-x-gasless', reason: 'insufficient-native-balance' })
+        expect(deriveSwapExecution({ ...base, nativeBalance: 100n })).toEqual({ mode: 'normal', reason: null })
     })
 
     it('does not enter Gasless on the wrong chain, native sell, or disabled config', () => {
@@ -74,7 +76,7 @@ describe('swap execution mode', () => {
             isNative: false,
         }
         const result = deriveSwapExecution({ ...base, sellToken: xaut })
-        expect(result).toEqual({ mode: 'zero-x-gasless', reason: null })
+        expect(result).toEqual({ mode: 'zero-x-gasless', reason: 'insufficient-native-balance' })
         expect(xaut.symbol).toBe('XAUT')
     })
 

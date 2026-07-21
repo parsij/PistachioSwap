@@ -119,8 +119,13 @@ export function useSwapPrimaryAction(config) {
             diagnostic('primary-action.route', {
                 route: 'gas-assist', prepaidRequired: prepaid.required, gasAssistQuoteStatus: gasAssist.quoteStatus,
             })
-            if (prepaid.required && prepaid.enabled) {
-                prepaid.start()
+            if (prepaid.required) {
+                if (prepaid.enabled) {
+                    await prepaid.start()
+                } else {
+                    setVisibleStatus('Prepaid Gas Assist is unavailable. Normal approval is blocked because this wallet does not have enough BNB for gas.')
+                    diagnostic('primary-action.blocked', { reason: 'prepaid-sponsorship-unavailable' }, 'warn')
+                }
                 return
             }
             if (!gasAssist.quote || Date.parse(gasAssist.quote.expiresAt) <= Date.now()) {
@@ -167,6 +172,13 @@ export function useSwapPrimaryAction(config) {
 
     async function confirmSameChainSwap() {
         setVisibleStatus(null)
+        if (executionMode === gaslessMode) {
+            const message = 'Normal approval and swap execution are blocked while Gas Assist is required.'
+            setVisibleStatus(message)
+            setReviewError(message)
+            diagnostic('review.confirm.blocked', { reason: 'gas-assist-required' }, 'warn')
+            return null
+        }
         diagnostic('review.confirm.clicked', {
             actionType: action.type,
             label: action.label,

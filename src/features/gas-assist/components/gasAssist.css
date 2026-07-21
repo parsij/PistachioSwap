@@ -39,3 +39,14 @@
 .gas-assist-multichain-actions button { min-height: 36px; padding: 0 12px; border: 1px solid #555; border-radius: 6px; background: #2a2a2a; color: #fff; cursor: pointer; }
 .gas-assist-multichain button:disabled { cursor: not-allowed; opacity: .55; }
 .gas-assist-address-mismatch { overflow-wrap: anywhere; color: #ff9aab !important; }
+.gas-assist-confirmation { display: grid; gap: 9px; margin-top: 16px; padding: 14px; border: 1px solid #3d654f; border-radius: 8px; background: #18251e; }
+.gas-assist-confirmation-heading { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.gas-assist-confirmation-dot { width: 9px; height: 9px; border-radius: 50%; background: #8ac27c; box-shadow: 0 0 0 5px rgb(138 194 124 / 12%); animation: gas-assist-pulse 1.4s ease-in-out infinite; }
+.gas-assist-confirmation p, .gas-assist-confirmation small { margin: 0; color: #b8c8bd; font-size: 12px; line-height: 1.45; }
+.gas-assist-confirmation code { overflow-wrap: anywhere; color: #91a99a; font-size: 10px; }
+.gas-assist-progress-track { position: relative; height: 5px; overflow: hidden; border-radius: 999px; background: #304438; }
+.gas-assist-progress-track span { position: absolute; inset-block: 0; width: 42%; border-radius: inherit; background: #8ac27c; animation: gas-assist-progress 1.25s ease-in-out infinite; }
+.gas-assist-confirmed { color: #9ddb8d; }
+@keyframes gas-assist-progress { from { transform: translateX(-110%); } to { transform: translateX(340%); } }
+@keyframes gas-assist-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .gas-assist-confirmation-dot, .gas-assist-progress-track span { animation: none; } .gas-assist-progress-track span { width: 100%; } }

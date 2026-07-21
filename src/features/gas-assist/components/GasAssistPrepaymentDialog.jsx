@@ -48,6 +48,23 @@ function providerFeeRows(fees) {
     })
 }
 
+function ConfirmationProgress({ title, detail, transactionHash, confirmationCount }) {
+    return (
+        <section className="gas-assist-confirmation" role="status" aria-live="polite">
+            <div className="gas-assist-confirmation-heading">
+                <span className="gas-assist-confirmation-dot" aria-hidden="true" />
+                <strong>{title}</strong>
+            </div>
+            <p>{detail}</p>
+            <div className="gas-assist-progress-track" aria-hidden="true"><span /></div>
+            {Number.isFinite(Number(confirmationCount)) && Number(confirmationCount) > 0 && (
+                <small>{confirmationCount} confirmation{Number(confirmationCount) === 1 ? '' : 's'} observed</small>
+            )}
+            {transactionHash && <code>{transactionHash}</code>}
+        </section>
+    )
+}
+
 /** Renders prepaid sponsorship review/status and invokes only supplied semantic actions. */
 export default function GasAssistPrepaymentDialog({
     sponsorship,
@@ -67,8 +84,13 @@ export default function GasAssistPrepaymentDialog({
         }
     }, [buyToken, order, sellToken])
     if (!sponsorship.open) return null
+    const paymentWaiting = ['payment-submitting', 'payment-submitted'].includes(order?.status) ||
+        sponsorship.phase === 'payment-confirming'
+    const approvalWaiting = order?.status === 'approval-submitted' || sponsorship.phase === 'approval-confirming'
+    const swapWaiting = order?.status === 'swap-submitted' || sponsorship.phase === 'swap-confirming'
+    const waitingForConfirmation = paymentWaiting || approvalWaiting || swapWaiting
     const busy = sponsorship.phase.endsWith('-preparing') || sponsorship.phase.endsWith('-signing') ||
-        sponsorship.phase === 'authenticating' || sponsorship.phase === 'continuation-loading'
+        sponsorship.phase === 'authenticating' || sponsorship.phase === 'continuation-loading' || waitingForConfirmation
     const orderExpired = expired || Boolean(order?.expiresAt && Date.parse(order.expiresAt) <= Date.now())
     const requiredAction = order?.currentRequiredAction
     const showPayment = sponsorship.phase === 'review' || requiredAction === 'prepare-payment'
@@ -128,6 +150,33 @@ export default function GasAssistPrepaymentDialog({
                         </>
                     )}
 
+                    {paymentWaiting && (
+                        <ConfirmationProgress
+                            title="Waiting for exact payment confirmation"
+                            detail="The backend is verifying that the treasury received the exact required token amount. Approval and swap sponsorship remain locked until this check passes."
+                            transactionHash={order?.paymentTransactionHash}
+                            confirmationCount={order?.confirmationCount}
+                        />
+                    )}
+                    {approvalWaiting && (
+                        <ConfirmationProgress
+                            title="Waiting for sponsored approval confirmation"
+                            detail="The action policy submitted the exact approval. The swap remains locked until the allowance is confirmed on-chain."
+                            transactionHash={order?.approvalTransactionHash}
+                            confirmationCount={order?.confirmationCount}
+                        />
+                    )}
+                    {swapWaiting && (
+                        <ConfirmationProgress
+                            title="Waiting for sponsored swap confirmation"
+                            detail="The action policy submitted the exact validated swap. PistachioSwap is waiting for the final receipt."
+                            transactionHash={order?.swapTransactionHash}
+                            confirmationCount={order?.confirmationCount}
+                        />
+                    )}
+                    {order?.status === 'payment-confirmed' && showApproval && (
+                        <p className="gas-assist-status gas-assist-confirmed" role="status">Exact payment confirmed. Approval sponsorship is now unlocked.</p>
+                    )}
                     {sponsorship.phase === 'authenticating' && <p className="gas-assist-status" role="status">Authenticate Pistachio Wallet to request an authoritative review.</p>}
                     {sponsorship.phase === 'unsupported' && <GasAssistError error={sponsorship.error} />}
                     {sponsorship.error && sponsorship.phase !== 'unsupported' && <GasAssistError error={sponsorship.error} />}

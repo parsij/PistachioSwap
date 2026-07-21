@@ -81,6 +81,27 @@ describe('Gas Assist prepayment review', () => {
         expect(value.signPayment).toHaveBeenCalledOnce()
     })
 
+    it('shows an indeterminate confirmation bar and keeps approval locked while payment is pending', () => {
+        render(<GasAssistPrepaymentDialog
+            sponsorship={sponsorship({
+                phase: 'payment-confirming',
+                order: {
+                    ...sponsorship().order,
+                    status: 'payment-submitted',
+                    currentRequiredAction: 'wait-payment-confirmation',
+                    paymentTransactionHash: `0x${'1'.repeat(64)}`,
+                    confirmationCount: 0,
+                },
+            })}
+            sellToken={sellToken}
+            buyToken={buyToken}
+        />)
+        expect(screen.getByText('Waiting for exact payment confirmation')).toBeTruthy()
+        expect(screen.getByText(/treasury received the exact required token amount/)).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Sign exact approval transaction' })).toBeNull()
+        expect(document.querySelector('.gas-assist-progress-track')).toBeTruthy()
+    })
+
     it('shows the Pistachio Wallet compatibility error', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({

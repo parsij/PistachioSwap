@@ -114,10 +114,17 @@ export function deriveSwapEligibility(input) {
         transactionStatus,
     })
     if (baseAction.type === 'switch-network') baseAction.label = `Switch to ${input.activeChainName ?? 'token network'}`
-    let action = prepaidRequired && prepaidEnabled && baseAction.type === 'swap'
-        ? { ...baseAction, label: 'Review Gas Assist prepayment' }
-        : baseAction
-    if (baseAction.type === 'swap') action = { ...action, label: 'Review swap' }
+    let action = baseAction
+    if (baseAction.type === 'swap') {
+        action = {
+            ...baseAction,
+            label: prepaidRequired && prepaidEnabled
+                ? 'Review Gas Assist prepayment'
+                : executionMode === gaslessMode
+                    ? 'Review Gas Assist'
+                    : 'Review swap',
+        }
+    }
     if (baseAction.type === 'swap' && routingMode !== crossChainMode && executionMode !== gaslessMode && !reviewEligibility.canReview) {
         action = { type: `review-blocked:${reviewEligibility.blockingReason}`, label: reviewEligibility.blockingMessage, enabled: true }
     }

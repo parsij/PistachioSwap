@@ -27,6 +27,18 @@ const initial = {
     error: null,
 }
 
+function phaseForOrderStatus(status, currentPhase) {
+    return {
+        'payment-submitting': 'payment-confirming',
+        'payment-submitted': 'payment-confirming',
+        'payment-confirmed': 'payment-confirmed',
+        'approval-submitted': 'approval-confirming',
+        'approval-confirmed': 'approval-confirmed',
+        'swap-submitted': 'swap-confirming',
+        completed: 'completed',
+    }[status] ?? currentPhase
+}
+
 /**
  * Owns prepaid Gas Assist sponsorship order, authentication, preparation, signing, and continuation state.
  * @param {object} config Endpoint, wallet, token/amount/slippage intent, eligibility, and confirmed callback.
@@ -47,6 +59,8 @@ export function usePrepaidSponsorship({
     const connection = useConnection()
     const { data: walletClient } = useWalletClient({ chainId: 56 })
     const [config, setConfig] = useState(null)
+    const [configStatus, setConfigStatus] = useState('idle')
+    const [configError, setConfigError] = useState(null)
     const [state, setState] = useState(initial)
     const sessionTokenRef = useRef(null)
     const submittedIntentIdsRef = useRef(new Set())
@@ -67,19 +81,27 @@ export function usePrepaidSponsorship({
     useEffect(() => {
         if (!quoteEndpoint || !walletAddress) {
             setConfig(null)
+            setConfigStatus('idle')
+            setConfigError(null)
             return undefined
         }
         const controller = new AbortController()
+        setConfigStatus('loading')
+        setConfigError(null)
         const walletEpoch = walletEpochRef.current
         fetchSponsorshipConfig(quoteEndpoint, controller.signal)
             .then((nextConfig) => {
                 if (!controller.signal.aborted && walletEpochRef.current === walletEpoch) {
                     setConfig(nextConfig)
+                    setConfigStatus('success')
+                    setConfigError(null)
                 }
             })
-            .catch(() => {
+            .catch((error) => {
                 if (!controller.signal.aborted && walletEpochRef.current === walletEpoch) {
                     setConfig(null)
+                    setConfigStatus('error')
+                    setConfigError(error)
                 }
             })
         return () => controller.abort()
@@ -176,7 +198,7 @@ export function usePrepaidSponsorship({
                     )
                 },
             })
-            setState((current) => ({ ...current, phase: `${action}-submitted`, intentExpiresAt: null }))
+            setState((current) => ({ ...current, phase: `${action}-confirming`, intentExpiresAt: null }))
         } catch (error) {
             setState((current) => ({
                 ...current,
@@ -242,7 +264,7 @@ export function usePrepaidSponsorship({
                     )
                 },
             })
-            setState((current) => ({ ...current, phase: 'swap-submitted', intentExpiresAt: null }))
+            setState((current) => ({ ...current, phase: 'swap-confirming', intentExpiresAt: null }))
         } catch (error) {
             setState((current) => ({
                 ...current,
@@ -269,7 +291,7 @@ export function usePrepaidSponsorship({
                 setState((current) => ({
                     ...current,
                     order: { ...current.order, ...order },
-                    phase: order.status === 'completed' ? 'completed' : current.phase,
+                    phase: phaseForOrderStatus(order.status, current.phase),
                     pollRevision: (current.pollRevision ?? 0) + 1,
                 }))
                 if (order.status === 'completed') await onConfirmed?.()
@@ -295,6 +317,8 @@ export function usePrepaidSponsorship({
     return {
         ...state,
         config,
+        configStatus,
+        configError,
         capability,
         metaMaskSigner: null,
         walletAddress,

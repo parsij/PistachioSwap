@@ -47,7 +47,8 @@ export function useGasAssistController({
         refreshIndex,
         onConfirmed,
     })
-    const prepaidRequired = routingMode === gasAssistRoutingMode && gasAssist.quoteStatus === 'error' &&
+    const gasAssistRequested = routingMode === gasAssistRoutingMode
+    const prepaidRequired = gasAssistRequested && gasAssist.quoteStatus === 'error' &&
         gasAssist.quoteError?.code === 'ONCHAIN_APPROVAL_REQUIRED'
     const prepaidSponsorship = usePrepaidSponsorship({
         quoteEndpoint,
@@ -59,19 +60,18 @@ export function useGasAssistController({
         required: prepaidRequired,
         onConfirmed,
     })
-    const quoteReady = gasAssist.quoteStatus === 'success' && gasAssist.quote !== null
-    const executionMode = routingMode === gasAssistRoutingMode &&
-        (quoteReady || (prepaidRequired && prepaidSponsorship.config?.enabled))
-        ? gaslessMode
-        : normalMode
-    const activeQuote = executionMode === gaslessMode
-        ? prepaidRequired && prepaidSponsorship.config?.enabled
+    const prepaidEnabled = prepaidRequired && prepaidSponsorship.config?.enabled === true
+    const executionMode = gasAssistRequested ? gaslessMode : normalMode
+    const activeQuote = gasAssistRequested
+        ? prepaidEnabled
             ? { prepaidSponsorshipRequired: true }
             : gasAssist.quote
         : normalQuote
-    const activeQuoteStatus = executionMode === gaslessMode
-        ? prepaidRequired && prepaidSponsorship.config?.enabled
-            ? 'success'
+    const activeQuoteStatus = gasAssistRequested
+        ? prepaidRequired
+            ? prepaidSponsorship.configStatus === 'success'
+                ? prepaidEnabled ? 'success' : 'error'
+                : prepaidSponsorship.configStatus === 'error' ? 'error' : 'loading'
             : gasAssist.quoteStatus
         : normalQuoteStatus
 
@@ -83,19 +83,26 @@ export function useGasAssistController({
     }, [activeAmountSide, buyInputDenomination, buyToken, executionMode, gasAssist.quote, gaslessMode, setBuyAmount])
 
     useEffect(() => {
-        if (routingMode !== gasAssistRoutingMode || gasAssist.quoteStatus !== 'error' ||
-            (prepaidRequired && prepaidSponsorship.config?.enabled) || normalQuoteStatus === 'success') return
+        if (!gasAssistRequested || gasAssist.quoteStatus !== 'error') return
+        if (prepaidRequired) {
+            if (prepaidSponsorship.configStatus === 'idle' || prepaidSponsorship.configStatus === 'loading') return
+            if (prepaidSponsorship.config?.enabled) return
+            const code = prepaidSponsorship.configError?.code ?? 'SPONSORSHIP_UNAVAILABLE'
+            const message = prepaidSponsorship.configError?.message ?? 'Prepaid Gas Assist sponsorship is unavailable.'
+            setVisibleStatus(`${code}: ${message}`)
+            return
+        }
         const code = gasAssist.quoteError?.code
         const message = gasAssist.quoteError?.message ?? 'Gas Assist could not provide a quote.'
         setVisibleStatus(code ? `${code}: ${message}` : message)
     }, [
         gasAssist.quoteError,
         gasAssist.quoteStatus,
-        gasAssistRoutingMode,
-        normalQuoteStatus,
+        gasAssistRequested,
         prepaidRequired,
         prepaidSponsorship.config?.enabled,
-        routingMode,
+        prepaidSponsorship.configError,
+        prepaidSponsorship.configStatus,
         setVisibleStatus,
     ])
 
