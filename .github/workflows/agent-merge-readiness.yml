@@ -1,0 +1,58 @@
+name: Apply merge-readiness fixes
+
+on:
+  push:
+    branches:
+      - feature/megafuel-exact-prepaid-flow
+    paths:
+      - '.github/workflows/agent-merge-readiness.yml'
+      - '.github/merge-readiness-fixes.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/megafuel-exact-prepaid-flow
+          fetch-depth: 0
+      - name: Apply source fixes
+        run: python .github/merge-readiness-fixes.py
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate fixes
+        run: |
+          pnpm --filter @pistachio/api typecheck
+          pnpm --filter @pistachio/api exec vitest run \
+            test/megafuel-durable-intents.test.ts \
+            test/megafuel-exact-payment.test.ts \
+            test/megafuel-presigned-package.test.ts \
+            test/prepaid-sponsorship.test.ts \
+            --reporter=verbose
+      - name: Restore bootstrap files
+        run: |
+          git checkout HEAD -- \
+            .github/workflows/agent-merge-readiness.yml \
+            .github/merge-readiness-fixes.py
+      - name: Commit validated source fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          if git diff --cached --name-only | grep -E '^\.github/(workflows/agent-merge-readiness\.yml$|merge-readiness-fixes\.py$)'; then
+            echo 'Bootstrap files unexpectedly changed' >&2
+            exit 1
+          fi
+          git commit -m "Align durable sponsorship schema and accounting"
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
