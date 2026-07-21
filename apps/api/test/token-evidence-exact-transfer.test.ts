@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { unavailableHoneypotSecurity } from '../src/providers/security/honeypot-token-security.js'
 import type { MoralisSponsorshipTokenEvidence } from '../src/providers/moralis/sponsorship-token-evidence.js'
@@ -6,6 +6,7 @@ import { tokenEvidenceInternals } from '../src/gas-assist/prepaid/token-evidence
 
 const address = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
 const {
+    applyDangerousBypass,
     classifyMoralisSecurity,
     hasExactTransferEvidence,
     optionalReferenceDeviationBps,
@@ -37,6 +38,43 @@ function moralis(overrides: Partial<MoralisSponsorshipTokenEvidence> = {}): Mora
         ...overrides,
     }
 }
+
+afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+})
+
+describe('refreshed sponsorship evidence bypass', () => {
+    const unsafeEvidence = {
+        priceUsdMicros: 4_000_000_000n,
+        priceDeviationBps: 9_999,
+        liquidityUsdMicros: 0n,
+        securityStatus: 'blocked' as const,
+        transferBehavior: 'unknown' as const,
+    }
+
+    it('makes refreshed evidence pass the later prepare and submit checks when explicitly enabled', () => {
+        vi.stubEnv('DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS', 'true')
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+        const result = applyDangerousBypass(unsafeEvidence)
+
+        expect(result.dangerousBypassApplied).toBe(true)
+        expect(result.priceDeviationBps).toBe(0)
+        expect(result.liquidityUsdMicros).toBeGreaterThan(0n)
+        expect(result.securityStatus).toBe('trusted')
+        expect(result.transferBehavior).toBe('exact')
+    })
+
+    it('does not alter refreshed evidence when the bypass is disabled', () => {
+        vi.stubEnv('DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS', 'false')
+
+        expect(applyDangerousBypass(unsafeEvidence)).toEqual({
+            ...unsafeEvidence,
+            dangerousBypassApplied: false,
+        })
+    })
+})
 
 describe('Moralis sponsorship security classification', () => {
     it('marks a verified high-score token as trusted', () => {
