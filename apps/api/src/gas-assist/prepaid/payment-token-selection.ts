@@ -147,7 +147,32 @@ export function selectPaymentToken({
     })
 
     const candidate = eligible[0]
-    if (!candidate) return { selection: null, rejections }
+    if (!candidate) {
+        if (process.env.DEBUG_SPONSORSHIP === 'true') {
+            console.warn('[sponsorship-payment-token-selection-rejected]', {
+                sellToken: normalizedSell,
+                buyToken: normalizedBuy,
+                configuredMinimumLiquidityUsdMicros: configuredMinimumLiquidityUsdMicros.toString(),
+                requiredPaymentRawByToken: Object.fromEntries(
+                    [...requiredPaymentRawByToken.entries()].map(([address, amount]) => [address, amount.toString()]),
+                ),
+                candidates: candidates.map((item) => ({
+                    tokenAddress: item.tokenAddress,
+                    symbol: item.symbol,
+                    balanceRaw: item.balanceRaw.toString(),
+                    priceUsdMicros: item.priceUsdMicros.toString(),
+                    priceObservedAt: item.priceObservedAt.toISOString(),
+                    priceDeviationBps: item.priceDeviationBps,
+                    liquidityUsdMicros: item.liquidityUsdMicros.toString(),
+                    transferBehavior: item.transferBehavior,
+                    securityStatus: item.securityStatus,
+                    strictSecurityRequired: item.strictSecurityRequired,
+                })),
+                rejections,
+            })
+        }
+        return { selection: null, rejections }
+    }
     return {
         selection: {
             candidate,
