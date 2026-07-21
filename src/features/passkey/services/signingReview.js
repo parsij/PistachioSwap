@@ -12,7 +12,11 @@ function reviewError(code, message) {
  * Cancellation/rejection clears the pending request and never signs or broadcasts by itself.
  */
 export class SigningReviewQueue {
-    constructor({ now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+    constructor({
+        now = () => Date.now(),
+        setTimer = globalThis.setTimeout.bind(globalThis),
+        clearTimer = globalThis.clearTimeout.bind(globalThis),
+    } = {}) {
         this.now = now
         this.setTimer = setTimer
         this.clearTimer = clearTimer
