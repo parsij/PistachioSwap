@@ -4,37 +4,54 @@ on:
   pull_request:
     paths:
       - '.github/workflows/ci.yml'
-      - 'tools/apply_gas_assist_routing_fix.py'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/config.ts'
+      - 'apps/api/src/db/schema.ts'
+      - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/modules/sponsorship-admin.ts'
+      - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
+      - 'apps/api/test/megafuel-exact-payment.test.ts'
+      - 'apps/api/test/megafuel-normal-swap.test.ts'
+      - 'apps/api/test/megafuel-two-policy.test.ts'
+      - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/swap/**'
+      - 'src/services/swapExecutionMode*'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/config.ts'
+      - 'apps/api/src/db/schema.ts'
+      - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/modules/sponsorship-admin.ts'
+      - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
+      - 'apps/api/test/megafuel-exact-payment.test.ts'
+      - 'apps/api/test/megafuel-normal-swap.test.ts'
+      - 'apps/api/test/megafuel-two-policy.test.ts'
+      - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/swap/**'
+      - 'src/services/swapExecutionMode*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-and-validate:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
-      - name: Checkout feature branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: feature/megafuel-exact-prepaid-flow
-          fetch-depth: 0
-
-      - name: Apply Gas Assist routing implementation
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('tools/apply_gas_assist_routing_fix.py')
-          source = path.read_text()
-          marker = '\nreplace_once(\n    ".github/workflows/ci.yml",'
-          if marker not in source:
-              raise RuntimeError('CI-tail marker was not found in the staged routing script.')
-          implementation = source.split(marker, 1)[0]
-          exec(compile(implementation, str(path), 'exec'))
-          PY
-          rm -f tools/apply_gas_assist_routing_fix.py
-          rm -f .github/workflows/apply-gas-assist-routing-fix.yml
-          rm -f routing-fix-apply.log
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -78,12 +95,3 @@ jobs:
 
       - name: Frontend build
         run: pnpm build
-
-      - name: Commit validated implementation
-        run: |
-          git config user.name 'parsij'
-          git config user.email '205437194+parsij@users.noreply.github.com'
-          git add -A
-          git reset .github/workflows/ci.yml
-          git commit -m 'Route low-BNB swaps through prepaid Gas Assist'
-          git push origin HEAD:feature/megafuel-exact-prepaid-flow
