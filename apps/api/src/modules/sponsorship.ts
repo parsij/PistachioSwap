@@ -214,11 +214,17 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
         (request, reply) => safe(async () => {
             const session = await auth().authenticate(request.headers.authorization)
             const refreshed = await intents().refreshOrder(request.params.orderId, session.walletAddress)
+            const packageState = await packages().getState(
+                request.params.orderId,
+                session.walletAddress,
+            )
             return {
                 ...(await orders().get(request.params.orderId, session.walletAddress)),
-                currentRequiredAction: refreshed.currentRequiredAction,
+                currentRequiredAction: packageState.preSignedPackage
+                    ? 'wait-backend-execution'
+                    : refreshed.currentRequiredAction,
                 confirmationCount: refreshed.confirmationCount,
-                preSignedPackage: refreshed.preSignedPackage ?? false,
+                preSignedPackage: packageState.preSignedPackage,
             }
         }, reply),
     )

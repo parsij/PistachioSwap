@@ -9,11 +9,14 @@ import {
     prepareSponsorshipApproval,
     prepareSponsorshipContinuation,
     prepareSponsorshipPayment,
+    prepareSponsorshipPackage,
     submitSponsorshipIntent,
+    submitSponsorshipPackage,
 } from '../services/prepaidSponsorship.js'
 import {
     detectRawTransactionSigning,
     signPreparedSponsoredTransaction,
+    signPreparedSponsoredPackage,
 } from '../services/rawTransactionSigning.js'
 import { isUserRejectedError } from '../../../services/swapTransaction.js'
 
@@ -209,6 +212,65 @@ export function usePrepaidSponsorship({
         }
     }, [capability, quoteEndpoint, state.order, walletAddress, walletClient])
 
+    const signPackage = useCallback(async () => {
+        const order = state.order
+        const sessionToken = sessionTokenRef.current
+        const walletEpoch = walletEpochRef.current
+        if (!order || !sessionToken || !walletClient || !walletAddress) return
+        try {
+            setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
+            const preparedPackage = await prepareSponsorshipPackage(
+                quoteEndpoint,
+                sessionToken,
+                order.id,
+            )
+            setState((current) => ({
+                ...current,
+                phase: 'package-signing',
+                intentExpiresAt: preparedPackage.expiresAt,
+            }))
+            await signPreparedSponsoredPackage({
+                transport: capability.transport,
+                capability,
+                walletClient,
+                preparedPackage,
+                authenticatedWalletAddress: walletAddress,
+                multichainAccount: walletAddress,
+                submitSignedPackage: async (signedTransactions) => {
+                    if (walletEpochRef.current !== walletEpoch) {
+                        const error = new Error('The connected wallet changed during package signing.')
+                        error.code = 'PISTACHIO_ACCOUNT_MISMATCH'
+                        throw error
+                    }
+                    if (Date.parse(preparedPackage.expiresAt) <= Date.now()) {
+                        const error = new Error('The signed transaction package expired.')
+                        error.code = 'INTENT_EXPIRED'
+                        throw error
+                    }
+                    return submitSponsorshipPackage(
+                        quoteEndpoint,
+                        sessionToken,
+                        order.id,
+                        signedTransactions,
+                    )
+                },
+            })
+            setState((current) => ({
+                ...current,
+                phase: 'payment-confirming',
+                intentExpiresAt: null,
+                order: { ...current.order, preSignedPackage: true },
+            }))
+        } catch (error) {
+            setState((current) => ({
+                ...current,
+                phase: isUserRejectedError(error) ? 'cancelled' : 'failed',
+                intentExpiresAt: null,
+                error,
+            }))
+        }
+    }, [capability, quoteEndpoint, state.order, walletAddress, walletClient])
+
     const requestContinuation = useCallback(async () => {
         const sessionToken = sessionTokenRef.current
         if (!state.order || !sessionToken) return
@@ -327,6 +389,7 @@ export function usePrepaidSponsorship({
         available: Boolean(required && config?.enabled),
         start,
         close,
+        signPackage,
         signPayment: () => signIntent('payment'),
         signApproval: () => signIntent('approval'),
         requestContinuation,

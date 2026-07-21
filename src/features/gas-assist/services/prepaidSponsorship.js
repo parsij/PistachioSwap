@@ -92,6 +92,16 @@ export function submitSponsorshipIntent(quoteEndpoint, sessionToken, intentId, s
     return post(quoteEndpoint, `/v1/sponsorship/intents/${encodeURIComponent(intentId)}/submit`, { signedRawTransaction }, { sessionToken, signal })
 }
 
+/** Requests all three exact transactions before any transaction is broadcast. */
+export function prepareSponsorshipPackage(quoteEndpoint, sessionToken, orderId, signal) {
+    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/package/prepare`, {}, { sessionToken, signal })
+}
+
+/** Atomically stores all three signed raw transactions before backend execution. */
+export function submitSponsorshipPackage(quoteEndpoint, sessionToken, orderId, signedTransactions, signal) {
+    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/package/submit`, { signedTransactions }, { sessionToken, signal })
+}
+
 /** Fetches the current server-authoritative state of one prepaid sponsorship order. */
 export function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
     return requestJson(

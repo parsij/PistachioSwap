@@ -776,15 +776,15 @@ export function getApiConfig() {
             ),
             orderTtlSeconds: readConfiguredInteger(
                 'MEGAFUEL_ORDER_TTL_SECONDS',
-                300,
+                900,
                 60,
-                300,
+                900,
             ),
             actionIntentTtlSeconds: readConfiguredInteger(
                 'MEGAFUEL_ACTION_INTENT_TTL_SECONDS',
-                300,
+                900,
                 60,
-                300,
+                900,
             ),
             authChallengeTtlSeconds: readConfiguredInteger(
                 'MEGAFUEL_AUTH_CHALLENGE_TTL_SECONDS',

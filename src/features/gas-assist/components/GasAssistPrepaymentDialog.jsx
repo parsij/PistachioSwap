@@ -144,8 +144,9 @@ export default function GasAssistPrepaymentDialog({
                             <div className="gas-assist-disclosure">
                                 <strong>Pistachio Wallet signs only the exact backend-prepared token, recipient, amount, nonce, calldata, gas limit, and zero gas price.</strong>
                                 <span>The backend rejects any changed or user-created transaction before it reaches MegaFuel.</span>
-                                <span>The approval is not prepared until the treasury confirms the exact payment amount.</span>
-                                <span>Payment, approval, and swap are separate transactions and are not atomic.</span>
+                                <span>Pistachio Wallet signs payment, exact approval, and swap before the first broadcast.</span>
+                                <span>The backend stores all three raw transactions first, then broadcasts them sequentially after each on-chain confirmation.</span>
+                                <span>They remain separate transactions and are not atomic.</span>
                             </div>
                         </>
                     )}
@@ -181,6 +182,7 @@ export default function GasAssistPrepaymentDialog({
                     {sponsorship.phase === 'unsupported' && <GasAssistError error={sponsorship.error} />}
                     {sponsorship.error && sponsorship.phase !== 'unsupported' && <GasAssistError error={sponsorship.error} />}
                     {orderExpired && <p className="gas-assist-status" role="status">This order or action expired. Request a fresh review.</p>}
+                    {sponsorship.phase === 'package-signing' && <p className="gas-assist-status" role="status">Confirm the payment, exact approval, and swap transactions. Nothing is broadcast until all three are stored.</p>}
                     {sponsorship.phase === 'payment-signing' && <p className="gas-assist-status" role="status">Confirm the exact payment transaction in Pistachio Wallet.</p>}
                     {sponsorship.phase === 'approval-signing' && <p className="gas-assist-status" role="status">Confirm the exact approval transaction in Pistachio Wallet.</p>}
                     {sponsorship.intentExpiresAt && (
@@ -191,7 +193,12 @@ export default function GasAssistPrepaymentDialog({
                     {sponsorship.phase === 'swap-signing' && <p className="gas-assist-status" role="status">Confirm the exact sponsored swap transaction in Pistachio Wallet.</p>}
                     {sponsorship.phase === 'completed' && <p className="gas-assist-status" role="status">Sponsored swap confirmed.</p>}
 
-                    {!orderExpired && showPayment && (
+                    {!orderExpired && showPayment && sponsorship.signPackage && (
+                        <button className="gas-assist-primary" type="button" onClick={sponsorship.signPackage} disabled={busy}>
+                            Sign payment, approval, and swap
+                        </button>
+                    )}
+                    {!orderExpired && showPayment && !sponsorship.signPackage && (
                         <button className="gas-assist-primary" type="button" onClick={sponsorship.signPayment} disabled={busy}>
                             Sign exact payment transaction
                         </button>

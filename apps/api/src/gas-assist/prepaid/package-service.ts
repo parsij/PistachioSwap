@@ -20,6 +20,7 @@ import {
     type StoredIntentTemplate,
 } from './chain-client.js'
 import { createSponsorshipIntentService } from './intent-service.js'
+import { createStoredIntentSubmitter } from './stored-intent-submitter.js'
 import {
     getExactSponsoredQuote,
     quoteGasLimit,
@@ -283,6 +284,7 @@ function publicPackage(order: PackageOrderRow, intents: PackageIntentRow[]) {
 export function createSponsorshipPackageService(database: Pool = getPool()) {
     const chain = createPrepaidChainClient()
     const intentService = createSponsorshipIntentService({ database })
+    const storedIntentSubmitter = createStoredIntentSubmitter(database)
 
     async function prepare(orderId: string, walletAddress: string) {
         const config = getApiConfig().sponsorship
@@ -678,13 +680,9 @@ export function createSponsorshipPackageService(database: Pool = getPool()) {
             return { started: false, status: order.status }
         }
         try {
-            const result = await intentService.submit({
+            const result = await storedIntentSubmitter.submit({
                 intentId: intent.id,
-                signedRawTransaction: intent.signedRawTransaction,
                 walletAddress: order.walletAddress,
-                ...(clientIp
-                    ? { clientIp }
-                    : { trustedIpHash: order.ipHash }),
             })
             return {
                 started: true,
@@ -777,12 +775,26 @@ export function createSponsorshipPackageService(database: Pool = getPool()) {
         return summary
     }
 
+    async function getState(orderId: string, walletAddress: string) {
+        const intents = await loadIntents(database, orderId, walletAddress)
+        const signedActions = new Set(
+            intents
+                .filter((intent) => Boolean(intent.signedRawTransaction))
+                .map((intent) => intent.action),
+        )
+        return {
+            preSignedPackage: PACKAGE_ACTIONS.every((action) =>
+                signedActions.has(action)),
+        }
+    }
+
     return {
         prepare,
         storeSignedPackage,
         submitSignedPackage,
         advanceOrder,
         advancePendingPackages,
+        getState,
     }
 }
 
