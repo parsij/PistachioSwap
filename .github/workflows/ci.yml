@@ -4,31 +4,58 @@ on:
   pull_request:
     paths:
       - '.github/workflows/ci.yml'
-      - 'tools/apply_sponsored_uniswap_fallback.py'
-      - 'tools/run_sponsored_uniswap_fallback.py'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/config.ts'
+      - 'apps/api/src/db/schema.ts'
+      - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
+      - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/modules/sponsorship-admin.ts'
+      - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
+      - 'apps/api/test/gasless-v2.test.ts'
+      - 'apps/api/test/megafuel-exact-payment.test.ts'
+      - 'apps/api/test/megafuel-normal-swap.test.ts'
+      - 'apps/api/test/megafuel-two-policy.test.ts'
+      - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/swap/**'
+      - 'src/services/swapExecutionMode*'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/0004_megafuel_exact_prepaid_flow.sql'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/config.ts'
+      - 'apps/api/src/db/schema.ts'
+      - 'apps/api/src/features/quotes/providers/uniswap-provider.ts'
+      - 'apps/api/src/gas-assist/**'
+      - 'apps/api/src/modules/sponsorship-admin.ts'
+      - 'apps/api/src/modules/sponsorship-refunds-admin.ts'
+      - 'apps/api/test/gasless-v2.test.ts'
+      - 'apps/api/test/megafuel-exact-payment.test.ts'
+      - 'apps/api/test/megafuel-normal-swap.test.ts'
+      - 'apps/api/test/megafuel-two-policy.test.ts'
+      - 'apps/api/test/prepaid-sponsorship.test.ts'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/swap/**'
+      - 'src/services/swapExecutionMode*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-and-validate:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
-      - name: Checkout feature branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: feature/megafuel-exact-prepaid-flow
-          fetch-depth: 0
-          show-progress: false
-
-      - name: Apply source changes
-        run: |
-          python tools/run_sponsored_uniswap_fallback.py
-          rm -f tools/apply_sponsored_uniswap_fallback.py
-          rm -f tools/run_sponsored_uniswap_fallback.py
-          rm -f sponsored-fallback-apply.log
-          rm -f sponsored-fallback-apply-2.log
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -47,19 +74,21 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Frontend focused tests
+      - name: Frontend Gas Assist tests
         run: >-
           pnpm exec vitest run
-          src/features/gas-assist/hooks/useGasAssistController.test.jsx
+          src/features/gas-assist/services/rawTransactionSigning.test.js
           src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
+          src/features/gas-assist/hooks/useGasAssistController.test.jsx
           src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
+          src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
           src/services/swapExecutionMode.test.js
           --reporter=verbose
 
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
 
-      - name: API focused tests
+      - name: API Gas Assist tests
         run: >-
           pnpm --filter @pistachio/api exec vitest run
           test/gasless-v2.test.ts
@@ -71,14 +100,3 @@ jobs:
 
       - name: Frontend build
         run: pnpm build
-
-      - name: Commit validated source changes
-        run: |
-          git config user.name 'parsij'
-          git config user.email '205437194+parsij@users.noreply.github.com'
-          git add -A
-          git reset .github/workflows/ci.yml
-          git reset .github/workflows/apply-sponsored-uniswap-fallback.yml || true
-          git reset .github/workflows/apply-prepaid-value-fix.yml || true
-          git commit -m 'Use Uniswap before 0x for sponsored swaps'
-          git push origin HEAD:feature/megafuel-exact-prepaid-flow
