@@ -1,29 +1,41 @@
-name: Apply pre-signed package
+name: MegaFuel exact flow
 
 on:
   pull_request:
     paths:
       - '.github/workflows/ci.yml'
-      - '.github/apply-presigned-package.py'
-      - '.github/fix-presigned-validation.py'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/**'
+      - 'apps/api/src/**'
+      - 'apps/api/test/**'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/passkey/services/signingReview*'
+      - 'src/features/swap/**'
+      - 'src/services/swapExecutionMode*'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/**'
+      - 'apps/api/src/**'
+      - 'apps/api/test/**'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/passkey/services/signingReview*'
+      - 'src/features/swap/**'
+      - 'src/services/swapExecutionMode*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
-    if: github.head_ref == 'feature/megafuel-exact-prepaid-flow'
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feature/megafuel-exact-prepaid-flow
-          fetch-depth: 0
-      - name: Apply patches
-        run: |
-          python .github/apply-presigned-package.py
-          python .github/fix-presigned-validation.py
       - uses: pnpm/action-setup@v4
         with:
           version: 10.30.3
@@ -32,58 +44,38 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Validate patched tree
-        id: validate
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          {
-            echo '=== API typecheck ==='
-            pnpm --filter @pistachio/api typecheck
-            echo '=== API focused tests ==='
-            pnpm --filter @pistachio/api exec vitest run \
-              test/megafuel-presigned-package.test.ts \
-              test/token-evidence-exact-transfer.test.ts \
-              test/megafuel-durable-intents.test.ts \
-              test/megafuel-exact-payment.test.ts \
-              test/megafuel-normal-swap.test.ts \
-              --reporter=verbose
-            echo '=== Frontend focused tests ==='
-            pnpm exec vitest run \
-              src/features/gas-assist/services/rawTransactionSigning.package.test.js \
-              src/features/gas-assist/services/rawTransactionSigning.test.js \
-              src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
-              src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx \
-              --reporter=verbose
-            echo '=== Frontend build ==='
-            pnpm build
-          } 2>&1 | tee presigned-package-validation.log
-      - name: Upload validation log
-        if: steps.validate.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: presigned-package-validation-log
-          path: presigned-package-validation.log
-          retention-days: 3
-          if-no-files-found: error
-      - name: Fail validation
-        if: steps.validate.outcome == 'failure'
-        run: exit 1
-      - name: Restore bootstrap files
-        run: |
-          git checkout HEAD -- \
-            .github/workflows/ci.yml \
-            .github/workflows/agent-presigned-package.yml \
-            .github/apply-presigned-package.py \
-            .github/fix-presigned-validation.py
-      - name: Commit validated application tree
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          if git diff --cached --name-only | grep -E '^\.github/(workflows/|apply-presigned-package\.py$|fix-presigned-validation\.py$)'; then
-            echo 'Bootstrap files unexpectedly changed' >&2
-            exit 1
-          fi
-          git commit -m "Implement durable pre-signed sponsorship packages"
-          git push origin HEAD:feature/megafuel-exact-prepaid-flow
+      - name: Lint
+        run: pnpm lint
+      - name: Frontend Gas Assist tests
+        run: >-
+          pnpm exec vitest run
+          src/features/gas-assist/services/rawTransactionSigning.test.js
+          src/features/gas-assist/services/rawTransactionSigning.package.test.js
+          src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
+          src/features/gas-assist/hooks/useGasAssistController.test.jsx
+          src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
+          src/features/passkey/services/signingReview.test.js
+          src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
+          src/services/swapExecutionMode.test.js
+          --reporter=verbose
+      - name: API typecheck
+        run: pnpm --filter @pistachio/api typecheck
+      - name: API Gas Assist tests
+        run: >-
+          pnpm --filter @pistachio/api exec vitest run
+          test/gasless-v2.test.ts
+          test/prepaid-sponsorship.test.ts
+          test/megafuel-durable-intents.test.ts
+          test/megafuel-exact-payment.test.ts
+          test/megafuel-normal-swap.test.ts
+          test/megafuel-presigned-package.test.ts
+          test/megafuel-two-policy.test.ts
+          test/moralis-sponsorship-evidence.test.ts
+          test/payment-token-selection-native.test.ts
+          test/paymaster-sponsorability-fallback.test.ts
+          test/provider-response-debug.test.ts
+          test/token-evidence-exact-transfer.test.ts
+          test/token-price-normalization.test.ts
+          --reporter=verbose
+      - name: Frontend build
+        run: pnpm build
