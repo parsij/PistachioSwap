@@ -77,3 +77,5 @@ jobs:
           git reset .github/workflows/apply-prepaid-value-fix.yml
           git commit -m 'Use exact prepaid flow for low-value Gas Assist'
           git push origin HEAD:feature/megafuel-exact-prepaid-flow
+
+# Trigger after workflow registration.
