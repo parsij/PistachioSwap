@@ -69,7 +69,7 @@ export function evaluatePaymentTokenCandidate({
         return 'PAYMENT_TOKEN_PRICE_DEVIATION'
     }
     if (candidate.securityStatus === 'unknown') return 'PAYMENT_TOKEN_MORALIS_UNAVAILABLE'
-    if (candidate.securityStatus === 'blocked') return 'PAYMENT_TOKEN_SPAM_OR_BLOCKED'
+    if (candidate.securityStatus === 'blocked') return 'PAYMENT_TOKEN_SECURITY_UNCONFIRMED'
 
     const minimumLiquidity = candidate.minimumLiquidityUsdMicros > configuredMinimumLiquidityUsdMicros
         ? candidate.minimumLiquidityUsdMicros
