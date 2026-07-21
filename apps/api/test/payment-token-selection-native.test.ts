@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { NATIVE_TOKEN_ADDRESS } from '../src/lib/address.js'
 import {
@@ -47,6 +47,39 @@ function evaluate(overrides: Partial<PaymentTokenCandidate> = {}) {
         configuredMinimumLiquidityUsdMicros: 10_000n,
     })
 }
+
+afterEach(() => {
+    vi.unstubAllEnvs()
+})
+
+describe('dangerous sponsorship token-check bypass', () => {
+    it('bypasses security, liquidity, transfer, price-age, and deviation gates', () => {
+        vi.stubEnv('DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS', 'true')
+
+        expect(evaluate({
+            priceObservedAt: new Date('2020-01-01T00:00:00Z'),
+            priceDeviationBps: 10_000,
+            liquidityUsdMicros: 0n,
+            transferBehavior: 'fee-on-transfer',
+            securityStatus: 'blocked',
+            strictSecurityRequired: true,
+        })).toBeNull()
+    })
+
+    it('still requires whitelist enablement, correct decimals, a price, and balance', () => {
+        vi.stubEnv('DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS', 'true')
+
+        expect(evaluate({ enabled: false })).toBe('PAYMENT_TOKEN_DISABLED')
+        expect(evaluate({ onchainDecimals: 18 })).toBe('PAYMENT_TOKEN_DECIMALS_MISMATCH')
+        expect(evaluate({ priceUsdMicros: 0n })).toBe('PAYMENT_TOKEN_PRICE_UNAVAILABLE')
+        expect(evaluate({ balanceRaw: 9n })).toBe('PAYMENT_TOKEN_BALANCE_LOW')
+    })
+
+    it('does not bypass checks unless the flag is exactly true', () => {
+        vi.stubEnv('DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS', 'false')
+        expect(evaluate({ securityStatus: 'blocked' })).toBe('PAYMENT_TOKEN_SECURITY_UNCONFIRMED')
+    })
+})
 
 describe('Moralis-backed payment-token safety', () => {
     it('rejects unavailable Moralis evidence', () => {
