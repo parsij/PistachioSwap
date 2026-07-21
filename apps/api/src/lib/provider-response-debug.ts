@@ -59,17 +59,12 @@ export function logProviderResponse(
         receivedAt: new Date().toISOString(),
         response: sanitizeProviderValue(response),
     }
-    const serialized = JSON.stringify(record)
+    const serialized = JSON.stringify(record, null, 2)
+    const printable = serialized.length > MAX_SERIALIZED_LENGTH
+        ? `${serialized.slice(0, MAX_SERIALIZED_LENGTH)}\n...[TRUNCATED]`
+        : serialized
 
-    if (serialized.length > MAX_SERIALIZED_LENGTH) {
-        console.log(
-            `[sponsorship-provider-response:${provider}]`,
-            `${serialized.slice(0, MAX_SERIALIZED_LENGTH)}...[TRUNCATED]`,
-        )
-        return
-    }
-
-    console.log(`[sponsorship-provider-response:${provider}]`, record)
+    console.log(`[sponsorship-provider-response:${provider}]\n${printable}`)
 }
 
 export const providerResponseDebugInternals = {
