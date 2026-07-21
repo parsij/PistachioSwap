@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { tokenPriceInternals } from '../src/providers/alchemy/token-prices.js'
 
-const { normalizeUsdPrice } = tokenPriceInternals
+const { normalizeUsdPrice, resolveNativePriceSources } = tokenPriceInternals
 
 describe('provider USD price normalization', () => {
     it('keeps values that already fit USD micros', () => {
@@ -21,5 +21,49 @@ describe('provider USD price normalization', () => {
         expect(normalizeUsdPrice('-1')).toBeNull()
         expect(normalizeUsdPrice('1e3')).toBeNull()
         expect(normalizeUsdPrice('not-a-price')).toBeNull()
+    })
+})
+
+describe('trusted native price fallback', () => {
+    it('uses Moralis wrapped-native pricing when Alchemy has no usable native price', async () => {
+        const alchemy = vi.fn().mockResolvedValue(null)
+        const moralis = vi.fn().mockResolvedValue('742.123456')
+        const coinGecko = vi.fn().mockResolvedValue('743.000000')
+
+        await expect(resolveNativePriceSources(56, [
+            { provider: 'alchemy', load: alchemy },
+            { provider: 'moralis', load: moralis },
+            { provider: 'coingecko', load: coinGecko },
+        ])).resolves.toEqual({
+            value: '742.123456',
+            provider: 'moralis',
+        })
+
+        expect(alchemy).toHaveBeenCalledTimes(1)
+        expect(moralis).toHaveBeenCalledTimes(1)
+        expect(coinGecko).not.toHaveBeenCalled()
+    })
+
+    it('continues after provider errors and uses CoinGecko as the final fallback', async () => {
+        const alchemy = vi.fn().mockRejectedValue(new Error('alchemy unavailable'))
+        const moralis = vi.fn().mockResolvedValue(null)
+        const coinGecko = vi.fn().mockResolvedValue('744.5')
+
+        await expect(resolveNativePriceSources(56, [
+            { provider: 'alchemy', load: alchemy },
+            { provider: 'moralis', load: moralis },
+            { provider: 'coingecko', load: coinGecko },
+        ])).resolves.toEqual({
+            value: '744.5',
+            provider: 'coingecko',
+        })
+    })
+
+    it('returns null only after every trusted provider fails or returns no price', async () => {
+        await expect(resolveNativePriceSources(56, [
+            { provider: 'alchemy', load: async () => null },
+            { provider: 'moralis', load: async () => null },
+            { provider: 'coingecko', load: async () => null },
+        ])).resolves.toBeNull()
     })
 })
