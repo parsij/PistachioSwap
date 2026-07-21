@@ -74,3 +74,5 @@ jobs:
           git add -A
           git commit -m 'Route low-BNB swaps through prepaid Gas Assist'
           git push origin HEAD:feature/megafuel-exact-prepaid-flow
+
+# Triggered after the workflow existed on the branch.
