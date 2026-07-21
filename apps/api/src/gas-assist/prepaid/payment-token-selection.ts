@@ -24,10 +24,6 @@ export type PaymentTokenCandidate = {
     balanceRaw: bigint
     transferBehavior: 'exact' | 'fee-on-transfer' | 'rebasing' | 'unknown'
     securityStatus: 'trusted' | 'low' | 'caution' | 'high' | 'blocked' | 'unknown'
-    moralisAvailable: boolean
-    moralisSecurityScore: number | null
-    moralisPossibleSpam: boolean | null
-    moralisVerifiedContract: boolean | null
 }
 
 export type PaymentTokenSelection = {
@@ -72,10 +68,8 @@ export function evaluatePaymentTokenCandidate({
     if (candidate.priceDeviationBps < 0 || candidate.priceDeviationBps > candidate.maximumPriceDeviationBps) {
         return 'PAYMENT_TOKEN_PRICE_DEVIATION'
     }
-    if (!candidate.moralisAvailable) return 'PAYMENT_TOKEN_MORALIS_UNAVAILABLE'
-    if (candidate.moralisPossibleSpam === true || candidate.securityStatus === 'blocked') {
-        return 'PAYMENT_TOKEN_SPAM_OR_BLOCKED'
-    }
+    if (candidate.securityStatus === 'unknown') return 'PAYMENT_TOKEN_MORALIS_UNAVAILABLE'
+    if (candidate.securityStatus === 'blocked') return 'PAYMENT_TOKEN_SPAM_OR_BLOCKED'
 
     const minimumLiquidity = candidate.minimumLiquidityUsdMicros > configuredMinimumLiquidityUsdMicros
         ? candidate.minimumLiquidityUsdMicros
@@ -89,19 +83,12 @@ export function evaluatePaymentTokenCandidate({
         return 'REBASING_TOKEN_UNSUPPORTED'
     }
 
+    const moralisSafetyConfirmed = ['trusted', 'low'].includes(candidate.securityStatus)
     if (candidate.strictSecurityRequired) {
-        if (candidate.moralisSecurityScore === null || candidate.moralisSecurityScore < 70 ||
-            candidate.moralisVerifiedContract !== true ||
-            !['trusted', 'low'].includes(candidate.securityStatus)) {
-            return 'PAYMENT_TOKEN_SECURITY_UNCONFIRMED'
-        }
+        if (!moralisSafetyConfirmed) return 'PAYMENT_TOKEN_SECURITY_UNCONFIRMED'
         if (candidate.transferBehavior !== 'exact') return 'PAYMENT_TOKEN_TRANSFER_UNKNOWN'
-    } else if (candidate.transferBehavior !== 'exact') {
-        const manuallyReviewedMoralisSafe =
-            candidate.moralisPossibleSpam === false &&
-            (candidate.moralisVerifiedContract === true ||
-                (candidate.moralisSecurityScore !== null && candidate.moralisSecurityScore >= 70))
-        if (!manuallyReviewedMoralisSafe) return 'PAYMENT_TOKEN_TRANSFER_UNKNOWN'
+    } else if (candidate.transferBehavior !== 'exact' && !moralisSafetyConfirmed) {
+        return 'PAYMENT_TOKEN_TRANSFER_UNKNOWN'
     }
 
     if (candidate.balanceRaw < requiredPaymentRaw) return 'PAYMENT_TOKEN_BALANCE_LOW'
@@ -189,10 +176,6 @@ export function selectPaymentToken({
                     transferBehavior: item.transferBehavior,
                     securityStatus: item.securityStatus,
                     strictSecurityRequired: item.strictSecurityRequired,
-                    moralisAvailable: item.moralisAvailable,
-                    moralisSecurityScore: item.moralisSecurityScore,
-                    moralisPossibleSpam: item.moralisPossibleSpam,
-                    moralisVerifiedContract: item.moralisVerifiedContract,
                 })),
                 rejections,
             })
