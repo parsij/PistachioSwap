@@ -1,0 +1,678 @@
+name: Apply pre-signed package integration
+
+on:
+  push:
+    branches:
+      - feature/megafuel-exact-prepaid-flow
+    paths:
+      - '.github/workflows/agent-presigned-package.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/megafuel-exact-prepaid-flow
+          fetch-depth: 0
+
+      - name: Apply integration patches
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace(path, old, new, count=None):
+              text = read(path)
+              actual = text.count(old)
+              expected = count if count is not None else 1
+              if actual != expected:
+                  raise SystemExit(f'{path}: expected {expected} occurrences, found {actual}: {old[:100]!r}')
+              write(path, text.replace(old, new))
+
+          # Fifteen-minute order and intent defaults.
+          replace('apps/api/src/config.ts', """            orderTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_ORDER_TTL_SECONDS',
+                300,
+                60,
+                300,
+            ),""", """            orderTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_ORDER_TTL_SECONDS',
+                900,
+                60,
+                900,
+            ),""")
+          replace('apps/api/src/config.ts', """            actionIntentTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_ACTION_INTENT_TTL_SECONDS',
+                300,
+                60,
+                300,
+            ),""", """            actionIntentTtlSeconds: readConfiguredInteger(
+                'MEGAFUEL_ACTION_INTENT_TTL_SECONDS',
+                900,
+                60,
+                900,
+            ),""")
+          replace('apps/api/.env.megafuel.example', """# The payment quote expires in two minutes. After exact payment confirmation,
+# migration 0004 opens a fresh five-minute approval/swap grant.
+MEGAFUEL_ORDER_TTL_SECONDS=120
+MEGAFUEL_ACTION_INTENT_TTL_SECONDS=90""", """# The reviewed order, all three signing intents, and the post-payment grant
+# use a fifteen-minute lifetime.
+MEGAFUEL_ORDER_TTL_SECONDS=900
+MEGAFUEL_ACTION_INTENT_TTL_SECONDS=900""")
+          replace('apps/api/.env.megafuel.example', """# EXTREMELY DANGEROUS. When true, a whitelisted payment token bypasses security,
+# liquidity, transfer-behavior, price-age, and price-deviation gates. Mechanical
+# requirements such as whitelist enablement, valid decimals, positive billing price,
+# and sufficient wallet balance still apply. Never enable this in production.""", """# EXTREMELY DANGEROUS. Whitelisted tokens already bypass third-party security and
+# transfer simulation. This switch additionally bypasses live liquidity, price-age,
+# and price-deviation gates. Never enable this in production.""")
+
+          # Ask Uniswap to build calldata with a real fifteen-minute deadline.
+          replace('apps/api/src/features/quotes/providers/uniswap-provider.ts', """    futureExpiry,
+""", "")
+          replace('apps/api/src/features/quotes/providers/uniswap-provider.ts', """const UNISWAP_UNIVERSAL_ROUTER_VERSION = '2.0'
+const BPS_DENOMINATOR = 10_000n""", """const UNISWAP_UNIVERSAL_ROUTER_VERSION = '2.0'
+const UNISWAP_TRANSACTION_TTL_SECONDS = 15 * 60
+const BPS_DENOMINATOR = 10_000n""")
+          replace('apps/api/src/features/quotes/providers/uniswap-provider.ts', """            const swapPayload = await fetchJson(
+""", """            const swapDeadline = Math.floor(Date.now() / 1_000) +
+                UNISWAP_TRANSACTION_TTL_SECONDS
+            const swapPayload = await fetchJson(
+""")
+          replace('apps/api/src/features/quotes/providers/uniswap-provider.ts', """                    body: {
+                        quote: quotePayload.quote,
+                    },""", """                    body: {
+                        quote: quotePayload.quote,
+                        deadline: swapDeadline,
+                    },""")
+          replace('apps/api/src/features/quotes/providers/uniswap-provider.ts', """                expiresAt:
+                    futureExpiry(30),""", """                expiresAt:
+                    new Date(swapDeadline * 1_000).toISOString(),""")
+
+          # Keep legacy and durable settlement consistent with the new grant.
+          for path in [
+              'apps/api/src/gas-assist/prepaid/intent-service.ts',
+              'apps/api/src/gas-assist/prepaid/durable-intent-service.ts',
+          ]:
+              text = read(path)
+              text = text.replace('5 * 60 * 1_000', '15 * 60 * 1_000')
+              text = text.replace('five-minute sponsorship grant', 'fifteen-minute sponsorship grant')
+              write(path, text)
+
+          # Let the browserless worker submit a stored raw transaction using the
+          # already-recorded IP hash, while normal HTTP submissions still hash request.ip.
+          replace('apps/api/src/gas-assist/prepaid/intent-service.ts', """    signedRawTransactionHash: Hex | null
+    transactionHash: Hex | null""", """    signedRawTransaction: Hex | null
+    signedRawTransactionHash: Hex | null
+    transactionHash: Hex | null""")
+          text = read('apps/api/src/gas-assist/prepaid/intent-service.ts')
+          text = text.replace(
+              'expires_at AS "expiresAt",signed_raw_transaction_hash AS "signedRawTransactionHash",',
+              'expires_at AS "expiresAt",signed_raw_transaction AS "signedRawTransaction",signed_raw_transaction_hash AS "signedRawTransactionHash",',
+          )
+          write('apps/api/src/gas-assist/prepaid/intent-service.ts', text)
+          replace('apps/api/src/gas-assist/prepaid/intent-service.ts', """    async function recheckSubmissionLimits(order: OrderRow, clientIp: string) {
+        const config = getApiConfig().sponsorship
+        const ipHash = hashPrivateScope(config.ipHashSecret!, clientIp)""", """    async function recheckSubmissionLimits(
+        order: OrderRow,
+        clientIp?: string,
+        trustedIpHash?: string,
+    ) {
+        const config = getApiConfig().sponsorship
+        if (trustedIpHash && trustedIpHash !== order.ipHash) {
+            throw new GasAssistError('SPONSORSHIP_IP_SCOPE_MISMATCH', 'The stored sponsorship scope is invalid.', 409)
+        }
+        const ipHash = trustedIpHash ?? hashPrivateScope(
+            config.ipHashSecret!,
+            clientIp ?? '',
+        )""")
+          replace('apps/api/src/gas-assist/prepaid/intent-service.ts', """        clientIp,
+    }: {
+        intentId: string
+        signedRawTransaction: Hex
+        walletAddress: string
+        clientIp: string
+    }) {""", """        clientIp,
+        trustedIpHash,
+    }: {
+        intentId: string
+        signedRawTransaction: Hex
+        walletAddress: string
+        clientIp?: string
+        trustedIpHash?: string
+    }) {""")
+          replace('apps/api/src/gas-assist/prepaid/intent-service.ts', """        await recheckSubmissionLimits(order, clientIp)
+""", """        await recheckSubmissionLimits(order, clientIp, trustedIpHash)
+""")
+          text = read('apps/api/src/gas-assist/prepaid/intent-service.ts')
+          text = text.replace('jsonb_build_object($5,1)', 'jsonb_build_object($5::text,1)')
+          text = text.replace('ARRAY[$5]', 'ARRAY[$5::text]')
+          text = text.replace(' ->> $5)', ' ->> $5::text)')
+          write('apps/api/src/gas-assist/prepaid/intent-service.ts', text)
+
+          # Report whether all three raw transactions are already stored, so the UI
+          # never asks for another signature after package acceptance.
+          replace('apps/api/src/gas-assist/prepaid/intent-service.ts', """        for (const intent of intents.rows) await refreshIntent(intent, order)
+        order = await loadOrder(dependencies.database, orderId, walletAddress)
+""", """        for (const intent of intents.rows) await refreshIntent(intent, order)
+        const signedActions = new Set(
+            intents.rows
+                .filter((intent) => Boolean(intent.signedRawTransaction))
+                .map((intent) => intent.action),
+        )
+        const preSignedPackage = [
+            'fee-payment-transfer',
+            'token-approval',
+            'normal-swap',
+        ].every((action) => signedActions.has(action as IntentRow['action']))
+        order = await loadOrder(dependencies.database, orderId, walletAddress)
+""")
+          replace('apps/api/src/gas-assist/prepaid/intent-service.ts', """            currentRequiredAction: {
+                quoted: 'prepare-payment',
+                'payment-prepared': 'sign-payment',
+                'payment-submitted': 'wait-payment-confirmation',
+                'payment-confirmed': 'prepare-approval',
+                'approval-preparing': 'sign-approval',
+                'approval-submitted': 'wait-approval-confirmation',
+                'approval-confirmed': 'prepare-sponsored-swap',
+                'swap-preparing': 'sign-sponsored-swap',
+                'swap-submitted': 'wait-swap-confirmation',
+            }[updated.status] ?? null,
+            confirmationCount:""", """            currentRequiredAction: preSignedPackage && ![
+                'completed','expired','rejected','failed',
+            ].includes(updated.status)
+                ? 'wait-backend-execution'
+                : {
+                    quoted: 'prepare-payment',
+                    'payment-prepared': 'sign-payment',
+                    'payment-submitted': 'wait-payment-confirmation',
+                    'payment-confirmed': 'prepare-approval',
+                    'approval-preparing': 'sign-approval',
+                    'approval-submitted': 'wait-approval-confirmation',
+                    'approval-confirmed': 'prepare-sponsored-swap',
+                    'swap-preparing': 'sign-sponsored-swap',
+                    'swap-submitted': 'wait-swap-confirmation',
+                }[updated.status] ?? null,
+            preSignedPackage,
+            confirmationCount:""")
+
+          # Routes for preparing and atomically accepting the three-signature package.
+          replace('apps/api/src/modules/sponsorship.ts', """import { createSponsorshipOrderService } from '../gas-assist/prepaid/order-service.js'
+""", """import { createSponsorshipOrderService } from '../gas-assist/prepaid/order-service.js'
+import { createSponsorshipPackageService } from '../gas-assist/prepaid/package-service.js'
+""")
+          replace('apps/api/src/modules/sponsorship.ts', """    const orders = () => createSponsorshipOrderService()
+    const intents = () => createSponsorshipIntentService()
+""", """    const orders = () => createSponsorshipOrderService()
+    const intents = () => createSponsorshipIntentService()
+    const packages = () => createSponsorshipPackageService()
+""")
+          replace('apps/api/src/modules/sponsorship.ts', """            actionIntentTtlSeconds: config.actionIntentTtlSeconds,
+""", """            actionIntentTtlSeconds: config.actionIntentTtlSeconds,
+            packageTtlSeconds: 15 * 60,
+""")
+          marker = """    app.post<{ Params: { orderId: string }; Body: unknown }>(
+        '/v1/sponsorship/orders/:orderId/payment/prepare',"""
+          addition = """    app.post<{ Params: { orderId: string }; Body: unknown }>(
+        '/v1/sponsorship/orders/:orderId/package/prepare',
+        { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+        (request, reply) => safe(async () => {
+            exactObject(request.body, [], [])
+            const session = await auth().authenticate(request.headers.authorization)
+            return packages().prepare(request.params.orderId, session.walletAddress)
+        }, reply),
+    )
+
+    app.post<{ Params: { orderId: string }; Body: unknown }>(
+        '/v1/sponsorship/orders/:orderId/package/submit',
+        { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+        (request, reply) => safe(async () => {
+            const body = exactObject(request.body, ['signedTransactions'])
+            if (!Array.isArray(body.signedTransactions)) {
+                throw new GasAssistError('INVALID_REQUEST', 'signedTransactions must be an array.')
+            }
+            const session = await auth().authenticate(request.headers.authorization)
+            return packages().submitSignedPackage({
+                orderId: request.params.orderId,
+                walletAddress: session.walletAddress,
+                clientIp: request.ip,
+                signedTransactions: body.signedTransactions.map((value) => {
+                    const item = exactObject(value, [
+                        'intentId','action','signedRawTransaction',
+                    ])
+                    return {
+                        intentId: String(item.intentId ?? ''),
+                        action: String(item.action ?? '') as
+                            | 'fee-payment-transfer'
+                            | 'token-approval'
+                            | 'normal-swap',
+                        signedRawTransaction: String(
+                            item.signedRawTransaction ?? '',
+                        ),
+                    }
+                }),
+            })
+        }, reply),
+    )
+
+""" + marker
+          replace('apps/api/src/modules/sponsorship.ts', marker, addition)
+          replace('apps/api/src/modules/sponsorship.ts', """                confirmationCount: refreshed.confirmationCount,
+""", """                confirmationCount: refreshed.confirmationCount,
+                preSignedPackage: refreshed.preSignedPackage,
+""")
+
+          # Run package advancement before and after durable receipt reconciliation.
+          replace('apps/api/src/app.ts', """import { createDurableSponsorshipIntentService } from './gas-assist/prepaid/durable-intent-service.js'
+""", """import { createDurableSponsorshipIntentService } from './gas-assist/prepaid/durable-intent-service.js'
+import { createSponsorshipPackageService } from './gas-assist/prepaid/package-service.js'
+""")
+          replace('apps/api/src/app.ts', """                    'req.body.signedRawTransaction',
+""", """                    'req.body.signedRawTransaction',
+                    'req.body.signedTransactions[*].signedRawTransaction',
+""")
+          replace('apps/api/src/app.ts', """    const getDurableSponsorship = () => {
+        durableSponsorship ??= createDurableSponsorshipIntentService()
+        return durableSponsorship
+    }
+""", """    const getDurableSponsorship = () => {
+        durableSponsorship ??= createDurableSponsorshipIntentService()
+        return durableSponsorship
+    }
+    let sponsorshipPackages: ReturnType<
+        typeof createSponsorshipPackageService
+    > | null = null
+    const getSponsorshipPackages = () => {
+        sponsorshipPackages ??= createSponsorshipPackageService()
+        return sponsorshipPackages
+    }
+""")
+          replace('apps/api/src/app.ts', """            await durable.reconcileOrder(
+                String(params.orderId ?? ''),
+                session.walletAddress,
+            )
+""", """            const orderId = String(params.orderId ?? '')
+            await durable.reconcileOrder(orderId, session.walletAddress)
+            await getSponsorshipPackages().advanceOrder(
+                orderId,
+                session.walletAddress,
+            )
+            await durable.reconcileOrder(orderId, session.walletAddress)
+""")
+          replace('apps/api/src/app.ts', """                        const summary = await durable.recoverPendingIntents()
+                        if (summary.reconciled > 0 ||
+                            summary.rebroadcast > 0 ||
+                            summary.failed > 0) {
+                            app.log.info({
+                                subsystem: 'sponsorship-recovery',
+                                ...summary,
+                            }, 'Durable sponsorship intents reconciled')
+                        }
+""", """                        const packagesBefore = await getSponsorshipPackages()
+                            .advancePendingPackages()
+                        const summary = await durable.recoverPendingIntents()
+                        const packagesAfter = await getSponsorshipPackages()
+                            .advancePendingPackages()
+                        if (summary.reconciled > 0 ||
+                            summary.rebroadcast > 0 ||
+                            summary.failed > 0 ||
+                            packagesBefore.started > 0 ||
+                            packagesAfter.started > 0 ||
+                            packagesBefore.failed > 0 ||
+                            packagesAfter.failed > 0) {
+                            app.log.info({
+                                subsystem: 'sponsorship-recovery',
+                                durable: summary,
+                                packagesBefore,
+                                packagesAfter,
+                            }, 'Durable sponsorship package recovery advanced')
+                        }
+""")
+
+          # Frontend API helpers for one package prepare and one atomic submit.
+          replace('src/features/gas-assist/services/prepaidSponsorship.js', """/** Fetches the current server-authoritative state of one prepaid sponsorship order. */
+""", """/** Requests all three exact transactions before any transaction is broadcast. */
+export function prepareSponsorshipPackage(quoteEndpoint, sessionToken, orderId, signal) {
+    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/package/prepare`, {}, { sessionToken, signal })
+}
+
+/** Atomically stores all three signed raw transactions before backend execution. */
+export function submitSponsorshipPackage(quoteEndpoint, sessionToken, orderId, signedTransactions, signal) {
+    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/package/submit`, { signedTransactions }, { sessionToken, signal })
+}
+
+/** Fetches the current server-authoritative state of one prepaid sponsorship order. */
+""")
+
+          # Frontend signer: all signatures must exist and validate before submission.
+          replace('src/features/gas-assist/services/rawTransactionSigning.js', """export const rawSigningInternals = {
+""", """export async function signPreparedSponsoredPackage({
+    transport,
+    capability,
+    walletClient,
+    preparedPackage,
+    authenticatedWalletAddress,
+    multichainAccount,
+    submitSignedPackage,
+}) {
+    const expectedActions = [
+        'fee-payment-transfer',
+        'token-approval',
+        'normal-swap',
+    ]
+    if (transport !== 'pistachio-local' ||
+        typeof submitSignedPackage !== 'function' ||
+        !Array.isArray(preparedPackage?.transactions) ||
+        preparedPackage.transactions.length !== expectedActions.length) {
+        const error = new Error('The prepared Gas Assist package is invalid.')
+        error.code = 'SPONSORSHIP_PACKAGE_INVALID'
+        throw error
+    }
+    const byAction = new Map(
+        preparedPackage.transactions.map((item) => [item.action, item]),
+    )
+    if (byAction.size !== expectedActions.length ||
+        expectedActions.some((action) => !byAction.has(action))) {
+        const error = new Error('The prepared Gas Assist package is incomplete.')
+        error.code = 'SPONSORSHIP_PACKAGE_INVALID'
+        throw error
+    }
+
+    const signedTransactions = []
+    try {
+        for (const action of expectedActions) {
+            const intent = byAction.get(action)
+            const normalizedTransaction = normalizePreparedSponsoredTransaction(
+                intent.transaction,
+                authenticatedWalletAddress,
+            )
+            const signedRawTransaction = await signRawSponsoredTransaction({
+                capability,
+                walletClient,
+                transaction: normalizedTransaction,
+            })
+            await validateSignedPreparedTransaction({
+                signedRawTransaction,
+                normalizedTransaction,
+                authenticatedWalletAddress,
+                multichainAccount: multichainAccount ?? authenticatedWalletAddress,
+            })
+            signedTransactions.push({
+                intentId: intent.intentId,
+                action,
+                signedRawTransaction,
+            })
+        }
+        return await submitSignedPackage(signedTransactions)
+    } finally {
+        signedTransactions.splice(0, signedTransactions.length)
+    }
+}
+
+export const rawSigningInternals = {
+""")
+
+          # Hook one review button into prepare -> sign three -> atomic submit.
+          text = read('src/features/gas-assist/hooks/usePrepaidSponsorship.js')
+          text = text.replace(
+              '    prepareSponsorshipPayment,\n    submitSponsorshipIntent,',
+              '    prepareSponsorshipPayment,\n    prepareSponsorshipPackage,\n    submitSponsorshipIntent,\n    submitSponsorshipPackage,',
+          )
+          text = text.replace(
+              '    signPreparedSponsoredTransaction,\n',
+              '    signPreparedSponsoredTransaction,\n    signPreparedSponsoredPackage,\n',
+          )
+          marker = """    const requestContinuation = useCallback(async () => {
+"""
+          addition = """    const signPackage = useCallback(async () => {
+        const order = state.order
+        const sessionToken = sessionTokenRef.current
+        const walletEpoch = walletEpochRef.current
+        if (!order || !sessionToken || !walletClient || !walletAddress) return
+        try {
+            setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
+            const preparedPackage = await prepareSponsorshipPackage(
+                quoteEndpoint,
+                sessionToken,
+                order.id,
+            )
+            setState((current) => ({
+                ...current,
+                phase: 'package-signing',
+                intentExpiresAt: preparedPackage.expiresAt,
+            }))
+            await signPreparedSponsoredPackage({
+                transport: capability.transport,
+                capability,
+                walletClient,
+                preparedPackage,
+                authenticatedWalletAddress: walletAddress,
+                multichainAccount: walletAddress,
+                submitSignedPackage: async (signedTransactions) => {
+                    if (walletEpochRef.current !== walletEpoch) {
+                        const error = new Error('The connected wallet changed during package signing.')
+                        error.code = 'PISTACHIO_ACCOUNT_MISMATCH'
+                        throw error
+                    }
+                    if (Date.parse(preparedPackage.expiresAt) <= Date.now()) {
+                        const error = new Error('The signed transaction package expired.')
+                        error.code = 'INTENT_EXPIRED'
+                        throw error
+                    }
+                    return submitSponsorshipPackage(
+                        quoteEndpoint,
+                        sessionToken,
+                        order.id,
+                        signedTransactions,
+                    )
+                },
+            })
+            setState((current) => ({
+                ...current,
+                phase: 'payment-confirming',
+                intentExpiresAt: null,
+                order: { ...current.order, preSignedPackage: true },
+            }))
+        } catch (error) {
+            setState((current) => ({
+                ...current,
+                phase: isUserRejectedError(error) ? 'cancelled' : 'failed',
+                intentExpiresAt: null,
+                error,
+            }))
+        }
+    }, [capability, quoteEndpoint, state.order, walletAddress, walletClient])
+
+""" + marker
+          if marker not in text:
+              raise SystemExit('hook insertion marker missing')
+          text = text.replace(marker, addition, 1)
+          text = text.replace(
+              """        signPayment: () => signIntent('payment'),
+""",
+              """        signPackage,
+        signPayment: () => signIntent('payment'),
+""",
+          )
+          write('src/features/gas-assist/hooks/usePrepaidSponsorship.js', text)
+
+          # Dialog explains that all three signatures are stored first.
+          replace('src/features/gas-assist/components/GasAssistPrepaymentDialog.jsx', """                                <span>The approval is not prepared until the treasury confirms the exact payment amount.</span>
+                                <span>Payment, approval, and swap are separate transactions and are not atomic.</span>""", """                                <span>Pistachio Wallet signs payment, exact approval, and swap before the first broadcast.</span>
+                                <span>The backend stores all three raw transactions first, then broadcasts them sequentially after each on-chain confirmation.</span>""")
+          replace('src/features/gas-assist/components/GasAssistPrepaymentDialog.jsx', """                    {sponsorship.phase === 'payment-signing' && <p className="gas-assist-status" role="status">Confirm the exact payment transaction in Pistachio Wallet.</p>}
+""", """                    {sponsorship.phase === 'package-signing' && <p className="gas-assist-status" role="status">Confirm the exact payment, approval, and swap transactions in Pistachio Wallet. Nothing is broadcast until all three are stored.</p>}
+                    {sponsorship.phase === 'payment-signing' && <p className="gas-assist-status" role="status">Confirm the exact payment transaction in Pistachio Wallet.</p>}
+""")
+          replace('src/features/gas-assist/components/GasAssistPrepaymentDialog.jsx', """                    {!orderExpired && showPayment && (
+                        <button className="gas-assist-primary" type="button" onClick={sponsorship.signPayment} disabled={busy}>
+                            Sign exact payment transaction
+                        </button>
+                    )}""", """                    {!orderExpired && showPayment && sponsorship.signPackage && (
+                        <button className="gas-assist-primary" type="button" onClick={sponsorship.signPackage} disabled={busy}>
+                            Sign payment, approval, and swap
+                        </button>
+                    )}
+                    {!orderExpired && showPayment && !sponsorship.signPackage && (
+                        <button className="gas-assist-primary" type="button" onClick={sponsorship.signPayment} disabled={busy}>
+                            Sign exact payment transaction
+                        </button>
+                    )}""")
+
+          # CI includes the new migration and non-live package tests.
+          text = read('.github/workflows/ci.yml')
+          text = text.replace(
+              "      - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'\n",
+              "      - 'apps/api/drizzle/0005_durable_sponsorship_intents.sql'\n      - 'apps/api/drizzle/0006_presigned_package_fifteen_minute_expiry.sql'\n",
+          )
+          text = text.replace(
+              "      - 'apps/api/test/megafuel-normal-swap.test.ts'\n",
+              "      - 'apps/api/test/megafuel-normal-swap.test.ts'\n      - 'apps/api/test/megafuel-presigned-package.test.ts'\n",
+          )
+          text = text.replace(
+              "          src/features/gas-assist/services/rawTransactionSigning.test.js\n",
+              "          src/features/gas-assist/services/rawTransactionSigning.test.js\n          src/features/gas-assist/services/rawTransactionSigning.package.test.js\n",
+          )
+          text = text.replace(
+              "          test/megafuel-normal-swap.test.ts\n",
+              "          test/megafuel-normal-swap.test.ts\n          test/megafuel-presigned-package.test.ts\n",
+          )
+          write('.github/workflows/ci.yml', text)
+
+          # Package signing unit tests.
+          write('src/features/gas-assist/services/rawTransactionSigning.package.test.js', """import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('./metamaskMultichain.js', () => ({
+    normalizePreparedSponsoredTransaction: (transaction) => transaction,
+    validateSignedPreparedTransaction: vi.fn(async () => undefined),
+}))
+
+import { signPreparedSponsoredPackage } from './rawTransactionSigning.js'
+
+const transactions = [
+    'fee-payment-transfer',
+    'token-approval',
+    'normal-swap',
+].map((action, index) => ({
+    intentId: `intent-${index}`,
+    action,
+    transaction: {
+        from: '0x1111111111111111111111111111111111111111',
+        to: '0x2222222222222222222222222222222222222222',
+        data: '0x1234',
+        value: '0x0',
+        chainId: '0x38',
+        nonce: `0x${index.toString(16)}`,
+        gas: '0x5208',
+        gasPrice: '0x0',
+        type: '0x0',
+    },
+}))
+
+const capability = {
+    rawTransactionSigningSupported: true,
+    method: 'eth_signTransaction',
+    transport: 'pistachio-local',
+}
+
+beforeEach(() => vi.restoreAllMocks())
+
+describe('pre-signed Gas Assist package', () => {
+    it('submits only after all three exact transactions are signed', async () => {
+        const request = vi.fn()
+            .mockResolvedValueOnce('0xaaaa')
+            .mockResolvedValueOnce('0xbbbb')
+            .mockResolvedValueOnce('0xcccc')
+        const submitSignedPackage = vi.fn(async (values) => values)
+
+        const result = await signPreparedSponsoredPackage({
+            transport: 'pistachio-local',
+            capability,
+            walletClient: { request },
+            preparedPackage: { transactions },
+            authenticatedWalletAddress: transactions[0].transaction.from,
+            submitSignedPackage,
+        })
+
+        expect(request).toHaveBeenCalledTimes(3)
+        expect(submitSignedPackage).toHaveBeenCalledTimes(1)
+        expect(result.map((value) => value.action)).toEqual([
+            'fee-payment-transfer',
+            'token-approval',
+            'normal-swap',
+        ])
+    })
+
+    it('never submits a partial package when a later signature fails', async () => {
+        const request = vi.fn()
+            .mockResolvedValueOnce('0xaaaa')
+            .mockRejectedValueOnce(new Error('rejected'))
+        const submitSignedPackage = vi.fn()
+
+        await expect(signPreparedSponsoredPackage({
+            transport: 'pistachio-local',
+            capability,
+            walletClient: { request },
+            preparedPackage: { transactions },
+            authenticatedWalletAddress: transactions[0].transaction.from,
+            submitSignedPackage,
+        })).rejects.toThrow('rejected')
+
+        expect(submitSignedPackage).not.toHaveBeenCalled()
+    })
+})
+""")
+
+          # Remove this one-shot workflow from the resulting branch.
+          Path('.github/workflows/agent-presigned-package.yml').unlink()
+          PY
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate
+        run: |
+          pnpm --filter @pistachio/api typecheck
+          pnpm --filter @pistachio/api exec vitest run \
+            test/megafuel-presigned-package.test.ts \
+            test/token-evidence-exact-transfer.test.ts \
+            test/megafuel-durable-intents.test.ts \
+            test/megafuel-exact-payment.test.ts \
+            test/megafuel-normal-swap.test.ts \
+            --reporter=verbose
+          pnpm exec vitest run \
+            src/features/gas-assist/services/rawTransactionSigning.package.test.js \
+            src/features/gas-assist/services/rawTransactionSigning.test.js \
+            src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx \
+            src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx \
+            --reporter=verbose
+          pnpm build
+
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Implement durable pre-signed sponsorship packages"
+          git push origin HEAD:feature/megafuel-exact-prepaid-flow
