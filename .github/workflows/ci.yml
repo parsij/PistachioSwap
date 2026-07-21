@@ -32,6 +32,8 @@ on:
       - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
+      - 'src/features/passkey/services/signingReview.js'
+      - 'src/features/passkey/services/signingReview.test.js'
       - 'src/features/swap/**'
       - 'src/services/swapExecutionMode*'
   push:
@@ -67,6 +69,8 @@ on:
       - 'apps/api/test/token-price-normalization.test.ts'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
+      - 'src/features/passkey/services/signingReview.js'
+      - 'src/features/passkey/services/signingReview.test.js'
       - 'src/features/swap/**'
       - 'src/services/swapExecutionMode*'
 
@@ -105,6 +109,7 @@ jobs:
           src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
           src/features/gas-assist/hooks/useGasAssistController.test.jsx
           src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
+          src/features/passkey/services/signingReview.test.js
           src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
           src/services/swapExecutionMode.test.js
           --reporter=verbose
