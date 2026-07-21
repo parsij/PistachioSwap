@@ -51,7 +51,13 @@ export function createApp() {
             },
         },
     })
-    const durableSponsorship = createDurableSponsorshipIntentService()
+    let durableSponsorship: ReturnType<
+        typeof createDurableSponsorshipIntentService
+    > | null = null
+    const getDurableSponsorship = () => {
+        durableSponsorship ??= createDurableSponsorshipIntentService()
+        return durableSponsorship
+    }
     let stopMarketCatalogRefresh: (() => void) | null = null
     let stopSponsorshipRecovery: (() => void) | null = null
 
@@ -86,6 +92,7 @@ export function createApp() {
             const session = await createWalletAuthService().authenticate(
                 request.headers.authorization,
             )
+            const durable = getDurableSponsorship()
             if (submitRoute) {
                 if (config.sponsorship.emergencyDisabled) return
                 const body = request.body as
@@ -93,7 +100,7 @@ export function createApp() {
                     | null
                     | undefined
                 const params = request.params as { intentId?: string }
-                await durableSponsorship.captureSignedIntent({
+                await durable.captureSignedIntent({
                     intentId: String(params.intentId ?? ''),
                     signedRawTransaction: String(
                         body?.signedRawTransaction ?? '',
@@ -104,7 +111,7 @@ export function createApp() {
             }
 
             const params = request.params as { orderId?: string }
-            await durableSponsorship.reconcileOrder(
+            await durable.reconcileOrder(
                 String(params.orderId ?? ''),
                 session.walletAddress,
             )
@@ -128,13 +135,13 @@ export function createApp() {
         await assertGasAssistReady()
         if (process.env.NODE_ENV !== 'test') {
             if (config.sponsorship.enabled) {
+                const durable = getDurableSponsorship()
                 let recoveryRunning = false
                 const runRecovery = async () => {
                     if (recoveryRunning) return
                     recoveryRunning = true
                     try {
-                        const summary = await durableSponsorship
-                            .recoverPendingIntents()
+                        const summary = await durable.recoverPendingIntents()
                         if (summary.reconciled > 0 ||
                             summary.rebroadcast > 0 ||
                             summary.failed > 0) {
