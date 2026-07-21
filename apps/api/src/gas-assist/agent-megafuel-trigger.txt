@@ -1,1 +1,1 @@
-Trigger the existing MegaFuel exact flow CI, then apply the reviewed durable signed-intent patch.
+Trigger run 2: apply the reviewed durable MegaFuel signed-intent recovery patch after CI.
