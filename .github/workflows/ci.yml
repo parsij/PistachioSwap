@@ -8,7 +8,7 @@ on:
       - '.github/fix-presigned-validation.py'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   apply:
@@ -69,10 +69,30 @@ jobs:
       - name: Fail validation
         if: steps.validate.outcome == 'failure'
         run: exit 1
-      - name: Commit patched tree
+      - name: Package validated tree
         run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m "Implement durable pre-signed sponsorship packages"
-          git push origin HEAD:feature/megafuel-exact-prepaid-flow
+          git diff --name-status HEAD > presigned-final-name-status.txt
+          python <<'PY'
+          from pathlib import Path
+          import subprocess
+          import tarfile
+
+          paths = subprocess.check_output([
+              'git', 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD',
+          ], text=True).splitlines()
+          with tarfile.open('presigned-final-files.tar.gz', 'w:gz') as archive:
+              for value in paths:
+                  path = Path(value)
+                  if path.is_file():
+                      archive.add(path, arcname=value)
+          PY
+      - name: Upload validated tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: presigned-package-validated-tree
+          path: |
+            presigned-final-name-status.txt
+            presigned-final-files.tar.gz
+            presigned-package-validation.log
+          retention-days: 3
+          if-no-files-found: error
