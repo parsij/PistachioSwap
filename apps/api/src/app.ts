@@ -7,6 +7,7 @@ import { closeDatabase } from './db/client.js'
 import { gasAssistErrorBody } from './gas-assist/errors.js'
 import { createWalletAuthService } from './gas-assist/prepaid/auth.js'
 import { createDurableSponsorshipIntentService } from './gas-assist/prepaid/durable-intent-service.js'
+import { manualRefundLedger } from './gas-assist/prepaid/manual-refund-ledger.js'
 import { createSponsorshipPackageService } from './gas-assist/prepaid/package-service.js'
 import { assertGasAssistReady } from './gas-assist/readiness.js'
 import { gasAssistRoutes } from './modules/gas-assist.js'
@@ -159,18 +160,29 @@ export function createApp() {
                         const summary = await durable.recoverPendingIntents()
                         const packagesAfter =
                             await packages.advancePendingPackages()
+                        let manualRefunds: Awaited<ReturnType<typeof manualRefundLedger.sync>> | null = null
+                        try {
+                            manualRefunds = await manualRefundLedger.sync()
+                        } catch (error) {
+                            app.log.warn({
+                                subsystem: 'manual-refund-ledger',
+                                err: error,
+                            }, 'Manual refund ledger synchronization failed')
+                        }
                         if (summary.reconciled > 0 ||
                             summary.rebroadcast > 0 ||
                             summary.failed > 0 ||
                             packagesBefore.started > 0 ||
                             packagesAfter.started > 0 ||
                             packagesBefore.failed > 0 ||
-                            packagesAfter.failed > 0) {
+                            packagesAfter.failed > 0 ||
+                            (manualRefunds?.appended ?? 0) > 0) {
                             app.log.info({
                                 subsystem: 'sponsorship-recovery',
                                 durable: summary,
                                 packagesBefore,
                                 packagesAfter,
+                                manualRefunds,
                             }, 'Durable sponsorship package recovery advanced')
                         }
                     } catch (error) {
