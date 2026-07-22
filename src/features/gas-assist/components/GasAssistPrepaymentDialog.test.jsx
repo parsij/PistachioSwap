@@ -63,7 +63,7 @@ function sponsorship(overrides = {}) {
 }
 
 describe('Gas Assist prepayment review', () => {
-    it('shows one simple no-BNB action and keeps technical details collapsible', () => {
+    it('shows one simple no-BNB action and keeps technical details collapsed by default', () => {
         const value = sponsorship()
         render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
 
@@ -75,9 +75,7 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByText(/One tap starts the flow/)).toBeTruthy()
 
         const details = screen.getByText('Transaction details').closest('details')
-        expect(details?.open).toBe(false)
-        fireEvent.click(screen.getByText('Transaction details'))
-        expect(details?.open).toBe(true)
+        expect(details?.hasAttribute('open')).toBe(false)
         expect(screen.getByText('Net swap input')).toBeTruthy()
         expect(screen.getByText('Minimum output')).toBeTruthy()
         expect(screen.getByText(/separate blockchain transactions/)).toBeTruthy()
@@ -129,13 +127,13 @@ describe('Gas Assist prepayment review', () => {
         expect(value.retryStart).toHaveBeenCalledOnce()
     })
 
-    it('keeps error codes out of the main message but available in technical details', () => {
+    it('shows a simple error while preserving its code, stage, and request ID in technical details', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
                 phase: 'failed',
                 error: {
                     code: 'PAYMASTER_POLICY_TIMEOUT',
-                    message: 'The sponsor service timed out.',
+                    message: 'The raw sponsor service timed out.',
                     stage: 'package.prepare',
                     requestId: 'request-123',
                 },
@@ -144,12 +142,12 @@ describe('Gas Assist prepayment review', () => {
             buyToken={buyToken}
         />)
 
-        expect(screen.getByText('The sponsor service timed out.')).toBeTruthy()
+        expect(screen.getByText('The sponsor policy service timed out. Try again.')).toBeTruthy()
         const details = screen.getByText('Transaction details').closest('details')
-        expect(details?.open).toBe(false)
-        fireEvent.click(screen.getByText('Transaction details'))
+        expect(details?.hasAttribute('open')).toBe(false)
         expect(screen.getByText('PAYMASTER_POLICY_TIMEOUT')).toBeTruthy()
         expect(screen.getByText('package.prepare')).toBeTruthy()
         expect(screen.getByText('request-123')).toBeTruthy()
+        expect(screen.queryByText('The raw sponsor service timed out.')).toBeNull()
     })
 })
