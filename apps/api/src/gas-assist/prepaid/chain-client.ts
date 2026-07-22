@@ -13,6 +13,7 @@ import {
 import { bsc } from 'viem/chains'
 
 import { getApiConfig } from '../../config.js'
+import { NATIVE_TOKEN_ADDRESS } from '../../lib/address.js'
 import { getNativeBnbPrice } from '../../providers/alchemy/token-prices.js'
 import { GasAssistError } from '../errors.js'
 import { ceilDiv, parseFixed } from './fixed-point.js'
@@ -45,6 +46,10 @@ function publicClient() {
     const rpcUrl = getApiConfig().quotes.pancakeSwap.rpcUrl
     if (!rpcUrl) throw new GasAssistError('RPC_NOT_CONFIGURED', 'BSC RPC is not configured.', 503)
     return createPublicClient({ chain: bsc, transport: http(rpcUrl) })
+}
+
+function nativeTokenDecimals(address: Address) {
+    return address.toLowerCase() === NATIVE_TOKEN_ADDRESS ? 18 : null
 }
 
 export function buildPaymentTransfer(treasury: Address, amount: bigint) {
@@ -82,6 +87,8 @@ export function createPrepaidChainClient() {
             return publicClient().getCode({ address })
         },
         async getTokenDecimals(address: Address) {
+            const nativeDecimals = nativeTokenDecimals(address)
+            if (nativeDecimals !== null) return nativeDecimals
             return Number(await publicClient().readContract({
                 address,
                 abi: erc20ReadAbi,
@@ -236,4 +243,8 @@ export function verifyExactTransferReceipt({
         throw new GasAssistError('PAYMENT_RECEIPT_SHORT', 'The treasury did not receive the exact required payment.', 409)
     }
     return tokenTransfers[0]!.value
+}
+
+export const prepaidChainClientInternals = {
+    nativeTokenDecimals,
 }
