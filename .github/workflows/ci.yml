@@ -135,6 +135,7 @@ jobs:
           test/megafuel-settlement-route.test.ts
           test/megafuel-two-policy.test.ts
           test/moralis-sponsorship-evidence.test.ts
+          test/order-lifecycle.test.ts
           test/payment-token-selection-native.test.ts
           test/paymaster-sponsorability-fallback.test.ts
           test/provider-response-debug.test.ts
