@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { ProviderError } from '../src/lib/errors.js'
 import {
+    CanarySafetyStopError,
     getCanaryPreparationConfig,
+    isAmbiguousCanaryIntent,
     retryCanaryPreparation,
     trustedPriceUnavailable,
 } from '../src/gas-assist/prepaid/canary-preparation.js'
@@ -78,5 +80,47 @@ describe('XAUT canary preparation retries', () => {
             retryable: true,
         })
         expect(operation).toHaveBeenCalledTimes(2)
+    })
+})
+
+describe('XAUT canary prior-intent safety', () => {
+    const untouched = {
+        action: 'token-approval',
+        status: 'prepared',
+        nonce: '42',
+        hasSignedRawTransaction: false,
+        transactionHash: null,
+        submissionAttempts: 0,
+        broadcastAttempts: 0,
+    }
+
+    it('permits only untouched authorized or prepared intent state', () => {
+        expect(isAmbiguousCanaryIntent(untouched)).toBe(false)
+        expect(isAmbiguousCanaryIntent({ ...untouched, status: 'authorized' }))
+            .toBe(false)
+    })
+
+    it.each([
+        { status: 'signing' },
+        { status: 'submitting' },
+        { status: 'submitted' },
+        { status: 'unknown' },
+        { hasSignedRawTransaction: true },
+        { transactionHash: `0x${'a'.repeat(64)}` },
+        { submissionAttempts: 1 },
+        { broadcastAttempts: 1 },
+    ])('blocks ambiguous intent state %#', (override) => {
+        expect(isAmbiguousCanaryIntent({ ...untouched, ...override }))
+            .toBe(true)
+    })
+
+    it('uses the mandatory typed safety-stop code', () => {
+        expect(new CanarySafetyStopError('order-id', {
+            ...untouched,
+            status: 'signing',
+        })).toMatchObject({
+            code: 'SAFETY_STOP_AMBIGUOUS_TRANSACTION',
+            orderId: 'order-id',
+        })
     })
 })

@@ -8,7 +8,9 @@ import { createApp } from '../src/app.js'
 import { getPool } from '../src/db/client.js'
 import { createPrepaidChainClient } from '../src/gas-assist/prepaid/chain-client.js'
 import {
+    CanarySafetyStopError,
     getCanaryPreparationConfig,
+    isAmbiguousCanaryIntent,
     retryCanaryPreparation,
     trustedPriceUnavailable,
 } from '../src/gas-assist/prepaid/canary-preparation.js'
@@ -111,21 +113,35 @@ async function expireUnsignedCanaryOrder(
             return { expired: false, reason: 'order-has-transaction-hash' }
         }
 
-        const unsafeIntentResult = await client.query<{ count: string }>(
-            `SELECT count(*)::text AS count
+        const intentResult = await client.query<{
+            action: string
+            status: string
+            nonce: string
+            hasSignedRawTransaction: boolean
+            transactionHash: string | null
+            submissionAttempts: number
+            broadcastAttempts: number
+        }>(
+            `SELECT action,
+                    status,
+                    nonce::text AS nonce,
+                    (signed_raw_transaction IS NOT NULL) AS "hasSignedRawTransaction",
+                    transaction_hash AS "transactionHash",
+                    submission_attempts AS "submissionAttempts",
+                    broadcast_attempts AS "broadcastAttempts"
              FROM sponsorship_transaction_intents
              WHERE order_id=$1
-               AND (
-                 signed_raw_transaction IS NOT NULL OR
-                 transaction_hash IS NOT NULL OR
-                 submission_attempts > 0 OR
-                 status IN ('submitting','submitted','confirmed','reverted','unknown')
-               )`,
+             ORDER BY nonce`,
             [orderId],
         )
-        if (BigInt(unsafeIntentResult.rows[0]?.count ?? '0') > 0n) {
+        const ambiguousIntent = intentResult.rows.find(isAmbiguousCanaryIntent)
+        if (ambiguousIntent) {
             await client.query('COMMIT')
-            return { expired: false, reason: 'signed-or-broadcast-intent-exists' }
+            return {
+                expired: false,
+                reason: 'ambiguous-intent-exists',
+                ambiguousIntent,
+            }
         }
 
         await client.query(
@@ -134,7 +150,7 @@ async function expireUnsignedCanaryOrder(
                  failure_code=COALESCE(failure_code,'CANARY_ERROR_AUTO_EXPIRED'),
                  updated_at=now()
              WHERE order_id=$1
-               AND status IN ('authorized','prepared','signing')
+               AND status IN ('authorized','prepared')
                AND signed_raw_transaction IS NULL
                AND transaction_hash IS NULL
                AND submission_attempts=0`,
@@ -182,6 +198,18 @@ async function expirePreviousUnsignedCanaryOrders(walletAddress: string) {
             orderId: order.id,
             ...cleanup,
         })
+        if (cleanup.reason === 'ambiguous-intent-exists' &&
+            cleanup.ambiguousIntent) {
+            throw new CanarySafetyStopError(
+                order.id,
+                cleanup.ambiguousIntent,
+            )
+        }
+        if (!cleanup.expired && cleanup.reason !== 'already-terminal-or-missing') {
+            throw new Error(
+                `Canary preflight could not prove order ${order.id} safe for a new attempt: ${cleanup.reason}`,
+            )
+        }
     }
 }
 

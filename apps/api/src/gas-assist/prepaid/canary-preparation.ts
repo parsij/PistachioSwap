@@ -5,6 +5,44 @@ export type CanaryPreparationConfig = {
     retryDelayMs: number
 }
 
+export type CanaryIntentSafetyState = {
+    action: string
+    status: string
+    nonce: string
+    hasSignedRawTransaction: boolean
+    transactionHash: string | null
+    submissionAttempts: number
+    broadcastAttempts: number
+}
+
+const AMBIGUOUS_INTENT_STATUSES = new Set([
+    'signing',
+    'submitting',
+    'submitted',
+    'unknown',
+])
+
+export function isAmbiguousCanaryIntent(intent: CanaryIntentSafetyState) {
+    return AMBIGUOUS_INTENT_STATUSES.has(intent.status) ||
+        intent.hasSignedRawTransaction ||
+        intent.transactionHash !== null ||
+        intent.submissionAttempts > 0 ||
+        intent.broadcastAttempts > 0
+}
+
+export class CanarySafetyStopError extends Error {
+    readonly code = 'SAFETY_STOP_AMBIGUOUS_TRANSACTION'
+    readonly orderId: string
+    readonly intent: CanaryIntentSafetyState
+
+    constructor(orderId: string, intent: CanaryIntentSafetyState) {
+        super('A prior canary intent may have been signed or submitted; a new live order is forbidden.')
+        this.name = 'CanarySafetyStopError'
+        this.orderId = orderId
+        this.intent = intent
+    }
+}
+
 type RetryDetails = {
     attempt: number
     maximumAttempts: number
