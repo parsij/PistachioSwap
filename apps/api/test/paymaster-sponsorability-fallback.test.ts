@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createPaymasterClient } from '../src/gas-assist/paymaster.js'
+import {
+    createPaymasterClient,
+    paymasterInternals,
+} from '../src/gas-assist/paymaster.js'
 
 const transaction = {
     from: '0x0000000000000000000000000000000000000011',
@@ -21,7 +24,9 @@ function privateConnection() {
 }
 
 afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
+    delete process.env.MEGAFUEL_REQUEST_TIMEOUT_MS
 })
 
 describe('MegaFuel sponsorability method fallback', () => {
@@ -91,5 +96,44 @@ describe('MegaFuel sponsorability method fallback', () => {
             },
         })
         expect(fetcher).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not inherit an undersized general provider timeout', () => {
+        expect(paymasterInternals.prepaidRequestTimeoutMs(3_000)).toBe(15_000)
+        expect(paymasterInternals.prepaidRequestTimeoutMs(20_000)).toBe(20_000)
+
+        process.env.MEGAFUEL_REQUEST_TIMEOUT_MS = '25000'
+        expect(paymasterInternals.prepaidRequestTimeoutMs(3_000)).toBe(25_000)
+    })
+
+    it('retries a timed-out private RPC and returns a typed timeout error', async () => {
+        vi.useFakeTimers()
+        const fetcher = vi.fn((_url: string | URL | Request, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () => {
+                    const error = new Error('request aborted')
+                    error.name = 'AbortError'
+                    reject(error)
+                }, { once: true })
+            }))
+        const client = createPaymasterClient(fetcher as typeof fetch, () => ({
+            ...privateConnection(),
+            requestTimeoutMs: 10,
+            sponsorabilityMethods: ['pm_isSponsorable'] as const,
+        }))
+
+        const assertion = expect(client.isSponsorable(transaction)).rejects.toMatchObject({
+            code: 'PAYMASTER_TIMEOUT',
+            statusCode: 504,
+            details: {
+                rpcMethod: 'pm_isSponsorable',
+                attempts: 3,
+                requestTimeoutMs: 10,
+            },
+        })
+
+        await vi.runAllTimersAsync()
+        await assertion
+        expect(fetcher).toHaveBeenCalledTimes(3)
     })
 })
