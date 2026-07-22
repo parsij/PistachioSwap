@@ -17,20 +17,42 @@ type PaymasterConnection = {
     sponsorabilityMethods: readonly SponsorabilityMethod[]
 }
 
-function retryDelay(response: Response, attempt: number) {
-    const retryAfter = response.headers.get('retry-after')
+function retryDelay(response: Response | null, attempt: number) {
+    const retryAfter = response?.headers.get('retry-after')
     if (retryAfter && /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1_000
     return 250 * 2 ** attempt
 }
 
 function sleep(ms: number, signal?: AbortSignal) {
     return new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(resolve, ms)
-        signal?.addEventListener('abort', () => {
+        const abort = () => {
             clearTimeout(timeout)
-            reject(signal.reason)
-        }, { once: true })
+            reject(signal?.reason)
+        }
+        const timeout = setTimeout(() => {
+            signal?.removeEventListener('abort', abort)
+            resolve()
+        }, ms)
+        signal?.addEventListener('abort', abort, { once: true })
+        if (signal?.aborted) abort()
     })
+}
+
+function prepaidRequestTimeoutMs(providerTimeoutMs: number) {
+    const raw = process.env.MEGAFUEL_REQUEST_TIMEOUT_MS?.trim()
+    if (!raw) return Math.max(providerTimeoutMs, 15_000)
+    const value = Number(raw)
+    if (!Number.isInteger(value) || value < 1_000 || value > 60_000) {
+        throw new Error('MEGAFUEL_REQUEST_TIMEOUT_MS must be an integer between 1000 and 60000.')
+    }
+    return value
+}
+
+function transportReason(error: unknown) {
+    if (error instanceof Error) {
+        return `${error.name}: ${error.message}`.slice(0, 240)
+    }
+    return String(error ?? 'unknown transport failure').slice(0, 240)
 }
 
 function legacyConnection(): PaymasterConnection {
@@ -55,7 +77,7 @@ function prepaidConnection(scope: PrepaidPolicyScope): PaymasterConnection {
             ? config.feePolicyUuid
             : config.actionPolicyUuid,
         userAgent: config.userAgent,
-        requestTimeoutMs: config.requestTimeoutMs,
+        requestTimeoutMs: prepaidRequestTimeoutMs(config.requestTimeoutMs),
         sponsorabilityMethods: ['eth_isSponsorable', 'pm_isSponsorable'],
     }
 }
@@ -83,7 +105,11 @@ export function createPaymasterClient(
         let lastStatus = 0
         for (let attempt = 0; attempt < 3; attempt += 1) {
             const controller = new AbortController()
-            const timeout = setTimeout(() => controller.abort(), connection.requestTimeoutMs)
+            let timedOut = false
+            const timeout = setTimeout(() => {
+                timedOut = true
+                controller.abort()
+            }, connection.requestTimeoutMs)
             const abort = () => controller.abort(signal?.reason)
             signal?.addEventListener('abort', abort, { once: true })
             try {
@@ -98,22 +124,52 @@ export function createPaymasterClient(
                     signal: controller.signal,
                 })
                 lastStatus = response.status
-                if ((response.status === 429 || response.status >= 500) && attempt < 2) {
-                    await sleep(retryDelay(response, attempt), signal)
-                    continue
+                if (response.status === 429 || response.status >= 500) {
+                    if (attempt < 2) {
+                        await sleep(retryDelay(response, attempt), signal)
+                        continue
+                    }
+                    throw new GasAssistError(
+                        response.status === 429 ? 'PAYMASTER_RATE_LIMITED' : 'PAYMASTER_UNAVAILABLE',
+                        response.status === 429
+                            ? 'The paymaster rate limit was reached.'
+                            : 'The paymaster is temporarily unavailable.',
+                        response.status === 429 ? 429 : 502,
+                        { rpcMethod: method, providerStatus: response.status, attempts: attempt + 1 },
+                    )
                 }
                 const body = await response.json().catch(() => ({})) as RpcResponse
                 if (!response.ok || body.error) {
                     throw new GasAssistError(
                         body.error?.code === -32601 ? 'PAYMASTER_METHOD_UNAVAILABLE' : 'PAYMASTER_REJECTED',
                         'The paymaster rejected the exact sponsored transaction.',
-                        response.status === 429 ? 429 : 502,
+                        502,
                         body.error?.message
                             ? { rpcMethod: method, providerMessage: body.error.message }
                             : { rpcMethod: method },
                     )
                 }
                 return body.result
+            } catch (error) {
+                if (error instanceof GasAssistError) throw error
+                const externallyAborted = signal?.aborted === true
+                if (!externallyAborted && attempt < 2) {
+                    await sleep(retryDelay(null, attempt), signal)
+                    continue
+                }
+                throw new GasAssistError(
+                    timedOut ? 'PAYMASTER_TIMEOUT' : 'PAYMASTER_UNAVAILABLE',
+                    timedOut
+                        ? 'The paymaster request timed out.'
+                        : 'The paymaster request failed.',
+                    timedOut ? 504 : 502,
+                    {
+                        rpcMethod: method,
+                        attempts: attempt + 1,
+                        requestTimeoutMs: connection.requestTimeoutMs,
+                        transportReason: transportReason(error),
+                    },
+                )
             } finally {
                 clearTimeout(timeout)
                 signal?.removeEventListener('abort', abort)
@@ -182,5 +238,6 @@ export const prepaidActionPaymasterClient = createPaymasterClient(
 export const paymasterInternals = {
     legacyConnection,
     prepaidConnection,
+    prepaidRequestTimeoutMs,
     parseSponsorableResult,
 }
