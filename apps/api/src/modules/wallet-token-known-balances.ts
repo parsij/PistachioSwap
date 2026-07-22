@@ -20,6 +20,12 @@ type KnownToken = Readonly<{
     address: string
 }>
 
+type KnownBalance = Readonly<{
+    chainId: number
+    address: string
+    rawBalance: string
+}>
+
 type RpcRequest = Readonly<{
     jsonrpc: '2.0'
     id: number
@@ -98,7 +104,7 @@ function parseRpcBalances(
         if (Number.isSafeInteger(id)) byId.set(id, record)
     }
 
-    const balances = []
+    const balances: KnownBalance[] = []
     let failures = 0
     for (const [index, token] of tokens.entries()) {
         const result = byId.get(index + 1)?.result
@@ -192,7 +198,7 @@ export function createWalletTokenKnownBalanceRoutes(
                     ])
                 }
 
-                const balances = []
+                const balances: KnownBalance[] = []
                 const successfulChainIds: number[] = []
                 const failedChainIds: number[] = []
                 const chainErrors: Record<string, string> = {}
