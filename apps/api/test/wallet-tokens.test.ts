@@ -68,7 +68,7 @@ describe('wallet token inventory', () => {
     it('uses one canonical native BNB identity distinct from ERC-20 contracts', () => {
         const native = createNativeWalletToken(10n ** 18n, '500')
         expect(native).toMatchObject({
-            classificationVersion: 4,
+            classificationVersion: 5,
             chainId: 56,
             address: NATIVE_TOKEN_ADDRESS,
             symbol: 'BNB',
@@ -83,7 +83,6 @@ describe('wallet token inventory', () => {
 
     it.each([
         ['CoinGecko recognition', { exactRecognition: true }],
-        ['established catalog membership', { established: true }],
         ['manual exact-address recognition', { allowlisted: true }],
         ['Moralis exact-contract verification', { moralisVerified: true }],
         ['PancakeSwap curated membership', { pancakeSwapRecognized: true }],
@@ -95,6 +94,15 @@ describe('wallet token inventory', () => {
                 ...signal,
             }).visibility,
         ).toBe('primary')
+    })
+
+    it('does not keep a token primary for market-catalog membership alone', () => {
+        expect(classifyWalletTokenVisibility({
+            established: true,
+        })).toEqual({
+            visibility: 'unverified',
+            visibilityReasons: ['unverified-contract', 'market-catalog-only'],
+        })
     })
 
     it.each([

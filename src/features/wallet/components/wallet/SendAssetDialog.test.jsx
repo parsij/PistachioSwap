@@ -37,6 +37,12 @@ const native = {
     balance: '1',
     priceUSD: '600',
     valueUSD: '600',
+    recognitionStatus: 'established',
+    recognitionReasons: ['native-token'],
+    possibleSpam: false,
+    securityStatus: 'trusted',
+    priceConfidence: 'trusted',
+    includeInPortfolioValue: true,
     visibility: 'primary',
     logoURI: '/icons/bnb.svg',
 }
@@ -47,6 +53,12 @@ const blocked = {
     name: 'Unknown token',
     symbol: 'UNKNOWN',
     securityStatus: 'blocked',
+    recognitionStatus: 'unverified',
+    recognitionReasons: [],
+    possibleSpam: false,
+    verifiedContract: false,
+    priceConfidence: 'untrusted',
+    includeInPortfolioValue: false,
     visibility: 'hidden',
     securityReasons: ['honeypot-confirmed'],
     visibilityReasons: ['security-blocked'],
@@ -143,8 +155,10 @@ describe('SendAssetDialog', () => {
             .mockReturnValueOnce(false)
         renderDialog({ assets: [native, blocked] })
         fireEvent.click(screen.getByRole('button', { name: /BNB/ }))
-        fireEvent.click(screen.getByRole('button', { name: 'Show all wallet assets' }))
-        fireEvent.click(screen.getByRole('button', { name: 'Hidden risky tokens (1)' }))
+        expect(screen.queryByRole('button', { name: 'Show all wallet assets' })).toBeNull()
+        fireEvent.change(screen.getByLabelText('Search wallet assets'), {
+            target: { value: blocked.address },
+        })
         fireEvent.click(screen.getByText('Unknown token').closest('button'))
         fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.1' } })
         fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })

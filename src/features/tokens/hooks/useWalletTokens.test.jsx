@@ -21,7 +21,7 @@ import {
 
 vi.mock('../services/walletTokens.js', () => ({
     fetchWalletTokens: vi.fn(),
-    WALLET_TOKEN_CACHE_NAMESPACE: 'pistachioswap:wallet-tokens:v4:',
+    WALLET_TOKEN_CACHE_NAMESPACE: 'pistachioswap:wallet-tokens:v5:',
 }))
 
 const ADDRESS_A =

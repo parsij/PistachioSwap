@@ -14,6 +14,10 @@ import {
     formatWalletUsdValue,
 } from '../../../tokens/services/walletTokens.js'
 import {
+    getTokenDisplayName,
+    getTokenDisplaySymbol,
+} from '../../../tokens/services/tokenDisplay.js'
+import {
     readWalletTokenSectionExpanded,
     writeWalletTokenSectionExpanded,
 } from '../../../tokens/services/walletTokenSections.js'
@@ -28,6 +32,8 @@ function shortContract(address) {
 
 function AssetRow({ token, selected, onSelect }) {
     const chain = getCuratedEvmChain(token.chainId)
+    const displayName = getTokenDisplayName(token)
+    const displaySymbol = getTokenDisplaySymbol(token)
     async function copyContract(event) {
         if (token.isNative) return
         event.preventDefault()
@@ -38,9 +44,9 @@ function AssetRow({ token, selected, onSelect }) {
         <>
             <TokenIcon token={token} size="list" />
             <span className="wallet-asset-identity">
-                <strong>{token.name}</strong>
+                <strong>{displayName}</strong>
                 <span>
-                    {token.symbol}
+                    {displaySymbol}
                     {!token.isNative && token.address
                         ? ` · ${shortContract(token.address)}`
                         : ''}
@@ -65,7 +71,7 @@ function AssetRow({ token, selected, onSelect }) {
             </span>
             <span className="wallet-asset-values">
                 <strong>{formatWalletUsdValue(token)}</strong>
-                <span>{formatWalletTokenAmount(token.balance)} {token.symbol}</span>
+                <span>{formatWalletTokenAmount(token.balance)} {displaySymbol}</span>
             </span>
             {selected && <Check className="wallet-asset-check" aria-label="Selected" />}
         </>
@@ -87,7 +93,7 @@ function AssetRow({ token, selected, onSelect }) {
                 <button
                     type="button"
                     className="wallet-asset-copy"
-                    aria-label={`Copy ${token.symbol} contract address`}
+                    aria-label={`Copy ${displaySymbol} contract address`}
                     onClick={copyContract}
                 >
                     <Copy aria-hidden="true" />

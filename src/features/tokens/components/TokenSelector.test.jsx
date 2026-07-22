@@ -17,7 +17,7 @@ import TokenSelector from './TokenSelector.jsx'
 import { clearTokenLogoCacheForTest } from './tokenLogoCache.js'
 
 const native = {
-    classificationVersion: 4,
+    classificationVersion: 5,
     id: '56:0x0000000000000000000000000000000000000000',
     chainId: 56,
     address: '0x0000000000000000000000000000000000000000',
@@ -30,17 +30,19 @@ const native = {
     priceUSD: '54.463',
     valueUSD: '113',
     recognitionStatus: 'established',
+    recognitionReasons: ['native-token'],
     spamStatus: 'clean',
     possibleSpam: false,
     verifiedContract: null,
     securityStatus: 'trusted',
     priceConfidence: 'trusted',
+    includeInPortfolioValue: true,
     visibility: 'primary',
     logoURI: '/icons/bnb.svg',
 }
 
 const hidden = {
-    classificationVersion: 4,
+    classificationVersion: 5,
     id: '56:0x0000000000000000000000000000000000000099',
     chainId: 56,
     address: '0x0000000000000000000000000000000000000099',
@@ -168,6 +170,10 @@ describe('TokenSelector wallet rows', () => {
             isNative: false,
             name: `Primary ${index}`,
             symbol: `P${index}`,
+            recognitionStatus: 'recognized',
+            recognitionReasons: ['coingecko-exact-contract'],
+            verifiedContract: true,
+            includeInPortfolioValue: true,
         }))
         const { container } = renderSelector({
             walletTokens,
@@ -333,18 +339,60 @@ describe('TokenSelector wallet rows', () => {
         expect(screen.getByText(honeypot.name)).toBeTruthy()
     })
 
-    it('keeps a selected hidden token visible', () => {
+    it('does not render a selected hidden token when unknown tokens are hidden', () => {
         renderSelector({
             currentToken: hidden,
             hideUnknownTokens: true,
         })
-        expect(screen.getByText(hidden.name)).toBeTruthy()
-        const selectedSection = screen.getByText('Selected token').closest('section')
-        expect(within(selectedSection).getByText(hidden.name)).toBeTruthy()
+        expect(screen.queryByText(hidden.name)).toBeNull()
+        expect(screen.queryByText('Selected token')).toBeNull()
         const primarySection = screen.queryByText('Your tokens')?.closest('section')
         expect(primarySection ? within(primarySection).queryByText(hidden.name) : null)
             .toBeNull()
         expect(screen.queryByText('Hidden risky tokens (3)')).toBeNull()
+    })
+
+    it('filters screenshot junk wallet tokens during normal browsing but reveals exact-address search', () => {
+        const junk = [
+            ['RETURN TO MEMES', 'RET', '0x0000000000000000000000000000000000000101'],
+            ['Cash Doge', 'CDOGE', '0x0000000000000000000000000000000000000102'],
+            ['everyone', 'EVERYONE', '0x0000000000000000000000000000000000000103'],
+            ['CXMT', 'CXMT', '0x0000000000000000000000000000000000000104'],
+            ['Token 0x7ca3...3690', '0x7ca3...3690', '0x7ca3000000000000000000000000000000003690'],
+        ].map(([name, symbol, address]) => ({
+            ...hidden,
+            id: `56:${address}`,
+            address,
+            name,
+            symbol,
+            possibleSpam: false,
+            spamStatus: 'clean',
+            securityStatus: 'caution',
+            priceUSD: '447000',
+            marketPriceUSD: '447000',
+            valueUSD: null,
+            priceConfidence: 'untrusted',
+            visibilityReasons: ['market-catalog-only', 'untrusted-market-price'],
+        }))
+        renderSelector({
+            walletTokens: [native, recognizedCaution, ...junk],
+            currentToken: null,
+            hideUnknownTokens: true,
+        })
+
+        expect(screen.getByText('BNB', { selector: 'strong' })).toBeTruthy()
+        expect(screen.getByText(recognizedCaution.name)).toBeTruthy()
+        for (const token of junk) expect(screen.queryByText(token.name)).toBeNull()
+        expect(document.body.textContent).not.toContain('$447,526.72')
+        cleanup()
+
+        renderSelector({
+            walletTokens: [native, ...junk],
+            currentToken: null,
+            search: junk[0].address,
+            hideUnknownTokens: true,
+        })
+        expect(screen.getByText('RETURN TO MEMES')).toBeTruthy()
     })
 
     it('persists the two collapsed-section states without touching other storage', () => {
@@ -398,6 +446,16 @@ describe('TokenSelector wallet rows', () => {
             isNative: false,
             name: 'Ethereum token',
             symbol: 'ETHX',
+            recognitionStatus: 'recognized',
+            verificationStatus: 'recognized',
+            recognitionReasons: ['coingecko-exact-contract'],
+            verificationReasons: ['coingecko-exact-contract', 'minimum-liquidity-met'],
+            verifiedContract: true,
+            volume24hUsd: '100',
+            liquidityUsd: '1000',
+            possibleSpam: false,
+            securityStatus: 'low',
+            visibility: 'primary',
         }
         const bscToken = {
             ...ethereumToken,

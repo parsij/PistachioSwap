@@ -1,3 +1,5 @@
+import { getTokenDisplaySymbol } from '../services/tokenDisplay.js'
+
 /** Returns the ordered, deduplicated logo URL candidates allowed for a token icon. */
 export function getTokenLogoCandidates(token) {
     const values = [
@@ -25,8 +27,7 @@ export function getTokenLogoCandidates(token) {
 
 /** Returns the single visible fallback character used when all token logos fail. */
 export function getTokenFallbackLetter(token) {
-    return String(token?.symbol ?? token?.name ?? '?')
-        .trim()
+    return getTokenDisplaySymbol(token)
         .slice(0, 1)
         .toUpperCase()
 }

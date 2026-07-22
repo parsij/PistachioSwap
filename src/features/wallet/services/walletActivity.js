@@ -50,6 +50,34 @@ function cleanToken(token) {
             ? Number(token.decimals)
             : null,
         isNative: token.isNative === true,
+        classificationVersion: Number.isSafeInteger(Number(token.classificationVersion))
+            ? Number(token.classificationVersion)
+            : undefined,
+        recognitionStatus: ['established', 'recognized', 'unverified'].includes(token.recognitionStatus)
+            ? token.recognitionStatus
+            : undefined,
+        recognitionReasons: Array.isArray(token.recognitionReasons)
+            ? token.recognitionReasons.filter((reason) => typeof reason === 'string').slice(0, 12)
+            : undefined,
+        possibleSpam: typeof token.possibleSpam === 'boolean'
+            ? token.possibleSpam
+            : null,
+        verifiedContract: typeof token.verifiedContract === 'boolean'
+            ? token.verifiedContract
+            : null,
+        officialAsset: token.officialAsset === true,
+        securityStatus: ['trusted', 'low', 'caution', 'high', 'blocked', 'unknown'].includes(token.securityStatus)
+            ? token.securityStatus
+            : undefined,
+        visibility: ['primary', 'unverified', 'hidden'].includes(token.visibility)
+            ? token.visibility
+            : undefined,
+        priceConfidence: ['trusted', 'market', 'untrusted', 'unknown'].includes(token.priceConfidence)
+            ? token.priceConfidence
+            : undefined,
+        includeInPortfolioValue: typeof token.includeInPortfolioValue === 'boolean'
+            ? token.includeInPortfolioValue
+            : undefined,
         logoURI:
             cleanText(
                 token.logoURI ??
@@ -100,7 +128,7 @@ function emitChange(walletAddress) {
     }))
 }
 
-function normalizeActivity(input) {
+export function normalizeWalletActivity(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) return null
 
     const walletAddress = normalizeWalletAddress(input.walletAddress)
@@ -134,7 +162,7 @@ function normalizeActivity(input) {
 }
 
 export function recordWalletActivity(input) {
-    const activity = normalizeActivity(input)
+    const activity = normalizeWalletActivity(input)
     if (!activity) return null
 
     const store = readStore()
@@ -174,7 +202,7 @@ export function readWalletActivity({
     if (!Array.isArray(stored)) return []
 
     return stored
-        .map(normalizeActivity)
+        .map(normalizeWalletActivity)
         .filter(Boolean)
         .sort((left, right) =>
             Date.parse(right.timestamp) - Date.parse(left.timestamp))
@@ -205,6 +233,6 @@ export const walletActivityInternals = {
     CHANGE_EVENT,
     STORAGE_KEY,
     cleanToken,
-    normalizeActivity,
+    normalizeActivity: normalizeWalletActivity,
     normalizeWalletAddress,
 }

@@ -1001,7 +1001,7 @@ describe('App wallet integration', () => {
         mocks.account.isConnected = true
         mocks.useWalletTokens.mockReturnValue({
             tokens: [{
-                classificationVersion: 4,
+                classificationVersion: 5,
                 chainId: 56,
                 address: '0x0000000000000000000000000000000000000000',
                 isNative: true,
@@ -1162,7 +1162,7 @@ describe('App wallet integration', () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         const usdc = {
-            classificationVersion: 4,
+            classificationVersion: 5,
             chainId: 56,
             address: '0x0000000000000000000000000000000000000011',
             name: 'USD Coin',
@@ -1201,7 +1201,7 @@ describe('App wallet integration', () => {
 
     it('shows the exact recognized USDT market price in the fiat section', () => {
         const usdt = {
-            classificationVersion: 4,
+            classificationVersion: 5,
             chainId: 56,
             address: '0x55d398326f99059ff775485246999027b3197955',
             name: 'Tether USD',
@@ -2168,7 +2168,7 @@ describe('App wallet integration', () => {
         }]
         mocks.useWalletTokens.mockReturnValue({
             tokens: [{
-                classificationVersion: 4,
+                classificationVersion: 5,
                 chainId: 56,
                 address: '0x0000000000000000000000000000000000000099',
                 name: 'claim-reward.example.com',

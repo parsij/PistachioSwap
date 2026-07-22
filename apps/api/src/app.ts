@@ -20,6 +20,7 @@ import { sameChainQuoteRoutes } from './features/quotes/routes/quote-routes.js'
 import { tokenDetailsRoutes } from './modules/token-details.js'
 import { walletTokenKnownBalanceRoutes } from './modules/wallet-token-known-balances.js'
 import { walletTokenRoutes } from './modules/wallet-tokens.js'
+import { walletActivityRoutes } from './modules/wallet-activity.js'
 import { sponsorshipRoutes } from './modules/sponsorship.js'
 import { sponsorshipAdminRoutes } from './modules/sponsorship-admin.js'
 import { sponsorshipRefundAdminRoutes } from './modules/sponsorship-refunds-admin.js'
@@ -137,6 +138,7 @@ export function createApp() {
 
     app.register(marketTokenRoutes)
     app.register(walletTokenRoutes)
+    app.register(walletActivityRoutes)
     app.register(walletTokenKnownBalanceRoutes)
     app.register(sameChainQuoteRoutes)
     app.register(crossChainRoutes)

@@ -29,6 +29,11 @@ import { WalletAvatar } from './WalletAccountButton.jsx'
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
 import { shortenAddress } from '../../../../services/address.js'
 import { resolveWalletUsdValue } from '../../../tokens/services/walletTokens.js'
+import {
+    filterPortfolioTokens,
+    isTrustedWalletToken,
+} from '../../../tokens/services/portfolio.js'
+import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
 import { useWalletActivity } from '../../hooks/useWalletActivity.js'
 import {
     getCuratedEvmChain,
@@ -88,6 +93,27 @@ function findActivityToken(activity, assets) {
     }
 }
 
+function activityTokenTrusted(candidate, assets, chainId) {
+    if (!candidate) return false
+    if (candidate.isNative === true) return true
+    const address = String(candidate.address ?? '').toLowerCase()
+    const match = assets.find((token) =>
+        Number(token.chainId) === Number(chainId) &&
+        String(token.address ?? '').toLowerCase() === address)
+    return match ? isTrustedWalletToken(match) : isTrustedWalletToken(candidate)
+}
+
+function filterTrustedActivity(items, assets) {
+    return items.filter((activity) => {
+        if (activity.type === 'contract') return false
+        if (activity.type === 'swapped') {
+            return activityTokenTrusted(activity.sellToken, assets, activity.chainId) &&
+                activityTokenTrusted(activity.buyToken, assets, activity.chainId)
+        }
+        return activityTokenTrusted(activity.token, assets, activity.chainId)
+    })
+}
+
 function compactAmount(value) {
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) return null
@@ -112,8 +138,12 @@ function activitySummary(activity) {
     if (activity.type === 'swapped') {
         const sellAmount = compactAmount(activity.sellAmount)
         const buyAmount = compactAmount(activity.buyAmount)
-        const sellSymbol = activity.sellToken?.symbol
-        const buySymbol = activity.buyToken?.symbol
+        const sellSymbol = activity.sellToken
+            ? getTokenDisplaySymbol(activity.sellToken)
+            : null
+        const buySymbol = activity.buyToken
+            ? getTokenDisplaySymbol(activity.buyToken)
+            : null
 
         if (sellAmount && sellSymbol && buyAmount && buySymbol) {
             return `${sellAmount} ${sellSymbol} → ${buyAmount} ${buySymbol}`
@@ -123,7 +153,9 @@ function activitySummary(activity) {
 
     if (activity.type === 'approved') {
         const amount = compactAmount(activity.amount)
-        const symbol = activity.token?.symbol
+        const symbol = activity.token
+            ? getTokenDisplaySymbol(activity.token)
+            : null
         return amount && symbol
             ? `${amount} ${symbol}`
             : symbol
@@ -133,7 +165,9 @@ function activitySummary(activity) {
 
     if (activity.type === 'sent') {
         const amount = compactAmount(activity.amount)
-        const symbol = activity.token?.symbol
+        const symbol = activity.token
+            ? getTokenDisplaySymbol(activity.token)
+            : null
         const destination = activity.recipient
             ? ` to ${shortenAddress(activity.recipient, 5)}`
             : ''
@@ -263,8 +297,20 @@ export default function WalletAccountDialog({
     const [copied, setCopied] = useState(false)
     const [refreshing, setRefreshing] = useState(false)
     const [view, setView] = useState('overview')
-    const activity = useWalletActivity({
+    const activityChainIds = useMemo(() => [...new Set([
+        Number(chainId),
+        ...walletTokens.map((token) => Number(token?.chainId)),
+    ].filter((value) => Number.isSafeInteger(value) && value > 0))], [
+        chainId,
+        walletTokens,
+    ])
+    const {
+        items: activity,
+        loading: activityLoading,
+        error: activityError,
+    } = useWalletActivity({
         walletAddress: address,
+        chainIds: activityChainIds,
         limit: 50,
     })
 
@@ -299,11 +345,22 @@ export default function WalletAccountDialog({
         () => assets.filter(hasPositiveBalance),
         [assets],
     )
-    const totalValue = useMemo(
-        () => portfolioValue(heldAssets),
-        [heldAssets],
+    const visiblePortfolioAssets = useMemo(
+        () => filterPortfolioTokens(heldAssets, {
+            ...settings,
+            selectedTokens,
+        }),
+        [heldAssets, selectedTokens, settings],
     )
-    const recentActivity = activity.slice(0, 3)
+    const totalValue = useMemo(
+        () => portfolioValue(visiblePortfolioAssets),
+        [visiblePortfolioAssets],
+    )
+    const visibleActivity = useMemo(
+        () => filterTrustedActivity(activity, assets),
+        [activity, assets],
+    )
+    const recentActivity = visibleActivity.slice(0, 3)
 
     useEffect(() => {
         if (!open) {
@@ -430,13 +487,25 @@ export default function WalletAccountDialog({
                         {recentActivity.length === 0 && (
                             <div className="uni-wallet-empty-activity">
                                 <span><ArrowLeftRight aria-hidden="true" /></span>
-                                <strong>No recent activity</strong>
-                                <p>Confirmed sends and swaps will appear here.</p>
+                                <strong>
+                                    {activityLoading
+                                        ? 'Loading activity…'
+                                        : activityError
+                                            ? 'History temporarily unavailable'
+                                            : 'No recent activity'}
+                                </strong>
+                                <p>
+                                    {activityLoading
+                                        ? 'Reading confirmed transactions from your networks.'
+                                        : activityError
+                                            ? 'Local confirmed transactions will still appear here.'
+                                            : 'No confirmed transactions were found.'}
+                                </p>
                             </div>
                         )}
                     </div>
 
-                    {activity.length > 3 && (
+                    {visibleActivity.length > 3 && (
                         <button
                             type="button"
                             className="uni-wallet-small-outline"
@@ -464,7 +533,7 @@ export default function WalletAccountDialog({
                     </button>
                     <div>
                         <h2>Portfolio</h2>
-                        <span>{heldAssets.length} assets</span>
+                        <span>{visiblePortfolioAssets.length} assets</span>
                     </div>
                     <button
                         type="button"
@@ -508,13 +577,13 @@ export default function WalletAccountDialog({
                     </button>
                     <div>
                         <h2>Activity</h2>
-                        <span>{activity.length} confirmed transactions</span>
+                        <span>{visibleActivity.length} confirmed transactions</span>
                     </div>
                     <span className="uni-wallet-header-spacer" />
                 </header>
 
                 <div className="uni-wallet-all-activity">
-                    {activity.map((item) => (
+                    {visibleActivity.map((item) => (
                         <ActivityRow
                             key={item.id}
                             activity={item}
@@ -523,11 +592,23 @@ export default function WalletAccountDialog({
                             activeExplorerUrl={explorerUrl}
                         />
                     ))}
-                    {activity.length === 0 && (
+                    {visibleActivity.length === 0 && (
                         <div className="uni-wallet-empty-activity">
                             <span><ArrowLeftRight aria-hidden="true" /></span>
-                            <strong>No activity yet</strong>
-                            <p>Your confirmed wallet transactions will appear here.</p>
+                            <strong>
+                                {activityLoading
+                                    ? 'Loading activity…'
+                                    : activityError
+                                        ? 'History temporarily unavailable'
+                                        : 'No activity yet'}
+                            </strong>
+                            <p>
+                                {activityLoading
+                                    ? 'Reading confirmed transactions from your networks.'
+                                    : activityError
+                                        ? 'Local confirmed transactions will still appear here.'
+                                        : 'No confirmed transactions were found.'}
+                            </p>
                         </div>
                     )}
                 </div>

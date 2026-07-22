@@ -13,9 +13,9 @@ import { useWalletTokens } from './useWalletTokens.js'
 
 vi.mock('../services/walletTokens.js', () => ({
     WALLET_TOKEN_CLASSIFICATION_VERSION: 4,
-    WALLET_TOKEN_CACHE_NAMESPACE: 'pistachioswap:wallet-tokens:v4:',
+    WALLET_TOKEN_CACHE_NAMESPACE: 'pistachioswap:wallet-tokens:v5:',
     isCurrentWalletTokenRecord: (token) =>
-        token?.classificationVersion === 4 &&
+        token?.classificationVersion === 5 &&
         /^0x[a-f0-9]{40}$/.test(String(token?.address ?? '')),
     fetchWalletTokens: vi.fn(),
 }))
@@ -25,7 +25,7 @@ const XAUT = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
 
 function token(rawBalance = '40') {
     return {
-        classificationVersion: 4,
+        classificationVersion: 5,
         chainId: 56,
         address: XAUT,
         decimals: 6,

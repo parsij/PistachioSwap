@@ -172,19 +172,19 @@ describe('normalized wallet token response', () => {
             walletAddress: wallet,
         })
         const native = tokens.find((token) => token.isNative)
-        const unverified = tokens.filter((token) => token.visibility === 'unverified')
+        const hidden = tokens.filter((token) => token.visibility === 'hidden')
 
         expect(tokens).toHaveLength(8)
-        expect(unverified).toHaveLength(7)
-        expect(unverified.every((token) => token.rawBalance === '1000000000000000000'))
+        expect(hidden).toHaveLength(7)
+        expect(hidden.every((token) => token.rawBalance === '1000000000000000000'))
             .toBe(true)
-        expect(unverified.every((token) => token.visibilityReasons.includes(
+        expect(hidden.every((token) => token.visibilityReasons.includes(
             'unverified-contract',
         ))).toBe(true)
-        expect(unverified.every((token) =>
+        expect(hidden.every((token) =>
             token.valueUSD === null && token.trustedPriceUSD === null,
         )).toBe(true)
-        expect(tokens.every((token) => token.classificationVersion === 4)).toBe(true)
+        expect(tokens.every((token) => token.classificationVersion === 5)).toBe(true)
         expect(native).toMatchObject({
             symbol: 'BNB',
             balance: '1',
@@ -229,11 +229,11 @@ describe('normalized wallet token response', () => {
         const result = tokens.find((item) => item.address === address)
         expect(result).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
             priceUSD: '100000',
             trustedPriceUSD: null,
             valueUSD: null,
-            priceConfidence: 'market',
+            priceConfidence: 'untrusted',
         })
         expect(result?.marketPriceUSD).toBe('100000')
     })
@@ -288,7 +288,7 @@ describe('normalized wallet token response', () => {
             marketPriceUSD: '9.5',
             trustedPriceUSD: null,
             valueUSD: null,
-            priceConfidence: 'market',
+            priceConfidence: 'untrusted',
         })
         expect(tokens[0].verificationReasons)
             .toContain('alchemy-portfolio-metadata')
@@ -321,8 +321,8 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             recognitionStatus: 'unverified',
-            securityStatus: 'low',
-            visibility: 'unverified',
+            securityStatus: 'caution',
+            visibility: 'hidden',
             trustedPriceUSD: null,
             valueUSD: null,
         })
@@ -348,10 +348,10 @@ describe('normalized wallet token response', () => {
             walletAddress: cachedWallet,
         })
         expect(mocks.alchemyRpc).toHaveBeenCalled()
-        expect(tokens.every((token) => token.classificationVersion === 4)).toBe(true)
+        expect(tokens.every((token) => token.classificationVersion === 5)).toBe(true)
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
             valueUSD: null,
         })
     })
@@ -385,7 +385,7 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens.find((item) => item.address === tokenAddresses[1])).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
         })
     })
 
@@ -421,7 +421,7 @@ describe('normalized wallet token response', () => {
             possibleSpam: false,
             verifiedContract: true,
             visibility: 'primary',
-            trustedPriceUSD: '2',
+            trustedPriceUSD: null,
             valueUSD: '2',
         })
     })
@@ -468,7 +468,7 @@ describe('normalized wallet token response', () => {
             spamStatus: 'possible-spam',
             possibleSpam: true,
             visibility: 'hidden',
-            visibilityReasons: ['moralis-possible-spam'],
+            visibilityReasons: expect.arrayContaining(['moralis-possible-spam']),
             trustedPriceUSD: null,
             valueUSD: null,
         })
@@ -500,7 +500,7 @@ describe('normalized wallet token response', () => {
             securityStatus: 'blocked',
             securityReasons: ['honeypot-confirmed'],
             visibility: 'hidden',
-            visibilityReasons: ['security-blocked'],
+            visibilityReasons: expect.arrayContaining(['security-blocked']),
         })
     })
 
@@ -516,7 +516,7 @@ describe('normalized wallet token response', () => {
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             securityStatus: 'blocked',
             visibility: 'hidden',
-            visibilityReasons: ['manual-blocklist'],
+            visibilityReasons: expect.arrayContaining(['manual-blocklist']),
         })
     })
 
@@ -544,7 +544,7 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens.find((item) => item.address === tokenAddresses[1])).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
         })
     })
 
@@ -576,7 +576,7 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens).toEqual([
             expect.objectContaining({
-                classificationVersion: 4,
+                classificationVersion: 5,
                 id: `56:${xautAddress}`,
                 name: 'Tether Gold',
                 symbol: 'XAUt',
@@ -597,7 +597,7 @@ describe('normalized wallet token response', () => {
                 priceUSD: '2400.25',
                 marketPriceUSD: '2400.25',
                 trustedPriceUSD: null,
-                valueUSD: null,
+                valueUSD: '3600.375',
                 priceConfidence: 'market',
             }),
         ])

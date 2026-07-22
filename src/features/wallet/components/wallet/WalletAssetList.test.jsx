@@ -12,6 +12,13 @@ const primary = {
     symbol: 'EST',
     balance: '2',
     valueUSD: '4',
+    recognitionStatus: 'recognized',
+    recognitionReasons: ['coingecko-exact-contract'],
+    possibleSpam: false,
+    verifiedContract: true,
+    securityStatus: 'low',
+    priceConfidence: 'trusted',
+    includeInPortfolioValue: true,
     visibility: 'primary',
 }
 const hidden = {

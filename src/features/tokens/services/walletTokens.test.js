@@ -41,7 +41,7 @@ describe('wallet token presentation data', () => {
                 verificationStatus: 'established',
             }],
             [{
-                classificationVersion: 4,
+                classificationVersion: 5,
                 chainId: 56,
                 address,
                 name: 'Fallback token',
@@ -83,7 +83,7 @@ describe('wallet token presentation data', () => {
         const [merged] = mergeWalletBalances(
             [{ chainId: 56, address, priceUSD: '4', balance: '0' }],
             [{
-                classificationVersion: 4,
+                classificationVersion: 5,
                 chainId: 56,
                 address,
                 rawBalance: '2500000000000000000',
@@ -143,7 +143,7 @@ describe('wallet token presentation data', () => {
 
     it('values official six-decimal XAUt with market confidence without promotion', () => {
         const xaut = {
-            classificationVersion: 4,
+            classificationVersion: 5,
             chainId: 56,
             address: '0x21caef8a43163eea865baee23b9c2e327696a3bf',
             decimals: 6,
@@ -185,7 +185,7 @@ describe('wallet token presentation data', () => {
 
     it('merges a catalog market candidate only by canonical chain and address', () => {
         const wallet = {
-            classificationVersion: 4,
+            classificationVersion: 5,
             chainId: 56,
             address,
             symbol: 'SAME',
@@ -227,7 +227,7 @@ describe('wallet token presentation data', () => {
                 visibility: 'primary',
             }],
             [{
-                classificationVersion: 4,
+                classificationVersion: 5,
                 chainId: 56,
                 address,
                 name: 'Ordinary token',
@@ -306,7 +306,7 @@ describe('wallet token presentation data', () => {
 
     it('rejects an unversioned wallet-token response before presentation', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-            classificationVersion: 4,
+            classificationVersion: 5,
             tokens: [{
                 chainId: 56,
                 address,
@@ -326,11 +326,11 @@ describe('wallet token presentation data', () => {
 
     it('loads all chains with one backend request and validates partial status', async () => {
         const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-            classificationVersion: 4,
+            classificationVersion: 5,
             address: '0x0000000000000000000000000000000000000042',
             source: 'alchemy-portfolio',
             tokens: [{
-                classificationVersion: 4,
+                classificationVersion: 5,
                 chainId: 56,
                 address,
                 recognitionStatus: 'recognized',

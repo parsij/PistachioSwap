@@ -7,7 +7,7 @@ vi.mock('../src/providers/alchemy/wallet-tokens.js', () => ({
     getWalletTokens: mocks.getWalletTokens,
     isCurrentWalletTokenRecord: (value: unknown) =>
         typeof value === 'object' && value !== null &&
-        (value as { classificationVersion?: number }).classificationVersion === 4,
+        (value as { classificationVersion?: number }).classificationVersion === 5,
 }))
 
 import {
@@ -40,7 +40,7 @@ describe('Alchemy Portfolio wallet cache', () => {
         process.env.ALCHEMY_PORTFOLIO_CACHE_TTL_MS = '1000'
         process.env.ALCHEMY_PORTFOLIO_STALE_TTL_MS = '5000'
         mocks.getWalletTokens.mockImplementation(async ({ chainId, walletAddress }) => [{
-            classificationVersion: 4,
+            classificationVersion: 5,
             chainId,
             address: walletAddress,
         }])
@@ -102,8 +102,8 @@ describe('Alchemy Portfolio wallet cache', () => {
 
     it.each([
         ['v3', { classificationVersion: 3, tokens: [] }],
-        ['malformed', { classificationVersion: 4, tokens: 'invalid' }],
-    ])('ignores a %s legacy cache entry under v4', async (_name, value) => {
+        ['malformed', { classificationVersion: 5, tokens: 'invalid' }],
+    ])('ignores a %s legacy cache entry under v5', async (_name, value) => {
         setAlchemyPortfolioWalletCacheForTest({
             walletAddress: walletA,
             chainIds: [56],
@@ -123,7 +123,7 @@ describe('Alchemy Portfolio wallet cache', () => {
         })
 
         expect(fetchImpl).toHaveBeenCalledTimes(1)
-        expect(result.classificationVersion).toBe(4)
+        expect(result.classificationVersion).toBe(5)
         expect(result.diagnostics.cacheStatus).toBe('miss')
     })
 

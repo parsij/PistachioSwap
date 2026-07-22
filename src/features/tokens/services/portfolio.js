@@ -23,6 +23,33 @@ export function getAssetIdentity(token) {
     return `${Number(token?.chainId)}:${String(token?.address ?? '').toLowerCase()}`
 }
 
+const STRONG_RECOGNITION_REASONS = new Set([
+    'native-token',
+    'native-bnb',
+    'curated-official-contract',
+    'coingecko-exact-contract',
+    'manual-allowlist',
+    'moralis-verified-contract',
+    'pancakeswap-curated-list',
+    'trustwallet-reviewed-asset',
+    'trusted-market-contract',
+])
+
+/** Returns whether a wallet token has strong identity evidence suitable for the primary UI. */
+export function isTrustedWalletToken(token) {
+    if (!token || token.possibleSpam === true) return false
+    if (['high', 'blocked'].includes(token.securityStatus)) return false
+    if (token.priceConfidence === 'untrusted') return false
+    if (token.includeInPortfolioValue === false) return false
+    if (token.visibility === 'hidden') return false
+    if (token.isNative === true || token.officialAsset === true) return true
+    if (token.verifiedContract === true) return true
+    if (token.coinGeckoId && token.recognitionStatus !== 'unverified') return true
+    return Array.isArray(token.recognitionReasons) &&
+        token.recognitionReasons.some((reason) =>
+            STRONG_RECOGNITION_REASONS.has(reason))
+}
+
 /** Returns whether a wallet-token record has a strictly positive raw balance. */
 export function isPositiveWalletBalance(token) {
     const parsed = parseDecimal(token?.balance ?? token?.formattedBalance)
@@ -42,6 +69,7 @@ export function filterPortfolioTokens(
     return tokens.filter((token) => {
         if (!isPositiveWalletBalance(token)) return false
         if (token.visibility !== 'primary') return false
+        if (hideUnknownTokens && !isTrustedWalletToken(token)) return false
         const isSelected = selected.has(getAssetIdentity(token))
 
         if (
@@ -71,8 +99,9 @@ export function getHiddenPortfolioTokens(tokens) {
 export function getUnverifiedPortfolioTokens(tokens) {
     return tokens.filter((token) => {
         if (!isPositiveWalletBalance(token)) return false
-        if (token.visibility !== 'unverified') return false
-        return true
+        if (token.visibility === 'hidden') return false
+        return token.visibility === 'unverified' ||
+            !isTrustedWalletToken(token)
     })
 }
 

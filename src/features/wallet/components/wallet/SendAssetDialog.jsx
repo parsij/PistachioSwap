@@ -101,8 +101,7 @@ export default function SendAssetDialog({
         : error
 
     const exactAddressSearch = /^0x[a-fA-F0-9]{40}$/.test(search.trim())
-    const revealHiddenAssets = !settings.hideUnknownTokens ||
-        showAllAssets || exactAddressSearch
+    const revealHiddenAssets = exactAddressSearch || !settings.hideUnknownTokens
     const filteredAssets = (() => {
         const held = assets.filter(isPositiveWalletBalance)
         const exact = held.filter((token) => matchesExactContract(token, search.trim()))
@@ -308,14 +307,16 @@ export default function SendAssetDialog({
                                     aria-label="Search wallet assets"
                                 />
                             </label>
-                            <button
-                                type="button"
-                                className="send-show-all"
-                                onClick={() => setShowAllAssets((value) => !value)}
-                                aria-pressed={showAllAssets}
-                            >
-                                {showAllAssets ? 'Use portfolio filters' : 'Show all wallet assets'}
-                            </button>
+                            {!settings.hideUnknownTokens && (
+                                <button
+                                    type="button"
+                                    className="send-show-all"
+                                    onClick={() => setShowAllAssets((value) => !value)}
+                                    aria-pressed={showAllAssets}
+                                >
+                                    {showAllAssets ? 'Use portfolio filters' : 'Show all wallet assets'}
+                                </button>
+                            )}
                             <WalletAssetList
                                 tokens={filteredAssets}
                                 settings={{

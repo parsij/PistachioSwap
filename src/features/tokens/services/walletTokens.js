@@ -10,12 +10,13 @@ import {
 
 const walletTokenRequests = new Map()
 
-export const WALLET_TOKEN_CLASSIFICATION_VERSION = 4
-export const WALLET_TOKEN_CACHE_NAMESPACE = 'pistachioswap:wallet-tokens:v4:'
+export const WALLET_TOKEN_CLASSIFICATION_VERSION = 5
+export const WALLET_TOKEN_CACHE_NAMESPACE = 'pistachioswap:wallet-tokens:v5:'
 const LEGACY_WALLET_TOKEN_CACHE_NAMESPACES = [
     'pistachioswap:wallet-tokens:v1:',
     'pistachioswap:wallet-tokens:v2:',
     'pistachioswap:wallet-tokens:v3:',
+    'pistachioswap:wallet-tokens:v4:',
 ]
 
 export function clearLegacyWalletTokenCacheKeys(storage) {
@@ -111,6 +112,8 @@ function formatUsdDecimal(value) {
 }
 
 export function resolveWalletUsdValue(token) {
+    if (token?.includeInPortfolioValue === false ||
+        token?.priceConfidence === 'untrusted') return null
     if (normalizedDecimal(token?.valueUSD)) return String(token.valueUSD)
     if (normalizedDecimal(token?.trustedPriceUSD)) {
         return multiplyUsdAmount(token?.balance, token.trustedPriceUSD)
