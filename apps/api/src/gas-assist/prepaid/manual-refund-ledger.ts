@@ -1,5 +1,5 @@
 import { appendFile, chmod, mkdir, readFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { getPool } from '../../db/client.js'
@@ -8,13 +8,15 @@ import {
     sponsorshipTraceError,
 } from '../trace.js'
 
-type QueryResult = { rows: Record<string, unknown>[] }
-type Queryable = {
-    query(text: string, values?: unknown[]): Promise<QueryResult>
+export type ManualRefundLedgerQueryable = {
+    query(
+        text: string,
+        values?: unknown[],
+    ): Promise<{ rows: Record<string, unknown>[] }>
 }
 
-type ManualRefundLedgerOptions = {
-    database?: Queryable
+export type ManualRefundLedgerOptions = {
+    database?: ManualRefundLedgerQueryable
     enabled?: boolean
     ledgerPath?: string
     now?: () => Date
@@ -70,9 +72,12 @@ function configuredLedgerPath() {
     if (configured?.includes('\0')) {
         throw new Error('MANUAL_REFUND_LEDGER_PATH contains an invalid null byte.')
     }
-    return configured
+    if (!configured) {
+        return resolve(API_ROOT, 'data/manual-refund-candidates.jsonl')
+    }
+    return isAbsolute(configured)
         ? resolve(configured)
-        : resolve(API_ROOT, 'data/manual-refund-candidates.jsonl')
+        : resolve(API_ROOT, configured)
 }
 
 function iso(value: Date | string | null | undefined) {
@@ -143,7 +148,7 @@ function asIntentSnapshot(row: Record<string, unknown>): IntentSnapshot {
     }
 }
 
-async function loadRefundSnapshots(database: Queryable) {
+async function loadRefundSnapshots(database: ManualRefundLedgerQueryable) {
     const refunds = await database.query(
         `SELECT
             r.order_id AS "orderId",
@@ -164,7 +169,7 @@ async function loadRefundSnapshots(database: Queryable) {
             o.rejection_code AS "failureCode",
             o.fee_confirmed_at AS "feeConfirmedAt",
             o.payment_transaction_hash AS "paymentTransactionHash",
-            o.approval_transaction_hash AS "approvalTransactionHash",
+            o.apval_transaction_hash AS "approvalTransactionHash",
             o.swap_transaction_hash AS "swapTransactionHash",
             o.created_at AS "orderCreatedAt",
             o.updated_at AS "orderUpdatedAt"
@@ -210,7 +215,10 @@ async function loadRefundSnapshots(database: Queryable) {
     return [...refunds.rows, ...unexplained.rows].map(asRefundSnapshot)
 }
 
-async function loadIntentSnapshots(database: Queryable, orderId: string) {
+async function loadIntentSnapshots(
+    database: ManualRefundLedgerQueryable,
+    orderId: string,
+) {
     const result = await database.query(
         `SELECT action,status,nonce::text,
                 transaction_hash AS "transactionHash",
@@ -232,15 +240,19 @@ async function loadIntentSnapshots(database: Queryable, orderId: string) {
     return result.rows.map(asIntentSnapshot)
 }
 
-function ledgerEvent(snapshot: RefundSnapshot, intents: IntentSnapshot[], detectedAt: string) {
-    const event = snapshot.refundStatus === 'sent'
+function ledgerEvent(
+    snapshot: RefundSnapshot,
+    intents: IntentSnapshot[],
+    detectedAt: string,
+) {
+    const refundHash = safeHash(snapshot.refundTransactionHash)
+    const event = snapshot.refundStatus === 'sent' && refundHash
         ? 'refund_sent'
         : snapshot.refundStatus === 'pending'
             ? 'refund_candidate'
             : 'needs_review'
-    const refundHash = safeHash(snapshot.refundTransactionHash)
     const eventKey = event === 'refund_sent'
-        ? `${event}:${snapshot.orderId}:${refundHash ?? 'missing-hash'}`
+        ? `${event}:${snapshot.orderId}:${refundHash}`
         : `${event}:${snapshot.orderId}`
 
     const intentByAction = new Map(intents.map((intent) => [intent.action, intent]))
@@ -288,7 +300,9 @@ function ledgerEvent(snapshot: RefundSnapshot, intents: IntentSnapshot[], detect
             refundablePaymentTokenAmountRaw: snapshot.refundableTokenAmountRaw,
         },
         refund: {
-            status: snapshot.refundStatus ?? 'needs-review',
+            status: event === 'refund_sent'
+                ? 'sent'
+                : snapshot.refundStatus ?? 'needs-review',
             reason: snapshot.reason,
             recommendedAsset: 'BNB',
             suggestedAmountWei: null,
@@ -321,16 +335,21 @@ async function existingEventKeys(ledgerPath: string) {
     return keys
 }
 
-export function createManualRefundLedger(options: ManualRefundLedgerOptions = {}) {
-    const database = options.database ?? getPool() as unknown as Queryable
+export function createManualRefundLedger(
+    options: ManualRefundLedgerOptions = {},
+) {
+    const configuredDatabase = options.database
     const enabled = options.enabled ?? configuredEnabled()
     const ledgerPath = options.ledgerPath ?? configuredLedgerPath()
     const now = options.now ?? (() => new Date())
     let queue: Promise<unknown> = Promise.resolve()
 
     async function syncInternal() {
-        if (!enabled) return { enabled: false, ledgerPath, appended: 0, scanned: 0 }
-
+        if (!enabled) {
+            return { enabled: false, ledgerPath, appended: 0, scanned: 0 }
+        }
+        const database = configuredDatabase ??
+            getPool() as unknown as ManualRefundLedgerQueryable
         const snapshots = await loadRefundSnapshots(database)
         const detectedAt = now().toISOString()
         const events = []
@@ -365,7 +384,9 @@ export function createManualRefundLedger(options: ManualRefundLedgerOptions = {}
     function sync() {
         const result = queue.then(syncInternal, syncInternal)
         queue = result.catch((error) => {
-            sponsorshipTraceError('refund.manual-ledger.error', error, { ledgerPath })
+            sponsorshipTraceError('refund.manual-ledger.error', error, {
+                ledgerPath,
+            })
         })
         return result
     }
