@@ -7,6 +7,11 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { createApp } from '../src/app.js'
 import { getPool } from '../src/db/client.js'
 import { createPrepaidChainClient } from '../src/gas-assist/prepaid/chain-client.js'
+import {
+    getCanaryPreparationConfig,
+    retryCanaryPreparation,
+    trustedPriceUnavailable,
+} from '../src/gas-assist/prepaid/canary-preparation.js'
 import { getSponsorshipTokenEvidence } from '../src/gas-assist/prepaid/token-evidence.js'
 // The live canary intentionally uses the same signing orchestration as the UI.
 // @ts-ignore JavaScript frontend module imported by an opt-in Vitest canary.
@@ -201,16 +206,35 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
         }
 
         const chain = createPrepaidChainClient()
+        const preparationConfig = getCanaryPreparationConfig()
         const [decimals, balance, evidence] = await canaryStep(
             'load XAUT decimals, balance, price, liquidity, and security evidence',
-            () => Promise.all([
-                chain.getTokenDecimals(XAUT),
-                chain.getBalance(XAUT, account.address),
-                getSponsorshipTokenEvidence(XAUT),
-            ]),
+            () => retryCanaryPreparation(async (attempt) => {
+                const prepared = await Promise.all([
+                    chain.getTokenDecimals(XAUT),
+                    chain.getBalance(XAUT, account.address),
+                    getSponsorshipTokenEvidence(XAUT),
+                ])
+                if (prepared[2].priceUsdMicros === null) {
+                    throw trustedPriceUnavailable()
+                }
+                console.warn('[xaut-canary-preparation-attempt-success]', {
+                    retryAttempt: attempt,
+                    maximumAttempts: preparationConfig.attempts,
+                })
+                return prepared
+            }, {
+                config: preparationConfig,
+                onRetry: (details) => console.warn(
+                    '[xaut-canary-preparation-retry]',
+                    details,
+                ),
+            }),
             { wallet: account.address, token: XAUT },
         )
-        expect(evidence.priceUsdMicros).not.toBeNull()
+        if (evidence.priceUsdMicros === null) {
+            throw trustedPriceUnavailable()
+        }
         expect(evidence.liquidityUsdMicros).toBeGreaterThan(0n)
         expect(evidence.securityStatus).toBe('trusted')
         expect(evidence.transferBehavior).toBe('exact')

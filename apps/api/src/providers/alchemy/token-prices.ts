@@ -6,6 +6,7 @@ import { logProviderResponse } from '../../lib/provider-response-debug.js'
 import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
 import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
 import { getMoralisSponsorshipTokenEvidence } from '../moralis/sponsorship-token-evidence.js'
+import { ProviderError } from '../../lib/errors.js'
 
 const PRICE_TTL_MS = 45_000
 const USD_PRICE_SCALE = 6
@@ -95,10 +96,12 @@ export async function getTokenPrices({
     chainId = 56,
     addresses,
     signal,
+    requireProviderSuccess = false,
 }: {
     chainId?: number
     addresses: string[]
     signal?: AbortSignal
+    requireProviderSuccess?: boolean
 }): Promise<Map<string, string>> {
     const config = getApiConfig().alchemy
     const chain = requireActiveTokenDiscoveryChain(chainId)
@@ -114,14 +117,16 @@ export async function getTokenPrices({
 
     for (const address of normalized) {
         const cached = readPrice(`${chainId}:${address}`)
-        if (cached === undefined) missing.push(address)
+        if (cached === undefined || (requireProviderSuccess && cached === null)) {
+            missing.push(address)
+        }
         else if (cached !== null) prices.set(address, cached)
     }
 
     if (!chain.capabilities.alchemy || !chain.providers.alchemyNetwork ||
         !config.apiKey || missing.length === 0) return prices
 
-    const requestKey = `${chainId}:${missing.sort().join(',')}`
+    const requestKey = `${chainId}:${requireProviderSuccess ? 'strict' : 'best-effort'}:${missing.sort().join(',')}`
     const pending = pendingPrices.get(requestKey)
     if (pending) {
         const values = await pending
@@ -172,13 +177,43 @@ export async function getTokenPrices({
             }
         } catch (error) {
             logProviderResponse('alchemy', `token-prices-error:${chainId}`, error)
+            if (requireProviderSuccess) {
+                const providerError = error instanceof ProviderError
+                    ? error
+                    : new ProviderError({
+                          code: 'PROVIDER_UNAVAILABLE',
+                          message: 'The trusted price provider request failed.',
+                          retryable: true,
+                          cause: error,
+                      })
+                throw new ProviderError({
+                    code: 'TRUSTED_PRICE_PROVIDER_UNAVAILABLE',
+                    message: 'The trusted token price provider is temporarily unavailable.',
+                    statusCode: 503,
+                    retryable: providerError.retryable,
+                    outcome: providerError.outcome,
+                    upstreamStatus: providerError.upstreamStatus,
+                    retryAfterMs: providerError.retryAfterMs,
+                    providers: [{
+                        provider: 'alchemy',
+                        outcome: providerError.outcome,
+                        upstreamStatus: providerError.upstreamStatus,
+                        code: providerError.code,
+                        message: providerError.message,
+                        retryable: providerError.retryable,
+                    }],
+                    cause: providerError,
+                })
+            }
         }
 
         for (const address of missing) {
+            const value = fetched.get(address) ?? null
+            if (requireProviderSuccess && value === null) continue
             setBoundedCacheEntry(priceCache, `${chainId}:${address}`, {
                 expiresAt: Date.now() + PRICE_TTL_MS,
                 observedAt: Date.now(),
-                value: fetched.get(address) ?? null,
+                value,
             })
         }
         return fetched

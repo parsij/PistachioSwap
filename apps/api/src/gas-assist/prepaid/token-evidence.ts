@@ -105,7 +105,10 @@ function applyDangerousBypass<T extends {
 export async function getSponsorshipTokenEvidence(address: Address) {
     const observedAt = new Date()
     const [prices, moralis, dexMarkets] = await Promise.all([
-        getTokenPrices({ addresses: [address] }),
+        getTokenPrices({
+            addresses: [address],
+            requireProviderSuccess: true,
+        }),
         getMoralisSponsorshipTokenEvidence(address),
         fetchTokenMarkets([address]).catch(() => ({
             markets: new Map(),
