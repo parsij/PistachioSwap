@@ -39,25 +39,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: raw signing
+          - name: raw-signing
+            label: raw signing
             file: src/features/gas-assist/services/rawTransactionSigning.test.js
-          - name: package signing
+          - name: package-signing
+            label: package signing
             file: src/features/gas-assist/services/rawTransactionSigning.package.test.js
-          - name: prepaid HTTP
+          - name: prepaid-http
+            label: prepaid HTTP
             file: src/features/gas-assist/services/prepaidSponsorship.test.js
-          - name: trace redaction
+          - name: trace-redaction
+            label: trace redaction
             file: src/features/gas-assist/services/gasAssistTrace.test.js
-          - name: prepaid hook
+          - name: prepaid-hook
+            label: prepaid hook
             file: src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
-          - name: Gas Assist controller
+          - name: controller
+            label: Gas Assist controller
             file: src/features/gas-assist/hooks/useGasAssistController.test.jsx
-          - name: compact dialog
+          - name: compact-dialog
+            label: compact dialog
             file: src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
-          - name: signing review
+          - name: signing-review
+            label: signing review
             file: src/features/passkey/services/signingReview.test.js
-          - name: Gas Assist quote
+          - name: gas-assist-quote
+            label: Gas Assist quote
             file: src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
-          - name: execution mode
+          - name: execution-mode
+            label: execution mode
             file: src/services/swapExecutionMode.test.js
     steps:
       - uses: actions/checkout@v4
@@ -69,21 +79,28 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Run ${{ matrix.name }} tests
+      - name: Run ${{ matrix.label }} tests
         shell: bash
         run: |
           set +e
-          output="$(mktemp)"
-          pnpm exec vitest run "${{ matrix.file }}" --reporter=verbose >"$output" 2>&1
+          pnpm exec vitest run "${{ matrix.file }}" --reporter=verbose >frontend-test-output.txt 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
             echo '=== FAILURE SUMMARY ==='
-            grep -n -E -B 4 -A 12 'FAIL|AssertionError|TestingLibraryElementError|Error:|expected|Received' "$output" | head -n 240 || true
+            grep -n -E -B 4 -A 12 'FAIL|AssertionError|TestingLibraryElementError|Error:|expected|Received' frontend-test-output.txt | head -n 240 || true
             echo '=== END FAILURE SUMMARY ==='
           else
-            cat "$output"
+            cat frontend-test-output.txt
           fi
           exit "$status"
+      - name: Upload failed test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-${{ matrix.name }}
+          path: frontend-test-output.txt
+          if-no-files-found: error
+          retention-days: 3
 
   validate:
     name: Lint, API, and build
@@ -101,13 +118,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-
       - name: Lint
         run: pnpm lint
-
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
-
       - name: API Gas Assist tests
         run: >-
           pnpm --filter @pistachio/api exec vitest run
@@ -127,10 +141,8 @@ jobs:
           test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
           --reporter=verbose
-
       - name: Frontend build
         run: pnpm build
-
       - name: Require all frontend test jobs
         if: always()
         run: |
