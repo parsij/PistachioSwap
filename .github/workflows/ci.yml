@@ -70,7 +70,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Run ${{ matrix.name }} tests
-        run: pnpm exec vitest run "${{ matrix.file }}" --reporter=verbose
+        shell: bash
+        run: |
+          set +e
+          output="$(mktemp)"
+          pnpm exec vitest run "${{ matrix.file }}" --reporter=verbose >"$output" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo '=== FAILURE SUMMARY ==='
+            grep -n -E -B 4 -A 12 'FAIL|AssertionError|TestingLibraryElementError|Error:|expected|Received' "$output" | head -n 240 || true
+            echo '=== END FAILURE SUMMARY ==='
+          else
+            cat "$output"
+          fi
+          exit "$status"
 
   validate:
     name: Lint, API, and build
