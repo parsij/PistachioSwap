@@ -68,6 +68,10 @@ function setup(walletAddress = walletA, onConfirmed = vi.fn(), overrides = {}) {
     })
 }
 
+async function waitForConfig(result) {
+    await waitFor(() => expect(result.current.config).toEqual({ enabled: true }))
+}
+
 describe('prepaid sponsorship async ownership', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -87,14 +91,17 @@ describe('prepaid sponsorship async ownership', () => {
     })
 
     it('continues order polling after a transient status failure without converting it into a fatal error', async () => {
-        vi.useFakeTimers()
         const onConfirmed = vi.fn()
         mocks.fetchOrder
             .mockRejectedValueOnce(new Error('temporary status failure'))
             .mockResolvedValueOnce({ id: 'order-1', status: 'completed' })
         const { result } = setup(walletA, onConfirmed)
-        await act(async () => Promise.resolve())
-        await act(() => result.current.start())
+        await waitForConfig(result)
+        vi.useFakeTimers()
+
+        await act(async () => {
+            await result.current.start()
+        })
         expect(result.current.order?.id).toBe('order-1')
 
         await act(() => vi.advanceTimersByTimeAsync(3_000))
@@ -114,7 +121,7 @@ describe('prepaid sponsorship async ownership', () => {
             resolveAuthentication = resolve
         }))
         const { result, rerender } = setup()
-        await waitFor(() => expect(result.current.config).toEqual({ enabled: true }))
+        await waitForConfig(result)
         let pendingStart
         await act(async () => {
             pendingStart = result.current.start()
@@ -131,9 +138,11 @@ describe('prepaid sponsorship async ownership', () => {
 
     it('reports missing or invalid input instead of remaining stuck on authenticating', async () => {
         const { result } = setup(walletA, vi.fn(), { grossInputAmount: '0' })
-        await waitFor(() => expect(result.current.config).toEqual({ enabled: true }))
+        await waitForConfig(result)
 
-        await act(() => result.current.start())
+        await act(async () => {
+            await result.current.start()
+        })
 
         expect(result.current.phase).toBe('failed')
         expect(result.current.error).toMatchObject({ code: 'SWAP_AMOUNT_INVALID' })
@@ -145,8 +154,10 @@ describe('prepaid sponsorship async ownership', () => {
             resolvePackage = resolve
         }))
         const { result } = setup()
-        await waitFor(() => expect(result.current.config).toEqual({ enabled: true }))
-        await act(() => result.current.start())
+        await waitForConfig(result)
+        await act(async () => {
+            await result.current.start()
+        })
 
         let first
         await act(async () => {
@@ -167,7 +178,7 @@ describe('prepaid sponsorship async ownership', () => {
 
     it('exposes no external wallet signer state', async () => {
         const { result } = setup()
-        await waitFor(() => expect(result.current.config).toEqual({ enabled: true }))
+        await waitForConfig(result)
         expect(result.current.capability.transport).toBe('pistachio-local')
         expect(result.current.metaMaskSigner).toBeNull()
     })
