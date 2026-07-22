@@ -15,6 +15,7 @@ dist-ssr
 apps/api/.env
 apps/api/data/bsc-established-top-tokens.json
 apps/api/data/bsc-established-top-tokens.json.*.tmp
+apps/api/data/manual-refund-candidates.jsonl
 
 # Editor directories and files
 .vscode/*
