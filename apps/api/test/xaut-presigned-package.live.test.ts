@@ -17,6 +17,41 @@ const RUN = process.env.RUN_XAUT_PRESIGNED_CANARY === 'true'
 const EXPIRE_AFTER_ERROR = process.env.EXPIRE_AFTER_ERROR === 'true'
 const LIVE_TIMEOUT_MS = 16 * 60 * 1_000
 
+if (RUN && process.env.DEBUG_SPONSORSHIP_TRACE === undefined) {
+    process.env.DEBUG_SPONSORSHIP_TRACE = 'true'
+}
+
+let stepNumber = 0
+
+async function canaryStep<T>(
+    name: string,
+    operation: () => Promise<T>,
+    details: Record<string, unknown> = {},
+): Promise<T> {
+    const number = ++stepNumber
+    const startedAt = Date.now()
+    console.warn(`[xaut-canary-step-${number}.start]`, { name, ...details })
+    try {
+        const result = await operation()
+        console.warn(`[xaut-canary-step-${number}.success]`, {
+            name,
+            elapsedMs: Date.now() - startedAt,
+        })
+        return result
+    } catch (error) {
+        console.error(`[xaut-canary-step-${number}.error]`, {
+            name,
+            elapsedMs: Date.now() - startedAt,
+            errorName: error instanceof Error ? error.name : typeof error,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error
+                ? error.stack?.split('\n').slice(0, 12).join('\n')
+                : undefined,
+        })
+        throw error
+    }
+}
+
 function requirePrivateKey() {
     const value = process.env.XAUT_TEST_PRIVATE_KEY?.trim()
     if (!value || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
@@ -147,21 +182,34 @@ async function expirePreviousUnsignedCanaryOrders(walletAddress: string) {
 
 describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
     it('signs all three frontend transactions, stores them, and lets the backend finish', async () => {
+        console.warn('[xaut-canary-start]', {
+            expireAfterError: EXPIRE_AFTER_ERROR,
+            debugSponsorshipTrace: process.env.DEBUG_SPONSORSHIP_TRACE === 'true',
+            megaFuelTimeoutMs: process.env.MEGAFUEL_REQUEST_TIMEOUT_MS ?? 'default',
+        })
         const account = privateKeyToAccount(requirePrivateKey())
         const expectedWallet = process.env.XAUT_TEST_WALLET_ADDRESS?.trim().toLowerCase()
         if (expectedWallet && expectedWallet !== account.address.toLowerCase()) {
             throw new Error('XAUT_TEST_WALLET_ADDRESS does not match XAUT_TEST_PRIVATE_KEY.')
         }
         if (EXPIRE_AFTER_ERROR) {
-            await expirePreviousUnsignedCanaryOrders(account.address)
+            await canaryStep(
+                'expire previous unsigned canary orders',
+                () => expirePreviousUnsignedCanaryOrders(account.address),
+                { wallet: account.address },
+            )
         }
 
         const chain = createPrepaidChainClient()
-        const [decimals, balance, evidence] = await Promise.all([
-            chain.getTokenDecimals(XAUT),
-            chain.getBalance(XAUT, account.address),
-            getSponsorshipTokenEvidence(XAUT),
-        ])
+        const [decimals, balance, evidence] = await canaryStep(
+            'load XAUT decimals, balance, price, liquidity, and security evidence',
+            () => Promise.all([
+                chain.getTokenDecimals(XAUT),
+                chain.getBalance(XAUT, account.address),
+                getSponsorshipTokenEvidence(XAUT),
+            ]),
+            { wallet: account.address, token: XAUT },
+        )
         expect(evidence.priceUsdMicros).not.toBeNull()
         expect(evidence.liquidityUsdMicros).toBeGreaterThan(0n)
         expect(evidence.securityStatus).toBe('trusted')
@@ -182,44 +230,65 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
 
         const app = createApp()
         let createdOrderId: string | null = null
-        await app.ready()
+        await canaryStep('initialize Fastify application', () => app.ready())
         try {
-            const challenge = await responseJson(await app.inject({
-                method: 'POST',
-                url: '/v1/sponsorship/auth/challenge',
-                payload: { walletAddress: account.address, chainId: 56 },
-            }))
-            const signature = await account.signMessage({
-                message: challenge.message,
-            })
-            const session = await responseJson(await app.inject({
-                method: 'POST',
-                url: '/v1/sponsorship/auth/verify',
-                payload: { challengeId: challenge.challengeId, signature },
-            }))
+            const challenge = await canaryStep(
+                'request wallet authentication challenge',
+                async () => responseJson(await app.inject({
+                    method: 'POST',
+                    url: '/v1/sponsorship/auth/challenge',
+                    payload: { walletAddress: account.address, chainId: 56 },
+                })),
+            )
+            const signature = await canaryStep(
+                'sign wallet authentication challenge',
+                () => account.signMessage({ message: challenge.message }),
+            )
+            const session = await canaryStep(
+                'verify wallet authentication challenge',
+                async () => responseJson(await app.inject({
+                    method: 'POST',
+                    url: '/v1/sponsorship/auth/verify',
+                    payload: { challengeId: challenge.challengeId, signature },
+                })),
+            )
             const authorization = `Bearer ${session.sessionToken}`
 
-            const order = await responseJson(await app.inject({
-                method: 'POST',
-                url: '/v1/sponsorship/orders',
-                headers: {
-                    authorization,
-                    'idempotency-key': `xaut-live-${randomUUID()}`,
-                },
-                payload: {
-                    sellToken: XAUT,
-                    buyToken: 'native',
-                    grossInputAmount: grossInputAmount.toString(),
-                    slippageBps: 100,
-                },
-            }))
+            const order = await canaryStep(
+                'create reviewed sponsorship order and settlement route probe',
+                async () => responseJson(await app.inject({
+                    method: 'POST',
+                    url: '/v1/sponsorship/orders',
+                    headers: {
+                        authorization,
+                        'idempotency-key': `xaut-live-${randomUUID()}`,
+                    },
+                    payload: {
+                        sellToken: XAUT,
+                        buyToken: 'native',
+                        grossInputAmount: grossInputAmount.toString(),
+                        slippageBps: 100,
+                    },
+                })),
+            )
             createdOrderId = String(order.id)
-            const preparedPackage = await responseJson(await app.inject({
-                method: 'POST',
-                url: `/v1/sponsorship/orders/${order.id}/package/prepare`,
-                headers: { authorization },
-                payload: {},
-            }))
+            console.warn('[xaut-canary-order-created]', {
+                orderId: createdOrderId,
+                status: order.status,
+                paymentAmountRaw: order.paymentAmountRaw,
+                netSwapAmountRaw: order.netSwapAmountRaw,
+            })
+
+            const preparedPackage = await canaryStep(
+                'prepare fee, approval, and swap package',
+                async () => responseJson(await app.inject({
+                    method: 'POST',
+                    url: `/v1/sponsorship/orders/${order.id}/package/prepare`,
+                    headers: { authorization },
+                    payload: {},
+                })),
+                { orderId: createdOrderId },
+            )
             expect(preparedPackage.transactions.map(
                 (value: { action: string }) => value.action,
             )).toEqual([
@@ -229,6 +298,19 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
             ])
             expect(Date.parse(preparedPackage.expiresAt) - Date.now())
                 .toBeGreaterThan(13 * 60 * 1_000)
+            console.warn('[xaut-canary-package-prepared]', {
+                orderId: createdOrderId,
+                expiresAt: preparedPackage.expiresAt,
+                transactions: preparedPackage.transactions.map((value: {
+                    action: string
+                    transaction: { nonce: string; to: string; gas: string }
+                }) => ({
+                    action: value.action,
+                    nonce: value.transaction.nonce,
+                    to: value.transaction.to,
+                    gas: value.transaction.gas,
+                })),
+            })
 
             const walletClient = {
                 async request({
@@ -242,6 +324,12 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
                         throw new Error(`Unexpected wallet method: ${method}`)
                     }
                     const transaction = params[0]
+                    console.warn('[xaut-canary-sign-transaction]', {
+                        nonce: transaction.nonce,
+                        to: transaction.to,
+                        gas: transaction.gas,
+                        dataBytes: Math.max(0, (transaction.data.length - 2) / 2),
+                    })
                     return account.signTransaction({
                         chainId: Number(BigInt(transaction.chainId)),
                         type: 'legacy',
@@ -259,44 +347,77 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
                 method: 'eth_signTransaction',
                 transport: 'pistachio-local',
             }
-            const submission = await signPreparedSponsoredPackage({
-                transport: 'pistachio-local',
-                capability,
-                walletClient,
-                preparedPackage,
-                authenticatedWalletAddress: account.address,
-                multichainAccount: account.address,
-                submitSignedPackage: async (signedTransactions: unknown[]) =>
-                    responseJson(await app.inject({
-                        method: 'POST',
-                        url: `/v1/sponsorship/orders/${order.id}/package/submit`,
-                        headers: { authorization },
-                        payload: { signedTransactions },
-                    })),
-            })
+            const submission = await canaryStep(
+                'sign all three transactions and atomically store package',
+                () => signPreparedSponsoredPackage({
+                    transport: 'pistachio-local',
+                    capability,
+                    walletClient,
+                    preparedPackage,
+                    authenticatedWalletAddress: account.address,
+                    multichainAccount: account.address,
+                    submitSignedPackage: async (signedTransactions: unknown[]) =>
+                        responseJson(await app.inject({
+                            method: 'POST',
+                            url: `/v1/sponsorship/orders/${order.id}/package/submit`,
+                            headers: { authorization },
+                            payload: { signedTransactions },
+                        })),
+                }),
+                { orderId: createdOrderId },
+            )
             expect(submission.packageStored).toBe(true)
 
             const deadline = Date.now() + 15 * 60 * 1_000
             let current: Record<string, unknown> = order
-            while (Date.now() < deadline) {
-                current = await responseJson(await app.inject({
-                    method: 'GET',
-                    url: `/v1/sponsorship/orders/${order.id}`,
-                    headers: { authorization },
-                }))
-                if (current.status === 'completed') break
-                if (['expired', 'rejected', 'failed'].includes(String(current.status))) {
-                    throw new Error(`Canary entered terminal status: ${JSON.stringify(current)}`)
+            let previousStatus = ''
+            await canaryStep('poll backend execution until completion', async () => {
+                while (Date.now() < deadline) {
+                    current = await responseJson(await app.inject({
+                        method: 'GET',
+                        url: `/v1/sponsorship/orders/${order.id}`,
+                        headers: { authorization },
+                    }))
+                    const status = String(current.status)
+                    if (status !== previousStatus) {
+                        previousStatus = status
+                        console.warn('[xaut-canary-status-change]', {
+                            orderId: createdOrderId,
+                            status,
+                            currentRequiredAction: current.currentRequiredAction,
+                            paymentTransactionHash: current.paymentTransactionHash,
+                            approvalTransactionHash: current.approvalTransactionHash,
+                            swapTransactionHash: current.swapTransactionHash,
+                        })
+                    }
+                    if (status === 'completed') break
+                    if (['expired', 'rejected', 'failed'].includes(status)) {
+                        throw new Error(`Canary entered terminal status: ${JSON.stringify(current)}`)
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 3_000))
                 }
-                await new Promise((resolve) => setTimeout(resolve, 3_000))
-            }
+            }, { orderId: createdOrderId })
 
             expect(current.status).toBe('completed')
             expect(current.paymentTransactionHash).toMatch(/^0x[0-9a-f]{64}$/)
             expect(current.approvalTransactionHash).toMatch(/^0x[0-9a-f]{64}$/)
             expect(current.swapTransactionHash).toMatch(/^0x[0-9a-f]{64}$/)
             expect(current.preSignedPackage).toBe(true)
+            console.warn('[xaut-canary-completed]', {
+                orderId: createdOrderId,
+                paymentTransactionHash: current.paymentTransactionHash,
+                approvalTransactionHash: current.approvalTransactionHash,
+                swapTransactionHash: current.swapTransactionHash,
+            })
         } catch (error) {
+            console.error('[xaut-canary-failed]', {
+                orderId: createdOrderId,
+                errorName: error instanceof Error ? error.name : typeof error,
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error
+                    ? error.stack?.split('\n').slice(0, 16).join('\n')
+                    : undefined,
+            })
             if (EXPIRE_AFTER_ERROR && createdOrderId) {
                 try {
                     const cleanup = await expireUnsignedCanaryOrder(
@@ -318,7 +439,7 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
             }
             throw error
         } finally {
-            await app.close()
+            await canaryStep('close Fastify application', () => app.close())
         }
     }, LIVE_TIMEOUT_MS)
 })
