@@ -33,7 +33,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -44,22 +44,85 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
       - name: Lint
         run: pnpm lint
-      - name: Frontend Gas Assist tests
-        run: >-
-          pnpm exec vitest run
-          src/features/gas-assist/services/rawTransactionSigning.test.js
-          src/features/gas-assist/services/rawTransactionSigning.package.test.js
-          src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
-          src/features/gas-assist/hooks/useGasAssistController.test.jsx
-          src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
-          src/features/passkey/services/signingReview.test.js
-          src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
-          src/services/swapExecutionMode.test.js
-          --reporter=verbose
+
+      - name: Frontend raw signing tests
+        id: frontend_raw_signing
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/gas-assist/services/rawTransactionSigning.test.js --reporter=verbose
+
+      - name: Frontend package signing tests
+        id: frontend_package_signing
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/gas-assist/services/rawTransactionSigning.package.test.js --reporter=verbose
+
+      - name: Frontend prepaid HTTP tests
+        id: frontend_prepaid_http
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/gas-assist/services/prepaidSponsorship.test.js --reporter=verbose
+
+      - name: Frontend trace redaction tests
+        id: frontend_trace
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/gas-assist/services/gasAssistTrace.test.js --reporter=verbose
+
+      - name: Frontend prepaid hook tests
+        id: frontend_prepaid_hook
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx --reporter=verbose
+
+      - name: Frontend Gas Assist controller tests
+        id: frontend_controller
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/gas-assist/hooks/useGasAssistController.test.jsx --reporter=verbose
+
+      - name: Frontend compact Gas Assist dialog tests
+        id: frontend_dialog
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx --reporter=verbose
+
+      - name: Frontend signing review tests
+        id: frontend_signing_review
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/passkey/services/signingReview.test.js --reporter=verbose
+
+      - name: Frontend Gas Assist quote tests
+        id: frontend_quote
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx --reporter=verbose
+
+      - name: Frontend execution-mode tests
+        id: frontend_execution_mode
+        continue-on-error: true
+        run: pnpm exec vitest run src/services/swapExecutionMode.test.js --reporter=verbose
+
+      - name: Report frontend test failures
+        if: always()
+        run: |
+          failed=0
+          check() {
+            name="$1"
+            outcome="$2"
+            printf '%-38s %s\n' "$name" "$outcome"
+            if [ "$outcome" != success ]; then failed=1; fi
+          }
+          check 'raw signing' '${{ steps.frontend_raw_signing.outcome }}'
+          check 'package signing' '${{ steps.frontend_package_signing.outcome }}'
+          check 'prepaid HTTP' '${{ steps.frontend_prepaid_http.outcome }}'
+          check 'trace redaction' '${{ steps.frontend_trace.outcome }}'
+          check 'prepaid hook' '${{ steps.frontend_prepaid_hook.outcome }}'
+          check 'Gas Assist controller' '${{ steps.frontend_controller.outcome }}'
+          check 'compact dialog' '${{ steps.frontend_dialog.outcome }}'
+          check 'signing review' '${{ steps.frontend_signing_review.outcome }}'
+          check 'Gas Assist quote' '${{ steps.frontend_quote.outcome }}'
+          check 'execution mode' '${{ steps.frontend_execution_mode.outcome }}'
+          exit "$failed"
+
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
+
       - name: API Gas Assist tests
         run: >-
           pnpm --filter @pistachio/api exec vitest run
@@ -79,5 +142,6 @@ jobs:
           test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
           --reporter=verbose
+
       - name: Frontend build
         run: pnpm build
