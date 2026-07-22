@@ -4,6 +4,10 @@ import { getApiConfig } from '../config.js'
 import { GasAssistError, gasAssistErrorBody } from '../gas-assist/errors.js'
 import { createWalletAuthService } from '../gas-assist/prepaid/auth.js'
 import { createSponsorshipIntentService } from '../gas-assist/prepaid/intent-service.js'
+import {
+    expireUnsignedOrderAfterPackagePrepareError,
+    reconcileWalletBeforeOrderCreate,
+} from '../gas-assist/prepaid/order-lifecycle.js'
 import { createSponsorshipOrderService } from '../gas-assist/prepaid/order-service.js'
 import { createSponsorshipPackageService } from '../gas-assist/prepaid/package-service.js'
 import {
@@ -118,6 +122,7 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
                 'grossInputAmount',
                 'slippageBps',
             ])
+            await reconcileWalletBeforeOrderCreate(session.walletAddress)
             return orders().create({
                 input: {
                     sellToken: String(body.sellToken ?? ''),
@@ -143,10 +148,26 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
                 orderId: request.params.orderId,
                 walletAddress: session.walletAddress,
             })
-            return packages().prepare(
-                request.params.orderId,
-                session.walletAddress,
-            )
+            const packageService = packages()
+            try {
+                return await packageService.prepare(
+                    request.params.orderId,
+                    session.walletAddress,
+                )
+            } catch (error) {
+                const cleanup = await expireUnsignedOrderAfterPackagePrepareError(
+                    request.params.orderId,
+                    session.walletAddress,
+                    error,
+                )
+                sponsorshipTrace('package.prepare.route.failure-cleanup', {
+                    requestId: request.id,
+                    orderId: request.params.orderId,
+                    walletAddress: session.walletAddress,
+                    ...cleanup,
+                })
+                throw error
+            }
         }, reply),
     )
 
