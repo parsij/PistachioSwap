@@ -27,6 +27,7 @@ describe('two-policy MegaFuel routing', () => {
     })
 
     afterEach(() => {
+        vi.useRealTimers()
         vi.unstubAllEnvs()
         vi.restoreAllMocks()
     })
@@ -79,5 +80,48 @@ describe('two-policy MegaFuel routing', () => {
         })])
         expect(policyManagementInternals.managementConnection('fee').policyUuid)
             .not.toBe(policyManagementInternals.managementConnection('action').policyUuid)
+    })
+
+    it('keeps policy management independent from short quote-provider timeouts', () => {
+        vi.stubEnv('PROVIDER_REQUEST_TIMEOUT_MS', '3000')
+        vi.stubEnv('MEGAFUEL_REQUEST_TIMEOUT_MS', '')
+
+        expect(policyManagementInternals.managementConnection('action').timeoutMs)
+            .toBe(15_000)
+
+        vi.stubEnv('MEGAFUEL_REQUEST_TIMEOUT_MS', '25000')
+        expect(policyManagementInternals.managementConnection('action').timeoutMs)
+            .toBe(25_000)
+    })
+
+    it('retries timed-out policy updates and returns a typed timeout', async () => {
+        vi.useFakeTimers()
+        vi.stubEnv('MEGAFUEL_REQUEST_TIMEOUT_MS', '1000')
+        const fetcher = vi.fn((_url: string | URL | Request, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () => {
+                    const error = new Error('policy request aborted')
+                    error.name = 'AbortError'
+                    reject(error)
+                }, { once: true })
+            }))
+        const management = createMegaFuelPolicyManagement('action', fetcher as typeof fetch)
+
+        const assertion = expect(management.add(
+            'ContractMethodSigWhitelist',
+            ['0x095ea7b3'],
+        )).rejects.toMatchObject({
+            code: 'PAYMASTER_POLICY_TIMEOUT',
+            statusCode: 504,
+            details: {
+                rpcMethod: 'pm_addToWhitelist',
+                attempts: 3,
+                requestTimeoutMs: 1000,
+            },
+        })
+
+        await vi.runAllTimersAsync()
+        await assertion
+        expect(fetcher).toHaveBeenCalledTimes(3)
     })
 })
