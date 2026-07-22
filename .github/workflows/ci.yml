@@ -69,6 +69,7 @@ jobs:
           test/megafuel-exact-payment.test.ts
           test/megafuel-normal-swap.test.ts
           test/megafuel-presigned-package.test.ts
+          test/megafuel-settlement-route.test.ts
           test/megafuel-two-policy.test.ts
           test/moralis-sponsorship-evidence.test.ts
           test/payment-token-selection-native.test.ts
