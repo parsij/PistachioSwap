@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import GasAssistPrepaymentDialog from './GasAssistPrepaymentDialog.jsx'
+
+afterEach(() => cleanup())
 
 const sellToken = {
     address: '0x1111111111111111111111111111111111111111',
