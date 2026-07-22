@@ -75,6 +75,7 @@ jobs:
           test/payment-token-selection-native.test.ts
           test/paymaster-sponsorability-fallback.test.ts
           test/provider-response-debug.test.ts
+          test/sponsorship-trace.test.ts
           test/token-evidence-exact-transfer.test.ts
           test/token-price-normalization.test.ts
           --reporter=verbose
