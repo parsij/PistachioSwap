@@ -220,7 +220,9 @@ function buildLedgerEvent(
         refund: {
             status: event === 'refund_sent'
                 ? 'sent'
-                : refundStatus ?? 'needs-review',
+                : event === 'refund_candidate'
+                    ? 'pending'
+                    : 'needs-review',
             reason: safeText(row.reason ?? row.failureCode, 'manual-review-required'),
             recommendedAsset: 'BNB',
             suggestedAmountWei: null,
