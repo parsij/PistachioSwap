@@ -123,27 +123,46 @@ jobs:
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
       - name: API Gas Assist tests
-        run: >-
-          pnpm --filter @pistachio/api exec vitest run
-          test/gasless-v2.test.ts
-          test/prepaid-sponsorship.test.ts
-          test/prepaid-native-token-decimals.test.ts
-          test/manual-refund-ledger.test.ts
-          test/megafuel-durable-intents.test.ts
-          test/megafuel-exact-payment.test.ts
-          test/megafuel-normal-swap.test.ts
-          test/megafuel-presigned-package.test.ts
-          test/megafuel-settlement-route.test.ts
-          test/megafuel-two-policy.test.ts
-          test/moralis-sponsorship-evidence.test.ts
-          test/order-lifecycle.test.ts
-          test/payment-token-selection-native.test.ts
-          test/paymaster-sponsorability-fallback.test.ts
-          test/provider-response-debug.test.ts
-          test/sponsorship-trace.test.ts
-          test/token-evidence-exact-transfer.test.ts
-          test/token-price-normalization.test.ts
-          --reporter=verbose
+        shell: bash
+        run: |
+          set +e
+          pnpm --filter @pistachio/api exec vitest run \
+            test/gasless-v2.test.ts \
+            test/prepaid-sponsorship.test.ts \
+            test/prepaid-native-token-decimals.test.ts \
+            test/manual-refund-ledger.test.ts \
+            test/megafuel-durable-intents.test.ts \
+            test/megafuel-exact-payment.test.ts \
+            test/megafuel-normal-swap.test.ts \
+            test/megafuel-presigned-package.test.ts \
+            test/megafuel-settlement-route.test.ts \
+            test/megafuel-two-policy.test.ts \
+            test/moralis-sponsorship-evidence.test.ts \
+            test/order-lifecycle.test.ts \
+            test/payment-token-selection-native.test.ts \
+            test/paymaster-sponsorability-fallback.test.ts \
+            test/provider-response-debug.test.ts \
+            test/sponsorship-trace.test.ts \
+            test/token-evidence-exact-transfer.test.ts \
+            test/token-price-normalization.test.ts \
+            --reporter=verbose >api-test-output.txt 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo '=== API FAILURE SUMMARY ==='
+            grep -n -E -B 5 -A 18 'FAIL|AssertionError|Error:|expected|Received' api-test-output.txt | head -n 320 || true
+            echo '=== END API FAILURE SUMMARY ==='
+          else
+            cat api-test-output.txt
+          fi
+          exit "$status"
+      - name: Upload failed API test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-output
+          path: api-test-output.txt
+          if-no-files-found: error
+          retention-days: 3
       - name: Frontend build
         run: pnpm build
       - name: Require all frontend test jobs
