@@ -30,7 +30,7 @@ The Uniswap `/swap` request includes an explicit Unix deadline. The backend requ
 
 ## Security boundary
 
-The frontend does not choose the payment token, treasury, payment amount, approval spender, approval amount, nonce, swap target, swap calldata, native value, gas limit, or MegaFuel policy.
+The frontend does not choose the treasury, fee amount, approval spender, approval amount, nonce, swap target, swap calldata, native value, gas limit, or MegaFuel policy. Exact prepaid sponsorship always charges the fee in the token being sold.
 
 Before accepting the package, the backend validates every signed raw transaction against its stored intent:
 
@@ -81,7 +81,18 @@ The backend still requires live market evidence:
 - liquidity equal to the larger available value from Moralis or DexScreener;
 - configured minimum liquidity;
 - matching on-chain and configured decimals;
-- sufficient wallet balance.
+- sufficient wallet balance;
+- a safe executable route for about `$0.10` of the sell token to BNB, USDT, or USDC.
+
+The settlement-safety probe checks targets in this order:
+
+```text
+sell token → BNB
+sell token → USDT
+sell token → USDC
+```
+
+For each target, configured sponsored providers are tried in their configured order. The first valid route passes the probe. When all three targets fail, sponsorship is rejected before an order is inserted or any transaction is signed. The probe is a sellability check only; the treasury accumulates fee tokens and may settle them later in a larger batch.
 
 Moralis security fields remain diagnostic data but do not override the explicit database whitelist.
 
@@ -110,14 +121,15 @@ commercialFeeUsd = $0.067 + 3% of gross trade notional
 totalPrepaymentUsd =
     gasReserveUsd
   + commercialFeeUsd
-  + estimated payment-token-to-BNB conversion cost
 ```
 
-When the payment token is also the sell token, the exact prepayment is deducted before preparing the signed swap:
+The USD prepayment is converted to an exact raw amount of the sell token using ceiling division. That amount is removed before preparing the user-selected swap:
 
 ```text
-gross sell amount - exact fee amount = exact swap amount
+gross sell amount - exact fee amount = exact user swap amount
 ```
+
+The order does not require or charge an individual fee-token conversion route. `conversion_cost_usd_micros` remains zero for this flow. Collected sell-token fees stay in treasury until a later treasury settlement operation.
 
 ## Two private MegaFuel policies
 
@@ -127,7 +139,7 @@ Use two distinct private BSC Mainnet policies with the same NodeReal API key.
 
 Used only for `fee-payment-transfer`:
 
-- enabled payment-token contracts in `ToAccountWhitelist`;
+- enabled sell-token contracts in `ToAccountWhitelist`;
 - `0xa9059cbb` in `ContractMethodSigWhitelist`;
 - configured treasury in `BEP20ReceiverWhiteList`.
 
@@ -157,7 +169,7 @@ Migration `0005` adds durable signed-raw storage, lifecycle timestamps, bounded 
 
 Migration `0006` changes the post-payment grant to fifteen minutes.
 
-The Drizzle schema describes the durable intent fields, recovery constraints, and `sponsorship_intent_events` table. Neither application startup nor CI applies migrations.
+The Drizzle schema describes the durable intent fields, recovery constraints, and `sponsorship_intent_events` table. Neither application startup nor CI applies migrations. This settlement-route change requires no additional migration.
 
 ## Validation
 
@@ -178,6 +190,7 @@ pnpm --filter @pistachio/api exec vitest run \
   test/megafuel-exact-payment.test.ts \
   test/megafuel-normal-swap.test.ts \
   test/megafuel-presigned-package.test.ts \
+  test/megafuel-settlement-route.test.ts \
   test/megafuel-two-policy.test.ts \
   test/token-evidence-exact-transfer.test.ts
 
@@ -194,7 +207,7 @@ The live test uses the XAUT BNB Chain contract:
 0x21caef8a43163eea865baee23b9c2e327696a3bf
 ```
 
-It fetches the live price and decimals, calculates approximately `$0.21` of XAUT, verifies live liquidity, creates a real order, prepares the three-transaction package, signs through the same frontend package-signing function, submits the package, and polls until all three transaction hashes confirm.
+It fetches the live price and decimals, calculates approximately `$0.21` of XAUT, verifies live liquidity and the settlement-safety route, creates a real order, prepares the three-transaction package, signs through the same frontend package-signing function, submits the package, and polls until all three transaction hashes confirm.
 
 Run it only with a funded disposable BSC Mainnet wallet. It performs real transactions and spends XAUT and sponsorship funds. Keep the private key only in the local shell or ignored local environment file. Never commit it or paste it into chat.
 
@@ -218,6 +231,7 @@ Do not enable the path for public users until:
 
 - migrations `0004`, `0005`, and `0006` are applied to the intended database;
 - exact payment rejection is observed before any paymaster call;
+- the sell-token `$0.10` settlement probe succeeds for at least one of BNB, USDT, or USDC;
 - the XAUT canary completes payment, approval, and swap;
 - browser loss is tested immediately after package storage and after each broadcast;
 - expired package and reverted approval/swap behavior is verified;
