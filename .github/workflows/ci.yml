@@ -127,6 +127,7 @@ jobs:
           pnpm --filter @pistachio/api exec vitest run
           test/gasless-v2.test.ts
           test/prepaid-sponsorship.test.ts
+          test/prepaid-native-token-decimals.test.ts
           test/megafuel-durable-intents.test.ts
           test/megafuel-exact-payment.test.ts
           test/megafuel-normal-swap.test.ts
