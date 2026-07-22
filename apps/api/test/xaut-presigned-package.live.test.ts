@@ -126,12 +126,34 @@ async function expireUnsignedCanaryOrder(
     }
 }
 
+async function expirePreviousUnsignedCanaryOrders(walletAddress: string) {
+    const result = await getPool().query<{ id: string }>(
+        `SELECT id
+         FROM sponsorship_orders
+         WHERE wallet_address=$1
+           AND idempotency_key LIKE 'xaut-live-%'
+           AND status NOT IN ('completed','expired','rejected','failed')
+         ORDER BY created_at`,
+        [walletAddress.toLowerCase()],
+    )
+    for (const order of result.rows) {
+        const cleanup = await expireUnsignedCanaryOrder(order.id, walletAddress)
+        console.warn('[xaut-presigned-canary-preflight-expire]', {
+            orderId: order.id,
+            ...cleanup,
+        })
+    }
+}
+
 describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
     it('signs all three frontend transactions, stores them, and lets the backend finish', async () => {
         const account = privateKeyToAccount(requirePrivateKey())
         const expectedWallet = process.env.XAUT_TEST_WALLET_ADDRESS?.trim().toLowerCase()
         if (expectedWallet && expectedWallet !== account.address.toLowerCase()) {
             throw new Error('XAUT_TEST_WALLET_ADDRESS does not match XAUT_TEST_PRIVATE_KEY.')
+        }
+        if (EXPIRE_AFTER_ERROR) {
+            await expirePreviousUnsignedCanaryOrders(account.address)
         }
 
         const chain = createPrepaidChainClient()
