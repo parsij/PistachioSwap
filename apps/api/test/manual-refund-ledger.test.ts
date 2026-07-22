@@ -107,7 +107,7 @@ function fakeDatabase({
 } = {}): ManualRefundLedgerQueryable {
     return {
         async query(text) {
-            if (text.includes('FROM sponsorship_refunds r')) {
+            if (text.includes('JOIN sponsorship_orders o ON o.id=r.order_id')) {
                 return { rows: refunds }
             }
             if (text.includes('FROM sponsorship_orders o')) {
@@ -152,6 +152,7 @@ describe('manual refund ledger', () => {
                 failureCode: 'TRANSACTION_REVERTED',
             },
             refund: {
+                status: 'pending',
                 recommendedAsset: 'BNB',
                 suggestedAmountWei: null,
                 manualReviewRequired: true,
@@ -169,11 +170,9 @@ describe('manual refund ledger', () => {
         const ledgerPath = await temporaryLedgerPath()
         let status = 'pending'
         let refundTransactionHash: string | null = null
-        const database = fakeDatabase({
-            refunds: [],
-        })
+        const database = fakeDatabase({ refunds: [] })
         database.query = async (text) => {
-            if (text.includes('FROM sponsorship_refunds r')) {
+            if (text.includes('JOIN sponsorship_orders o ON o.id=r.order_id')) {
                 return {
                     rows: [refundRow({ refundStatus: status, refundTransactionHash })],
                 }
@@ -262,6 +261,7 @@ describe('manual refund ledger', () => {
 
         const [event] = await readEvents(ledgerPath)
         expect(event.event).toBe('needs_review')
+        expect(event.refund.status).toBe('needs-review')
         expect(event.refund.manualReviewRequired).toBe(true)
         expect(event.refund.refundTransactionHash).toBeNull()
     })
