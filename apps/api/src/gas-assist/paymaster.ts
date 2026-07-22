@@ -1,5 +1,9 @@
 import { getApiConfig } from '../config.js'
 import { GasAssistError } from './errors.js'
+import {
+    sponsorshipTrace,
+    sponsorshipTraceError,
+} from './trace.js'
 
 type RpcResponse = {
     result?: unknown
@@ -104,6 +108,12 @@ export function createPaymasterClient(
         }
         let lastStatus = 0
         for (let attempt = 0; attempt < 3; attempt += 1) {
+            const startedAt = Date.now()
+            sponsorshipTrace('paymaster.rpc.attempt.start', {
+                rpcMethod: method,
+                attempt: attempt + 1,
+                requestTimeoutMs: connection.requestTimeoutMs,
+            })
             const controller = new AbortController()
             let timedOut = false
             const timeout = setTimeout(() => {
@@ -124,8 +134,19 @@ export function createPaymasterClient(
                     signal: controller.signal,
                 })
                 lastStatus = response.status
+                sponsorshipTrace('paymaster.rpc.response', {
+                    rpcMethod: method,
+                    attempt: attempt + 1,
+                    providerStatus: response.status,
+                    elapsedMs: Date.now() - startedAt,
+                })
                 if (response.status === 429 || response.status >= 500) {
                     if (attempt < 2) {
+                        sponsorshipTrace('paymaster.rpc.retry', {
+                            rpcMethod: method,
+                            attempt: attempt + 1,
+                            providerStatus: response.status,
+                        })
                         await sleep(retryDelay(response, attempt), signal)
                         continue
                     }
@@ -149,11 +170,28 @@ export function createPaymasterClient(
                             : { rpcMethod: method },
                     )
                 }
+                sponsorshipTrace('paymaster.rpc.success', {
+                    rpcMethod: method,
+                    attempt: attempt + 1,
+                    elapsedMs: Date.now() - startedAt,
+                    resultType: typeof body.result,
+                })
                 return body.result
             } catch (error) {
+                sponsorshipTraceError('paymaster.rpc.attempt.error', error, {
+                    rpcMethod: method,
+                    attempt: attempt + 1,
+                    timedOut,
+                    elapsedMs: Date.now() - startedAt,
+                })
                 if (error instanceof GasAssistError) throw error
                 const externallyAborted = signal?.aborted === true
                 if (!externallyAborted && attempt < 2) {
+                    sponsorshipTrace('paymaster.rpc.retry', {
+                        rpcMethod: method,
+                        attempt: attempt + 1,
+                        reason: timedOut ? 'timeout' : 'transport-error',
+                    })
                     await sleep(retryDelay(null, attempt), signal)
                     continue
                 }
@@ -182,10 +220,25 @@ export function createPaymasterClient(
         async isSponsorable(transaction: Record<string, string>, signal?: AbortSignal) {
             const methods = getConnection().sponsorabilityMethods
             let lastMethodError: GasAssistError | null = null
+            sponsorshipTrace('paymaster.sponsorability.start', {
+                methods,
+                transactionTo: transaction.to,
+                nonce: transaction.nonce,
+                gas: transaction.gas,
+            })
 
             for (const [index, method] of methods.entries()) {
                 try {
-                    return parseSponsorableResult(await rpc(method, [transaction], signal))
+                    const sponsorable = parseSponsorableResult(
+                        await rpc(method, [transaction], signal),
+                    )
+                    sponsorshipTrace('paymaster.sponsorability.result', {
+                        rpcMethod: method,
+                        sponsorable,
+                        transactionTo: transaction.to,
+                        nonce: transaction.nonce,
+                    })
+                    return sponsorable
                 } catch (error) {
                     const mayTryNextMethod =
                         error instanceof GasAssistError &&
@@ -199,6 +252,10 @@ export function createPaymasterClient(
                         unavailableMethod: method,
                         fallbackMethod: methods[index + 1],
                     })
+                    sponsorshipTrace('paymaster.sponsorability.fallback', {
+                        unavailableMethod: method,
+                        fallbackMethod: methods[index + 1],
+                    })
                 }
             }
 
@@ -209,17 +266,26 @@ export function createPaymasterClient(
             )
         },
         async getNonce(walletAddress: `0x${string}`, signal?: AbortSignal) {
+            sponsorshipTrace('paymaster.nonce.start', { walletAddress })
             const result = await rpc('eth_getTransactionCount', [walletAddress, 'pending'], signal)
             if (typeof result !== 'string' || !/^0x[0-9a-f]+$/i.test(result)) {
                 throw new GasAssistError('PAYMASTER_INVALID_RESPONSE', 'The paymaster returned an invalid nonce.', 502)
             }
+            sponsorshipTrace('paymaster.nonce.success', {
+                walletAddress,
+                nonce: result,
+            })
             return BigInt(result)
         },
         async submit(signedTransaction: `0x${string}`, signal?: AbortSignal) {
+            sponsorshipTrace('paymaster.submit.start', {
+                signedTransactionBytes: Math.max(0, (signedTransaction.length - 2) / 2),
+            })
             const result = await rpc('eth_sendRawTransaction', [signedTransaction], signal)
             if (typeof result !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(result)) {
                 throw new GasAssistError('PAYMASTER_INVALID_RESPONSE', 'The paymaster returned an invalid transaction hash.', 502)
             }
+            sponsorshipTrace('paymaster.submit.success', { transactionHash: result.toLowerCase() })
             return result.toLowerCase() as `0x${string}`
         },
     }
