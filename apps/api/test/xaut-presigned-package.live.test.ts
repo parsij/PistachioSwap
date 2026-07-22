@@ -455,11 +455,47 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
             expect(current.approvalTransactionHash).toMatch(/^0x[0-9a-f]{64}$/)
             expect(current.swapTransactionHash).toMatch(/^0x[0-9a-f]{64}$/)
             expect(current.preSignedPackage).toBe(true)
-            console.warn('[xaut-canary-completed]', {
+            const paymentTransactionHash = String(
+                current.paymentTransactionHash,
+            ) as `0x${string}`
+            const approvalTransactionHash = String(
+                current.approvalTransactionHash,
+            ) as `0x${string}`
+            const swapTransactionHash = String(
+                current.swapTransactionHash,
+            ) as `0x${string}`
+            const receipts = await canaryStep(
+                'verify payment, approval, and swap receipts',
+                () => Promise.all([
+                    chain.getReceipt(paymentTransactionHash),
+                    chain.getReceipt(approvalTransactionHash),
+                    chain.getReceipt(swapTransactionHash),
+                ]),
+                { orderId: createdOrderId },
+            )
+            expect(receipts.map((receipt) => receipt.status)).toEqual([
+                'success',
+                'success',
+                'success',
+            ])
+
+            console.warn([
+                '==================================================',
+                'YAY, WE GOT IT 🎉',
+                'XAUT GAS ASSIST CANARY COMPLETED SUCCESSFULLY',
+                `Order:    ${createdOrderId}`,
+                `Payment:  ${paymentTransactionHash}`,
+                `Approval: ${approvalTransactionHash}`,
+                `Swap:     ${swapTransactionHash}`,
+                '==================================================',
+            ].join('\n'))
+            console.warn('[xaut-canary-final-success]', {
                 orderId: createdOrderId,
-                paymentTransactionHash: current.paymentTransactionHash,
-                approvalTransactionHash: current.approvalTransactionHash,
-                swapTransactionHash: current.swapTransactionHash,
+                status: 'completed',
+                paymentTransactionHash,
+                approvalTransactionHash,
+                swapTransactionHash,
+                allReceiptsSuccessful: true,
             })
         } catch (error) {
             console.error('[xaut-canary-failed]', {
