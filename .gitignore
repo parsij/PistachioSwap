@@ -27,3 +27,4 @@ apps/api/data/manual-refund-candidates.jsonl
 *.njsproj
 *.sln
 *.sw?
+/.env

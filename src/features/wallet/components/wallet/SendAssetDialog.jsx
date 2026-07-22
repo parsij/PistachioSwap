@@ -46,6 +46,7 @@ import {
     getCuratedEvmChain,
     isCuratedEvmChainId,
 } from '../../../../web3/curatedEvmChains.js'
+import { recordWalletActivity } from '../../services/walletActivity.js'
 
 function matchesExactContract(token, search) {
     return /^0x[a-fA-F0-9]{40}$/.test(search) &&
@@ -231,6 +232,15 @@ export default function SendAssetDialog({
             })
             if (receipt.status !== 'success') throw new Error('Transaction failed on-chain.')
             setStatus('sent')
+            recordWalletActivity({
+                walletAddress: review.account,
+                chainId: review.chainId,
+                type: 'sent',
+                hash: transactionHash,
+                token: review.token,
+                amount: review.amount,
+                recipient: review.recipient,
+            })
             await onConfirmed?.()
         } catch (caught) {
             if (isTransferRejectedError(caught)) {
