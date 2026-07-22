@@ -5,6 +5,7 @@ import { formatUnits } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
 import { createApp } from '../src/app.js'
+import { getPool } from '../src/db/client.js'
 import { createPrepaidChainClient } from '../src/gas-assist/prepaid/chain-client.js'
 import { getSponsorshipTokenEvidence } from '../src/gas-assist/prepaid/token-evidence.js'
 // The live canary intentionally uses the same signing orchestration as the UI.
@@ -13,6 +14,7 @@ import { signPreparedSponsoredPackage } from '../../../src/features/gas-assist/s
 
 const XAUT = '0x21caef8a43163eea865baee23b9c2e327696a3bf' as const
 const RUN = process.env.RUN_XAUT_PRESIGNED_CANARY === 'true'
+const EXPIRE_AFTER_ERROR = process.env.EXPIRE_AFTER_ERROR === 'true'
 const LIVE_TIMEOUT_MS = 16 * 60 * 1_000
 
 function requirePrivateKey() {
@@ -33,6 +35,95 @@ async function responseJson(response: { statusCode: number; body: string }) {
         throw new Error(`${response.statusCode}: ${JSON.stringify(payload)}`)
     }
     return payload
+}
+
+async function expireUnsignedCanaryOrder(
+    orderId: string,
+    walletAddress: string,
+) {
+    const client = await getPool().connect()
+    try {
+        await client.query('BEGIN')
+        const orderResult = await client.query<{
+            status: string
+            paymentTransactionHash: string | null
+            approvalTransactionHash: string | null
+            swapTransactionHash: string | null
+        }>(
+            `SELECT status,
+                    payment_transaction_hash AS "paymentTransactionHash",
+                    approval_transaction_hash AS "approvalTransactionHash",
+                    swap_transaction_hash AS "swapTransactionHash"
+             FROM sponsorship_orders
+             WHERE id=$1 AND wallet_address=$2
+             FOR UPDATE`,
+            [orderId, walletAddress.toLowerCase()],
+        )
+        const order = orderResult.rows[0]
+        if (!order || ['completed', 'expired', 'rejected', 'failed'].includes(order.status)) {
+            await client.query('COMMIT')
+            return { expired: false, reason: 'already-terminal-or-missing' }
+        }
+        if (order.paymentTransactionHash ||
+            order.approvalTransactionHash ||
+            order.swapTransactionHash) {
+            await client.query('COMMIT')
+            return { expired: false, reason: 'order-has-transaction-hash' }
+        }
+
+        const unsafeIntentResult = await client.query<{ count: string }>(
+            `SELECT count(*)::text AS count
+             FROM sponsorship_transaction_intents
+             WHERE order_id=$1
+               AND (
+                 signed_raw_transaction IS NOT NULL OR
+                 transaction_hash IS NOT NULL OR
+                 submission_attempts > 0 OR
+                 status IN ('submitting','submitted','confirmed','reverted','unknown')
+               )`,
+            [orderId],
+        )
+        if (BigInt(unsafeIntentResult.rows[0]?.count ?? '0') > 0n) {
+            await client.query('COMMIT')
+            return { expired: false, reason: 'signed-or-broadcast-intent-exists' }
+        }
+
+        await client.query(
+            `UPDATE sponsorship_transaction_intents
+             SET status='expired',
+                 failure_code=COALESCE(failure_code,'CANARY_ERROR_AUTO_EXPIRED'),
+                 updated_at=now()
+             WHERE order_id=$1
+               AND status IN ('authorized','prepared','signing')
+               AND signed_raw_transaction IS NULL
+               AND transaction_hash IS NULL
+               AND submission_attempts=0`,
+            [orderId],
+        )
+        const expired = await client.query(
+            `UPDATE sponsorship_orders
+             SET status='expired',
+                 rejection_code='CANARY_ERROR_AUTO_EXPIRED',
+                 updated_at=now()
+             WHERE id=$1
+               AND wallet_address=$2
+               AND status NOT IN ('completed','expired','rejected','failed')
+               AND payment_transaction_hash IS NULL
+               AND approval_transaction_hash IS NULL
+               AND swap_transaction_hash IS NULL`,
+            [orderId, walletAddress.toLowerCase()],
+        )
+        await client.query('COMMIT')
+        return {
+            expired: expired.rowCount === 1,
+            reason: expired.rowCount === 1 ? 'unsigned-order-expired' : 'order-changed',
+        }
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined)
+        throw error
+    } finally {
+        client.release()
+    }
 }
 
 describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
@@ -68,6 +159,7 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
         })
 
         const app = createApp()
+        let createdOrderId: string | null = null
         await app.ready()
         try {
             const challenge = await responseJson(await app.inject({
@@ -99,6 +191,7 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
                     slippageBps: 100,
                 },
             }))
+            createdOrderId = String(order.id)
             const preparedPackage = await responseJson(await app.inject({
                 method: 'POST',
                 url: `/v1/sponsorship/orders/${order.id}/package/prepare`,
@@ -181,6 +274,27 @@ describe.runIf(RUN)('live XAUT -> BNB pre-signed package canary', () => {
             expect(current.approvalTransactionHash).toMatch(/^0x[0-9a-f]{64}$/)
             expect(current.swapTransactionHash).toMatch(/^0x[0-9a-f]{64}$/)
             expect(current.preSignedPackage).toBe(true)
+        } catch (error) {
+            if (EXPIRE_AFTER_ERROR && createdOrderId) {
+                try {
+                    const cleanup = await expireUnsignedCanaryOrder(
+                        createdOrderId,
+                        account.address,
+                    )
+                    console.warn('[xaut-presigned-canary-auto-expire]', {
+                        orderId: createdOrderId,
+                        ...cleanup,
+                    })
+                } catch (cleanupError) {
+                    console.error('[xaut-presigned-canary-auto-expire-failed]', {
+                        orderId: createdOrderId,
+                        error: cleanupError instanceof Error
+                            ? cleanupError.message
+                            : String(cleanupError),
+                    })
+                }
+            }
+            throw error
         } finally {
             await app.close()
         }
