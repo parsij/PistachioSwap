@@ -1,6 +1,10 @@
 import { getApiConfig } from '../config.js'
 import { GasAssistError } from './errors.js'
 import type { PrepaidPolicyScope } from './paymaster.js'
+import {
+    sponsorshipTrace,
+    sponsorshipTraceError,
+} from './trace.js'
 
 export type MegaFuelWhitelistType =
     | 'FromAccountWhitelist'
@@ -85,8 +89,19 @@ export function createMegaFuelPolicyManagement(
 ) {
     async function rpc(method: string, params: Record<string, unknown>, signal?: AbortSignal) {
         const connection = managementConnection(scope)
+        const whitelistType = String(params.whitelistType ?? '')
+        const valueCount = Array.isArray(params.values) ? params.values.length : 0
 
         for (let attempt = 0; attempt < 3; attempt += 1) {
+            const startedAt = Date.now()
+            sponsorshipTrace('paymaster.policy.attempt.start', {
+                scope,
+                rpcMethod: method,
+                whitelistType,
+                valueCount,
+                attempt: attempt + 1,
+                requestTimeoutMs: connection.timeoutMs,
+            })
             const controller = new AbortController()
             let timedOut = false
             const timeout = setTimeout(() => {
@@ -114,9 +129,24 @@ export function createMegaFuelPolicyManagement(
                     }),
                     signal: controller.signal,
                 })
+                sponsorshipTrace('paymaster.policy.response', {
+                    scope,
+                    rpcMethod: method,
+                    whitelistType,
+                    attempt: attempt + 1,
+                    providerStatus: response.status,
+                    elapsedMs: Date.now() - startedAt,
+                })
 
                 if (response.status === 429 || response.status >= 500) {
                     if (attempt < 2) {
+                        sponsorshipTrace('paymaster.policy.retry', {
+                            scope,
+                            rpcMethod: method,
+                            whitelistType,
+                            attempt: attempt + 1,
+                            providerStatus: response.status,
+                        })
                         await sleep(retryDelay(response, attempt), signal)
                         continue
                     }
@@ -144,6 +174,7 @@ export function createMegaFuelPolicyManagement(
                         502,
                         {
                             rpcMethod: method,
+                            whitelistType,
                             ...(body.error?.code !== undefined
                                 ? { providerCode: body.error.code }
                                 : {}),
@@ -153,11 +184,35 @@ export function createMegaFuelPolicyManagement(
                         },
                     )
                 }
+                sponsorshipTrace('paymaster.policy.success', {
+                    scope,
+                    rpcMethod: method,
+                    whitelistType,
+                    valueCount,
+                    attempt: attempt + 1,
+                    elapsedMs: Date.now() - startedAt,
+                })
                 return body.result
             } catch (error) {
+                sponsorshipTraceError('paymaster.policy.attempt.error', error, {
+                    scope,
+                    rpcMethod: method,
+                    whitelistType,
+                    valueCount,
+                    attempt: attempt + 1,
+                    timedOut,
+                    elapsedMs: Date.now() - startedAt,
+                })
                 if (error instanceof GasAssistError) throw error
                 const externallyAborted = signal?.aborted === true
                 if (!externallyAborted && attempt < 2) {
+                    sponsorshipTrace('paymaster.policy.retry', {
+                        scope,
+                        rpcMethod: method,
+                        whitelistType,
+                        attempt: attempt + 1,
+                        reason: timedOut ? 'timeout' : 'transport-error',
+                    })
                     await sleep(retryDelay(null, attempt), signal)
                     continue
                 }
@@ -171,6 +226,7 @@ export function createMegaFuelPolicyManagement(
                     timedOut ? 504 : 502,
                     {
                         rpcMethod: method,
+                        whitelistType,
                         attempts: attempt + 1,
                         requestTimeoutMs: connection.timeoutMs,
                         transportReason: transportReason(error),
@@ -186,7 +242,7 @@ export function createMegaFuelPolicyManagement(
             'PAYMASTER_POLICY_UNAVAILABLE',
             `MegaFuel ${scope} policy management is temporarily unavailable.`,
             502,
-            { rpcMethod: method },
+            { rpcMethod: method, whitelistType },
         )
     }
 
