@@ -131,9 +131,27 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Lint
-        run: pnpm lint
+        shell: bash
+        run: pnpm lint >lint-output.txt 2>&1 || { cat lint-output.txt; exit 1; }
+      - name: Upload failed lint output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-output
+          path: lint-output.txt
+          if-no-files-found: error
+          retention-days: 3
       - name: API typecheck
-        run: pnpm --filter @pistachio/api typecheck
+        shell: bash
+        run: pnpm --filter @pistachio/api typecheck >api-typecheck-output.txt 2>&1 || { cat api-typecheck-output.txt; exit 1; }
+      - name: Upload failed API typecheck output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-typecheck-output
+          path: api-typecheck-output.txt
+          if-no-files-found: error
+          retention-days: 3
       - name: API Gas Assist tests
         shell: bash
         run: |
@@ -177,7 +195,16 @@ jobs:
           if-no-files-found: error
           retention-days: 3
       - name: Frontend build
-        run: pnpm build
+        shell: bash
+        run: pnpm build >frontend-build-output.txt 2>&1 || { cat frontend-build-output.txt; exit 1; }
+      - name: Upload failed frontend build output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-output
+          path: frontend-build-output.txt
+          if-no-files-found: error
+          retention-days: 3
       - name: Require all frontend test jobs
         if: always()
         run: |
