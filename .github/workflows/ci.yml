@@ -10,8 +10,11 @@ on:
       - 'apps/api/test/**'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
+      - 'src/features/passkey/components/**'
       - 'src/features/passkey/services/signingReview*'
       - 'src/features/swap/**'
+      - 'src/features/tokens/**'
+      - 'src/features/wallet/**'
       - 'src/services/swapExecutionMode*'
   push:
     branches: [main]
@@ -23,8 +26,11 @@ on:
       - 'apps/api/test/**'
       - 'docs/megafuel-exact-payment-rollout.md'
       - 'src/features/gas-assist/**'
+      - 'src/features/passkey/components/**'
       - 'src/features/passkey/services/signingReview*'
       - 'src/features/swap/**'
+      - 'src/features/tokens/**'
+      - 'src/features/wallet/**'
       - 'src/services/swapExecutionMode*'
 
 permissions:
@@ -69,6 +75,12 @@ jobs:
           - name: execution-mode
             label: execution mode
             file: src/services/swapExecutionMode.test.js
+          - name: approval-continuation
+            label: normal swap approval continuation
+            file: src/features/swap/hooks/useApprovalExecutionBridge.test.jsx
+          - name: wallet-token-cache
+            label: cached wallet token hydration
+            file: src/features/tokens/hooks/useWalletTokens.cache.test.jsx
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -145,6 +157,7 @@ jobs:
             test/sponsorship-trace.test.ts \
             test/token-evidence-exact-transfer.test.ts \
             test/token-price-normalization.test.ts \
+            test/wallet-token-known-balances.test.ts \
             --reporter=verbose >api-test-output.txt 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
