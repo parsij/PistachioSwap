@@ -6,6 +6,10 @@ import { createWalletAuthService } from '../gas-assist/prepaid/auth.js'
 import { createSponsorshipIntentService } from '../gas-assist/prepaid/intent-service.js'
 import { createSponsorshipOrderService } from '../gas-assist/prepaid/order-service.js'
 import { createSponsorshipPackageService } from '../gas-assist/prepaid/package-service.js'
+import {
+    sponsorshipTrace,
+    sponsorshipTraceError,
+} from '../gas-assist/trace.js'
 
 function exactObject(value: unknown, allowed: string[], required: string[] = allowed) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -22,10 +26,29 @@ function exactObject(value: unknown, allowed: string[], required: string[] = all
 }
 
 async function safe<T>(handler: () => Promise<T>, reply: FastifyReply) {
+    const startedAt = Date.now()
+    const route = reply.request.routeOptions.url ?? reply.request.url
+    const requestDetails = {
+        requestId: reply.request.id,
+        method: reply.request.method,
+        route,
+    }
+    sponsorshipTrace('http.request.start', requestDetails)
     try {
-        return await handler()
+        const result = await handler()
+        sponsorshipTrace('http.request.success', {
+            ...requestDetails,
+            statusCode: reply.statusCode,
+            elapsedMs: Date.now() - startedAt,
+        })
+        return result
     } catch (error) {
         const response = gasAssistErrorBody(error)
+        sponsorshipTraceError('http.request.error', error, {
+            ...requestDetails,
+            statusCode: response.statusCode,
+            elapsedMs: Date.now() - startedAt,
+        })
         return reply.code(response.statusCode).send(response.body)
     }
 }
@@ -115,6 +138,11 @@ export const sponsorshipRoutes: FastifyPluginAsync = async (app) => {
         (request, reply) => safe(async () => {
             exactObject(request.body, [], [])
             const session = await auth().authenticate(request.headers.authorization)
+            sponsorshipTrace('package.prepare.route.authenticated', {
+                requestId: request.id,
+                orderId: request.params.orderId,
+                walletAddress: session.walletAddress,
+            })
             return packages().prepare(
                 request.params.orderId,
                 session.walletAddress,
