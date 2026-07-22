@@ -21,7 +21,10 @@ function sponsorship(overrides = {}) {
         open: true,
         phase: 'review',
         error: null,
+        lastPollError: null,
         close: vi.fn(),
+        retryStart: vi.fn(),
+        signPackage: vi.fn(),
         signPayment: vi.fn(),
         signApproval: vi.fn(),
         requestContinuation: vi.fn(),
@@ -41,12 +44,12 @@ function sponsorship(overrides = {}) {
             paymentTokenSymbol: 'SELL',
             estimatedPaymentGasUsdMicros: '20000',
             estimatedApprovalGasUsdMicros: '30000',
-            estimatedSwapGasUsdMicros: '0',
-            gasReserveUsdMicros: '75000',
+            estimatedSwapGasUsdMicros: '40000',
+            gasReserveUsdMicros: '135000',
             fixedServiceFeeUsdMicros: '67000',
             platformFeeUsdMicros: '3000000',
-            conversionCostUsdMicros: '12000',
-            totalPrepaymentUsdMicros: '3154000',
+            conversionCostUsdMicros: '0',
+            totalPrepaymentUsdMicros: '3202000',
             expectedOutputRaw: '95000000000000000000',
             minimumOutputRaw: '94000000000000000000',
             providerFees: {
@@ -60,28 +63,31 @@ function sponsorship(overrides = {}) {
 }
 
 describe('Gas Assist prepayment review', () => {
-    it('discloses the exact payment, fee split, provider fees, and separate actions', () => {
+    it('shows one simple no-BNB action and keeps technical details collapsible', () => {
         const value = sponsorship()
         render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
-        expect(screen.getByText('Gas Assist Prepayment')).toBeTruthy()
-        expect(screen.getByText('Gross amount supplied')).toBeTruthy()
-        expect(screen.getByText('Exact sponsorship payment')).toBeTruthy()
-        expect(screen.getByText('1.5× gas reserve')).toBeTruthy()
-        expect(screen.getByText('Fixed service fee')).toBeTruthy()
-        expect(screen.getByText('3% trade fee')).toBeTruthy()
-        expect(screen.getByText('Token-to-BNB conversion cost')).toBeTruthy()
-        expect(screen.queryByText('Commercial fee cap')).toBeNull()
+
+        expect(screen.getByText('Swap without gas')).toBeTruthy()
+        expect(screen.getByText('No BNB needed')).toBeTruthy()
+        expect(screen.getByText('You pay')).toBeTruthy()
+        expect(screen.getByText('You receive')).toBeTruthy()
+        expect(screen.getByText('Gas Assist fee')).toBeTruthy()
+        expect(screen.getByText(/One tap starts the flow/)).toBeTruthy()
+
+        const details = screen.getByText('Transaction details').closest('details')
+        expect(details?.open).toBe(false)
+        fireEvent.click(screen.getByText('Transaction details'))
+        expect(details?.open).toBe(true)
         expect(screen.getByText('Net swap input')).toBeTruthy()
-        expect(screen.getByText('0x gas fee')).toBeTruthy()
-        expect(screen.getByText('0x fee')).toBeTruthy()
-        expect(screen.getByText(/signs only the exact backend-prepared token/)).toBeTruthy()
-        expect(screen.getByText(/rejects any changed or user-created transaction/)).toBeTruthy()
-        expect(screen.getByText(/separate transactions and are not atomic/)).toBeTruthy()
-        fireEvent.click(screen.getByRole('button', { name: 'Sign exact payment transaction' }))
-        expect(value.signPayment).toHaveBeenCalledOnce()
+        expect(screen.getByText('Minimum output')).toBeTruthy()
+        expect(screen.getByText(/separate blockchain transactions/)).toBeTruthy()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Swap without BNB' }))
+        expect(value.signPackage).toHaveBeenCalledOnce()
+        expect(value.signPayment).not.toHaveBeenCalled()
     })
 
-    it('shows an indeterminate confirmation bar and keeps approval locked while payment is pending', () => {
+    it('shows compact progress and prevents another primary submission while payment is pending', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
                 phase: 'payment-confirming',
@@ -96,46 +102,54 @@ describe('Gas Assist prepayment review', () => {
             sellToken={sellToken}
             buyToken={buyToken}
         />)
-        expect(screen.getByText('Waiting for exact payment confirmation')).toBeTruthy()
-        expect(screen.getByText(/treasury received the exact required token amount/)).toBeTruthy()
-        expect(screen.queryByRole('button', { name: 'Sign exact approval transaction' })).toBeNull()
-        expect(document.querySelector('.gas-assist-progress-track')).toBeTruthy()
+
+        expect(screen.getByText('Starting your gasless swap')).toBeTruthy()
+        expect(screen.getByText(/Confirming the Gas Assist fee/)).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Swap without BNB' })).toBeNull()
+        expect(document.querySelector('.gas-assist-compact-status')).toBeTruthy()
     })
 
-    it('shows the Pistachio Wallet compatibility error', () => {
+    it('shows a simple wallet compatibility error and a retry action', () => {
+        const value = sponsorship({
+            phase: 'unsupported',
+            order: null,
+            error: {
+                code: 'PISTACHIO_WALLET_REQUIRED',
+                message: 'Gas Assist requires Pistachio Wallet.',
+            },
+        })
         render(<GasAssistPrepaymentDialog
-            sponsorship={sponsorship({
-                phase: 'unsupported',
-                order: null,
-                error: {
-                    code: 'PISTACHIO_WALLET_REQUIRED',
-                    message: 'Gas Assist requires Pistachio Wallet.',
-                },
-            })}
+            sponsorship={value}
             sellToken={sellToken}
             buyToken={buyToken}
         />)
+
         expect(screen.getByText('Gas Assist requires Pistachio Wallet.')).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+        expect(value.retryStart).toHaveBeenCalledOnce()
     })
 
-    it('does not render MetaMask sponsored-signing controls', () => {
+    it('keeps error codes out of the main message but available in technical details', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
-                phase: 'unsupported',
-                order: null,
-                metaMaskSigner: {
-                    isMetaMask: true,
-                    capability: { status: 'not-connected' },
-                },
+                phase: 'failed',
                 error: {
-                    code: 'PISTACHIO_WALLET_REQUIRED',
-                    message: 'Gas Assist requires Pistachio Wallet.',
+                    code: 'PAYMASTER_POLICY_TIMEOUT',
+                    message: 'The sponsor service timed out.',
+                    stage: 'package.prepare',
+                    requestId: 'request-123',
                 },
             })}
             sellToken={sellToken}
             buyToken={buyToken}
         />)
-        expect(screen.queryByText('Enable MetaMask sponsored signing')).toBeNull()
-        expect(screen.queryByRole('button', { name: 'Connect MetaMask signing' })).toBeNull()
+
+        expect(screen.getByText('The sponsor service timed out.')).toBeTruthy()
+        const details = screen.getByText('Transaction details').closest('details')
+        expect(details?.open).toBe(false)
+        fireEvent.click(screen.getByText('Transaction details'))
+        expect(screen.getByText('PAYMASTER_POLICY_TIMEOUT')).toBeTruthy()
+        expect(screen.getByText('package.prepare')).toBeTruthy()
+        expect(screen.getByText('request-123')).toBeTruthy()
     })
 })
