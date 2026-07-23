@@ -323,21 +323,21 @@ const STRONG_IDENTITY_REASONS = new Set([
     'curated-official-contract',
     'coingecko-exact-contract',
     'manual-allowlist',
-    'moralis-verified-contract',
     'pancakeswap-curated-list',
     'trustwallet-reviewed-asset',
-    'trusted-market-contract',
 ])
 
-function hasStrongIdentity(input: WalletTokenTrustInput) {
+export function isPrimaryTrustedAsset(input: WalletTokenTrustInput) {
     return input.isNative === true ||
         input.officialAsset === true ||
         input.allowlisted === true ||
         input.exactRecognition === true ||
-        input.moralisVerified === true ||
         input.pancakeSwapRecognized === true ||
-        input.trustWalletRecognized === true ||
-        input.catalogTrustedContract === true
+        input.trustWalletRecognized === true
+}
+
+function hasStrongIdentity(input: WalletTokenTrustInput) {
+    return isPrimaryTrustedAsset(input)
 }
 
 export function evaluateWalletTokenTrust(input: WalletTokenTrustInput) {
@@ -349,8 +349,7 @@ export function evaluateWalletTokenTrust(input: WalletTokenTrustInput) {
     if (input.moralisVerified) reasons.add('moralis-verified-contract')
     if (input.pancakeSwapRecognized) reasons.add('pancakeswap-curated-list')
     if (input.trustWalletRecognized) reasons.add('trustwallet-reviewed-asset')
-    if (input.catalogTrustedContract) reasons.add('trusted-market-contract')
-    if (input.catalogToken && !input.catalogTrustedContract) reasons.add('market-catalog-only')
+    if (input.catalogToken) reasons.add('market-catalog-only')
     if (input.blocklisted) reasons.add('manual-blocklist')
 
     const trustedIdentity = hasStrongIdentity(input)
@@ -439,7 +438,6 @@ export function classifyWalletTokenVisibility({
     isNative = false,
     established = false,
     exactRecognition = false,
-    moralisVerified = false,
     pancakeSwapRecognized = false,
     trustWalletRecognized = false,
     trustedLocalMetadata = false,
@@ -468,7 +466,6 @@ export function classifyWalletTokenVisibility({
     const primaryReasons = [
         ...(allowlisted ? ['manual-allowlist'] : []),
         ...(exactRecognition ? ['coingecko-exact-contract'] : []),
-        ...(moralisVerified ? ['moralis-verified-contract'] : []),
         ...(pancakeSwapRecognized ? ['pancakeswap-curated-list'] : []),
         ...(trustWalletRecognized ? ['trustwallet-reviewed-asset'] : []),
         ...(trustedLocalMetadata ? ['trusted-local-metadata'] : []),
@@ -764,8 +761,9 @@ export async function getWalletTokens({
     const config = getApiConfig()
     const addressPolicy = getWalletTokenAddressPolicy(chainId)
     const wrappedNativeAddress = chain.wrappedNative.address
+    const hasPositiveNativeBalance = nativeBalance !== null && nativeBalance > 0n
     const needsWrappedNativePrice =
-        nativeBalance !== null && inventory?.nativePriceUSD == null
+        hasPositiveNativeBalance && inventory?.nativePriceUSD == null
     const priceAddresses = [...new Set([
         ...addresses,
         ...(needsWrappedNativePrice ? [wrappedNativeAddress] : []),
@@ -790,7 +788,8 @@ export async function getWalletTokens({
     const missingPriceAddresses = priceAddresses.filter(
         (address) => !providedPrices.has(address),
     )
-    const shouldFetchNativePrice = inventory?.nativePriceUSD == null
+    const shouldFetchNativePrice =
+        hasPositiveNativeBalance && inventory?.nativePriceUSD == null
 
     const [
         decimalsResult,
@@ -914,9 +913,7 @@ export async function getWalletTokens({
             suspiciousMetadata(name, symbol)
         const recognitionReasons = [
             ...(officialAsset ? ['curated-official-contract'] : []),
-            ...(catalogToken ? [catalogTrustedContract
-                ? 'trusted-market-contract'
-                : 'market-catalog-only'] : []),
+            ...(catalogToken ? ['market-catalog-only'] : []),
             ...(exactRecognition ? ['coingecko-exact-contract'] : []),
             ...(allowlisted ? ['manual-allowlist'] : []),
             ...(moralisVerified ? ['moralis-verified-contract'] : []),
@@ -947,8 +944,10 @@ export async function getWalletTokens({
             malformedMetadata,
             unsolicitedTransfer: false,
             noVerifiedContractEvidence: officialAsset?.verifiedContract !== true &&
-                moralis?.verifiedContract !== true &&
-                catalogTrustedContract !== true,
+                !exactRecognition &&
+                !allowlisted &&
+                !pancakeSwapRecognized &&
+                !trustWalletRecognized,
         })
         const recognitionStatus = provisionalTrust.recognitionStatus
         const spamStatus = possibleSpam === true
@@ -991,8 +990,10 @@ export async function getWalletTokens({
             malformedMetadata,
             unsolicitedTransfer: !provisionalTrust.trustedIdentity,
             noVerifiedContractEvidence: officialAsset?.verifiedContract !== true &&
-                moralis?.verifiedContract !== true &&
-                catalogTrustedContract !== true,
+                !exactRecognition &&
+                !allowlisted &&
+                !pancakeSwapRecognized &&
+                !trustWalletRecognized,
         })
         const trustedPriceUSD = classification.includeInPortfolioValue &&
             classification.priceConfidence === 'trusted'

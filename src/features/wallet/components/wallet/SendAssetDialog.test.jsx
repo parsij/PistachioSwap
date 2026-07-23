@@ -73,6 +73,20 @@ const unverified = {
     visibility: 'unverified',
     visibilityReasons: ['unverified-contract'],
 }
+const secantX = {
+    ...blocked,
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    securityStatus: 'low',
+    securityReasons: ['security-risk-low'],
+    recognitionStatus: 'unverified',
+    recognitionReasons: ['moralis-verified-contract', 'market-catalog-only'],
+    verifiedContract: true,
+    possibleSpam: false,
+    marketPriceUSD: '447463.12',
+    visibilityReasons: ['moralis-verified-contract', 'market-catalog-only'],
+}
 
 function renderDialog(overrides = {}) {
     return render(<SendAssetDialog
@@ -181,5 +195,24 @@ describe('SendAssetDialog', () => {
         expect(screen.getByRole('button', { name: 'Hidden risky tokens (1)' })).toBeTruthy()
         expect(screen.getByRole('button', { name: 'Show all wallet assets' })
             .getAttribute('aria-pressed')).toBe('false')
+    })
+
+    it('keeps verified scam tokens out of the normal Send selector', () => {
+        renderDialog({ assets: [native, secantX] })
+        fireEvent.click(screen.getByRole('button', { name: /BNB/ }))
+
+        expect(screen.getByText('BNB', { selector: 'strong' })).toBeTruthy()
+        expect(screen.queryByText('SecantX AI')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
+        expect(document.body.textContent).not.toContain('$447,463.12')
+
+        fireEvent.change(screen.getByLabelText('Search wallet assets'), {
+            target: { value: secantX.address },
+        })
+        expect(screen.getByRole('button', { name: 'Hidden risky tokens (1)' }))
+            .toBeTruthy()
+        expect(screen.getByText('SecantX AI')).toBeTruthy()
+        expect(screen.getByText('Potential risk')).toBeTruthy()
+        expect(document.body.textContent).not.toContain('$447,463.12')
     })
 })

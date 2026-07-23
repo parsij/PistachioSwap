@@ -107,7 +107,7 @@ export function useTokenSelectorState({
     const selectedHiddenTokens = useMemo(() => hideUnknownTokens
         ? EMPTY_TOKENS
         : deduplicateTokens([currentToken, oppositeToken]).filter((token) => token && (!isTrustedWalletToken(token) || ['unverified', 'hidden'].includes(token.visibility)) && walletTokensByKey.has(getTokenKey(token))), [currentToken, hideUnknownTokens, oppositeToken, walletTokensByKey])
-    const visibleRecentTokens = useMemo(() => recentTokens.filter(tokenIsInScope).map((token) => walletTokensByKey.get(getTokenKey(token)) ?? token).filter((token) => { const walletToken = walletTokensByKey.get(getTokenKey(token)); return !walletToken || (!hideUnknownTokens && walletToken.visibility !== 'hidden') || isTrustedWalletToken(walletToken) }), [hideUnknownTokens, recentTokens, tokenIsInScope, walletTokensByKey])
+    const visibleRecentTokens = useMemo(() => recentTokens.filter(tokenIsInScope).map((token) => walletTokensByKey.get(getTokenKey(token)) ?? token).filter((token) => { const walletToken = walletTokensByKey.get(getTokenKey(token)); const candidate = walletToken ?? token; return hideUnknownTokens ? isTrustedWalletToken(candidate) : walletToken ? walletToken.visibility !== 'hidden' : isTrustedWalletToken(candidate) }), [hideUnknownTokens, recentTokens, tokenIsInScope, walletTokensByKey])
     const searchResultTokens = useMemo(() => {
         if (!exactAddressSearch) return safeMarketTokens
         return deduplicateTokens([...positiveWalletTokens.filter((token) => normalizeAddress(token.address) === normalizedSearch), ...safeMarketTokens])
@@ -150,6 +150,7 @@ export function useTokenSelectorState({
     const toggleUnverifiedTokens = useCallback(() => setShowUnverifiedTokens((value) => writeWalletTokenSectionExpanded({ chainId, scope: 'selector', section: 'unverified', expanded: !value })), [chainId])
     const saveRecentToken = useCallback((token) => {
         if (!normalizedSearch) return
+        if (!isTrustedWalletToken(token)) return
         const stored = sanitizeStoredToken(token)
         if (!stored) return
         const next = [stored, ...recentTokens.filter((item) => getTokenKey(item) !== getTokenKey(stored))].slice(0, recentLimit)

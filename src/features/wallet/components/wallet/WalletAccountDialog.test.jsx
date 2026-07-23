@@ -111,6 +111,17 @@ const scam = {
     includeInPortfolioValue: false,
     visibility: 'hidden',
 }
+const secantX = {
+    ...scam,
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    marketPriceUSD: '447463.12',
+    verifiedContract: true,
+    securityStatus: 'low',
+    recognitionReasons: ['moralis-verified-contract', 'market-catalog-only'],
+    visibilityReasons: ['moralis-verified-contract', 'market-catalog-only'],
+}
 
 function activity(type, token, hashSuffix, amount = '1') {
     return {
@@ -134,7 +145,7 @@ function renderDialog() {
         chainId={56}
         nativeBalance={{ value: 1000000000000000000n, formatted: '1' }}
         nativeToken={native}
-        walletTokens={[native, usdt, xaut, scam]}
+        walletTokens={[native, usdt, xaut, scam, secantX]}
         settings={{ hideUnknownTokens: true, hideSmallBalances: false }}
         selectedTokens={[]}
         explorerUrl="https://bscscan.com"
@@ -162,7 +173,10 @@ describe('WalletAccountDialog trust filtering', () => {
 
         expect(screen.getByText('$3,010.00')).toBeTruthy()
         expect(document.body.textContent).not.toContain('$447,526.72')
+        expect(document.body.textContent).not.toContain('$447,463.12')
         expect(screen.queryByText('RETURN TO MEMES')).toBeNull()
+        expect(screen.queryByText('SecantX AI')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
         expect(screen.getByText('5 USDT to 0x00000…00002')).toBeTruthy()
         expect(screen.getByText('0.25 XAUt')).toBeTruthy()
         expect(screen.getByText('0.1 BNB')).toBeTruthy()

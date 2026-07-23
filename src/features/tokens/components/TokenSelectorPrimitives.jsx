@@ -84,9 +84,16 @@ export function TokenRow({ token, currentToken, oppositeToken, showBalance = fal
     const displaySymbol = getTokenDisplaySymbol(token)
     const isCurrent = getTokenKey(token) !== null && getTokenKey(token) === getTokenKey(currentToken)
     const isOpposite = getTokenKey(token) !== null && getTokenKey(token) === getTokenKey(oppositeToken)
+    const riskLabel = token.visibility === 'hidden' ||
+        token.possibleSpam === true ||
+        ['high', 'blocked'].includes(token.securityStatus)
+        ? 'Potential risk'
+        : token.visibility === 'unverified'
+          ? 'Unverified'
+          : null
     return <button type="button" className={['ps-token-row', isCurrent ? 'ps-token-row-selected' : '', isOpposite ? 'ps-token-row-opposite' : '', token.visibility === 'hidden' ? 'ps-token-row-hidden' : ''].filter(Boolean).join(' ')} aria-current={isCurrent ? 'true' : undefined} onClick={() => onSelect(token)} onContextMenu={(event) => onContextMenu(event, token)}>
         <TokenIcon token={token} size="list" />
-        <span className="ps-token-row-details"><strong>{displayName}</strong><span className="ps-token-row-meta"><span className="ps-token-symbol">{displaySymbol}</span>{address && <span className="ps-token-contract" title={token.address}>{address}</span>}{(token.possibleSpam === true || ['high', 'blocked'].includes(token.securityStatus)) && <span className="ps-token-risk-label"><ShieldAlert aria-hidden="true" />Potential risk</span>}</span></span>
+        <span className="ps-token-row-details"><strong>{displayName}</strong><span className="ps-token-row-meta"><span className="ps-token-symbol">{displaySymbol}</span>{address && <span className="ps-token-contract" title={token.address}>{address}</span>}{riskLabel && <span className="ps-token-risk-label"><ShieldAlert aria-hidden="true" />{riskLabel}</span>}</span></span>
         <span className="ps-token-row-value">{showBalance ? <><strong>{formatWalletUsdValue(token)}</strong><span>{formatWalletTokenAmount(token.balance)}</span></> : null}</span>
     </button>
 }

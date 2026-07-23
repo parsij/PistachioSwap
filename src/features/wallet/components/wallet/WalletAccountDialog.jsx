@@ -31,7 +31,7 @@ import { shortenAddress } from '../../../../services/address.js'
 import { resolveWalletUsdValue } from '../../../tokens/services/walletTokens.js'
 import {
     filterPortfolioTokens,
-    isTrustedWalletToken,
+    isPrimaryTrustedAsset,
 } from '../../../tokens/services/portfolio.js'
 import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
 import { useWalletActivity } from '../../hooks/useWalletActivity.js'
@@ -100,7 +100,11 @@ function activityTokenTrusted(candidate, assets, chainId) {
     const match = assets.find((token) =>
         Number(token.chainId) === Number(chainId) &&
         String(token.address ?? '').toLowerCase() === address)
-    return match ? isTrustedWalletToken(match) : isTrustedWalletToken(candidate)
+    const token = match ?? candidate
+    return token.visibility === 'primary' &&
+        token.possibleSpam !== true &&
+        !['high', 'blocked'].includes(token.securityStatus) &&
+        isPrimaryTrustedAsset(token)
 }
 
 function filterTrustedActivity(items, assets) {

@@ -29,25 +29,28 @@ const STRONG_RECOGNITION_REASONS = new Set([
     'curated-official-contract',
     'coingecko-exact-contract',
     'manual-allowlist',
-    'moralis-verified-contract',
     'pancakeswap-curated-list',
     'trustwallet-reviewed-asset',
-    'trusted-market-contract',
 ])
 
-/** Returns whether a wallet token has strong identity evidence suitable for the primary UI. */
+/** Returns whether a wallet token has curated identity evidence suitable for primary UI. */
+export function isPrimaryTrustedAsset(token) {
+    if (!token) return false
+    if (token.isNative === true || token.officialAsset === true) return true
+    if (token.coinGeckoId && token.recognitionStatus !== 'unverified') return true
+    return Array.isArray(token.recognitionReasons) &&
+        token.recognitionReasons.some((reason) =>
+            STRONG_RECOGNITION_REASONS.has(reason))
+}
+
+/** Returns whether a wallet token may appear in normal primary wallet UI. */
 export function isTrustedWalletToken(token) {
     if (!token || token.possibleSpam === true) return false
     if (['high', 'blocked'].includes(token.securityStatus)) return false
     if (token.priceConfidence === 'untrusted') return false
     if (token.includeInPortfolioValue === false) return false
     if (token.visibility === 'hidden') return false
-    if (token.isNative === true || token.officialAsset === true) return true
-    if (token.verifiedContract === true) return true
-    if (token.coinGeckoId && token.recognitionStatus !== 'unverified') return true
-    return Array.isArray(token.recognitionReasons) &&
-        token.recognitionReasons.some((reason) =>
-            STRONG_RECOGNITION_REASONS.has(reason))
+    return isPrimaryTrustedAsset(token)
 }
 
 /** Returns whether a wallet-token record has a strictly positive raw balance. */
@@ -99,6 +102,7 @@ export function getHiddenPortfolioTokens(tokens) {
 export function getUnverifiedPortfolioTokens(tokens) {
     return tokens.filter((token) => {
         if (!isPositiveWalletBalance(token)) return false
+        if (!['primary', 'unverified'].includes(token.visibility)) return false
         if (token.visibility === 'hidden') return false
         return token.visibility === 'unverified' ||
             !isTrustedWalletToken(token)

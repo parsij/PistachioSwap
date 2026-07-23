@@ -80,7 +80,8 @@ export function getMarketTokenExclusionReason(token) {
             'curated-official-contract',
             'curated-token-allowlist',
             'trusted-asset-exact-contract',
-            'provider-verified-contract',
+            'pancakeswap-curated-list',
+            'trustwallet-reviewed-asset',
         ].includes(reason))) return 'missingTrustedContractMatch'
     if (!String(token?.name ?? '').trim() || !String(token?.symbol ?? '').trim() ||
         !Number.isInteger(Number(token?.decimals)) || Number(token.decimals) < 0 ||
@@ -96,10 +97,23 @@ export function filterEligibleMarketTokens(tokens) {
 }
 
 export function isCuratedCommonMarketToken(token) {
+    const reasons = Array.isArray(token?.verificationReasons)
+        ? token.verificationReasons
+        : Array.isArray(token?.recognitionReasons)
+          ? token.recognitionReasons
+          : []
     return getCanonicalTokenIdentity(token) !== null &&
         token?.source === 'curated' &&
         token?.catalogSection === 'common' &&
-        token?.verifiedContract === true &&
+        reasons.some((reason) => [
+            'coingecko-exact-contract',
+            'curated-official-contract',
+            'curated-token-allowlist',
+            'trusted-asset-exact-contract',
+            'pancakeswap-curated-list',
+            'trustwallet-reviewed-asset',
+            'explicit-native-allowlist',
+        ].includes(reason)) &&
         ['established', 'recognized'].includes(
             token?.verificationStatus ?? token?.recognitionStatus,
         ) &&

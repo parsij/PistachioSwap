@@ -84,7 +84,6 @@ describe('wallet token inventory', () => {
     it.each([
         ['CoinGecko recognition', { exactRecognition: true }],
         ['manual exact-address recognition', { allowlisted: true }],
-        ['Moralis exact-contract verification', { moralisVerified: true }],
         ['PancakeSwap curated membership', { pancakeSwapRecognized: true }],
         ['Trust Wallet reviewed membership', { trustWalletRecognized: true }],
     ])('keeps a token primary for %s', (_label, signal) => {
@@ -94,6 +93,21 @@ describe('wallet token inventory', () => {
                 ...signal,
             }).visibility,
         ).toBe('primary')
+    })
+
+    it('does not keep a token primary for Moralis source-code verification alone', () => {
+        expect(classifyWalletTokenVisibility({
+            moralisVerified: true,
+            possibleSpam: false,
+            securityStatus: 'low',
+            suspiciousIndicators: ['market-catalog-only'],
+        })).toEqual({
+            visibility: 'unverified',
+            visibilityReasons: [
+                'unverified-contract',
+                'market-catalog-only',
+            ],
+        })
     })
 
     it('does not keep a token primary for market-catalog membership alone', () => {

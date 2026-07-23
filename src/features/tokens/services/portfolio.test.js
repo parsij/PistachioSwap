@@ -4,6 +4,7 @@ import {
     filterPortfolioTokens,
     getHiddenPortfolioTokens,
     getUnverifiedPortfolioTokens,
+    isTrustedWalletToken,
 } from './portfolio.js'
 
 const recognized = {
@@ -11,6 +12,12 @@ const recognized = {
     address: '0x0000000000000000000000000000000000000001',
     balance: '1',
     valueUSD: '0.19',
+    recognitionStatus: 'recognized',
+    recognitionReasons: ['coingecko-exact-contract'],
+    possibleSpam: false,
+    securityStatus: 'low',
+    priceConfidence: 'trusted',
+    includeInPortfolioValue: true,
     visibility: 'primary',
 }
 const unverified = {
@@ -29,6 +36,27 @@ const missingPrice = {
     ...recognized,
     address: '0x0000000000000000000000000000000000000003',
     valueUSD: null,
+}
+const secantX = {
+    chainId: 56,
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    balance: '1',
+    valueUSD: null,
+    marketPriceUSD: '447463.12',
+    verifiedContract: true,
+    possibleSpam: false,
+    securityStatus: 'low',
+    priceConfidence: 'untrusted',
+    recognitionStatus: 'unverified',
+    recognitionReasons: [
+        'moralis-verified-contract',
+        'trusted-market-contract',
+        'market-catalog-only',
+    ],
+    includeInPortfolioValue: false,
+    visibility: 'hidden',
 }
 
 describe('portfolio presentation filters', () => {
@@ -76,6 +104,13 @@ describe('portfolio presentation filters', () => {
             hideSmallBalances: true,
             selectedTokens: [unverified],
         })).toEqual([])
+    })
+
+    it('does not trust verifiedContract, Moralis verification, or market catalog reasons by themselves', () => {
+        expect(isTrustedWalletToken(secantX)).toBe(false)
+        expect(filterPortfolioTokens([recognized, secantX], {
+            hideUnknownTokens: true,
+        })).toEqual([recognized])
     })
 
     it('fails closed when visibility is missing', () => {

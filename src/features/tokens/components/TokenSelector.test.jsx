@@ -115,7 +115,31 @@ const recognizedCaution = {
     securityStatus: 'caution',
     securityReasons: ['transfer-control-capability', 'transfer-pausable'],
     visibility: 'primary',
-    visibilityReasons: ['moralis-verified-contract'],
+    recognitionReasons: ['trustwallet-reviewed-asset'],
+    visibilityReasons: ['trustwallet-reviewed-asset'],
+}
+
+const secantX = {
+    ...hidden,
+    id: '56:0x0000000000000000000000000000000000000eca',
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    spamStatus: 'clean',
+    possibleSpam: false,
+    verifiedContract: true,
+    securityStatus: 'low',
+    priceUSD: '447463.12',
+    marketPriceUSD: '447463.12',
+    valueUSD: null,
+    priceConfidence: 'untrusted',
+    includeInPortfolioValue: false,
+    visibility: 'hidden',
+    visibilityReasons: [
+        'moralis-verified-contract',
+        'market-catalog-only',
+        'untrusted-market-price',
+    ],
 }
 
 function renderSelector(overrides = {}) {
@@ -211,6 +235,7 @@ describe('TokenSelector wallet rows', () => {
                 source: 'curated',
                 catalogSection: 'common',
                 verifiedContract: true,
+                verificationReasons: ['curated-official-contract'],
                 verificationStatus: 'established',
                 visibility: 'primary',
                 securityStatus: 'trusted',
@@ -354,11 +379,12 @@ describe('TokenSelector wallet rows', () => {
 
     it('filters screenshot junk wallet tokens during normal browsing but reveals exact-address search', () => {
         const junk = [
+            ['SecantX AI', 'SECA', '0x0000000000000000000000000000000000000eca'],
             ['RETURN TO MEMES', 'RET', '0x0000000000000000000000000000000000000101'],
             ['Cash Doge', 'CDOGE', '0x0000000000000000000000000000000000000102'],
             ['everyone', 'EVERYONE', '0x0000000000000000000000000000000000000103'],
             ['CXMT', 'CXMT', '0x0000000000000000000000000000000000000104'],
-            ['Token 0x7ca3...3690', '0x7ca3...3690', '0x7ca3000000000000000000000000000000003690'],
+            ['Token 0x8bf6...abe8', '0x8bf6...abe8', '0x8bf600000000000000000000000000000000abe8'],
         ].map(([name, symbol, address]) => ({
             ...hidden,
             id: `56:${address}`,
@@ -383,7 +409,9 @@ describe('TokenSelector wallet rows', () => {
         expect(screen.getByText('BNB', { selector: 'strong' })).toBeTruthy()
         expect(screen.getByText(recognizedCaution.name)).toBeTruthy()
         for (const token of junk) expect(screen.queryByText(token.name)).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
         expect(document.body.textContent).not.toContain('$447,526.72')
+        expect(document.body.textContent).not.toContain('$447,463.12')
         cleanup()
 
         renderSelector({
@@ -392,7 +420,27 @@ describe('TokenSelector wallet rows', () => {
             search: junk[0].address,
             hideUnknownTokens: true,
         })
-        expect(screen.getByText('RETURN TO MEMES')).toBeTruthy()
+        expect(screen.getByText('SecantX AI')).toBeTruthy()
+        expect(screen.getByText('SECA')).toBeTruthy()
+        expect(document.body.textContent).not.toContain('$447,463.12')
+    })
+
+    it('does not let verifiedContract or market-catalog-only tokens enter Your tokens', () => {
+        renderSelector({
+            walletTokens: [native, recognizedCaution, secantX],
+            tokens: [secantX],
+            currentToken: null,
+            hideUnknownTokens: true,
+        })
+        const primarySection = screen.getByText('Your tokens').closest('section')
+        expect(within(primarySection).getByText('BNB', { selector: 'strong' }))
+            .toBeTruthy()
+        expect(within(primarySection).getByText('Issuer-controlled asset'))
+            .toBeTruthy()
+        expect(within(primarySection).queryByText('SecantX AI')).toBeNull()
+        expect(screen.queryByText('SecantX AI')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
+        expect(document.body.textContent).not.toContain('$447,463.12')
     })
 
     it('persists the two collapsed-section states without touching other storage', () => {

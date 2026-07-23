@@ -33,6 +33,22 @@ const hidden = {
     securityStatus: 'high',
     visibility: 'hidden',
 }
+const secantX = {
+    ...hidden,
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    valueUSD: null,
+    marketPriceUSD: '447463.12',
+    verifiedContract: true,
+    possibleSpam: false,
+    securityStatus: 'low',
+    priceConfidence: 'untrusted',
+    includeInPortfolioValue: false,
+    recognitionStatus: 'unverified',
+    recognitionReasons: ['moralis-verified-contract', 'market-catalog-only'],
+    visibilityReasons: ['moralis-verified-contract', 'market-catalog-only'],
+}
 const unverified = {
     ...hidden,
     address: '0x0000000000000000000000000000000000000003',
@@ -49,14 +65,17 @@ describe('WalletAssetList security presentation', () => {
 
     it('keeps unknown holdings behind one collapsed Hidden tokens entry', () => {
         render(<WalletAssetList
-            tokens={[primary, unverified, hidden]}
+            tokens={[primary, unverified, hidden, secantX]}
             settings={{ hideUnknownTokens: true, hideSmallBalances: false }}
         />)
 
         expect(screen.getByText('Established token')).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Hidden tokens (2)' })).toBeTruthy()
+        expect(screen.getByRole('button', { name: 'Hidden tokens (3)' })).toBeTruthy()
         expect(screen.queryByText('Unknown token')).toBeNull()
         expect(screen.queryByText('Unverified token')).toBeNull()
+        expect(screen.queryByText('SecantX AI')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
+        expect(document.body.textContent).not.toContain('$447,463.12')
     })
 
     it('reveals hidden holdings only after an explicit click and never trusts their values', () => {

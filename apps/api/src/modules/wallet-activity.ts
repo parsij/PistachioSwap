@@ -261,9 +261,7 @@ function trustedWalletToken(token: WalletToken | undefined) {
     return token.visibility === 'primary' &&
         token.recognitionStatus !== 'unverified' &&
         token.possibleSpam !== true &&
-        token.priceConfidence !== 'untrusted' &&
-        token.includeInPortfolioValue !== false &&
-        !['caution', 'high', 'blocked'].includes(token.securityStatus)
+        !['high', 'blocked'].includes(token.securityStatus)
 }
 
 function activityTokenTrusted(

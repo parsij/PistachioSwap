@@ -197,6 +197,44 @@ describe('normalized wallet token response', () => {
         })
     })
 
+    it('does not fetch native prices for a zero native balance', async () => {
+        const tokens = await getWalletTokens({
+            chainId: 56,
+            walletAddress: '0x1000000000000000000000000000000000000063',
+            inventory: {
+                balances: new Map(),
+                nativeBalance: 0n,
+                pageCount: 1,
+                metadata: new Map(),
+                prices: new Map(),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+
+        expect(tokens).toEqual([])
+        expect(mocks.getNativeBnbPrice).not.toHaveBeenCalled()
+    })
+
+    it('does not fetch native prices for empty non-BSC portfolio chains', async () => {
+        const tokens = await getWalletTokens({
+            chainId: 100,
+            walletAddress: '0x1000000000000000000000000000000000000064',
+            inventory: {
+                balances: new Map(),
+                nativeBalance: 0n,
+                pageCount: 1,
+                metadata: new Map(),
+                prices: new Map(),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+
+        expect(tokens).toEqual([])
+        expect(mocks.getNativeBnbPrice).not.toHaveBeenCalled()
+    })
+
     it('keeps manipulated exact-address market value untrusted and unverified', async () => {
         const address = tokenAddresses[0]
         mocks.getTokenMetadataBatch.mockResolvedValue(new Map([[address, {
@@ -389,7 +427,7 @@ describe('normalized wallet token response', () => {
         })
     })
 
-    it('keeps a newer exact contract primary when Moralis verifies it', async () => {
+    it('keeps Moralis source-code verification informational and hidden without curated identity', async () => {
         const address = tokenAddresses[0]
         mocks.getMoralisWalletTokens.mockResolvedValue({
             available: true,
@@ -415,15 +453,102 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000047',
         })
         expect(tokens.find((item) => item.address === address)).toMatchObject({
-            recognitionStatus: 'recognized',
+            recognitionStatus: 'unverified',
             recognitionReasons: ['moralis-verified-contract'],
             spamStatus: 'clean',
             possibleSpam: false,
             verifiedContract: true,
-            visibility: 'primary',
+            visibility: 'hidden',
             trustedPriceUSD: null,
-            valueUSD: '2',
+            marketPriceUSD: '2',
+            valueUSD: null,
         })
+    })
+
+    it('hides SecantX-style verified market-catalog scams and strips fake value', async () => {
+        const address = tokenAddresses[0]
+        mocks.getCatalog.mockResolvedValue({
+            catalog: {
+                generatedAt: Date.now(),
+                tokens: [{
+                    chainId: 56,
+                    address,
+                    name: 'SecantX AI',
+                    symbol: 'SECA',
+                    decimals: 18,
+                    priceUSD: '447463.12',
+                    verifiedContract: true,
+                    recognitionReasons: ['trusted-market-contract'],
+                }],
+            },
+            stale: false,
+        })
+        mocks.getMoralisWalletTokens.mockResolvedValue({
+            available: true,
+            checkedAt: new Date(0).toISOString(),
+            pageCount: 1,
+            tokens: new Map([[address, {
+                chainId: 56,
+                address,
+                possibleSpam: false,
+                verifiedContract: true,
+                name: 'SecantX AI',
+                symbol: 'SECA',
+                decimals: 18,
+                logoURI: null,
+                priceUSD: '447463.12',
+                valueUSD: '447463.12',
+                source: 'moralis',
+            }]]),
+        })
+        mocks.fetchTokenMarkets.mockResolvedValue({
+            markets: new Map([[address, {
+                address,
+                name: 'SecantX AI',
+                symbol: 'SECA',
+                priceUSD: '447463.12',
+                volume24hUsd: 1000000,
+                liquidityUsd: 1000000,
+                pairCount: 4,
+                pairUrl: null,
+                oldestPairCreatedAt: null,
+            }]]),
+            partial: false,
+            successfulBatches: 1,
+            failedBatches: 0,
+        })
+        mocks.getCachedAndRefresh.mockReturnValue({
+            securityStatus: 'low',
+            securityScore: 0,
+            securityReasons: ['security-risk-low'],
+            honeypot: { available: true, checkedAt: new Date(0).toISOString(), risk: 'low', riskLevel: 0, isHoneypot: false },
+            goPlus: { available: false, checkedAt: null, isHoneypot: null },
+        })
+
+        const tokens = await getWalletTokens({
+            chainId: 56,
+            walletAddress: '0x1000000000000000000000000000000000000062',
+        })
+        const result = tokens.find((item) => item.address === address)
+        expect(result).toMatchObject({
+            name: 'SecantX AI',
+            symbol: 'SECA',
+            verifiedContract: true,
+            possibleSpam: false,
+            recognitionStatus: 'unverified',
+            visibility: 'hidden',
+            includeInPortfolioValue: false,
+            valueUSD: null,
+            trustedPriceUSD: null,
+            marketPriceUSD: '447463.12',
+            priceConfidence: 'untrusted',
+        })
+        expect(result?.visibilityReasons).toEqual(expect.arrayContaining([
+            'moralis-verified-contract',
+            'market-catalog-only',
+            'untrusted-market-price',
+        ]))
+        expect(result?.visibilityReasons).not.toContain('trusted-market-contract')
     })
 
     it('hides Moralis possible spam even when contract risk is low', async () => {
