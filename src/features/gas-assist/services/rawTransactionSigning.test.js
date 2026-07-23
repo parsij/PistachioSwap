@@ -23,17 +23,17 @@ const preparedTransaction = {
 }
 
 describe('private sponsored wallet compatibility', () => {
-    it('supports only an explicit Pistachio embedded/local connector using eth_signTransaction', async () => {
+    it('supports only Pistachio local wallet using eth_signTransaction', async () => {
         const request = vi.fn().mockResolvedValue('0x1234')
         const walletClient = { request }
         const capability = detectRawTransactionSigning({
-            connector: { id: 'pistachio-embedded' },
+            connector: { id: 'pistachio-local' },
             walletClient,
         })
         expect(capability).toMatchObject({
             rawTransactionSigningSupported: true,
             method: 'eth_signTransaction',
-            transport: 'pistachio-embedded',
+            transport: 'pistachio-local',
             status: 'verified',
         })
         await expect(signRawSponsoredTransaction({ capability, walletClient, transaction: { to: '0x1' } }))
@@ -44,14 +44,18 @@ describe('private sponsored wallet compatibility', () => {
         })
     })
 
-    it.each(['injected', 'walletConnect', 'coinbaseWallet', 'eip6963'])('fails closed for external connector %s', (id) => {
-        expect(detectRawTransactionSigning({ connector: { id }, walletClient: { request() {} } })).toMatchObject({
-            rawTransactionSigningSupported: false,
-            method: null,
-            transport: null,
-            status: 'unsupported',
-        })
-    })
+    it.each(['pistachio-embedded', 'injected', 'walletConnect', 'io.metamask', 'coinbaseWallet', 'eip6963'])(
+        'fails closed for external connector %s',
+        (id) => {
+            expect(detectRawTransactionSigning({ connector: { id }, walletClient: { request() {} } })).toMatchObject({
+                rawTransactionSigningSupported: false,
+                method: null,
+                transport: null,
+                status: 'unsupported',
+                reasonCode: 'PISTACHIO_WALLET_REQUIRED',
+            })
+        },
+    )
 
     it('does not substitute personal_sign, eth_sign, or typed-data signing', async () => {
         const request = vi.fn()
@@ -59,7 +63,7 @@ describe('private sponsored wallet compatibility', () => {
             capability: { rawTransactionSigningSupported: false, method: null },
             walletClient: { request },
             transaction: {},
-        })).rejects.toMatchObject({ code: 'WALLET_RAW_TRANSACTION_SIGNING_UNSUPPORTED' })
+        })).rejects.toMatchObject({ code: 'PISTACHIO_WALLET_REQUIRED' })
         expect(request).not.toHaveBeenCalled()
     })
 
@@ -90,10 +94,10 @@ describe('private sponsored wallet compatibility', () => {
 
     it('never submits when local raw-transaction validation fails', async () => {
         const walletClient = { request: vi.fn().mockResolvedValue('0x1234') }
-        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-embedded' }, walletClient })
+        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
         const submitSignedTransaction = vi.fn()
         await expect(signPreparedSponsoredTransaction({
-            transport: 'pistachio-embedded',
+            transport: 'pistachio-local',
             capability,
             walletClient,
             preparedTransaction,
@@ -103,13 +107,26 @@ describe('private sponsored wallet compatibility', () => {
         expect(submitSignedTransaction).not.toHaveBeenCalled()
     })
 
+    it('rejects every non-Pistachio transport before wallet invocation', async () => {
+        const request = vi.fn()
+        const submitSignedTransaction = vi.fn()
+        await expect(signPreparedSponsoredTransaction({
+            transport: 'metamask-connect-multichain',
+            capability: { rawTransactionSigningSupported: true, method: 'eth_signTransaction' },
+            walletClient: { request },
+            preparedTransaction,
+            authenticatedWalletAddress: localWallet.address,
+            submitSignedTransaction,
+        })).rejects.toMatchObject({ code: 'PISTACHIO_WALLET_REQUIRED' })
+        expect(request).not.toHaveBeenCalled()
+        expect(submitSignedTransaction).not.toHaveBeenCalled()
+    })
+
     it('does not persist raw transactions and contains no frontend MegaFuel credentials', async () => {
         const sources = await Promise.all([
             readFile(new URL('../hooks/usePrepaidSponsorship.js', import.meta.url), 'utf8'),
             readFile(new URL('./prepaidSponsorship.js', import.meta.url), 'utf8'),
             readFile(new URL('./rawTransactionSigning.js', import.meta.url), 'utf8'),
-            readFile(new URL('./metamaskMultichain.js', import.meta.url), 'utf8'),
-            readFile(new URL('../hooks/useMetaMaskMultichainSigner.js', import.meta.url), 'utf8'),
         ])
         const joined = sources.join('\n')
         expect(joined).not.toMatch(/localStorage|sessionStorage/)

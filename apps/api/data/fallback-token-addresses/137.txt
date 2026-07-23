@@ -1,0 +1,208 @@
+# Chain ID: 137
+# CoinGecko asset platform: polygon-pos
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 100
+
+# USDC | USDC | market-ranked
+0x3c499c542cef5e3811e1192ce70d8cc03d5c3359
+# LINK | Chainlink | market-ranked
+0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39
+# PYUSD | PayPal USD | market-ranked
+0x99af3eea856556646c98c8b9b2548fe815240750
+# BUIDL | BlackRock USD Institutional Digital Liquidity Fund | market-ranked
+0x2893ef551b6dd69f661ac00f11d93e5dc5dc0e99
+# UNI | Uniswap | market-ranked
+0xb33eaad8d922b1083446dc23f610c2567fb5180f
+# AAVE | Aave | market-ranked
+0xd6df932a45c0f255f85145f286ea0b292b21c90b
+# POL | POL (ex-MATIC) | market-ranked
+0x0000000000000000000000000000000000001010
+# NEXO | NEXO | market-ranked
+0x41b3966b4ff7b427969ddf5da3627d6aeae9a48e
+# EUTBL | Spiko EU T-Bills Money Market Fund | market-ranked
+0xa0769f7a8fc65e47de93797b4e21c073c117fc80
+# OUSG | Ondo Short-Term U.S. Government Bond Fund | market-ranked
+0xba11c5effa33c4d6f8f593cfa394241cfe925811
+# LDO | Lido DAO | market-ranked
+0xc3c7d422809852031b44ab29eec9f1eff2a58756
+# CRV | Curve DAO | market-ranked
+0x172370d5cd63279efa6d502dab29171933a610af
+# ZRO | LayerZero | market-ranked
+0x6985884c4392d348587b19cb9eaaf157f13271cd
+# BONK | Bonk | market-ranked
+0xe5b49820e5a1063f6f4ddf851327b5e8b2301048
+# FRAX | Legacy Frax Dollar | market-ranked
+0x45c32fa6df82ead1e2ef74d17b76547eddfaff89
+# CRVUSD | crvUSD | market-ranked
+0xc4ce1d6f5d98d65ee25cf85e9f2e9dcfee6cb5d6
+# AUSD | AUSD | market-ranked
+0x00000000efe302beaa2b3e6e1b18d08d69a9012a
+# APEPE | Ape and Pepe | market-ranked
+0xa3f751662e282e83ec3cbc387d225ca56dd63d3a
+# TEL | Telcoin | market-ranked
+0xdf7837de1f2fa4631d716cf2502f8b230f1dcc32
+# GRT | The Graph | market-ranked
+0x5fe2b58c013d7601147dcdd68c143a77499f5531
+# COMP | Compound | market-ranked
+0x8505b9d2254a7ae468c0e9dd10ccea3a837aef5c
+# USTBL | Spiko US T-Bills Money Market Fund | market-ranked
+0xe4880249745eac5f1ed9d8f7df844792d560e750
+# VCNT | ViciCoin | market-ranked
+0x8a16d4bf8a0a716017e8d2262c4ac32927797a2f
+# SAFO | Spiko Amundi Overnight Swap Fund | market-ranked
+0x6f64f47f95cf656f21b40e14798f6b49f80b3dc5
+# APE | ApeCoin | market-ranked
+0xb7b31a6bc18e48888545ce79e83e06003be70930
+# SAND | The Sandbox | market-ranked
+0xbbba073c31bf03b8acf7c28ef0738decf3695683
+# MANA | Decentraland | market-ranked
+0xa1c57f48f0deb89f569dfbe6e2b7f46d33606fd4
+# SNX | Synthetix | market-ranked
+0x50b728d8d964fd00c2d0aad81718b71311fef68a
+# BAT | Basic Attention | market-ranked
+0x3cef98bb43d732e2f285ee605a8158cde967d219
+# ACRED | Apollo Diversified Credit Securitize Fund | market-ranked
+0xfce60bbc52a5705cec5b445501fbaf3274dc43d0
+# FRXUSD | Frax USD | market-ranked
+0x80eede496655fb9047dd39d9f418d5483ed600df
+# GEOD | Geodnet | market-ranked
+0xac0f66379a6d7801d7726d5a943356a172549adb
+# FLUID | Fluid | market-ranked
+0xf50d05a1402d0adafa880d36050736f9f6ee7dee
+# COW | CoW Protocol | market-ranked
+0x2f4efd3aa42e15a1ec6114547151b63ee5d39958
+# YFI | yearn.finance | market-ranked
+0xda537104d6a5edd53c6fbba9a898708e465260b6
+# STAU | STAU | market-ranked
+0x37c5ebfae4e4da225e9d8042b05063c4a2c94bb6
+# ELG | Escoin | market-ranked
+0x8226ac9edb26ff16da19151042a8ba3bb2cc237f
+# XAUM | Matrixdock Gold | market-ranked
+0xa7e22972a19dd924afeedf3db28033b146801081
+# ZIG | ZIGChain | market-ranked
+0x7bebd226154e865954a87650faefa8f485d36081
+# SUPER | SuperVerse | market-ranked
+0xa1428174f516f527fafdd146b883bb4428682737
+# JPYC | JPY Coin | market-ranked
+0xe7c3d8c9a439fede00d2600032d5db0be71c3c29
+# BRZ | Brazilian Digital | market-ranked
+0x4ed141110f6eeeaba9a1df36d8c26f684d2475dc
+# REQ | Request | market-ranked
+0xb25e20de2f2ebb4cffd4d16a55c7b395e8a94762
+# AXL | Axelar | market-ranked
+0x6e4e624106cb12e168e6533f8ec7c82263358940
+# SUSHI | Sushi | market-ranked
+0x0b3f868e0be5597d5db7feb59e1cadbb0fdda50a
+# AIPF | AI Powered Finance | market-ranked
+0x2c72d25530191ebd244eb6325e1892480b0e6e28
+# ZCHF | Frankencoin | market-ranked
+0xd4dd9e2f021bb459d5a5f6c24c12fe09c5d45553
+# TRB | Tellor Tributes | market-ranked
+0xe3322702bedaaed36cddab233360b939775ae5f1
+# RIZE | RIZE | market-ranked
+0x9f1e8f87c6321b84bad7dda7dfb86d5115a47605
+# RNT | Reental | market-ranked
+0x27ab6e82f3458edbc0703db2756391b899ce6324
+# RPL | Rocket Pool | market-ranked
+0x7205705771547cf79201111b4bd8aaf29467b9ec
+# MASK | Mask Network | market-ranked
+0x2b9e7ccdf0f4e5b24757c1e1a80e311e34cb10c7
+# VANA | Vana | market-ranked
+0x7ff7fa94b8b66ef313f7970d4eebd2cb3103a2c0
+# ANKR | Ankr Network | market-ranked
+0x101a023270368c0d50bffb62780f4afd4ea79c35
+# TGBP | Tokenised GBP | market-ranked
+0x27f6c8289550fce67f6b50bed1f519966afe5287
+# FOLKS | FOLKS | market-ranked
+0xff7f8f301f7a706e3cfd3d2275f5dc0b9ee8009b
+# CXO | CargoX | market-ranked
+0xf2ae0038696774d65e67892c9d301c5f2cbbda58
+# EURE | Monerium EUR emoney | market-ranked
+0xe0aea583266584dafbb3f9c3211d5588c73fea8d
+# ELON | Dogelon Mars | market-ranked
+0xe0339c80ffde91f3e20494df88d4206d86024cdf
+# SYN | Synapse | market-ranked
+0xf8f9efc0db77d8881500bb06ff5d6abc3070e695
+# ORBS | Orbs | market-ranked
+0x614389eaae0a6821dc49062d56bda3d9d45fa2ff
+# BCSPX | Backed CSPX Core S&P 500 | market-ranked
+0x1e2c4fb7ede391d116e6b41cd0608260e8801d59
+# AVLT | Altura Vault Tokens | market-ranked
+0x74db7a52773a52699dbc0c01b1254e5301e3e119
+# ACX | Across Protocol | market-ranked
+0xf328b73b6c685831f238c30a23fc19140cb4d8fc
+# EURE | Monerium EUR emoney [OLD] | market-ranked
+0x18ec0a6e18e5bc3784fdd3a3634b31245ab704f6
+# EMRL.D | Emerald Security Token | market-ranked
+0xb91025710adbc140a9fee4b3e465545a2bf53e20
+# LUSD | Liquity USD | market-ranked
+0x23001f892c0c82b79303edc9b9033cd190bb21c7
+# KNC | Kyber Network Crystal | market-ranked
+0x1c954e8fe737f99f68fa1ccda3e51ebdb291948c
+# OCEAN | Ocean Protocol | market-ranked
+0x282d8efce846a88b159800bd4130ad77443fa1a1
+# FRAX | Frax (prev. FXS) | market-ranked
+0x1a3acf6d19267e2d3e7f898f42803e90c9219062
+# WOO | WOO | market-ranked
+0x1b815d120b3ef02039ee11dc2d33de7aa4a8c603
+# CTSI | Cartesi | market-ranked
+0x2727ab1c2d22170abc9b595177b2d5c6e1ab7b7b
+# RYZE | Ryze | market-ranked
+0x44e3ae622c1570dc6e492adb8de92d01ca923d26
+# PROS | Prospective | market-ranked
+0xea0941c6e067a4fb4399436ad3e2510eb36b419d
+# FTRB | Faith Tribe | market-ranked
+0xc3f56d567e7663e8932e65d85ae4be7eb5575ca7
+# VATRENI | Croatian Football Federation Token | market-ranked
+0xd60deba014459f07bbcc077a5b817f31dafd5229
+# GMT | GMT | market-ranked
+0x714db550b574b3e927af3d93e26127d15721d4c2
+# BRLA | BRLA Digital BRLA | market-ranked
+0xe6a537a407488807f0bbeb0038b79004f19dddfb
+# DODO | DODO | market-ranked
+0xe4bf2864ebec7b7fdf6eeca9bacae7cdfdaffe78
+# CVC | Civic | market-ranked
+0x66dc5a08091d1968e08c16aa5b27bac8398b02be
+# STG | Stargate Finance | market-ranked
+0x2f6f07cdcf3588944bf4c42ac74ff24bf56e7590
+# IQ | IQ | market-ranked
+0xb9638272ad6998708de56bbc0a290a1de534a578
+# JPYC | JPY Coin v1 | market-ranked
+0x6ae7dfc73e0dde2aa99ac063dcf7e8a63265108c
+# JPYC | JPY Coin | market-ranked
+0x431d5dff03120afa4bdf332c61a6e1766ef37bdb
+# BIB01 | Backed IB01 $ Treasury Bond 0-1yr | market-ranked
+0xca30c93b02514f86d5c86a6e375e3a330b435fb5
+# YGG | Yield Guild Games | market-ranked
+0x82617aa52dddf5ed9bb7b370ed777b3182a30fd1
+# CRMC | Chrema Coin | market-ranked
+0x61ca155f1660b0af117ed00321d1c3ee264ef943
+# CBK | Cobak | market-ranked
+0x4ec203dd0699fac6adaf483cdd2519bc05d2c573
+# SOPH | Sophon | market-ranked
+0xeb971fd26783f32694dbb392dd7289de23109148
+# ARPA | ARPA | market-ranked
+0xee800b277a96b0f490a1a732e1d6395fad960a26
+# B2M | Bit2Me | market-ranked
+0xe613a914bbb433855378183c3ab13003285da40a
+# ADS | Adshares | market-ranked
+0x598e49f01befeb1753737934a5b11fea9119c796
+# VEE | BLOCKv | market-ranked
+0xf1c1a3c2481a3a8a3f173a9ab5ade275292a6fa3
+# ULT | Shardus | market-ranked
+0xf0059cc2b3e980065a906940fbce5f9db7ae40a7
+# GNS | Gains Network | market-ranked
+0xe5417af564e4bfda1c483642db72007871397896
+# C98 | Coin98 | market-ranked
+0x77f56cf9365955486b12c4816992388ee8606f0e
+# ORDER | Orderly | market-ranked
+0x4e200fe2f3efb977d5fd9c430a41531fb04d97b8
+# XSGD | XSGD | market-ranked
+0xdc3326e71d45186f113a2f448984ca0e8d201995
+# WALLET | Ambire Wallet | market-ranked
+0x564906ec1df8399f00e4ad32c0ecac0404a27a1c
+# MIMATIC | MAI | market-ranked
+0xa3fa99a148fa48d14ed51d610c367c61876997f1

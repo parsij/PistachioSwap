@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../src/providers/alchemy/wallet-tokens.js', () => ({
     getWalletTokens: mocks.getWalletTokens,
-    WALLET_TOKEN_CLASSIFICATION_VERSION: 4,
+    WALLET_TOKEN_CLASSIFICATION_VERSION: 5,
 }))
 
 vi.mock('../src/providers/alchemy/portfolio-wallet-tokens.js', () => ({
@@ -38,7 +38,7 @@ describe('wallet-token route', () => {
     it('returns normalized security fields without provider secrets', async () => {
         process.env.ALCHEMY_PORTFOLIO_ENABLED = 'false'
         mocks.getWalletTokens.mockResolvedValue([{
-            classificationVersion: 4,
+            classificationVersion: 6,
             id: `56:${token}`,
             chainId: 56,
             address: token,
@@ -71,7 +71,7 @@ describe('wallet-token route', () => {
         await app.close()
         expect(response.statusCode).toBe(200)
         expect(response.json().tokens[0]).toMatchObject({
-            classificationVersion: 4,
+            classificationVersion: 6,
             recognitionStatus: 'unverified',
             spamStatus: 'unknown',
             possibleSpam: null,
@@ -79,7 +79,7 @@ describe('wallet-token route', () => {
             visibility: 'unverified',
             securityStatus: 'unknown',
         })
-        expect(response.json().classificationVersion).toBe(4)
+        expect(response.json().classificationVersion).toBe(6)
         expect(response.body).not.toMatch(/api.?key|authorization|access.?token/i)
     })
 
@@ -87,7 +87,7 @@ describe('wallet-token route', () => {
         process.env.ALCHEMY_PORTFOLIO_ENABLED = 'true'
         process.env.ALCHEMY_API_KEY = 'test-key'
         mocks.getAlchemyPortfolioWalletTokens.mockResolvedValue({
-            classificationVersion: 4,
+            classificationVersion: 6,
             address: wallet,
             source: 'alchemy-portfolio',
             tokens: [],
@@ -134,7 +134,7 @@ describe('wallet-token route', () => {
         process.env.ALCHEMY_PORTFOLIO_ENABLED = 'true'
         process.env.ALCHEMY_API_KEY = 'test-key'
         mocks.getAlchemyPortfolioWalletTokens.mockResolvedValue({
-            classificationVersion: 4,
+            classificationVersion: 6,
             address: wallet,
             source: 'alchemy-portfolio',
             tokens: [{ chainId: 56, address: token }],

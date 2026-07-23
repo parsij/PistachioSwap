@@ -1,0 +1,88 @@
+# Chain ID: 534352
+# CoinGecko asset platform: scroll
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 40
+
+# LINK | Chainlink | market-ranked
+0x548c6944cba02b9d1c0570102c89de64d258d3ac
+# USDE | Ethena USDe | market-ranked
+0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34
+# ENA | Ethena | market-ranked
+0x58538e6a46e07434d7e7375bc268d3cb839c0133
+# ETHFI | Ether.fi | market-ranked
+0x056a5fa5da84ceb7f93d36e545c5905607d8bd81
+# FRXUSD | Frax USD | market-ranked
+0x397f939c3b91a74c321ea7129396492ba9cdce82
+# ANKR | Ankr Network | market-ranked
+0xdf474b7109b73b7d57926d43598d5934131136b2
+# EURE | Monerium EUR emoney | market-ranked
+0xd7bb130a48595fcdf9480e36c1ae97ff2938ac21
+# STG | Stargate Finance | market-ranked
+0x8731d54e9d02c286767d56ac03e8037c07e01e98
+# SCR | Scroll | market-ranked
+0xd29687c813d741e2f938f4ac377128810e217b1b
+# SIS | Symbiosis | market-ranked
+0x1467b62a6ae5cdcb10a6a8173cfe187dd2c5a136
+# USX | USX | market-ranked
+0x3b005fefc63ca7c8d25ee21fba3787229ba4cf03
+# POOL | PoolTogether | market-ranked
+0xf9af83fc41e0cc2af2fba93644d542df6ea0f2b7
+# IZI | iZUMi Finance | market-ranked
+0x60d01ec2d5e98ac51c8b4cf84dfcce98d527c747
+# ABCNURI | abcNURI | CoinGecko-listed
+0x330c43d22bd65a60ffea93a197f04e87faa27b70
+# ANKRETH | Ankr Staked ETH | CoinGecko-listed
+0x12d8ce035c5de3ce39b1fdd4c1d5a745eaba3b8c
+# AXLUSDC | Axelar Bridged USDC | CoinGecko-listed
+0xeb466342c4d449bc9f53a865d5cb90586f405215
+# USDC | Bridged USD Coin (Scroll) | CoinGecko-listed
+0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4
+# WBTC | Bridged Wrapped Bitcoin (Scroll) | CoinGecko-listed
+0x3c1bca5a656e69edcd0d4e36bebb3fcdaca60cf1
+# WETH | Bridged Wrapped Ether (Scroll) | CoinGecko-listed
+0x5300000000000000000000000000000000000004
+# WSTETH | Bridged Wrapped Lido Staked Ether (Scroll) | CoinGecko-listed
+0xf610a9dfb7c89644979b4a0f27063e9e7d7cda32
+# DACKIE | DackieSwap [OLD] | CoinGecko-listed
+0xb9010964301326160173da694c0697a2fce82f39
+# SUSDE | Ethena Staked USDe | CoinGecko-listed
+0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2
+# IBEX | Impermax | CoinGecko-listed
+0x78ab77f7d590fb101aa18affc238cbfea31ead5b
+# IUSD | iZUMi Bond USD | CoinGecko-listed
+0x0a3bb08b3a15a19b4de82f8acfc862606fb69a2d
+# RSETH | Kelp DAO Restaked ETH | CoinGecko-listed
+0x65421ba909200b81640d98b979d07487c9781b66
+# MVX | Metavault Trade | CoinGecko-listed
+0x0018d96c579121a94307249d47f053e2d687b5e7
+# PAPYRUS | Papyrus Swap | CoinGecko-listed
+0x0fc479e2f9b7310bfb1db606cf565dea6910eedc
+# PED | Perseid Finance | CoinGecko-listed
+0xfec65bfb6e5bbcc9ab8ae98f62a8aab2ea51c495
+# PUNK | PunkSwap | CoinGecko-listed
+0xddeb23905f6987d5f786a93c00bbed3d97af1ccc
+# RSWETH | Restaked Swell ETH | CoinGecko-listed
+0x89f17ab70cafb1468d633056161573efefea0713
+# SCRIBES | Scribes | CoinGecko-listed
+0x750351a9f75f98f2c2e91d4edb3beb14e719557e
+# USDT | Scroll Bridged USDT (Scroll) | CoinGecko-listed
+0xf55bec9cafdbe8730f096aa55dad6d22d44099df
+# SKY | Skydrome | CoinGecko-listed
+0x95a52ec1d60e74cd3eb002fe54a2c74b185a4c16
+# STONE | StakeStone ETH | CoinGecko-listed
+0x80137510979822322193fc997d400d5a6c747bf7
+# SUSX | sUSX | CoinGecko-listed
+0xcb14bcdf6cd483665d10dfd6f87d908996c7f922
+# WEETH | Wrapped eETH | CoinGecko-listed
+0x01f0a31698c4d065659b9bdc21b3610292a1c506
+# WFRAX | Wrapped FRAX | CoinGecko-listed
+0x879ba0efe1ab0119fefa745a21585fa205b07907
+# WRSETH | Wrapped rsETH | CoinGecko-listed
+0xa25b25548b4c98b0c7d3d27dca5d5ca743d68b7f
+# YNETHX | ynETH MAX | CoinGecko-listed
+0xe231db5f348d709239ef1741ea30961b3b635a61
+# ZP | Z Protocol | CoinGecko-listed
+0x2147a89fb4608752807216d5070471c09a0dce32

@@ -1,4 +1,4 @@
-import { normalizeAddress } from '../../lib/address.js'
+import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../../lib/address.js'
 
 export type PaymentTokenCandidate = {
     chainId: number
@@ -36,9 +36,15 @@ export type CandidateRejection = {
     code: string
 }
 
+function dangerouslyBypassSponsorshipTokenChecks() {
+    return process.env.DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS
+        ?.trim()
+        .toLowerCase() === 'true'
+}
+
 function relationshipRank(address: string, sellToken: string, buyToken: string) {
     if (address === sellToken) return 1
-    if (address === buyToken) return 2
+    if (buyToken !== NATIVE_TOKEN_ADDRESS && address === buyToken) return 2
     return 3
 }
 
@@ -61,6 +67,12 @@ export function evaluatePaymentTokenCandidate({
         return 'PAYMENT_TOKEN_DECIMALS_MISMATCH'
     }
     if (candidate.priceUsdMicros <= 0n) return 'PAYMENT_TOKEN_PRICE_UNAVAILABLE'
+
+    if (dangerouslyBypassSponsorshipTokenChecks()) {
+        if (candidate.balanceRaw < requiredPaymentRaw) return 'PAYMENT_TOKEN_BALANCE_LOW'
+        return null
+    }
+
     const ageMilliseconds = now.getTime() - candidate.priceObservedAt.getTime()
     if (ageMilliseconds < 0 || ageMilliseconds > candidate.maximumPriceAgeSeconds * 1_000) {
         return 'PAYMENT_TOKEN_PRICE_STALE'
@@ -68,20 +80,29 @@ export function evaluatePaymentTokenCandidate({
     if (candidate.priceDeviationBps < 0 || candidate.priceDeviationBps > candidate.maximumPriceDeviationBps) {
         return 'PAYMENT_TOKEN_PRICE_DEVIATION'
     }
+    if (candidate.securityStatus === 'unknown') return 'PAYMENT_TOKEN_MORALIS_UNAVAILABLE'
+    if (candidate.securityStatus === 'blocked') return 'PAYMENT_TOKEN_SECURITY_UNCONFIRMED'
+
     const minimumLiquidity = candidate.minimumLiquidityUsdMicros > configuredMinimumLiquidityUsdMicros
         ? candidate.minimumLiquidityUsdMicros
         : configuredMinimumLiquidityUsdMicros
     if (candidate.liquidityUsdMicros < minimumLiquidity) return 'PAYMENT_TOKEN_LIQUIDITY_LOW'
+
     if (!candidate.exactTransferRequired || candidate.feeOnTransferAllowed || candidate.transferBehavior === 'fee-on-transfer') {
         return 'FEE_ON_TRANSFER_UNSUPPORTED'
     }
     if (candidate.rebasingAllowed || candidate.transferBehavior === 'rebasing') {
         return 'REBASING_TOKEN_UNSUPPORTED'
     }
-    if (candidate.transferBehavior !== 'exact') return 'PAYMENT_TOKEN_TRANSFER_UNKNOWN'
-    if (candidate.strictSecurityRequired && !['trusted', 'low'].includes(candidate.securityStatus)) {
-        return 'PAYMENT_TOKEN_SECURITY_UNCONFIRMED'
+
+    const moralisSafetyConfirmed = ['trusted', 'low'].includes(candidate.securityStatus)
+    if (candidate.strictSecurityRequired) {
+        if (!moralisSafetyConfirmed) return 'PAYMENT_TOKEN_SECURITY_UNCONFIRMED'
+        if (candidate.transferBehavior !== 'exact') return 'PAYMENT_TOKEN_TRANSFER_UNKNOWN'
+    } else if (candidate.transferBehavior !== 'exact' && !moralisSafetyConfirmed) {
+        return 'PAYMENT_TOKEN_TRANSFER_UNKNOWN'
     }
+
     if (candidate.balanceRaw < requiredPaymentRaw) return 'PAYMENT_TOKEN_BALANCE_LOW'
     return null
 }
@@ -102,7 +123,9 @@ export function selectPaymentToken({
     configuredMinimumLiquidityUsdMicros: bigint
 }): { selection: PaymentTokenSelection | null; rejections: CandidateRejection[] } {
     const normalizedSell = normalizeAddress(sellToken)
-    const normalizedBuy = normalizeAddress(buyToken)
+    const normalizedBuy = buyToken === NATIVE_TOKEN_ADDRESS
+        ? NATIVE_TOKEN_ADDRESS
+        : normalizeAddress(buyToken)
     if (!normalizedSell || !normalizedBuy) {
         return { selection: null, rejections: [] }
     }
@@ -145,7 +168,43 @@ export function selectPaymentToken({
     })
 
     const candidate = eligible[0]
-    if (!candidate) return { selection: null, rejections }
+    if (!candidate) {
+        if (process.env.DEBUG_SPONSORSHIP === 'true') {
+            console.warn('[sponsorship-payment-token-selection-rejected]', {
+                sellToken: normalizedSell,
+                buyToken: normalizedBuy,
+                dangerousBypassEnabled: dangerouslyBypassSponsorshipTokenChecks(),
+                configuredMinimumLiquidityUsdMicros: configuredMinimumLiquidityUsdMicros.toString(),
+                requiredPaymentRawByToken: Object.fromEntries(
+                    [...requiredPaymentRawByToken.entries()].map(([address, amount]) => [address, amount.toString()]),
+                ),
+                candidates: candidates.map((item) => ({
+                    tokenAddress: item.tokenAddress,
+                    symbol: item.symbol,
+                    balanceRaw: item.balanceRaw.toString(),
+                    priceUsdMicros: item.priceUsdMicros.toString(),
+                    priceObservedAt: item.priceObservedAt.toISOString(),
+                    priceDeviationBps: item.priceDeviationBps,
+                    liquidityUsdMicros: item.liquidityUsdMicros.toString(),
+                    transferBehavior: item.transferBehavior,
+                    securityStatus: item.securityStatus,
+                    strictSecurityRequired: item.strictSecurityRequired,
+                })),
+                rejections,
+            })
+        }
+        return { selection: null, rejections }
+    }
+
+    if (dangerouslyBypassSponsorshipTokenChecks()) {
+        console.warn('[DANGEROUSLY_BYPASS_SPONSORSHIP_TOKEN_CHECKS]', {
+            enabled: true,
+            tokenAddress: candidate.tokenAddress,
+            symbol: candidate.symbol,
+            message: 'Security, liquidity, transfer-behavior, price-age, and price-deviation gates were bypassed for this whitelisted payment token.',
+        })
+    }
+
     return {
         selection: {
             candidate,
@@ -157,4 +216,8 @@ export function selectPaymentToken({
         },
         rejections,
     }
+}
+
+export const paymentTokenSelectionInternals = {
+    dangerouslyBypassSponsorshipTokenChecks,
 }

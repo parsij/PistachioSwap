@@ -37,6 +37,12 @@ const native = {
     balance: '1',
     priceUSD: '600',
     valueUSD: '600',
+    recognitionStatus: 'established',
+    recognitionReasons: ['native-token'],
+    possibleSpam: false,
+    securityStatus: 'trusted',
+    priceConfidence: 'trusted',
+    includeInPortfolioValue: true,
     visibility: 'primary',
     logoURI: '/icons/bnb.svg',
 }
@@ -47,6 +53,12 @@ const blocked = {
     name: 'Unknown token',
     symbol: 'UNKNOWN',
     securityStatus: 'blocked',
+    recognitionStatus: 'unverified',
+    recognitionReasons: [],
+    possibleSpam: false,
+    verifiedContract: false,
+    priceConfidence: 'untrusted',
+    includeInPortfolioValue: false,
     visibility: 'hidden',
     securityReasons: ['honeypot-confirmed'],
     visibilityReasons: ['security-blocked'],
@@ -60,6 +72,20 @@ const unverified = {
     securityReasons: ['security-risk-low'],
     visibility: 'unverified',
     visibilityReasons: ['unverified-contract'],
+}
+const secantX = {
+    ...blocked,
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    securityStatus: 'low',
+    securityReasons: ['security-risk-low'],
+    recognitionStatus: 'unverified',
+    recognitionReasons: ['moralis-verified-contract', 'market-catalog-only'],
+    verifiedContract: true,
+    possibleSpam: false,
+    marketPriceUSD: '447463.12',
+    visibilityReasons: ['moralis-verified-contract', 'market-catalog-only'],
 }
 
 function renderDialog(overrides = {}) {
@@ -143,8 +169,10 @@ describe('SendAssetDialog', () => {
             .mockReturnValueOnce(false)
         renderDialog({ assets: [native, blocked] })
         fireEvent.click(screen.getByRole('button', { name: /BNB/ }))
-        fireEvent.click(screen.getByRole('button', { name: 'Show all wallet assets' }))
-        fireEvent.click(screen.getByRole('button', { name: 'Hidden risky tokens (1)' }))
+        expect(screen.queryByRole('button', { name: 'Show all wallet assets' })).toBeNull()
+        fireEvent.change(screen.getByLabelText('Search wallet assets'), {
+            target: { value: blocked.address },
+        })
         fireEvent.click(screen.getByText('Unknown token').closest('button'))
         fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.1' } })
         fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
@@ -155,7 +183,7 @@ describe('SendAssetDialog', () => {
         expect(mocks.send).not.toHaveBeenCalled()
     })
 
-    it('uses the setting to reveal all three collections without a balance refetch', () => {
+    it('keeps hidden assets separate when unknown-token hiding is disabled', () => {
         renderDialog({
             assets: [native, unverified, blocked],
             settings: { hideUnknownTokens: false, hideSmallBalances: false },
@@ -163,9 +191,32 @@ describe('SendAssetDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: /BNB/ }))
 
         expect(screen.getByText('BNB', { selector: 'strong' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Unverified tokens (1)' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Hidden risky tokens (1)' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Show all wallet assets' })
-            .getAttribute('aria-pressed')).toBe('false')
+        expect(screen.queryByText('Unverified token')).toBeNull()
+        expect(screen.queryByText('Unknown token')).toBeNull()
+
+        fireEvent.change(screen.getByLabelText('Search wallet assets'), {
+            target: { value: unverified.address },
+        })
+        expect(screen.getByRole('button', { name: 'Hidden tokens (1)' })).toBeTruthy()
+        expect(screen.getByText('Unverified token')).toBeTruthy()
+    })
+
+    it('keeps verified scam tokens out of the normal Send selector', () => {
+        renderDialog({ assets: [native, secantX] })
+        fireEvent.click(screen.getByRole('button', { name: /BNB/ }))
+
+        expect(screen.getByText('BNB', { selector: 'strong' })).toBeTruthy()
+        expect(screen.queryByText('SecantX AI')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
+        expect(document.body.textContent).not.toContain('$447,463.12')
+
+        fireEvent.change(screen.getByLabelText('Search wallet assets'), {
+            target: { value: secantX.address },
+        })
+        expect(screen.getByRole('button', { name: 'Hidden tokens (1)' }))
+            .toBeTruthy()
+        expect(screen.getByText('SecantX AI')).toBeTruthy()
+        expect(screen.getByText('Potential risk')).toBeTruthy()
+        expect(document.body.textContent).not.toContain('$447,463.12')
     })
 })

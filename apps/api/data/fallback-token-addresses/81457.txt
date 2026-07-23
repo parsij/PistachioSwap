@@ -1,0 +1,208 @@
+# Chain ID: 81457
+# CoinGecko asset platform: blast
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 100
+
+# LINK | Chainlink | market-ranked
+0x93202ec683288a9ea75bb829c6bacfb2bfea9013
+# USDE | Ethena USDe | market-ranked
+0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34
+# ENA | Ethena | market-ranked
+0x58538e6a46e07434d7e7375bc268d3cb839c0133
+# FRXUSD | Frax USD | market-ranked
+0x80eede496655fb9047dd39d9f418d5483ed600df
+# ANKR | Ankr Network | market-ranked
+0x3580ac35bed2981d6bdd671a5982c2467d301241
+# BLAST | Blast | market-ranked
+0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad
+# USDZ | Anzen USDz | market-ranked
+0x52056ed29fe015f4ba2e3b079d10c0b87f46e8c6
+# ESE | Eesee | market-ranked
+0x491e6de43b55c8eae702edc263e32339da42f58c
+# OHNO | Oh no | market-ranked
+0x000000daa580e54635a043d2773f2c698593836a
+# XPRT | Persistence One | market-ranked
+0xc7edf7b7b3667a06992508e7b156eff794a9e1c8
+# CYBRO | CYBRO | market-ranked
+0x963eec23618bbc8e1766661d5f263f18094ae4d5
+# AI | Any Inu | market-ranked
+0x764933fbad8f5d04ccd088602096655c2ed9879f
+# OMNI | OmniCat | market-ranked
+0x9e20461bc2c4c980f62f1b279d71734207a6a356
+# WAI | AI Waifu | CoinGecko-listed
+0x129ed667bf8c065fe5f66c9b44b7cb0126d85cc3
+# AIPO | Aipocalypto | CoinGecko-listed
+0x6c511dc18572d31c2c3f7b1505cb2bbc08282fcc
+# ANKRETH | Ankr Staked ETH | CoinGecko-listed
+0x049e6a52e2c9b7814c8178908f3630726c134c92
+# SUSDZ | Anzen Staked USDz | CoinGecko-listed
+0x73d23f3778a90be8846e172354a115543df2a7e4
+# ASO | Aso Finance | CoinGecko-listed
+0x54e7780089aee73ef98b8238b0866a517914254e
+# AXLUSDC | Axelar Bridged USDC | CoinGecko-listed
+0xeb466342c4d449bc9f53a865d5cb90586f405215
+# BAG | Bag | CoinGecko-listed
+0xb9dfcd4cf589bb8090569cb52fac1b88dbe4981f
+# BLADE | BladeSwap | CoinGecko-listed
+0xd1fedd031b92f50a50c05e2c45af1adb4cea82f4
+# BEPE | Blast Pepe | CoinGecko-listed
+0xb582dc28968c725d2868130752afa0c13ebf9b1a
+# BLASTUP | BlastUP | CoinGecko-listed
+0x59c159e5a4f4d1c86f7abdc94b7907b7473477f6
+# CBR | Cyberblast Token | CoinGecko-listed
+0xe070b87c4d88826d4cd1b85babe186fdb14cd321
+# DACKIE | DackieSwap [OLD] | CoinGecko-listed
+0x47c337bd5b9344a6f3d6f58c474d9d8cd419d8ca
+# ADBE.D | Dinari ADBE | CoinGecko-listed
+0x3fada70ea1251bec1e87c2ff9cd5bb72a818c350
+# AMC.D | Dinari AMC | CoinGecko-listed
+0x81100713096041923d65b9f9a2c8dbf8fd8de691
+# ARKB.D | Dinari ARKB | CoinGecko-listed
+0x296c2186948712d66bef4778567c4d2f734bff3c
+# ARKK.D | Dinari ARKK | CoinGecko-listed
+0x87084c981709878e3c806ad45fb01e3522e08123
+# ARKX.D | Dinari ARKX | CoinGecko-listed
+0x76b584c9d5d6c925c7d6768b8430d5fccedba83e
+# AVGO.D | Dinari AVGO | CoinGecko-listed
+0x97dd837806eab484b440f15e60f84c4f312f7cdd
+# AZN.D | Dinari AZN | CoinGecko-listed
+0xdd6a4d44987fc974c4113ef403b941fe09d0068c
+# BA.D | Dinari BA | CoinGecko-listed
+0x00d7dd69a18e346cb5050ebff7529c11a57cac7f
+# BAC.D | Dinari BAC | CoinGecko-listed
+0xc6561ff3100d8b3c33898dfbfeb6e695134e6957
+# BITB.D | Dinari BITB | CoinGecko-listed
+0xa9053e91a9ea714023de577929c3e119264d80d6
+# BLK.D | Dinari BLK | CoinGecko-listed
+0xbfdaa788366593d3c7d15f9abc0b1cab2b1694ba
+# BOXX.D | Dinari BOXX | CoinGecko-listed
+0xe0ced15bc8ea1335bec573819f1813ffc5e38878
+# BRRR.D | Dinari BRRR | CoinGecko-listed
+0xf0a23fd4a51e9c5055b912e41a6052b56e6108b8
+# BTCO.D | Dinari BTCO | CoinGecko-listed
+0xbf286a9c026f02dd4d2e3fc3887e77e425d15a11
+# BTCW.D | Dinari BTCW | CoinGecko-listed
+0xbe2019c75ebf9ead0ab3513fd3c1733f2eb490e7
+# CAT.D | Dinari CAT | CoinGecko-listed
+0x8ce131c8c8b8d46ffe2a72aadc8ebb3d5686613a
+# CCL.D | Dinari CCL | CoinGecko-listed
+0xbffaea400b56da7b7085a27676d4b72361217e35
+# COST.D | Dinari COST | CoinGecko-listed
+0xfdc1901e40c708e72661af607a8a027740a08676
+# CSCO.D | Dinari CSCO | CoinGecko-listed
+0x4040fe823164384d2b719546557f01136990395b
+# CVX.D | Dinari CVX | CoinGecko-listed
+0xa8ef52a9c4010e20f3811f0a8606c788fccc7a2a
+# DAL.D | Dinari DAL | CoinGecko-listed
+0x399351786afd19dc7524b6af87aad8339f641494
+# DEFI.D | Dinari DEFI | CoinGecko-listed
+0x64931990e69b55ff7acaf0f20416d29b20855be6
+# EEM.D | Dinari EEM | CoinGecko-listed
+0xe99292ca55f6e01765b900dadd471c63136e6760
+# ERO.D | Dinari ERO | CoinGecko-listed
+0x688a880ae19e766c6ad4b749a315ec25034a0645
+# ETHE.D | Dinari ETHE | CoinGecko-listed
+0x098dbfd917f59495fdfc30628c0a5dad4bda2b1e
+# EZBC.D | Dinari EZBC | CoinGecko-listed
+0x665b080affb4a7e0ceae3ce88ba0401c864635d8
+# F.D | Dinari F | CoinGecko-listed
+0xfafda868581ce31b7ef7fe0b146a24dbb4717a5f
+# FBTC.D | Dinari FBTC | CoinGecko-listed
+0xbf26ece8626c30f6efc6518ac93a773d24e6ff83
+# GBTC.D | Dinari GBTC | CoinGecko-listed
+0x9558e1217e0cb47ade9b5f63cc5aca8d47691ab7
+# GLD.D | Dinari GLD | CoinGecko-listed
+0xbba2b55370753e326e2fb68161c240e328218bcf
+# GME.D | Dinari GME | CoinGecko-listed
+0xe2a8b9d1a129df339118c5b10eeefe4dab9334e1
+# HODL.D | Dinari HODL | CoinGecko-listed
+0x01e8bd212f5f319e7126b62aa020831b92e19cd9
+# HOOD.D | Dinari HOOD | CoinGecko-listed
+0xddcd99775b70bee3b1d06399b69e45465dea010c
+# HUT.D | Dinari HUT | CoinGecko-listed
+0x08a51d066c12f5b020c3b34817feb6f200aa3ed1
+# HYMB.D | Dinari HYMB | CoinGecko-listed
+0xf020a139d2346cdd2c0e1523395346756f42ad7e
+# IAU.D | Dinari IAU | CoinGecko-listed
+0xa5d7512c6a3b87ad7bf2f597b93845950f738fdd
+# IBIT.D | Dinari IBIT | CoinGecko-listed
+0x28215d9e6444116e194405e93ccf68afde544d5c
+# ITA.D | Dinari ITA | CoinGecko-listed
+0xbb4ca8935edcafba90dac55652bb938eb961cb36
+# JNJ.D | Dinari JNJ | CoinGecko-listed
+0x9e23da6c963d9cfc929f3bda89e9e20984c008ef
+# JPM.D | Dinari JPM | CoinGecko-listed
+0xfb3bcdc42d0f884b0f1e53f74ed152ff1cb77dc8
+# KO.D | Dinari KO | CoinGecko-listed
+0x44ba66f8ad159f8f400c7d9e06f670c018bdd57c
+# MARA.D | Dinari MARA | CoinGecko-listed
+0x179004cb725a4d94bfcdffa5eece3b9df0efffe6
+# MCD.D | Dinari MCD | CoinGecko-listed
+0xfcbe84b53fd3ed33b5dfa82fb005603daa5204a7
+# MELI.D | Dinari MELI | CoinGecko-listed
+0x45907acf1c9f45450ded33e3f06f96dc298c5d70
+# NLY.D | Dinari NLY | CoinGecko-listed
+0x74798fd1a87e07c7b8bf89fafc922e4bf10c35a9
+# PALL.D | Dinari PALL | CoinGecko-listed
+0x56de5c6c56f92ecf2da286ea81a0fb74b25f9579
+# PG.D | Dinari PG | CoinGecko-listed
+0x8ad2b97b7fca40af71bfef9857d10bc1bfe70175
+# PHO.D | Dinari PHO | CoinGecko-listed
+0x93a9f06576cfe91e8c408467cd684df42ca23c23
+# RBLX.D | Dinari RBLX | CoinGecko-listed
+0xe3fc0948bdcada331014590987cc624015403874
+# RDDT.D | Dinari RDDT | CoinGecko-listed
+0xb66fb7a6baaece3edd6b4d506b0e2f0bae5fc6e0
+# RIOT.D | Dinari RIOT | CoinGecko-listed
+0xa5de16db7c14cd87fb35042ed8e7a6f4f00b7f26
+# RKLB.D | Dinari RKLB | CoinGecko-listed
+0x771952e0d7701f9d9eeeaf69c51bfdd57cbd6a6a
+# SBUX.D | Dinari SBUX | CoinGecko-listed
+0xd2c500a8dd36eee1082314d624a46b5ab37c426e
+# SIVR.D | Dinari SIVR | CoinGecko-listed
+0x8d7e838f2feaec8b6d7445bfa699f68fe8e97718
+# SLX.D | Dinari SLX | CoinGecko-listed
+0x6c627b1e04ede1a6e0619727c70f69cb259d06f8
+# SNOW.D | Dinari SNOW | CoinGecko-listed
+0xb127e5d53df0c2056cf337081ec56f01efd5c8bc
+# SONY.D | Dinari SONY | CoinGecko-listed
+0xfecf117ce579acb96e89872af6cc9525980c397c
+# SOXL.D | Dinari SOXL | CoinGecko-listed
+0xdd31c8b5c899c0f85fb4738accac44180e4d7390
+# SPSK.D | Dinari SPSK | CoinGecko-listed
+0x0e576b0c554fbaef9893a2cd7b866af516bab581
+# SPTE.D | Dinari SPTE | CoinGecko-listed
+0xca838b9437eb20ada32703a8b912922088cf90b5
+# SPUS.D | Dinari SPUS | CoinGecko-listed
+0x5e9e14b2386a9cd3d2ed510285d3389b34d48640
+# SPWO.D | Dinari SPWO | CoinGecko-listed
+0x09bc998f64d32b83d4a534bb2d5a4806a04c855d
+# SQ.D | Dinari SQ | CoinGecko-listed
+0x89d0a55a8c2d94c0d4a91c6e3de58dd131ad87fc
+# TJX.D | Dinari TJX | CoinGecko-listed
+0x1b91eb087e128a0514b9eb8d0804b586641a0849
+# TQQQ.D | Dinari TQQQ | CoinGecko-listed
+0x0b96517fb729c6f6c00ab15abb3d72ae708d5960
+# UFO.D | Dinari UFO | CoinGecko-listed
+0x8f6a976b6c7fe18e31870eadfae09b3cb447541a
+# USHY.D | Dinari USHY | CoinGecko-listed
+0x0e8c94ce5f658b52a8d4e30933520b2106a9397c
+# V.D | Dinari V | CoinGecko-listed
+0x1ea5625399565fa0c3c2499ebf960eb9d9224212
+# VWO.D | Dinari VWO | CoinGecko-listed
+0x413e5687814841d65146c062c506c73992a57692
+# VXX.D | Dinari VXX | CoinGecko-listed
+0x32cbb8cdacd90dbec250f9b1e8b06232c6f3297b
+# WALRF.D | Dinari WALRF | CoinGecko-listed
+0xac402db779eeabcc6c88f0478bb381cd2d0e15f7
+# WEAT.D | Dinari WEAT | CoinGecko-listed
+0x53ca87b939cfdbc90b6f28751e164e77165ae7d4
+# WOOD.D | Dinari WOOD | CoinGecko-listed
+0x42e4981de9bc8fd4726775f62066cabbe78deab8
+# XOM.D | Dinari XOM | CoinGecko-listed
+0xda5afff979a356af2cfa75bd0054c2c8c505234a
+# YUM.D | Dinari YUM | CoinGecko-listed
+0xd951722f5309479cde8ed719fe3e13596290a324

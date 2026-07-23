@@ -2,14 +2,88 @@ import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
 import { setBoundedCacheEntry } from '../../lib/bounded-cache.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
-import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
+import { logProviderResponse } from '../../lib/provider-response-debug.js'
 import { requireActiveTokenDiscoveryChain } from '../../token-discovery/registry.js'
+import { coinGeckoRequest } from '../coingecko/coingecko-client.js'
+import { getMoralisSponsorshipTokenEvidence } from '../moralis/sponsorship-token-evidence.js'
+import { ProviderError } from '../../lib/errors.js'
 
 const PRICE_TTL_MS = 45_000
+const USD_PRICE_SCALE = 6
+export const ALCHEMY_TOKEN_PRICE_BATCH_SIZE = 25
+const ALCHEMY_TOKEN_PRICE_MAX_CONCURRENCY = 2
 const priceCache = new Map<string, { expiresAt: number; observedAt: number; value: string | null }>()
 const pendingPrices = new Map<string, Promise<Map<string, string>>>()
 const nativePriceCache = new Map<number, { expiresAt: number; value: string | null }>()
 const pendingNativePrices = new Map<number, Promise<string | null>>()
+
+type NativePriceProvider = 'alchemy' | 'moralis' | 'coingecko'
+type NativePriceSource = {
+    provider: NativePriceProvider
+    load: () => Promise<string | null>
+}
+
+function normalizeUsdPrice(value: string, scale = USD_PRICE_SCALE) {
+    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) || !Number.isInteger(scale) || scale < 0) {
+        return null
+    }
+
+    const [whole, fraction = ''] = value.split('.')
+    const base = 10n ** BigInt(scale)
+    const retainedFraction = fraction.slice(0, scale).padEnd(scale, '0')
+    let scaled = BigInt(whole) * base + BigInt(retainedFraction || '0')
+
+    if (fraction.length > scale && fraction[scale]! >= '5') {
+        scaled += 1n
+    }
+
+    if (scale === 0) return scaled.toString()
+
+    const normalizedWhole = scaled / base
+    const normalizedFraction = (scaled % base)
+        .toString()
+        .padStart(scale, '0')
+        .replace(/0+$/, '')
+
+    return normalizedFraction
+        ? `${normalizedWhole}.${normalizedFraction}`
+        : normalizedWhole.toString()
+}
+
+async function resolveNativePriceSources(
+    chainId: number,
+    sources: NativePriceSource[],
+): Promise<{ value: string; provider: NativePriceProvider } | null> {
+    for (const source of sources) {
+        try {
+            const value = await source.load()
+            if (value) {
+                if (process.env.DEBUG_SPONSORSHIP_PROVIDER_RESPONSES === 'true') {
+                    console.log('[sponsorship-native-price-selected]', {
+                        chainId,
+                        provider: source.provider,
+                        value,
+                    })
+                }
+                return { value, provider: source.provider }
+            }
+
+            logProviderResponse(source.provider, `native-price-unusable:${chainId}`, {
+                reason: 'Provider returned no usable USD price.',
+            })
+        } catch (error) {
+            logProviderResponse(source.provider, `native-price-error:${chainId}`, error)
+        }
+    }
+
+    if (process.env.DEBUG_SPONSORSHIP_PROVIDER_RESPONSES === 'true') {
+        console.warn('[sponsorship-native-price-unavailable]', {
+            chainId,
+            providersTried: sources.map((source) => source.provider),
+        })
+    }
+    return null
+}
 
 function readPrice(key: string) {
     const cached = priceCache.get(key)
@@ -20,14 +94,225 @@ function readPrice(key: string) {
     return cached.value
 }
 
+function chunkAddresses(addresses: readonly string[]) {
+    const batches: string[][] = []
+    for (let index = 0; index < addresses.length; index += ALCHEMY_TOKEN_PRICE_BATCH_SIZE) {
+        batches.push(addresses.slice(index, index + ALCHEMY_TOKEN_PRICE_BATCH_SIZE))
+    }
+    return batches
+}
+
+function tokenPriceRequestKey({
+    chainId,
+    requireProviderSuccess,
+    addresses,
+}: {
+    chainId: number
+    requireProviderSuccess: boolean
+    addresses: readonly string[]
+}) {
+    return [
+        chainId,
+        requireProviderSuccess ? 'strict' : 'best-effort',
+        [...addresses].sort().join(','),
+    ].join(':')
+}
+
+function toTrustedPriceProviderUnavailable(error: unknown) {
+    const providerError = error instanceof ProviderError
+        ? error
+        : new ProviderError({
+              code: 'PROVIDER_UNAVAILABLE',
+              message: 'The trusted price provider request failed.',
+              retryable: true,
+              cause: error,
+          })
+    return new ProviderError({
+        code: 'TRUSTED_PRICE_PROVIDER_UNAVAILABLE',
+        message: 'The trusted token price provider is temporarily unavailable.',
+        statusCode: 503,
+        retryable: providerError.retryable,
+        outcome: providerError.outcome,
+        upstreamStatus: providerError.upstreamStatus,
+        retryAfterMs: providerError.retryAfterMs,
+        providers: [{
+            provider: 'alchemy',
+            outcome: providerError.outcome,
+            upstreamStatus: providerError.upstreamStatus,
+            code: providerError.code,
+            message: providerError.message,
+            retryable: providerError.retryable,
+        }],
+        cause: providerError,
+    })
+}
+
+function compactProviderError(error: unknown) {
+    if (error instanceof ProviderError) {
+        return {
+            code: error.code,
+            outcome: error.outcome,
+            upstreamStatus: error.upstreamStatus,
+            retryable: error.retryable,
+            message: error.message,
+        }
+    }
+    return {
+        code: 'UNKNOWN_PROVIDER_ERROR',
+        outcome: 'upstream',
+        upstreamStatus: null,
+        retryable: false,
+        message: error instanceof Error ? error.message : 'Provider request failed.',
+    }
+}
+
+function logTokenPriceBatchFailure({
+    chainId,
+    batchNumber,
+    batchCount,
+    batchSize,
+    error,
+    signal,
+}: {
+    chainId: number
+    batchNumber: number
+    batchCount: number
+    batchSize: number
+    error: unknown
+    signal?: AbortSignal
+}) {
+    if (signal?.aborted) return
+    const details = compactProviderError(error)
+    console.warn('[alchemy-token-prices-batch-failed]', {
+        chainId,
+        batch: `${batchNumber}-of-${batchCount}`,
+        batchSize,
+        ...details,
+    })
+}
+
+async function runWithBoundedConcurrency<T>(
+    items: readonly T[],
+    concurrency: number,
+    worker: (item: T, index: number) => Promise<void>,
+    signal?: AbortSignal,
+) {
+    let nextIndex = 0
+    let stopped = false
+    async function runWorker() {
+        while (!stopped && nextIndex < items.length) {
+            if (signal?.aborted) break
+            const index = nextIndex
+            nextIndex += 1
+            try {
+                await worker(items[index]!, index)
+            } catch (error) {
+                stopped = true
+                throw error
+            }
+        }
+    }
+
+    const workers = Array.from(
+        { length: Math.min(concurrency, items.length) },
+        () => runWorker(),
+    )
+    await Promise.all(workers)
+}
+
+async function fetchTokenPriceBatch({
+    apiKey,
+    chainId,
+    chainNetwork,
+    addresses,
+    signal,
+    requireProviderSuccess,
+    operation,
+}: {
+    apiKey: string
+    chainId: number
+    chainNetwork: string
+    addresses: readonly string[]
+    signal?: AbortSignal
+    requireProviderSuccess: boolean
+    operation: string
+}) {
+    const requestKey = tokenPriceRequestKey({
+        chainId,
+        requireProviderSuccess,
+        addresses,
+    })
+    const pending = pendingPrices.get(requestKey)
+    if (pending) return pending
+
+    const url = new URL(
+        `https://api.g.alchemy.com/prices/v1/${encodeURIComponent(apiKey)}/tokens/by-address`,
+    )
+    const request = (async () => {
+        const fetched = new Map<string, string>()
+        const payload = await fetchJson(url, {
+            method: 'POST',
+            body: {
+                addresses: addresses.map((address) => ({
+                    network: chainNetwork,
+                    address,
+                })),
+            },
+            signal,
+            timeoutMs: getApiConfig().requestTimeoutMs,
+            dedupeKey: `alchemy:prices:${requestKey}`,
+        })
+        logProviderResponse('alchemy', operation, payload)
+
+        if (!isRecord(payload) || !Array.isArray(payload.data)) {
+            return fetched
+        }
+
+        for (const item of payload.data) {
+            if (!isRecord(item) || !Array.isArray(item.prices)) continue
+            const address = normalizeAddress(item.address)
+            const usd = item.prices.find(
+                (price) =>
+                    isRecord(price) &&
+                    String(price.currency).toLowerCase() === 'usd',
+            )
+            const value = isRecord(usd) && typeof usd.value === 'string'
+                ? normalizeUsdPrice(usd.value)
+                : null
+
+            if (address && value !== null) {
+                fetched.set(address, value)
+            }
+        }
+
+        const now = Date.now()
+        for (const address of addresses) {
+            const value = fetched.get(address) ?? null
+            if (requireProviderSuccess && value === null) continue
+            setBoundedCacheEntry(priceCache, `${chainId}:${address}`, {
+                expiresAt: now + PRICE_TTL_MS,
+                observedAt: now,
+                value,
+            })
+        }
+
+        return fetched
+    })().finally(() => pendingPrices.delete(requestKey))
+
+    pendingPrices.set(requestKey, request)
+    return request
+}
+
 export async function getTokenPrices({
     chainId = 56,
     addresses,
     signal,
+    requireProviderSuccess = false,
 }: {
     chainId?: number
     addresses: string[]
     signal?: AbortSignal
+    requireProviderSuccess?: boolean
 }): Promise<Map<string, string>> {
     const config = getApiConfig().alchemy
     const chain = requireActiveTokenDiscoveryChain(chainId)
@@ -43,79 +328,56 @@ export async function getTokenPrices({
 
     for (const address of normalized) {
         const cached = readPrice(`${chainId}:${address}`)
-        if (cached === undefined) missing.push(address)
+        if (cached === undefined || (requireProviderSuccess && cached === null)) {
+            missing.push(address)
+        }
         else if (cached !== null) prices.set(address, cached)
     }
 
     if (!chain.capabilities.alchemy || !chain.providers.alchemyNetwork ||
         !config.apiKey || missing.length === 0) return prices
+    const apiKey = config.apiKey
+    const alchemyNetwork = chain.providers.alchemyNetwork
 
-    const requestKey = `${chainId}:${missing.sort().join(',')}`
-    const pending = pendingPrices.get(requestKey)
-    if (pending) {
-        const values = await pending
-        for (const [address, value] of values) prices.set(address, value)
-        return prices
-    }
+    const batches = chunkAddresses(missing)
+    const batchCount = batches.length
 
-    const url = new URL(
-        `https://api.g.alchemy.com/prices/v1/${encodeURIComponent(config.apiKey)}/tokens/by-address`,
-    )
-
-    const request = (async () => {
-        const fetched = new Map<string, string>()
-        try {
-        const payload = await fetchJson(url, {
-            method: 'POST',
-            body: {
-                addresses: missing.map((address) => ({
-                    network: chain.providers.alchemyNetwork,
-                    address,
-                })),
-            },
-            signal,
-            timeoutMs: getApiConfig().requestTimeoutMs,
-            dedupeKey: `alchemy:prices:${requestKey}`,
-        })
-
-        if (!isRecord(payload) || !Array.isArray(payload.data)) {
-            return fetched
-        }
-
-        for (const item of payload.data) {
-            if (!isRecord(item) || !Array.isArray(item.prices)) continue
-            const address = normalizeAddress(item.address)
-            const usd = item.prices.find(
-                (price) =>
-                    isRecord(price) &&
-                    String(price.currency).toLowerCase() === 'usd',
-            )
-            const value = isRecord(usd) ? usd.value : null
-
-            if (
-                address &&
-                typeof value === 'string' &&
-                /^\d+(?:\.\d+)?$/.test(value)
-            ) {
-                fetched.set(address, value)
+    await runWithBoundedConcurrency(
+        batches,
+        ALCHEMY_TOKEN_PRICE_MAX_CONCURRENCY,
+        async (batch, index) => {
+            if (signal?.aborted) return
+            const operation = `token-prices:${chainId}:batch-${index + 1}-of-${batchCount}`
+            try {
+                const values = await fetchTokenPriceBatch({
+                    apiKey,
+                    chainId,
+                    chainNetwork: alchemyNetwork,
+                    addresses: batch,
+                    signal,
+                    requireProviderSuccess,
+                    operation,
+                })
+                for (const [address, value] of values) {
+                    prices.set(address, value)
+                }
+            } catch (error) {
+                logProviderResponse('alchemy', `${operation}:error`, compactProviderError(error))
+                if (requireProviderSuccess) {
+                    throw toTrustedPriceProviderUnavailable(error)
+                }
+                logTokenPriceBatchFailure({
+                    chainId,
+                    batchNumber: index + 1,
+                    batchCount,
+                    batchSize: batch.length,
+                    error,
+                    signal,
+                })
             }
-        }
-        } catch {
-        // Prices are optional; metadata and balances remain usable.
-        }
-
-        for (const address of missing) {
-            setBoundedCacheEntry(priceCache, `${chainId}:${address}`, {
-                expiresAt: Date.now() + PRICE_TTL_MS,
-                observedAt: Date.now(),
-                value: fetched.get(address) ?? null,
-            })
-        }
-        return fetched
-    })().finally(() => pendingPrices.delete(requestKey))
-
-    pendingPrices.set(requestKey, request)
-    for (const [address, value] of await request) prices.set(address, value)
+        },
+        signal,
+    )
 
     return prices
 }
@@ -143,6 +405,13 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
     const chain = requireActiveTokenDiscoveryChain(chainId)
     const cached = nativePriceCache.get(chainId)
     if (cached && cached.expiresAt > Date.now()) {
+        if (process.env.DEBUG_SPONSORSHIP_PROVIDER_RESPONSES === 'true') {
+            console.log('[sponsorship-native-price-cache-hit]', {
+                chainId,
+                value: cached.value,
+                expiresAt: new Date(cached.expiresAt).toISOString(),
+            })
+        }
         return cached.value
     }
     const pending = pendingNativePrices.get(chainId)
@@ -160,30 +429,44 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
             timeoutMs: getApiConfig().requestTimeoutMs,
             dedupeKey: `alchemy:prices:native:${chainId}`,
         })
-            const data = isRecord(payload) && Array.isArray(payload.data)
-                ? payload.data
-                : []
-            const native = data.find(
-                (item) => isRecord(item) && String(item.symbol).toUpperCase() === chain.native.symbol.toUpperCase(),
-            )
-            const usd = isRecord(native) && Array.isArray(native.prices)
-                ? native.prices.find(
-                      (price) =>
-                          isRecord(price) &&
-                          String(price.currency).toLowerCase() === 'usd',
-                  )
-                : null
-            return isRecord(usd) &&
-                typeof usd.value === 'string' &&
-                /^\d+(?:\.\d+)?$/.test(usd.value)
-                ? usd.value
-                : null
+        logProviderResponse('alchemy', `native-price:${chainId}:${chain.native.symbol}`, payload)
+
+        const data = isRecord(payload) && Array.isArray(payload.data)
+            ? payload.data
+            : []
+        const native = data.find(
+            (item) => isRecord(item) && String(item.symbol).toUpperCase() === chain.native.symbol.toUpperCase(),
+        )
+        const usd = isRecord(native) && Array.isArray(native.prices)
+            ? native.prices.find(
+                  (price) =>
+                      isRecord(price) &&
+                      String(price.currency).toLowerCase() === 'usd',
+              )
+            : null
+        return isRecord(usd) && typeof usd.value === 'string'
+            ? normalizeUsdPrice(usd.value)
+            : null
     }
+
+    const moralisPrice = async () => {
+        const evidence = await getMoralisSponsorshipTokenEvidence(
+            chain.wrappedNative.address,
+            signal,
+            chainId,
+        )
+        return evidence.available && evidence.priceUsd
+            ? normalizeUsdPrice(evidence.priceUsd)
+            : null
+    }
+
     const coinGeckoPrice = async () => {
         const payload = await coinGeckoRequest(
             `/simple/price?ids=${encodeURIComponent(chain.native.coinGeckoId)}&vs_currencies=usd`,
             { signal },
         )
+        logProviderResponse('coingecko', `native-price:${chainId}:${chain.native.coinGeckoId}`, payload)
+
         const native = isRecord(payload) && isRecord(payload[chain.native.coinGeckoId])
             ? payload[chain.native.coinGeckoId]
             : null
@@ -191,15 +474,16 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
         const normalized = typeof value === 'string' || typeof value === 'number'
             ? String(value)
             : null
-        return normalized && /^\d+(?:\.\d+)?$/.test(normalized)
-            ? normalized
-            : null
+        return normalized ? normalizeUsdPrice(normalized) : null
     }
 
-    const request = alchemyPrice()
-        .catch(() => null)
-        .then((value) => value ?? coinGeckoPrice().catch(() => null))
-        .then((value) => {
+    const request = resolveNativePriceSources(chainId, [
+        { provider: 'alchemy', load: alchemyPrice },
+        { provider: 'moralis', load: moralisPrice },
+        { provider: 'coingecko', load: coinGeckoPrice },
+    ])
+        .then((result) => {
+            const value = result?.value ?? null
             setBoundedCacheEntry(nativePriceCache, chainId, {
                 value,
                 expiresAt: Date.now() + PRICE_TTL_MS,
@@ -216,4 +500,18 @@ export async function getNativeTokenPrice(chainId = 56, signal?: AbortSignal) {
 
 export function getNativeBnbPrice(signal?: AbortSignal, chainId = 56) {
     return getNativeTokenPrice(chainId, signal)
+}
+
+export const tokenPriceInternals = {
+    ALCHEMY_TOKEN_PRICE_BATCH_SIZE,
+    chunkAddresses,
+    clearCacheForTest: () => {
+        priceCache.clear()
+        pendingPrices.clear()
+        nativePriceCache.clear()
+        pendingNativePrices.clear()
+    },
+    normalizeUsdPrice,
+    resolveNativePriceSources,
+    tokenPriceRequestKey,
 }

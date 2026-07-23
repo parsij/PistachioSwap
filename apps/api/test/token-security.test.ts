@@ -213,7 +213,7 @@ describe('security cache and provider concurrency', () => {
         vi.restoreAllMocks()
     })
 
-    it('deduplicates concurrent checks and serves the cached result', async () => {
+    it('deduplicates concurrent explicit checks and serves the cached result', async () => {
         let resolveProvider
         const getHoneypot = vi.fn(() => new Promise((resolve) => {
             resolveProvider = resolve
@@ -226,11 +226,25 @@ describe('security cache and provider concurrency', () => {
         resolveProvider(honeypot({ riskLevel: 0 }))
         await expect(first).resolves.toMatchObject({ securityStatus: 'low' })
         await expect(second).resolves.toMatchObject({ securityStatus: 'low' })
+        expect(service.peekCached(token)?.securityStatus).toBe('low')
         expect(service.getCachedAndRefresh(token)?.securityStatus).toBe('low')
         expect(getHoneypot).toHaveBeenCalledOnce()
     })
 
-    it('uses the longer blocked TTL and brief provider-error TTL', async () => {
+    it('never launches providers from ordinary cached wallet reads', async () => {
+        const getHoneypot = vi.fn(async () => honeypot({ riskLevel: 0 }))
+        const getGoPlus = vi.fn(async () => goPlus({}))
+        const service = createTokenSecurityService({ getHoneypot, getGoPlus })
+
+        expect(service.getCachedAndRefresh(token)).toBeNull()
+        expect(service.peekCached(token)).toBeNull()
+        await Promise.resolve()
+
+        expect(getHoneypot).not.toHaveBeenCalled()
+        expect(getGoPlus).not.toHaveBeenCalled()
+    })
+
+    it('uses the longer blocked TTL and brief provider-error TTL for explicit stale refreshes', async () => {
         process.env.TOKEN_SECURITY_CACHE_TTL_MS = '1000'
         process.env.TOKEN_SECURITY_BLOCKED_CACHE_TTL_MS = '2000'
         process.env.TOKEN_SECURITY_ERROR_CACHE_TTL_MS = '50'
@@ -243,10 +257,10 @@ describe('security cache and provider concurrency', () => {
         })
         await service.refresh(token)
         now += 1_500
-        expect(service.getCachedAndRefresh(token)?.securityStatus).toBe('blocked')
+        expect(service.refreshIfStale(token)?.securityStatus).toBe('blocked')
         expect(blockedProvider).toHaveBeenCalledOnce()
         now += 600
-        service.getCachedAndRefresh(token)
+        service.refreshIfStale(token)
         await vi.waitFor(() => expect(blockedProvider).toHaveBeenCalledTimes(2))
 
         clearTokenSecurityCacheForTest()
@@ -262,11 +276,11 @@ describe('security cache and provider concurrency', () => {
             securityStatus: 'unknown',
         })
         now += 40
-        errorService.getCachedAndRefresh(errorToken)
+        errorService.refreshIfStale(errorToken)
         expect(unavailable).toHaveBeenCalledOnce()
         expect(optionalUnavailable).toHaveBeenCalledOnce()
         now += 20
-        errorService.getCachedAndRefresh(errorToken)
+        errorService.refreshIfStale(errorToken)
         await vi.waitFor(() => expect(unavailable).toHaveBeenCalledTimes(2))
         expect(optionalUnavailable).toHaveBeenCalledTimes(2)
     })

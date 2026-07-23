@@ -13,6 +13,7 @@ import {
 import { bsc } from 'viem/chains'
 
 import { getApiConfig } from '../../config.js'
+import { NATIVE_TOKEN_ADDRESS } from '../../lib/address.js'
 import { getNativeBnbPrice } from '../../providers/alchemy/token-prices.js'
 import { GasAssistError } from '../errors.js'
 import { ceilDiv, parseFixed } from './fixed-point.js'
@@ -47,6 +48,10 @@ function publicClient() {
     return createPublicClient({ chain: bsc, transport: http(rpcUrl) })
 }
 
+function nativeTokenDecimals(address: Address) {
+    return address.toLowerCase() === NATIVE_TOKEN_ADDRESS ? 18 : null
+}
+
 export function buildPaymentTransfer(treasury: Address, amount: bigint) {
     if (amount <= 0n) throw new GasAssistError('INVALID_PAYMENT_AMOUNT', 'The sponsorship payment must be positive.')
     return encodeFunctionData({
@@ -57,11 +62,33 @@ export function buildPaymentTransfer(treasury: Address, amount: bigint) {
 }
 
 export function createPrepaidChainClient() {
+    const priceGasLimit = async (gasLimit: bigint, maximumGas: bigint) => {
+        if (gasLimit <= 0n || gasLimit > maximumGas) {
+            throw new GasAssistError('SPONSORED_GAS_CAP_EXCEEDED', 'The quoted transaction exceeds its gas cap.', 409)
+        }
+        const client = publicClient()
+        const [gasPrice, bnbPrice] = await Promise.all([
+            client.getGasPrice(),
+            getNativeBnbPrice(),
+        ])
+        if (!bnbPrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A fresh trusted BNB price is unavailable.', 503)
+        const bnbPriceUsdMicros = parseFixed(bnbPrice)
+        const gasUsdMicros = ceilDiv(gasLimit * gasPrice * bnbPriceUsdMicros, 10n ** 18n)
+        return {
+            gasLimit,
+            currentGasPrice: gasPrice,
+            gasUsdMicros,
+            observedAt: new Date(),
+        }
+    }
+
     return {
         async getCode(address: Address) {
             return publicClient().getCode({ address })
         },
         async getTokenDecimals(address: Address) {
+            const nativeDecimals = nativeTokenDecimals(address)
+            if (nativeDecimals !== null) return nativeDecimals
             return Number(await publicClient().readContract({
                 address,
                 abi: erc20ReadAbi,
@@ -88,34 +115,22 @@ export function createPrepaidChainClient() {
             wallet,
             to,
             data,
+            value = 0n,
             maximumGas,
         }: {
             wallet: Address
             to: Address
             data: Hex
+            value?: bigint
             maximumGas: bigint
         }) {
             const client = publicClient()
-            await client.call({ account: wallet, to, data, value: 0n, gasPrice: 0n })
-            const estimated = await client.estimateGas({ account: wallet, to, data, value: 0n, gasPrice: 0n })
+            await client.call({ account: wallet, to, data, value, gasPrice: 0n })
+            const estimated = await client.estimateGas({ account: wallet, to, data, value, gasPrice: 0n })
             const gasLimit = ceilDiv(estimated * 12_000n, 10_000n)
-            if (gasLimit > maximumGas) {
-                throw new GasAssistError('SPONSORED_GAS_CAP_EXCEEDED', 'The simulated transaction exceeds its gas cap.', 409)
-            }
-            const [gasPrice, bnbPrice] = await Promise.all([
-                client.getGasPrice(),
-                getNativeBnbPrice(),
-            ])
-            if (!bnbPrice) throw new GasAssistError('TRUSTED_PRICE_UNAVAILABLE', 'A fresh trusted BNB price is unavailable.', 503)
-            const bnbPriceUsdMicros = parseFixed(bnbPrice)
-            const gasUsdMicros = ceilDiv(gasLimit * gasPrice * bnbPriceUsdMicros, 10n ** 18n)
-            return {
-                gasLimit,
-                currentGasPrice: gasPrice,
-                gasUsdMicros,
-                observedAt: new Date(),
-            }
+            return priceGasLimit(gasLimit, maximumGas)
         },
+        priceGasLimit,
         async getReceipt(hash: Hex) {
             return publicClient().getTransactionReceipt({ hash })
         },
@@ -224,8 +239,12 @@ export function verifyExactTransferReceipt({
     if (tokenTransfers.length !== 1 ||
         !isAddressEqual(tokenTransfers[0]!.from, wallet) ||
         !isAddressEqual(tokenTransfers[0]!.to, treasury) ||
-        tokenTransfers[0]!.value < requiredAmount) {
+        tokenTransfers[0]!.value !== requiredAmount) {
         throw new GasAssistError('PAYMENT_RECEIPT_SHORT', 'The treasury did not receive the exact required payment.', 409)
     }
     return tokenTransfers[0]!.value
+}
+
+export const prepaidChainClientInternals = {
+    nativeTokenDecimals,
 }

@@ -2,6 +2,7 @@ import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
 import { ProviderError } from '../../lib/errors.js'
 import { fetchJson } from '../../lib/http.js'
+import { logProviderResponse } from '../../lib/provider-response-debug.js'
 import { getTokenDiscoveryChain } from '../../token-discovery/registry.js'
 
 const pending = new Map<string, Promise<unknown>>()
@@ -76,7 +77,7 @@ export async function honeypotRequest({
             const url = new URL('/v2/IsHoneypot', config.honeypot.baseUrl)
             url.searchParams.set('address', normalized)
             url.searchParams.set('chainID', String(chainId))
-            return await fetchJson(url, {
+            const payload = await fetchJson(url, {
                 headers: config.honeypot.apiKey
                     ? { 'X-API-KEY': config.honeypot.apiKey }
                     : undefined,
@@ -84,6 +85,8 @@ export async function honeypotRequest({
                 timeoutMs: config.tokenSecurity.requestTimeoutMs,
                 retries: 2,
             })
+            logProviderResponse('honeypot', `token-security:${chainId}:${normalized}`, payload)
+            return payload
         } finally {
             release()
         }

@@ -77,6 +77,7 @@ export function useSwapQuote({
         if (!sellAddress) return 'missing-sell-token'
         if (!buyAddress) return 'missing-buy-token'
         if (routingMode === crossChainMode) return 'cross-chain-route'
+        if (routingMode === gasAssistMode) return 'gas-assist-route'
         if (sellChainId !== buyChainId) return 'mixed-token-chains'
         if (sellChainId !== chainId) return 'source-chain-mismatch'
         if (!controlledAmount || controlledAmount === '0') return 'missing-amount'

@@ -47,6 +47,7 @@ export type PrepaymentCalculation = {
     commercialFeeUsdMicros: bigint
     estimatedSponsoredGasUsdMicros: bigint
     gasReserveUsdMicros: bigint
+    conversionCostUsdMicros: bigint
     totalPrepaymentUsdMicros: bigint
 }
 
@@ -55,6 +56,7 @@ export function calculatePrepayment({
     paymentTransferGasUsdMicros,
     approvalGasUsdMicros,
     normalSwapGasUsdMicros,
+    conversionCostUsdMicros = 0n,
     flow,
     gasMultiplierBps,
     fixedFeeUsdMicros,
@@ -67,6 +69,7 @@ export function calculatePrepayment({
     paymentTransferGasUsdMicros: bigint
     approvalGasUsdMicros: bigint
     normalSwapGasUsdMicros: bigint
+    conversionCostUsdMicros?: bigint
     flow: SponsoredFlow
     gasMultiplierBps: number
     fixedFeeUsdMicros: bigint
@@ -80,6 +83,7 @@ export function calculatePrepayment({
         paymentTransferGasUsdMicros,
         approvalGasUsdMicros,
         normalSwapGasUsdMicros,
+        conversionCostUsdMicros,
         fixedFeeUsdMicros,
         commercialFeeCapUsdMicros,
     ]
@@ -126,7 +130,9 @@ export function calculatePrepayment({
         commercialFeeUsdMicros,
         estimatedSponsoredGasUsdMicros,
         gasReserveUsdMicros,
-        totalPrepaymentUsdMicros: commercialFeeUsdMicros + gasReserveUsdMicros,
+        conversionCostUsdMicros,
+        totalPrepaymentUsdMicros:
+            commercialFeeUsdMicros + gasReserveUsdMicros + conversionCostUsdMicros,
     }
 }
 

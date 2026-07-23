@@ -46,6 +46,7 @@ import {
     getCuratedEvmChain,
     isCuratedEvmChainId,
 } from '../../../../web3/curatedEvmChains.js'
+import { recordWalletActivity } from '../../services/walletActivity.js'
 
 function matchesExactContract(token, search) {
     return /^0x[a-fA-F0-9]{40}$/.test(search) &&
@@ -100,14 +101,13 @@ export default function SendAssetDialog({
         : error
 
     const exactAddressSearch = /^0x[a-fA-F0-9]{40}$/.test(search.trim())
-    const revealHiddenAssets = !settings.hideUnknownTokens ||
-        showAllAssets || exactAddressSearch
+    const revealHiddenAssets = exactAddressSearch
     const filteredAssets = (() => {
         const held = assets.filter(isPositiveWalletBalance)
         const exact = held.filter((token) => matchesExactContract(token, search.trim()))
         if (exact.length > 0) return exact
         const base = revealHiddenAssets
-            ? held
+            ? exact
             : filterPortfolioTokens(held, {
                 ...settings,
                 selectedTokens: [activeSelectedToken],
@@ -231,6 +231,15 @@ export default function SendAssetDialog({
             })
             if (receipt.status !== 'success') throw new Error('Transaction failed on-chain.')
             setStatus('sent')
+            recordWalletActivity({
+                walletAddress: review.account,
+                chainId: review.chainId,
+                type: 'sent',
+                hash: transactionHash,
+                token: review.token,
+                amount: review.amount,
+                recipient: review.recipient,
+            })
             await onConfirmed?.()
         } catch (caught) {
             if (isTransferRejectedError(caught)) {
@@ -298,14 +307,16 @@ export default function SendAssetDialog({
                                     aria-label="Search wallet assets"
                                 />
                             </label>
-                            <button
-                                type="button"
-                                className="send-show-all"
-                                onClick={() => setShowAllAssets((value) => !value)}
-                                aria-pressed={showAllAssets}
-                            >
-                                {showAllAssets ? 'Use portfolio filters' : 'Show all wallet assets'}
-                            </button>
+                            {!settings.hideUnknownTokens && (
+                                <button
+                                    type="button"
+                                    className="send-show-all"
+                                    onClick={() => setShowAllAssets((value) => !value)}
+                                    aria-pressed={showAllAssets}
+                                >
+                                    {showAllAssets ? 'Use portfolio filters' : 'Show all wallet assets'}
+                                </button>
+                            )}
                             <WalletAssetList
                                 tokens={filteredAssets}
                                 settings={{

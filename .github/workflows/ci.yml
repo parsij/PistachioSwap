@@ -1,0 +1,212 @@
+name: MegaFuel exact flow
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/**'
+      - 'apps/api/src/**'
+      - 'apps/api/test/**'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/passkey/components/**'
+      - 'src/features/passkey/services/signingReview*'
+      - 'src/features/swap/**'
+      - 'src/features/tokens/**'
+      - 'src/features/wallet/**'
+      - 'src/services/swapExecutionMode*'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'apps/api/.env.megafuel.example'
+      - 'apps/api/drizzle/**'
+      - 'apps/api/src/**'
+      - 'apps/api/test/**'
+      - 'docs/megafuel-exact-payment-rollout.md'
+      - 'src/features/gas-assist/**'
+      - 'src/features/passkey/components/**'
+      - 'src/features/passkey/services/signingReview*'
+      - 'src/features/swap/**'
+      - 'src/features/tokens/**'
+      - 'src/features/wallet/**'
+      - 'src/services/swapExecutionMode*'
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-tests:
+    name: Frontend · ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: raw-signing
+            label: raw signing
+            file: src/features/gas-assist/services/rawTransactionSigning.test.js
+          - name: package-signing
+            label: package signing
+            file: src/features/gas-assist/services/rawTransactionSigning.package.test.js
+          - name: prepaid-http
+            label: prepaid HTTP
+            file: src/features/gas-assist/services/prepaidSponsorship.test.js
+          - name: trace-redaction
+            label: trace redaction
+            file: src/features/gas-assist/services/gasAssistTrace.test.js
+          - name: prepaid-hook
+            label: prepaid hook
+            file: src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx
+          - name: controller
+            label: Gas Assist controller
+            file: src/features/gas-assist/hooks/useGasAssistController.test.jsx
+          - name: compact-dialog
+            label: compact dialog
+            file: src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx
+          - name: signing-review
+            label: signing review
+            file: src/features/passkey/services/signingReview.test.js
+          - name: gas-assist-quote
+            label: Gas Assist quote
+            file: src/features/swap/hooks/useSwapQuote.gas-assist.test.jsx
+          - name: execution-mode
+            label: execution mode
+            file: src/services/swapExecutionMode.test.js
+          - name: approval-continuation
+            label: normal swap approval continuation
+            file: src/features/swap/hooks/useApprovalExecutionBridge.test.jsx
+          - name: wallet-token-cache
+            label: cached wallet token hydration
+            file: src/features/tokens/hooks/useWalletTokens.cache.test.jsx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run ${{ matrix.label }} tests
+        shell: bash
+        run: |
+          set +e
+          pnpm exec vitest run "${{ matrix.file }}" --reporter=verbose >frontend-test-output.txt 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo '=== FAILURE SUMMARY ==='
+            grep -n -E -B 4 -A 12 'FAIL|AssertionError|TestingLibraryElementError|Error:|expected|Received' frontend-test-output.txt | head -n 240 || true
+            echo '=== END FAILURE SUMMARY ==='
+          else
+            cat frontend-test-output.txt
+          fi
+          exit "$status"
+      - name: Upload failed test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-${{ matrix.name }}
+          path: frontend-test-output.txt
+          if-no-files-found: error
+          retention-days: 3
+
+  validate:
+    name: Lint, API, and build
+    needs: frontend-tests
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        shell: bash
+        run: pnpm lint >lint-output.txt 2>&1 || { cat lint-output.txt; exit 1; }
+      - name: Upload failed lint output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-output
+          path: lint-output.txt
+          if-no-files-found: error
+          retention-days: 3
+      - name: API typecheck
+        shell: bash
+        run: pnpm --filter @pistachio/api typecheck >api-typecheck-output.txt 2>&1 || { cat api-typecheck-output.txt; exit 1; }
+      - name: Upload failed API typecheck output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-typecheck-output
+          path: api-typecheck-output.txt
+          if-no-files-found: error
+          retention-days: 3
+      - name: API Gas Assist tests
+        shell: bash
+        run: |
+          set +e
+          pnpm --filter @pistachio/api exec vitest run \
+            test/gasless-v2.test.ts \
+            test/prepaid-sponsorship.test.ts \
+            test/prepaid-native-token-decimals.test.ts \
+            test/manual-refund-ledger.test.ts \
+            test/megafuel-durable-intents.test.ts \
+            test/megafuel-exact-payment.test.ts \
+            test/megafuel-normal-swap.test.ts \
+            test/megafuel-presigned-package.test.ts \
+            test/megafuel-settlement-route.test.ts \
+            test/megafuel-two-policy.test.ts \
+            test/moralis-sponsorship-evidence.test.ts \
+            test/order-lifecycle.test.ts \
+            test/payment-token-selection-native.test.ts \
+            test/paymaster-sponsorability-fallback.test.ts \
+            test/provider-response-debug.test.ts \
+            test/sponsorship-trace.test.ts \
+            test/token-evidence-exact-transfer.test.ts \
+            test/token-price-normalization.test.ts \
+            test/wallet-token-known-balances.test.ts \
+            --reporter=verbose >api-test-output.txt 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo '=== API FAILURE SUMMARY ==='
+            grep -n -E -B 5 -A 18 'FAIL|AssertionError|Error:|expected|Received' api-test-output.txt | head -n 320 || true
+            echo '=== END API FAILURE SUMMARY ==='
+          else
+            cat api-test-output.txt
+          fi
+          exit "$status"
+      - name: Upload failed API test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-output
+          path: api-test-output.txt
+          if-no-files-found: error
+          retention-days: 3
+      - name: Frontend build
+        shell: bash
+        run: pnpm build >frontend-build-output.txt 2>&1 || { cat frontend-build-output.txt; exit 1; }
+      - name: Upload failed frontend build output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-output
+          path: frontend-build-output.txt
+          if-no-files-found: error
+          retention-days: 3
+      - name: Require all frontend test jobs
+        if: always()
+        run: |
+          echo "frontend-tests result: ${{ needs.frontend-tests.result }}"
+          test "${{ needs.frontend-tests.result }}" = success

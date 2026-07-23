@@ -12,6 +12,7 @@ import { useSwapQuote } from './useSwapQuote.js'
 import { useSameChainReview } from './useSameChainReview.js'
 import { useSameChainExecution } from './useSameChainExecution.js'
 import { useSameChainReceiptLifecycle } from './useSameChainReceiptLifecycle.js'
+import { useApprovalExecutionBridge } from './useApprovalExecutionBridge.js'
 import { useGasAssistController } from '../../gas-assist/hooks/useGasAssistController.js'
 import { useCrossChainController } from '../../cross-chain/hooks/useCrossChainController.js'
 import { useSwapApproval } from '../../approvals/hooks/useSwapApproval.js'
@@ -120,10 +121,10 @@ export function useSwapController() {
         selectedQuote: quote.quote?.selectedQuote,
     })
 
-    const handleApprovalConfirmed = useCallback(async () => {
-        await catalog.refreshWalletBalances()
-        setStatusMessage('Approval confirmed. Review and submit the swap.')
-    }, [catalog])
+    const handleApprovalConfirmed = useCallback(() => {
+        setStatusMessage('Approval confirmed. Preparing the swap.')
+        void catalog.refreshWalletBalances()
+    }, [catalog.refreshWalletBalances])
     const handleApprovalDiagnostic = useCallback((event, payload = {}, level = 'debug') => {
         const operation = {
             'approval.erc20.read.start': 'checking-token-approval',
@@ -150,6 +151,15 @@ export function useSwapController() {
         enabled: false,
         onApprovalConfirmed: handleApprovalConfirmed,
         onDiagnostic: handleApprovalDiagnostic,
+    })
+    const executionApproval = useApprovalExecutionBridge({
+        prepareSwapApproval: approval.prepareSwapApproval,
+        getLastPreparationResult: approval.getLastPreparationResult,
+        quote: quote.quote,
+        publicClient,
+        walletAddress: walletState.address,
+        sellToken: inputs.sellToken,
+        diagnostic: logSwapDiagnostic,
     })
     const gasAssist = useGasAssistController({
         routingMode: routing.routingMode,
@@ -262,8 +272,8 @@ export function useSwapController() {
         quoteSnapshot: quote.snapshot,
         quoteEndpoint: quoteConfig.endpoint,
         requireSuccessfulSimulation: quoteConfig.requireSuccessfulSimulationBeforeSend,
-        prepareSwapApproval: approval.prepareSwapApproval,
-        getLastPreparationResult: approval.getLastPreparationResult,
+        prepareSwapApproval: executionApproval.prepareExecutionApproval,
+        getLastPreparationResult: executionApproval.getExecutionApprovalResult,
         invalidatePermit2Readiness: approval.invalidatePermit2Readiness,
         fetchQuote: fetchSwapQuote,
         getCurrentRequestKey: quote.getCurrentRequestKey,

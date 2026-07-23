@@ -2,6 +2,7 @@ import { getApiConfig } from '../../config.js'
 import { normalizeAddress } from '../../lib/address.js'
 import { ProviderError } from '../../lib/errors.js'
 import { fetchJson } from '../../lib/http.js'
+import { logProviderResponse } from '../../lib/provider-response-debug.js'
 import { tokenDiscoveryContext } from '../../token-discovery/context.js'
 
 export async function moralisWalletTokensRequest({
@@ -39,11 +40,17 @@ export async function moralisWalletTokensRequest({
     url.searchParams.set('limit', '100')
     if (cursor) url.searchParams.set('cursor', cursor)
 
-    return fetchJson(url, {
+    const payload = await fetchJson(url, {
         headers: { 'X-API-Key': config.apiKey },
         signal,
         timeoutMs: config.requestTimeoutMs,
         retries: 2,
         dedupeKey: `moralis:${chainId}:${wallet}:${cursor ?? 'first'}`,
     })
+    logProviderResponse(
+        'moralis',
+        `wallet-tokens:${chainId}:${wallet}:${cursor ?? 'first'}`,
+        payload,
+    )
+    return payload
 }

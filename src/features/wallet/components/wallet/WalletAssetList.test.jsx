@@ -12,6 +12,13 @@ const primary = {
     symbol: 'EST',
     balance: '2',
     valueUSD: '4',
+    recognitionStatus: 'recognized',
+    recognitionReasons: ['coingecko-exact-contract'],
+    possibleSpam: false,
+    verifiedContract: true,
+    securityStatus: 'low',
+    priceConfidence: 'trusted',
+    includeInPortfolioValue: true,
     visibility: 'primary',
 }
 const hidden = {
@@ -25,6 +32,22 @@ const hidden = {
     priceConfidence: 'market',
     securityStatus: 'high',
     visibility: 'hidden',
+}
+const secantX = {
+    ...hidden,
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    valueUSD: null,
+    marketPriceUSD: '447463.12',
+    verifiedContract: true,
+    possibleSpam: false,
+    securityStatus: 'low',
+    priceConfidence: 'untrusted',
+    includeInPortfolioValue: false,
+    recognitionStatus: 'unverified',
+    recognitionReasons: ['moralis-verified-contract', 'market-catalog-only'],
+    visibilityReasons: ['moralis-verified-contract', 'market-catalog-only'],
 }
 const unverified = {
     ...hidden,
@@ -40,57 +63,79 @@ describe('WalletAssetList security presentation', () => {
     beforeEach(() => window.localStorage.clear())
     afterEach(cleanup)
 
-    it('uses backend visibility and hides the hidden section by default', () => {
+    it('keeps unknown holdings behind one collapsed Hidden tokens entry', () => {
+        render(<WalletAssetList
+            tokens={[primary, unverified, hidden, secantX]}
+            settings={{ hideUnknownTokens: true, hideSmallBalances: false }}
+        />)
+
+        expect(screen.getByText('Established token')).toBeTruthy()
+        expect(screen.getByRole('button', { name: 'Hidden tokens (3)' })).toBeTruthy()
+        expect(screen.queryByText('Unknown token')).toBeNull()
+        expect(screen.queryByText('Unverified token')).toBeNull()
+        expect(screen.queryByText('SecantX AI')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
+        expect(document.body.textContent).not.toContain('$447,463.12')
+    })
+
+    it('reveals hidden holdings only after an explicit click and never trusts their values', () => {
         render(<WalletAssetList
             tokens={[primary, unverified, hidden]}
             settings={{ hideUnknownTokens: true, hideSmallBalances: false }}
         />)
-        expect(screen.getByText('Established token')).toBeTruthy()
-        expect(screen.queryByText('Unknown token')).toBeNull()
-        expect(screen.queryByText('Unverified token')).toBeNull()
-    })
 
-    it('reveals hidden balances only in a collapsed section with no untrusted value', () => {
-        render(<WalletAssetList
-            tokens={[primary, unverified, hidden]}
-            settings={{ hideUnknownTokens: false, hideSmallBalances: false }}
-        />)
-        expect(screen.queryByText('Unknown token')).toBeNull()
-        expect(screen.queryByText('Unverified token')).toBeNull()
-        fireEvent.click(screen.getByRole('button', { name: 'Unverified tokens (1)' }))
-        expect(screen.getByText('Unverified token')).toBeTruthy()
-        expect(screen.getByText('These tokens are not recognized by trusted asset sources.'))
-            .toBeTruthy()
-        fireEvent.click(screen.getByRole('button', { name: 'Hidden risky tokens (1)' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Hidden tokens (2)' }))
+
         expect(screen.getByText('Unknown token')).toBeTruthy()
+        expect(screen.getByText('Unverified token')).toBeTruthy()
         expect(screen.getByText('Potential risk')).toBeTruthy()
+        expect(screen.getByText('Unverified')).toBeTruthy()
         expect(screen.getAllByText('—')).toHaveLength(2)
         expect(screen.getByText('5 UNKNOWN')).toBeTruthy()
     })
 
-    it('treats missing visibility as hidden instead of primary', () => {
+    it('preserves a separate hidden section when unknown-token hiding is disabled', () => {
+        render(<WalletAssetList
+            tokens={[primary, unverified, hidden]}
+            settings={{ hideUnknownTokens: false, hideSmallBalances: false }}
+        />)
+
+        expect(screen.queryByText('Unknown token')).toBeNull()
+        expect(screen.queryByText('Unverified token')).toBeNull()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Hidden tokens (2)' }))
+        expect(screen.getByText('Unverified token')).toBeTruthy()
+        expect(screen.getByText('Unknown token')).toBeTruthy()
+        expect(screen.getByText('Potential risk')).toBeTruthy()
+        expect(screen.getAllByText('—')).toHaveLength(2)
+    })
+
+    it('treats missing visibility as non-primary', () => {
         render(<WalletAssetList
             tokens={[primary, { ...hidden, visibility: undefined }]}
             settings={{ hideUnknownTokens: true, hideSmallBalances: false }}
         />)
+
         expect(screen.getByText('Established token')).toBeTruthy()
         expect(screen.queryByText('Unknown token')).toBeNull()
     })
 
-    it('switches presentation immediately without deleting the complete token array', () => {
+    it('switches presentation without deleting the complete token array', () => {
         const tokens = [primary, unverified, hidden]
         const view = render(<WalletAssetList
             tokens={tokens}
             settings={{ hideUnknownTokens: true, hideSmallBalances: false }}
         />)
+
+        expect(screen.getByText('Hidden tokens (2)')).toBeTruthy()
         expect(screen.queryByText('Unverified tokens (1)')).toBeNull()
 
         view.rerender(<WalletAssetList
             tokens={tokens}
             settings={{ hideUnknownTokens: false, hideSmallBalances: false }}
         />)
-        expect(screen.getByText('Unverified tokens (1)')).toBeTruthy()
-        expect(screen.getByText('Hidden risky tokens (1)')).toBeTruthy()
+
+        expect(screen.getByText('Hidden tokens (2)')).toBeTruthy()
         expect(tokens).toHaveLength(3)
     })
 })

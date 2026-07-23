@@ -3,6 +3,39 @@ import { describe, expect, it, vi } from 'vitest'
 import { SigningReviewQueue } from './signingReview.js'
 
 describe('Pistachio signing review queue', () => {
+    it('binds default browser timers to globalThis', async () => {
+        const originalSetTimeout = globalThis.setTimeout
+        const originalClearTimeout = globalThis.clearTimeout
+        const receiverSensitiveSetTimeout = vi.fn(function (callback, delay) {
+            if (this !== globalThis) throw new TypeError('Illegal invocation')
+            return originalSetTimeout.call(globalThis, callback, delay)
+        })
+        const receiverSensitiveClearTimeout = vi.fn(function (timer) {
+            if (this !== globalThis) throw new TypeError('Illegal invocation')
+            return originalClearTimeout.call(globalThis, timer)
+        })
+
+        globalThis.setTimeout = receiverSensitiveSetTimeout
+        globalThis.clearTimeout = receiverSensitiveClearTimeout
+        try {
+            const queue = new SigningReviewQueue()
+            const pending = queue.request({
+                walletAddress: '0x1',
+                chainId: 56,
+                action: 'Sign transaction',
+                payload: {},
+            })
+            queue.approve(queue.snapshot().id)
+
+            await expect(pending).resolves.toBe(true)
+            expect(receiverSensitiveSetTimeout).toHaveBeenCalledOnce()
+            expect(receiverSensitiveClearTimeout).toHaveBeenCalledOnce()
+        } finally {
+            globalThis.setTimeout = originalSetTimeout
+            globalThis.clearTimeout = originalClearTimeout
+        }
+    })
+
     it('allows one active request and requires the exact request ID', async () => {
         const queue = new SigningReviewQueue()
         const first = queue.request({ walletAddress: '0x1', chainId: 1, action: 'Sign message', payload: { message: 'test' } })

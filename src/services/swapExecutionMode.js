@@ -24,6 +24,7 @@ export function getSwapExecutionMessage(reason) {
         'gas-assist-config-loading': 'Checking Gas Assist availability…',
         'gas-assist-config-error': 'Gas Assist configuration could not be loaded.',
         'gas-assist-disabled': 'Gas Assist is currently disabled.',
+        'insufficient-native-balance': 'Gas Assist will be used because the wallet does not have enough BNB for normal gas.',
         'native-sell-token': 'Gas Assist cannot sell the native gas token.',
     }[reason] ?? null
 }
@@ -39,6 +40,7 @@ export function deriveSwapExecution({
     sellAmount,
     gasAssistConfig,
     gasAssistConfigStatus,
+    minimumNativeBalance = 1n,
 }) {
     if (!isConnected || !walletAddress) return { mode: null, reason: 'wallet-unavailable' }
     if (chainId !== 56) return { mode: null, reason: 'wrong-chain' }
@@ -65,7 +67,14 @@ export function deriveSwapExecution({
     if (!sellAmount || !/^\d+$/.test(sellAmount) || BigInt(sellAmount) <= 0n) {
         return { mode: null, reason: 'invalid-amount' }
     }
-    if (nativeBalance > 0n) return { mode: NORMAL_SWAP_MODE, reason: null }
+    let requiredNativeBalance = 1n
+    try {
+        const parsed = BigInt(minimumNativeBalance)
+        if (parsed > 0n) requiredNativeBalance = parsed
+    } catch {
+        requiredNativeBalance = 1n
+    }
+    if (nativeBalance >= requiredNativeBalance) return { mode: NORMAL_SWAP_MODE, reason: null }
     if (sellToken.isNative) return { mode: null, reason: 'native-sell-token' }
     if (gasAssistConfigStatus === 'idle' || gasAssistConfigStatus === 'loading') {
         return { mode: null, reason: 'gas-assist-config-loading' }
@@ -74,5 +83,5 @@ export function deriveSwapExecution({
     if (gasAssistConfig?.enabled !== true || gasAssistConfig?.mode !== ZERO_X_GASLESS_MODE) {
         return { mode: null, reason: 'gas-assist-disabled' }
     }
-    return { mode: ZERO_X_GASLESS_MODE, reason: null }
+    return { mode: ZERO_X_GASLESS_MODE, reason: 'insufficient-native-balance' }
 }

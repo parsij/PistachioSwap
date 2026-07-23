@@ -1,4 +1,8 @@
 import { useState } from 'react'
+import {
+    getTokenDisplayName,
+    getTokenDisplaySymbol,
+} from '../services/tokenDisplay.js'
 import { ShieldAlert } from 'lucide-react'
 
 import TokenIcon, { ChainIcon } from './TokenIcon.jsx'
@@ -6,6 +10,26 @@ import { ChevronDownIcon } from './TokenSelectorIcons.jsx'
 import { CURATED_EVM_CHAINS, getCuratedEvmChain, TOKEN_DISCOVERY_CHAIN_IDS } from '../../../web3/curatedEvmChains.js'
 import { getTokenKey, shortenAddress } from '../model/tokenSelectorState.js'
 import { formatWalletTokenAmount, formatWalletUsdValue } from '../services/walletTokens.js'
+
+const REASON_LABELS = {
+    'insufficient-sellable-liquidity': 'Low liquidity',
+    'insufficient-trusted-liquidity': 'Low liquidity',
+    'token-too-new': 'New token',
+    'age-unavailable': 'Unverified',
+    'unverified-identity': 'Unverified',
+    'fallback-metadata': 'Unverified',
+    'provider-spam': 'Potential risk',
+    'security-caution': 'Potential risk',
+    'security-high': 'Potential risk',
+    'security-blocked': 'Potential risk',
+}
+
+function primaryReasonLabel(token) {
+    const reason = Array.isArray(token?.classificationReasons)
+        ? token.classificationReasons.find((item) => REASON_LABELS[item])
+        : null
+    return reason ? REASON_LABELS[reason] : null
+}
 
 /**
  * Renders the chain listbox and preserves keyboard/Escape behavior.
@@ -76,11 +100,20 @@ export function SectionTitle({ icon, children, action }) {
  */
 export function TokenRow({ token, currentToken, oppositeToken, showBalance = false, onSelect, onContextMenu }) {
     const address = token.isNative ? null : shortenAddress(token.address)
+    const displayName = getTokenDisplayName(token)
+    const displaySymbol = getTokenDisplaySymbol(token)
     const isCurrent = getTokenKey(token) !== null && getTokenKey(token) === getTokenKey(currentToken)
     const isOpposite = getTokenKey(token) !== null && getTokenKey(token) === getTokenKey(oppositeToken)
+    const riskLabel = primaryReasonLabel(token) ?? (token.visibility === 'hidden' ||
+        token.possibleSpam === true ||
+        ['high', 'blocked'].includes(token.securityStatus)
+        ? 'Potential risk'
+        : token.visibility === 'unverified'
+          ? 'Unverified'
+          : null)
     return <button type="button" className={['ps-token-row', isCurrent ? 'ps-token-row-selected' : '', isOpposite ? 'ps-token-row-opposite' : '', token.visibility === 'hidden' ? 'ps-token-row-hidden' : ''].filter(Boolean).join(' ')} aria-current={isCurrent ? 'true' : undefined} onClick={() => onSelect(token)} onContextMenu={(event) => onContextMenu(event, token)}>
         <TokenIcon token={token} size="list" />
-        <span className="ps-token-row-details"><strong>{token.name || token.symbol}</strong><span className="ps-token-row-meta"><span className="ps-token-symbol">{token.symbol}</span>{address && <span className="ps-token-contract" title={token.address}>{address}</span>}{(token.possibleSpam === true || ['high', 'blocked'].includes(token.securityStatus)) && <span className="ps-token-risk-label"><ShieldAlert aria-hidden="true" />Potential risk</span>}</span></span>
+        <span className="ps-token-row-details"><strong>{displayName}</strong><span className="ps-token-row-meta"><span className="ps-token-symbol">{displaySymbol}</span>{address && <span className="ps-token-contract" title={token.address}>{address}</span>}{riskLabel && <span className="ps-token-risk-label"><ShieldAlert aria-hidden="true" />{riskLabel}</span>}{token.visibility === 'hidden' && Array.isArray(token.classificationReasons) && token.classificationReasons[0] && <span className="ps-token-contract">{token.classificationReasons[0]}</span>}</span></span>
         <span className="ps-token-row-value">{showBalance ? <><strong>{formatWalletUsdValue(token)}</strong><span>{formatWalletTokenAmount(token.balance)}</span></> : null}</span>
     </button>
 }

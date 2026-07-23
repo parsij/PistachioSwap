@@ -172,19 +172,19 @@ describe('normalized wallet token response', () => {
             walletAddress: wallet,
         })
         const native = tokens.find((token) => token.isNative)
-        const unverified = tokens.filter((token) => token.visibility === 'unverified')
+        const hidden = tokens.filter((token) => token.visibility === 'hidden')
 
         expect(tokens).toHaveLength(8)
-        expect(unverified).toHaveLength(7)
-        expect(unverified.every((token) => token.rawBalance === '1000000000000000000'))
+        expect(hidden).toHaveLength(7)
+        expect(hidden.every((token) => token.rawBalance === '1000000000000000000'))
             .toBe(true)
-        expect(unverified.every((token) => token.visibilityReasons.includes(
-            'unverified-contract',
+        expect(hidden.every((token) => token.visibilityReasons.includes(
+            'unverified-identity',
         ))).toBe(true)
-        expect(unverified.every((token) =>
+        expect(hidden.every((token) =>
             token.valueUSD === null && token.trustedPriceUSD === null,
         )).toBe(true)
-        expect(tokens.every((token) => token.classificationVersion === 4)).toBe(true)
+        expect(tokens.every((token) => token.classificationVersion === 6)).toBe(true)
         expect(native).toMatchObject({
             symbol: 'BNB',
             balance: '1',
@@ -195,6 +195,44 @@ describe('normalized wallet token response', () => {
             securityStatus: 'trusted',
             visibility: 'primary',
         })
+    })
+
+    it('does not fetch native prices for a zero native balance', async () => {
+        const tokens = await getWalletTokens({
+            chainId: 56,
+            walletAddress: '0x1000000000000000000000000000000000000063',
+            inventory: {
+                balances: new Map(),
+                nativeBalance: 0n,
+                pageCount: 1,
+                metadata: new Map(),
+                prices: new Map(),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+
+        expect(tokens).toEqual([])
+        expect(mocks.getNativeBnbPrice).not.toHaveBeenCalled()
+    })
+
+    it('does not fetch native prices for empty non-BSC portfolio chains', async () => {
+        const tokens = await getWalletTokens({
+            chainId: 100,
+            walletAddress: '0x1000000000000000000000000000000000000064',
+            inventory: {
+                balances: new Map(),
+                nativeBalance: 0n,
+                pageCount: 1,
+                metadata: new Map(),
+                prices: new Map(),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+
+        expect(tokens).toEqual([])
+        expect(mocks.getNativeBnbPrice).not.toHaveBeenCalled()
     })
 
     it('keeps manipulated exact-address market value untrusted and unverified', async () => {
@@ -229,11 +267,11 @@ describe('normalized wallet token response', () => {
         const result = tokens.find((item) => item.address === address)
         expect(result).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
             priceUSD: '100000',
             trustedPriceUSD: null,
             valueUSD: null,
-            priceConfidence: 'market',
+            priceConfidence: 'untrusted',
         })
         expect(result?.marketPriceUSD).toBe('100000')
     })
@@ -288,7 +326,7 @@ describe('normalized wallet token response', () => {
             marketPriceUSD: '9.5',
             trustedPriceUSD: null,
             valueUSD: null,
-            priceConfidence: 'market',
+            priceConfidence: 'untrusted',
         })
         expect(tokens[0].verificationReasons)
             .toContain('alchemy-portfolio-metadata')
@@ -321,8 +359,8 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             recognitionStatus: 'unverified',
-            securityStatus: 'low',
-            visibility: 'unverified',
+            securityStatus: 'caution',
+            visibility: 'hidden',
             trustedPriceUSD: null,
             valueUSD: null,
         })
@@ -348,10 +386,10 @@ describe('normalized wallet token response', () => {
             walletAddress: cachedWallet,
         })
         expect(mocks.alchemyRpc).toHaveBeenCalled()
-        expect(tokens.every((token) => token.classificationVersion === 4)).toBe(true)
+        expect(tokens.every((token) => token.classificationVersion === 6)).toBe(true)
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
             valueUSD: null,
         })
     })
@@ -378,18 +416,19 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000044',
         })
         expect(tokens.find((item) => item.address === address)).toMatchObject({
-            recognitionStatus: 'recognized',
-            visibility: 'primary',
-            trustedPriceUSD: '2',
-            priceConfidence: 'trusted',
+            recognitionStatus: 'unverified',
+            visibility: 'hidden',
+            trustedPriceUSD: null,
+            priceConfidence: 'untrusted',
+            classificationTier: 'hidden',
         })
         expect(tokens.find((item) => item.address === tokenAddresses[1])).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
         })
     })
 
-    it('keeps a newer exact contract primary when Moralis verifies it', async () => {
+    it('keeps Moralis source-code verification informational and hidden without curated identity', async () => {
         const address = tokenAddresses[0]
         mocks.getMoralisWalletTokens.mockResolvedValue({
             available: true,
@@ -415,15 +454,106 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000047',
         })
         expect(tokens.find((item) => item.address === address)).toMatchObject({
-            recognitionStatus: 'recognized',
+            recognitionStatus: 'unverified',
             recognitionReasons: ['moralis-verified-contract'],
             spamStatus: 'clean',
             possibleSpam: false,
             verifiedContract: true,
-            visibility: 'primary',
-            trustedPriceUSD: '2',
-            valueUSD: '2',
+            visibility: 'hidden',
+            trustedPriceUSD: null,
+            marketPriceUSD: '2',
+            valueUSD: null,
         })
+    })
+
+    it('hides SecantX-style verified market-catalog scams and strips fake value', async () => {
+        const address = tokenAddresses[0]
+        mocks.getCatalog.mockResolvedValue({
+            catalog: {
+                generatedAt: Date.now(),
+                tokens: [{
+                    chainId: 56,
+                    address,
+                    name: 'SecantX AI',
+                    symbol: 'SECA',
+                    decimals: 18,
+                    priceUSD: '447463.12',
+                    verifiedContract: true,
+                    recognitionReasons: ['trusted-market-contract'],
+                }],
+            },
+            stale: false,
+        })
+        mocks.getMoralisWalletTokens.mockResolvedValue({
+            available: true,
+            checkedAt: new Date(0).toISOString(),
+            pageCount: 1,
+            tokens: new Map([[address, {
+                chainId: 56,
+                address,
+                possibleSpam: false,
+                verifiedContract: true,
+                name: 'SecantX AI',
+                symbol: 'SECA',
+                decimals: 18,
+                logoURI: null,
+                priceUSD: '447463.12',
+                valueUSD: '447463.12',
+                source: 'moralis',
+            }]]),
+        })
+        mocks.fetchTokenMarkets.mockResolvedValue({
+            markets: new Map([[address, {
+                address,
+                name: 'SecantX AI',
+                symbol: 'SECA',
+                priceUSD: '447463.12',
+                volume24hUsd: 0,
+                liquidityUsd: 5,
+                largestTrustedPoolLiquidityUsd: 5,
+                transactionCount24h: 0,
+                uniqueTraders24h: 0,
+                pairCount: 4,
+                pairUrl: null,
+                oldestPairCreatedAt: null,
+            }]]),
+            partial: false,
+            successfulBatches: 1,
+            failedBatches: 0,
+        })
+        mocks.getCachedAndRefresh.mockReturnValue({
+            securityStatus: 'low',
+            securityScore: 0,
+            securityReasons: ['security-risk-low'],
+            honeypot: { available: true, checkedAt: new Date(0).toISOString(), risk: 'low', riskLevel: 0, isHoneypot: false },
+            goPlus: { available: false, checkedAt: null, isHoneypot: null },
+        })
+
+        const tokens = await getWalletTokens({
+            chainId: 56,
+            walletAddress: '0x1000000000000000000000000000000000000062',
+        })
+        const result = tokens.find((item) => item.address === address)
+        expect(result).toMatchObject({
+            name: 'SecantX AI',
+            symbol: 'SECA',
+            verifiedContract: true,
+            possibleSpam: false,
+            recognitionStatus: 'unverified',
+            visibility: 'hidden',
+            includeInPortfolioValue: false,
+            valueUSD: null,
+            trustedPriceUSD: null,
+            marketPriceUSD: '447463.12',
+            priceConfidence: 'untrusted',
+        })
+        expect(result?.visibilityReasons).toEqual(expect.arrayContaining([
+            'moralis-verified-contract',
+            'market-catalog-only',
+            'untrusted-price',
+            'insufficient-trusted-liquidity',
+        ]))
+        expect(result?.visibilityReasons).not.toContain('trusted-market-contract')
     })
 
     it('hides Moralis possible spam even when contract risk is low', async () => {
@@ -468,7 +598,7 @@ describe('normalized wallet token response', () => {
             spamStatus: 'possible-spam',
             possibleSpam: true,
             visibility: 'hidden',
-            visibilityReasons: ['moralis-possible-spam'],
+            visibilityReasons: expect.arrayContaining(['provider-spam']),
             trustedPriceUSD: null,
             valueUSD: null,
         })
@@ -500,7 +630,7 @@ describe('normalized wallet token response', () => {
             securityStatus: 'blocked',
             securityReasons: ['honeypot-confirmed'],
             visibility: 'hidden',
-            visibilityReasons: ['security-blocked'],
+            visibilityReasons: expect.arrayContaining(['security-blocked']),
         })
     })
 
@@ -516,7 +646,7 @@ describe('normalized wallet token response', () => {
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             securityStatus: 'blocked',
             visibility: 'hidden',
-            visibilityReasons: ['manual-blocklist'],
+            visibilityReasons: expect.arrayContaining(['manual-blocklist']),
         })
     })
 
@@ -544,7 +674,7 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens.find((item) => item.address === tokenAddresses[1])).toMatchObject({
             recognitionStatus: 'unverified',
-            visibility: 'unverified',
+            visibility: 'hidden',
         })
     })
 
@@ -576,7 +706,7 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens).toEqual([
             expect.objectContaining({
-                classificationVersion: 4,
+                classificationVersion: 6,
                 id: `56:${xautAddress}`,
                 name: 'Tether Gold',
                 symbol: 'XAUt',
@@ -595,10 +725,12 @@ describe('normalized wallet token response', () => {
                 logoURI: '/icons/tether-gold.png',
                 logoSource: 'curated',
                 priceUSD: '2400.25',
-                marketPriceUSD: '2400.25',
-                trustedPriceUSD: null,
-                valueUSD: null,
-                priceConfidence: 'market',
+                marketPriceUSD: null,
+                trustedPriceUSD: '2400.25',
+                valueUSD: '3600.375',
+                priceConfidence: 'trusted',
+                classificationTier: 'core',
+                classificationReasons: expect.arrayContaining(['core-asset']),
             }),
         ])
         expect(tokens[0].logoCandidates[1])

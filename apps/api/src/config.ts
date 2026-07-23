@@ -455,14 +455,29 @@ export function getApiConfig() {
                 100_000,
                 0,
             ),
+            minimumLargestPoolLiquidityUsd: readConfiguredNumber(
+                'ESTABLISHED_TOKEN_MIN_LARGEST_POOL_LIQUIDITY_USD',
+                50_000,
+                0,
+            ),
             minimumVolume24hUsd: readConfiguredNumber(
                 'ESTABLISHED_TOKEN_MIN_VOLUME_24H_USD',
-                25_000,
+                10_000,
                 0,
             ),
             minimumPoolAgeDays: readConfiguredNumber(
                 'ESTABLISHED_TOKEN_MIN_POOL_AGE_DAYS',
-                30,
+                365,
+                0,
+            ),
+            minimumTransactions24h: readConfiguredInteger(
+                'ESTABLISHED_TOKEN_MIN_TXNS_24H',
+                100,
+                0,
+            ),
+            minimumUniqueTraders24h: readConfiguredInteger(
+                'ESTABLISHED_TOKEN_MIN_UNIQUE_TRADERS_24H',
+                25,
                 0,
             ),
             minimumPairCount: readConfiguredInteger(
@@ -472,9 +487,9 @@ export function getApiConfig() {
             ),
             defaultLimit: readConfiguredInteger(
                 'ESTABLISHED_TOKEN_LIMIT',
-                100,
+                1_000,
                 1,
-                100,
+                1_000,
             ),
             candidateLimit: readConfiguredInteger(
                 'ESTABLISHED_CANDIDATE_LIMIT',
@@ -664,7 +679,7 @@ export function getApiConfig() {
             ),
             minimumSellUsd: readPositiveDecimal(
                 'GAS_ASSIST_MIN_SELL_USD',
-                '1',
+                '0.10',
             ),
             minimumUserOutputUsd: readPositiveDecimal(
                 'GAS_ASSIST_MIN_USER_OUTPUT_USD',
@@ -761,8 +776,10 @@ export function getApiConfig() {
                 'prepaid',
             chainId: readConfiguredInteger('MEGAFUEL_CHAIN_ID', 56, 1),
             apiKey: process.env.MEGAFUEL_API_KEY?.trim() || null,
-            privatePolicyUuid:
-                process.env.MEGAFUEL_PRIVATE_POLICY_UUID?.trim() || null,
+            feePolicyUuid:
+                process.env.MEGAFUEL_FEE_POLICY_UUID?.trim() || null,
+            actionPolicyUuid:
+                process.env.MEGAFUEL_ACTION_POLICY_UUID?.trim() || null,
             privateRpcBaseUrl: readUrl(
                 'MEGAFUEL_PRIVATE_RPC_BASE_URL',
                 'https://open-platform-ap.nodereal.io',
@@ -774,15 +791,15 @@ export function getApiConfig() {
             ),
             orderTtlSeconds: readConfiguredInteger(
                 'MEGAFUEL_ORDER_TTL_SECONDS',
-                300,
+                900,
                 60,
-                300,
+                900,
             ),
             actionIntentTtlSeconds: readConfiguredInteger(
                 'MEGAFUEL_ACTION_INTENT_TTL_SECONDS',
-                300,
+                900,
                 60,
-                300,
+                900,
             ),
             authChallengeTtlSeconds: readConfiguredInteger(
                 'MEGAFUEL_AUTH_CHALLENGE_TTL_SECONDS',
@@ -818,7 +835,7 @@ export function getApiConfig() {
             ),
             minimumGrossTradeUsd: readPositiveDecimal(
                 'MEGAFUEL_MIN_GROSS_TRADE_USD',
-                '1',
+                '0.10',
             ),
             minimumNetTradeUsd: readPositiveDecimal(
                 'MEGAFUEL_MIN_NET_TRADE_USD',
@@ -852,6 +869,10 @@ export function getApiConfig() {
                 'MEGAFUEL_NORMAL_SWAP_SPONSOR_ENABLED',
                 false,
             ),
+            sponsoredSwapProviders: (process.env.MEGAFUEL_SPONSORED_SWAP_PROVIDERS ?? 'uniswap,0x')
+                .split(',')
+                .map((value) => value.trim().toLowerCase())
+                .filter(Boolean),
             approvalMode:
                 process.env.MEGAFUEL_APPROVAL_MODE?.trim().toLowerCase() ||
                 'exact',
@@ -1015,6 +1036,7 @@ export function validateStartupConfig(config = getApiConfig()) {
     ])
     const validSponsorshipBillingModes = new Set(['prepaid'])
     const validApprovalModes = new Set(['exact', 'bounded-reusable'])
+    const validSponsoredSwapProviders = new Set(['uniswap', '0x'])
 
     if (
         config.alchemy.portfolio.enabled &&
@@ -1101,6 +1123,10 @@ export function validateStartupConfig(config = getApiConfig()) {
     if (!validApprovalModes.has(config.sponsorship.approvalMode)) {
         throw new Error('MEGAFUEL_APPROVAL_MODE is invalid.')
     }
+    if (config.sponsorship.sponsoredSwapProviders.length === 0 ||
+        config.sponsorship.sponsoredSwapProviders.some((provider) => !validSponsoredSwapProviders.has(provider))) {
+        throw new Error('MEGAFUEL_SPONSORED_SWAP_PROVIDERS must contain only uniswap and/or 0x.')
+    }
     if (
         config.sponsorship.approvalMode === 'bounded-reusable' &&
         config.sponsorship.rejectUnlimitedApproval !== true
@@ -1118,8 +1144,15 @@ export function validateStartupConfig(config = getApiConfig()) {
             errors.push('GAS_ASSIST_MODE must be zero-x-gasless')
         }
         if (!config.quotes.zeroX.apiKey) errors.push('ZEROX_API_KEY is required')
-        if (!config.sponsorship.privatePolicyUuid) {
-            errors.push('MEGAFUEL_PRIVATE_POLICY_UUID is required')
+        if (!config.sponsorship.feePolicyUuid) {
+            errors.push('MEGAFUEL_FEE_POLICY_UUID is required')
+        }
+        if (!config.sponsorship.actionPolicyUuid) {
+            errors.push('MEGAFUEL_ACTION_POLICY_UUID is required')
+        }
+        if (config.sponsorship.feePolicyUuid && config.sponsorship.actionPolicyUuid &&
+            config.sponsorship.feePolicyUuid === config.sponsorship.actionPolicyUuid) {
+            errors.push('MEGAFUEL_FEE_POLICY_UUID and MEGAFUEL_ACTION_POLICY_UUID must be different')
         }
         if (!config.sponsorship.databaseConfigured) errors.push('DATABASE_URL is required')
         if (!config.fees.treasuryAddress || config.fees.treasuryAddress === NATIVE_TOKEN_ADDRESS) {

@@ -17,7 +17,7 @@ import TokenSelector from './TokenSelector.jsx'
 import { clearTokenLogoCacheForTest } from './tokenLogoCache.js'
 
 const native = {
-    classificationVersion: 4,
+    classificationVersion: 6,
     id: '56:0x0000000000000000000000000000000000000000',
     chainId: 56,
     address: '0x0000000000000000000000000000000000000000',
@@ -30,17 +30,19 @@ const native = {
     priceUSD: '54.463',
     valueUSD: '113',
     recognitionStatus: 'established',
+    recognitionReasons: ['native-token'],
     spamStatus: 'clean',
     possibleSpam: false,
     verifiedContract: null,
     securityStatus: 'trusted',
     priceConfidence: 'trusted',
+    includeInPortfolioValue: true,
     visibility: 'primary',
     logoURI: '/icons/bnb.svg',
 }
 
 const hidden = {
-    classificationVersion: 4,
+    classificationVersion: 6,
     id: '56:0x0000000000000000000000000000000000000099',
     chainId: 56,
     address: '0x0000000000000000000000000000000000000099',
@@ -113,7 +115,31 @@ const recognizedCaution = {
     securityStatus: 'caution',
     securityReasons: ['transfer-control-capability', 'transfer-pausable'],
     visibility: 'primary',
-    visibilityReasons: ['moralis-verified-contract'],
+    recognitionReasons: ['trustwallet-reviewed-asset'],
+    visibilityReasons: ['trustwallet-reviewed-asset'],
+}
+
+const secantX = {
+    ...hidden,
+    id: '56:0x0000000000000000000000000000000000000eca',
+    address: '0x0000000000000000000000000000000000000eca',
+    name: 'SecantX AI',
+    symbol: 'SECA',
+    spamStatus: 'clean',
+    possibleSpam: false,
+    verifiedContract: true,
+    securityStatus: 'low',
+    priceUSD: '447463.12',
+    marketPriceUSD: '447463.12',
+    valueUSD: null,
+    priceConfidence: 'untrusted',
+    includeInPortfolioValue: false,
+    visibility: 'hidden',
+    visibilityReasons: [
+        'moralis-verified-contract',
+        'market-catalog-only',
+        'untrusted-market-price',
+    ],
 }
 
 function renderSelector(overrides = {}) {
@@ -168,6 +194,10 @@ describe('TokenSelector wallet rows', () => {
             isNative: false,
             name: `Primary ${index}`,
             symbol: `P${index}`,
+            recognitionStatus: 'recognized',
+            recognitionReasons: ['coingecko-exact-contract'],
+            verifiedContract: true,
+            includeInPortfolioValue: true,
         }))
         const { container } = renderSelector({
             walletTokens,
@@ -186,45 +216,45 @@ describe('TokenSelector wallet rows', () => {
         const walletSection = screen.getByText('Your tokens').closest('section')
         expect(within(walletSection).getByText('BNB', { selector: 'strong' }))
             .toBeTruthy()
-        expect(screen.getByText('Popular tokens are temporarily unavailable.'))
+        expect(screen.getByText('24H volume rankings are temporarily unavailable.'))
             .toBeTruthy()
     })
 
-    it('shows curated OP tokens and address search during a provider outage', () => {
+    it('shows static fallback tokens and address search during a provider outage', () => {
         const common = ['WETH', 'USDC', 'USDT', 'OP', 'DAI', 'WBTC']
             .map((symbol, index) => ({
-                ...native,
                 id: `10:0x${String(index + 1).padStart(40, '0')}`,
                 chainId: 10,
                 address: `0x${String(index + 1).padStart(40, '0')}`,
                 isNative: false,
                 name: symbol,
                 symbol,
-                volume24hUsd: null,
-                liquidityUsd: null,
-                source: 'curated',
-                catalogSection: 'common',
-                verifiedContract: true,
-                verificationStatus: 'established',
-                visibility: 'primary',
-                securityStatus: 'trusted',
+                decimals: 18,
+                logoURI: '/icons/token-fallback.svg',
+                logoCandidates: ['/icons/token-fallback.svg'],
+                chainLogoURI: '/networkIcons/optimism.webp',
+                coinGeckoId: null,
+                catalogSource: 'static-fallback',
+                directoryStatus: 'listed',
+                catalogSection: 'fallback',
+                rank: null,
             }))
         renderSelector({
             chainId: 10,
             tokens: [],
-            commonTokens: common,
+            fallbackTokens: common,
             walletTokens: [],
             currentToken: null,
             catalogNotice: 'Popular tokens are temporarily unavailable.',
         })
 
-        expect(screen.getByText('Common tokens')).toBeTruthy()
-        expect(screen.getByText('Common tokens').closest('.ps-token-section-heading')
+        expect(screen.getByText('Tokens')).toBeTruthy()
+        expect(screen.getByText('Tokens').closest('.ps-token-section-heading')
             .querySelector('svg')).toBeNull()
         for (const symbol of common.map((token) => token.symbol)) {
             expect(screen.getByText(symbol, { selector: 'strong' })).toBeTruthy()
         }
-        expect(screen.getByText('Popular tokens are temporarily unavailable.'))
+        expect(screen.getByText('24H volume rankings are temporarily unavailable.'))
             .toBeTruthy()
         expect(screen.getByRole('textbox')).toBeTruthy()
     })
@@ -245,32 +275,34 @@ describe('TokenSelector wallet rows', () => {
         }
         renderSelector({
             tokens: [shared],
-            commonTokens: [{ ...shared, source: 'curated', catalogSection: 'common' }],
+            fallbackTokens: [{
+                ...shared,
+                catalogSource: 'static-fallback',
+                directoryStatus: 'listed',
+                catalogSection: 'fallback',
+                rank: null,
+            }],
             walletTokens: [{ ...shared, balance: '1', visibility: 'primary' }],
             currentToken: null,
         })
         expect(screen.getAllByText('Shared Token', { selector: 'strong' }))
             .toHaveLength(1)
-        expect(screen.queryByText('Common tokens')).toBeNull()
+        expect(screen.queryByText('Tokens')).toBeNull()
     })
 
-    it('keeps unverified and risky wallet tokens in separate collapsed sections', () => {
+    it('keeps hidden wallet tokens in one collapsed section', () => {
         const onSelect = vi.fn()
         const first = renderSelector({ onSelect, hideUnknownTokens: false })
 
         expect(screen.queryByText(hidden.name)).toBeNull()
         expect(screen.queryByText(unverified.name)).toBeNull()
-        const unverifiedSection = screen.getByText('Unverified tokens (1)').closest('section')
-        fireEvent.click(within(unverifiedSection).getByRole('button', { name: 'Show' }))
-        expect(screen.getByText(unverified.name)).toBeTruthy()
-        const hiddenSection = screen.getByText('Hidden risky tokens (3)').closest('section')
+        const hiddenSection = screen.getByText('Hidden tokens (4)').closest('section')
         fireEvent.click(within(hiddenSection).getByRole('button', { name: 'Show' }))
+        expect(screen.getByText(unverified.name)).toBeTruthy()
         expect(screen.getByText(hidden.name).textContent).toBe(hidden.name)
         expect(screen.getByText(honeypot.name)).toBeTruthy()
         expect(screen.getByText(blocklisted.name)).toBeTruthy()
         expect(document.querySelectorAll('.ps-token-row')).toHaveLength(5)
-        expect(screen.getByText(/spam or severe security warnings/i))
-            .toBeTruthy()
         const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
         fireEvent.click(screen.getByText(hidden.name).closest('.ps-token-row'))
         expect(confirmation).toHaveBeenCalledWith(expect.stringContaining(
@@ -279,8 +311,7 @@ describe('TokenSelector wallet rows', () => {
         expect(onSelect).toHaveBeenCalledWith(hidden)
         first.unmount()
         renderSelector({ hideUnknownTokens: true })
-        expect(screen.queryByText('Unverified tokens (1)')).toBeNull()
-        expect(screen.queryByText('Hidden risky tokens (3)')).toBeNull()
+        expect(screen.queryByText('Hidden tokens (4)')).toBeNull()
         expect(screen.queryByText(hidden.name)).toBeNull()
         expect(screen.queryByText(unverified.name)).toBeNull()
     })
@@ -333,27 +364,90 @@ describe('TokenSelector wallet rows', () => {
         expect(screen.getByText(honeypot.name)).toBeTruthy()
     })
 
-    it('keeps a selected hidden token visible', () => {
+    it('does not render a selected hidden token when unknown tokens are hidden', () => {
         renderSelector({
             currentToken: hidden,
             hideUnknownTokens: true,
         })
-        expect(screen.getByText(hidden.name)).toBeTruthy()
-        const selectedSection = screen.getByText('Selected token').closest('section')
-        expect(within(selectedSection).getByText(hidden.name)).toBeTruthy()
+        expect(screen.queryByText(hidden.name)).toBeNull()
+        expect(screen.queryByText('Selected token')).toBeNull()
         const primarySection = screen.queryByText('Your tokens')?.closest('section')
         expect(primarySection ? within(primarySection).queryByText(hidden.name) : null)
             .toBeNull()
-        expect(screen.queryByText('Hidden risky tokens (3)')).toBeNull()
+        expect(screen.queryByText('Hidden tokens (4)')).toBeNull()
     })
 
-    it('persists the two collapsed-section states without touching other storage', () => {
+    it('filters screenshot junk wallet tokens during normal browsing but reveals exact-address search', () => {
+        const junk = [
+            ['SecantX AI', 'SECA', '0x0000000000000000000000000000000000000eca'],
+            ['RETURN TO MEMES', 'RET', '0x0000000000000000000000000000000000000101'],
+            ['Cash Doge', 'CDOGE', '0x0000000000000000000000000000000000000102'],
+            ['everyone', 'EVERYONE', '0x0000000000000000000000000000000000000103'],
+            ['CXMT', 'CXMT', '0x0000000000000000000000000000000000000104'],
+            ['Token 0x8bf6...abe8', '0x8bf6...abe8', '0x8bf600000000000000000000000000000000abe8'],
+        ].map(([name, symbol, address]) => ({
+            ...hidden,
+            id: `56:${address}`,
+            address,
+            name,
+            symbol,
+            possibleSpam: false,
+            spamStatus: 'clean',
+            securityStatus: 'caution',
+            priceUSD: '447000',
+            marketPriceUSD: '447000',
+            valueUSD: null,
+            priceConfidence: 'untrusted',
+            visibilityReasons: ['market-catalog-only', 'untrusted-market-price'],
+        }))
+        renderSelector({
+            walletTokens: [native, recognizedCaution, ...junk],
+            currentToken: null,
+            hideUnknownTokens: true,
+        })
+
+        expect(screen.getByText('BNB', { selector: 'strong' })).toBeTruthy()
+        expect(screen.getByText(recognizedCaution.name)).toBeTruthy()
+        for (const token of junk) expect(screen.queryByText(token.name)).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
+        expect(document.body.textContent).not.toContain('$447,526.72')
+        expect(document.body.textContent).not.toContain('$447,463.12')
+        cleanup()
+
+        renderSelector({
+            walletTokens: [native, ...junk],
+            currentToken: null,
+            search: junk[0].address,
+            hideUnknownTokens: true,
+        })
+        expect(screen.getByText('SecantX AI')).toBeTruthy()
+        expect(screen.getByText('SECA')).toBeTruthy()
+        expect(document.body.textContent).not.toContain('$447,463.12')
+    })
+
+    it('does not let verifiedContract or market-catalog-only tokens enter Your tokens', () => {
+        renderSelector({
+            walletTokens: [native, recognizedCaution, secantX],
+            tokens: [secantX],
+            currentToken: null,
+            hideUnknownTokens: true,
+        })
+        const primarySection = screen.getByText('Your tokens').closest('section')
+        expect(within(primarySection).getByText('BNB', { selector: 'strong' }))
+            .toBeTruthy()
+        expect(within(primarySection).getByText('Issuer-controlled asset'))
+            .toBeTruthy()
+        expect(within(primarySection).queryByText('SecantX AI')).toBeNull()
+        expect(screen.queryByText('SecantX AI')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECA')
+        expect(document.body.textContent).not.toContain('$447,463.12')
+    })
+
+    it('persists the collapsed hidden-section state without touching other storage', () => {
         window.localStorage.setItem('unrelated-setting', 'keep')
         const first = renderSelector({ hideUnknownTokens: false })
-        const unverifiedSection = screen.getByText('Unverified tokens (1)').closest('section')
-        const riskySection = screen.getByText('Hidden risky tokens (3)').closest('section')
-        fireEvent.click(within(unverifiedSection).getByRole('button', { name: 'Show' }))
-        fireEvent.click(within(riskySection).getByRole('button', { name: 'Show' }))
+        const hiddenSection = screen.getByText('Hidden tokens (4)').closest('section')
+        fireEvent.click(within(hiddenSection).getByRole('button', { name: 'Show' }))
         first.unmount()
 
         renderSelector({ hideUnknownTokens: false })
@@ -398,6 +492,16 @@ describe('TokenSelector wallet rows', () => {
             isNative: false,
             name: 'Ethereum token',
             symbol: 'ETHX',
+            recognitionStatus: 'recognized',
+            verificationStatus: 'recognized',
+            recognitionReasons: ['coingecko-exact-contract'],
+            verificationReasons: ['coingecko-exact-contract', 'minimum-liquidity-met'],
+            verifiedContract: true,
+            volume24hUsd: '100',
+            liquidityUsd: '1000',
+            possibleSpam: false,
+            securityStatus: 'low',
+            visibility: 'primary',
         }
         const bscToken = {
             ...ethereumToken,
@@ -612,9 +716,9 @@ describe('TokenSelector wallet rows', () => {
             rawBalance: '2500000',
             balance: '2.5',
             valueUSD: null,
-            trustedPriceUSD: null,
-            marketPriceUSD: '2400',
-            priceConfidence: 'market',
+            trustedPriceUSD: '2400',
+            marketPriceUSD: null,
+            priceConfidence: 'trusted',
             recognitionStatus: 'established',
             recognitionReasons: ['curated-official-contract'],
             verifiedContract: true,
@@ -649,7 +753,7 @@ describe('TokenSelector wallet rows', () => {
     it('resolves stale recent XAUt metadata to the refreshed wallet record', () => {
         const address = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
         window.localStorage.setItem(
-            'pistachioswap:recent-token-searches:v3:56',
+            'pistachioswap:recent-token-searches:v4:56',
             JSON.stringify([{
                 chainId: 56,
                 address,

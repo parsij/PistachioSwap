@@ -11,6 +11,7 @@ import {
 
 const COLD_CATALOG_RETRY_DELAYS_MS = [1_500, 4_000, 8_000]
 export const MARKET_CATALOG_REVALIDATE_MS = 60_000
+export const MARKET_SEARCH_DEBOUNCE_MS = 120
 
 function getCatalogNotice(result) {
     const hasRankedTokens = Array.isArray(result.tokens) && result.tokens.length > 0
@@ -27,10 +28,10 @@ function getCatalogNotice(result) {
 }
 
 export function isLatestMarketTokenRequest({
-                                               sequence,
-                                               currentSequence,
-                                               signal,
-                                           }) {
+    sequence,
+    currentSequence,
+    signal,
+}) {
     return !signal.aborted && sequence === currentSequence
 }
 
@@ -41,10 +42,10 @@ export function isLatestMarketTokenRequest({
  * @sideEffects Performs abortable backend HTTP and uses the market-token cache/timers.
  */
 export function useMarketTokens({
-                                    chainId = 56,
-                                    search = '',
-                                    enabled = true,
-                                } = {}) {
+    chainId = 56,
+    search = '',
+    enabled = true,
+} = {}) {
     const normalizedSearch = search.trim().toLowerCase()
     let chainScope
     try {
@@ -61,6 +62,7 @@ export function useMarketTokens({
         requestKey: null,
         tokens: [],
         commonTokens: [],
+        fallbackTokens: [],
         loading: true,
         error: null,
         chainErrors: {},
@@ -77,8 +79,7 @@ export function useMarketTokens({
 
     useEffect(() => {
         if (!enabled) return undefined
-        const controller =
-            new AbortController()
+        const controller = new AbortController()
         const sequence = ++requestSequence.current
         let retryTimeoutId = null
 
@@ -96,13 +97,12 @@ export function useMarketTokens({
         const loadCatalog = async (attempt = 0, forceRefresh = false) => {
             try {
                 lastCatalogRequestAtRef.current = Date.now()
-                const result =
-                    await fetchMarketTokens({
-                        chainId: chainScope,
-                        query: normalizedSearch,
-                        signal: controller.signal,
-                        forceRefresh: forceRefresh || attempt > 0,
-                    })
+                const result = await fetchMarketTokens({
+                    chainId: chainScope,
+                    query: normalizedSearch,
+                    signal: controller.signal,
+                    forceRefresh: forceRefresh || attempt > 0,
+                })
 
                 if (!isLatestMarketTokenRequest({
                     sequence,
@@ -116,6 +116,9 @@ export function useMarketTokens({
                 const commonTokens = Array.isArray(result.commonTokens)
                     ? result.commonTokens
                     : []
+                const fallbackTokens = Array.isArray(result.fallbackTokens)
+                    ? result.fallbackTokens
+                    : commonTokens
                 setState((current) => {
                     const degradedEmpty = tokens.length === 0 &&
                         (result.partial === true || result.catalogUnavailable === true)
@@ -125,6 +128,9 @@ export function useMarketTokens({
                     const visibleCommonTokens = retainCurrent
                         ? current.commonTokens
                         : commonTokens
+                    const visibleFallbackTokens = retainCurrent
+                        ? current.fallbackTokens
+                        : fallbackTokens
                     const visibleResult = retainCurrent
                         ? { ...result, tokens: visibleTokens, stale: true }
                         : { ...result, tokens: visibleTokens }
@@ -132,6 +138,7 @@ export function useMarketTokens({
                         requestKey,
                         tokens: visibleTokens,
                         commonTokens: visibleCommonTokens,
+                        fallbackTokens: visibleFallbackTokens,
                         loading: false,
                         error: null,
                         chainErrors: result.chainErrors ?? result.errors ?? {},
@@ -144,6 +151,7 @@ export function useMarketTokens({
                         schemaVersion: result.schemaVersion ?? current.schemaVersion ?? null,
                         count: visibleTokens.length,
                         commonCount: visibleCommonTokens.length,
+                        fallbackCount: visibleFallbackTokens.length,
                         query: normalizedSearch,
                     }
                 })
@@ -153,10 +161,7 @@ export function useMarketTokens({
                     scheduleRetry(attempt)
                 }
             } catch (error) {
-                if (
-                    controller.signal.aborted ||
-                    error?.name === 'AbortError'
-                ) {
+                if (controller.signal.aborted || error?.name === 'AbortError') {
                     return
                 }
 
@@ -175,6 +180,7 @@ export function useMarketTokens({
                           requestKey,
                           tokens: [],
                           commonTokens: [],
+                          fallbackTokens: [],
                           loading: false,
                           error: null,
                           browserCache: null,
@@ -187,6 +193,7 @@ export function useMarketTokens({
                           schemaVersion: null,
                           count: 0,
                           commonCount: 0,
+                          fallbackCount: 0,
                           query: normalizedSearch,
                       })
                 scheduleRetry(attempt)
@@ -195,7 +202,7 @@ export function useMarketTokens({
 
         const timeoutId = window.setTimeout(
             () => void loadCatalog(),
-            normalizedSearch ? 250 : 0,
+            normalizedSearch ? MARKET_SEARCH_DEBOUNCE_MS : 0,
         )
         revalidateRef.current = () => loadCatalog(0, true)
 
@@ -229,10 +236,10 @@ export function useMarketTokens({
 
     if (!enabled) {
         return {
-            tokens: [], commonTokens: [], loading: false, error: null, chainErrors: {},
+            tokens: [], commonTokens: [], fallbackTokens: [], loading: false, error: null, chainErrors: {},
             browserCache: null, partial: false, stale: false, hardStale: false,
             catalogUnavailable: false, notice: null, schemaVersion: null,
-            count: 0, commonCount: 0, query: normalizedSearch,
+            count: 0, commonCount: 0, fallbackCount: 0, query: normalizedSearch,
         }
     }
 
@@ -240,6 +247,7 @@ export function useMarketTokens({
         return {
             tokens: [],
             commonTokens: [],
+            fallbackTokens: [],
             loading: true,
             error: null,
             chainErrors: {},
@@ -252,6 +260,7 @@ export function useMarketTokens({
             schemaVersion: null,
             count: 0,
             commonCount: 0,
+            fallbackCount: 0,
             query: normalizedSearch,
         }
     }

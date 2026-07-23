@@ -17,6 +17,7 @@ export type DexPair = {
     quoteToken: DexToken
     priceUsd: string | null
     volume24hUsd: number
+    transactions24h: number
     liquidityUsd: number
     pairCreatedAt: number | null
 }
@@ -42,6 +43,9 @@ export function normalizeDexPair(value: unknown): DexPair | null {
     const volume = isRecord(value.volume)
         ? Number(value.volume.h24)
         : 0
+    const transactions = isRecord(value.txns) && isRecord(value.txns.h24)
+        ? Number(value.txns.h24.buys) + Number(value.txns.h24.sells)
+        : 0
     const liquidity = isRecord(value.liquidity)
         ? Number(value.liquidity.usd)
         : 0
@@ -62,6 +66,10 @@ export function normalizeDexPair(value: unknown): DexPair | null {
                 : null,
         volume24hUsd:
             Number.isFinite(volume) && volume >= 0 ? volume : 0,
+        transactions24h:
+            Number.isFinite(transactions) && transactions >= 0
+                ? transactions
+                : 0,
         liquidityUsd:
             Number.isFinite(liquidity) && liquidity >= 0
                 ? liquidity

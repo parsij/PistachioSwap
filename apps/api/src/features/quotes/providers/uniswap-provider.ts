@@ -8,7 +8,6 @@ import { ProviderError } from '../../../lib/errors.js'
 import { fetchJson, isRecord } from '../../../lib/http.js'
 import {
     decimalInteger,
-    futureExpiry,
     normalizeTransaction,
     quoteId,
 } from '../schemas/quote-utils.js'
@@ -33,6 +32,7 @@ const UNISWAP_ALLOWED_PROXY_APPROVAL_ADDRESSES = new Set<string>([
 ])
 
 const UNISWAP_UNIVERSAL_ROUTER_VERSION = '2.0'
+const UNISWAP_TRANSACTION_TTL_SECONDS = 15 * 60
 const BPS_DENOMINATOR = 10_000n
 
 type UniswapIntegratorFee = {
@@ -289,7 +289,7 @@ export function validateUniswapIntegratorFee({
     }
 }
 
-export function createUniswapProvider(): QuoteProvider {
+export function createUniswapProvider({ applyPlatformFee = true }: { applyPlatformFee?: boolean } = {}): QuoteProvider {
     const config = getApiConfig()
 
     return {
@@ -303,7 +303,7 @@ export function createUniswapProvider(): QuoteProvider {
 
         async getQuote(request, signal) {
             const mode = request.mode ?? 'EXACT_INPUT'
-            const integratorFee = resolveUniswapIntegratorFee()
+            const integratorFee = applyPlatformFee ? resolveUniswapIntegratorFee() : null
 
             if (!config.quotes.uniswap.apiKey) {
                 throw new ProviderError({
@@ -508,6 +508,8 @@ export function createUniswapProvider(): QuoteProvider {
                 })
             }
 
+            const swapDeadline = Math.floor(Date.now() / 1_000) +
+                UNISWAP_TRANSACTION_TTL_SECONDS
             const swapPayload = await fetchJson(
                 new URL(
                     `${config.quotes.uniswap.baseUrl}/swap`,
@@ -517,6 +519,7 @@ export function createUniswapProvider(): QuoteProvider {
                     headers,
                     body: {
                         quote: quotePayload.quote,
+                        deadline: swapDeadline,
                     },
                     signal,
                     timeoutMs:
@@ -815,7 +818,7 @@ export function createUniswapProvider(): QuoteProvider {
                     true,
 
                 expiresAt:
-                    futureExpiry(30),
+                    new Date(swapDeadline * 1_000).toISOString(),
             }
 
             return normalized

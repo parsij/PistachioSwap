@@ -23,6 +23,65 @@ export function getAssetIdentity(token) {
     return `${Number(token?.chainId)}:${String(token?.address ?? '').toLowerCase()}`
 }
 
+const STRONG_RECOGNITION_REASONS = new Set([
+    'native-token',
+    'native-bnb',
+    'curated-official-contract',
+    'coingecko-exact-contract',
+    'manual-allowlist',
+    'pancakeswap-curated-list',
+    'trustwallet-reviewed-asset',
+])
+
+const CORE_CURATED_REASONS = new Set([
+    'native-token',
+    'native-bnb',
+    'curated-official-contract',
+    'manual-allowlist',
+    'pancakeswap-curated-list',
+    'trustwallet-reviewed-asset',
+])
+
+/** Returns whether a wallet token has curated identity evidence suitable for primary UI. */
+export function isPrimaryTrustedAsset(token) {
+    if (!token) return false
+    if (resolvePortfolioTier(token) === 'core') return true
+    if (resolvePortfolioTier(token) === 'established') return true
+    if (token.isNative === true || token.officialAsset === true) return true
+    return Array.isArray(token.recognitionReasons) &&
+        token.recognitionReasons.some((reason) =>
+            STRONG_RECOGNITION_REASONS.has(reason))
+}
+
+/** Returns whether a wallet token may appear in normal primary wallet UI. */
+export function isTrustedWalletToken(token) {
+    if (!token || token.possibleSpam === true) return false
+    if (['high', 'blocked'].includes(token.securityStatus)) return false
+    if (token.visibility === 'hidden') return false
+    return ['core', 'established'].includes(resolvePortfolioTier(token)) &&
+        isPrimaryTrustedAsset(token)
+}
+
+export function resolvePortfolioTier(token) {
+    if (['core', 'established', 'hidden', 'blocked'].includes(token?.classificationTier)) {
+        return token.classificationTier
+    }
+    if (token?.securityStatus === 'blocked') return 'blocked'
+    if (token?.visibility === 'hidden' || token?.visibility === 'unverified') return 'hidden'
+    if (token?.visibility !== 'primary') return 'hidden'
+    if (token?.isNative === true || token?.officialAsset === true) return 'core'
+    if (Array.isArray(token?.recognitionReasons) &&
+        token.recognitionReasons.some((reason) => CORE_CURATED_REASONS.has(reason))) {
+        return 'core'
+    }
+    if (
+        token?.includeInPortfolioValue === true &&
+        token?.priceConfidence === 'trusted' &&
+        ['established', 'recognized'].includes(token?.recognitionStatus)
+    ) return 'established'
+    return 'hidden'
+}
+
 /** Returns whether a wallet-token record has a strictly positive raw balance. */
 export function isPositiveWalletBalance(token) {
     const parsed = parseDecimal(token?.balance ?? token?.formattedBalance)
@@ -39,9 +98,9 @@ export function filterPortfolioTokens(
     } = {},
 ) {
     const selected = new Set(selectedTokens.filter(Boolean).map(getAssetIdentity))
-    return tokens.filter((token) => {
+    return partitionPortfolioAssets(tokens).primaryTokens.filter((token) => {
         if (!isPositiveWalletBalance(token)) return false
-        if (token.visibility !== 'primary') return false
+        if (hideUnknownTokens && !isTrustedWalletToken(token)) return false
         const isSelected = selected.has(getAssetIdentity(token))
 
         if (
@@ -59,34 +118,81 @@ export function filterPortfolioTokens(
 
 /** Returns portfolio records classified as hidden by backend/source metadata. */
 export function getHiddenPortfolioTokens(tokens) {
-    return tokens.filter((token) => {
-        if (!(isPositiveWalletBalance(token) && token.visibility === 'hidden')) {
-            return false
-        }
-        return true
-    })
+    return partitionPortfolioAssets(tokens).hiddenTokens.filter(
+        (token) => token.visibility === 'hidden' ||
+            ['hidden', 'blocked'].includes(token.classificationTier),
+    )
 }
 
 /** Returns non-hidden portfolio records lacking verified-token evidence. */
 export function getUnverifiedPortfolioTokens(tokens) {
-    return tokens.filter((token) => {
-        if (!isPositiveWalletBalance(token)) return false
-        if (token.visibility !== 'unverified') return false
-        return true
-    })
+    return partitionPortfolioAssets(tokens).hiddenTokens.filter(
+        (token) => token.visibility === 'unverified',
+    )
 }
 
 /** Sorts a copy of wallet assets by trusted USD value and deterministic token fallback keys. */
 export function sortWalletAssetsByValue(tokens) {
-    const visibilityRank = { primary: 0, unverified: 1, hidden: 2 }
+    const tierRank = { core: 0, established: 1, hidden: 2, blocked: 3 }
     return tokens.toSorted((left, right) => {
-        if (left.visibility !== right.visibility) {
-            return (visibilityRank[left.visibility] ?? 3) -
-                (visibilityRank[right.visibility] ?? 3)
+        const leftTier = resolvePortfolioTier(left)
+        const rightTier = resolvePortfolioTier(right)
+        if (leftTier !== rightTier) {
+            return (tierRank[leftTier] ?? 4) -
+                (tierRank[rightTier] ?? 4)
         }
         if (left.valueUSD == null && right.valueUSD == null) return 0
         if (left.valueUSD == null) return 1
         if (right.valueUSD == null) return -1
-        return -(compareDecimalStrings(left.valueUSD, right.valueUSD) ?? 0)
+        return -(compareDecimalStrings(left.valueUSD, right.valueUSD) ?? 0) ||
+            compareDecimalStrings(right.balance, left.balance) ||
+            getAssetIdentity(left).localeCompare(getAssetIdentity(right))
     })
+}
+
+function tokenRiskRank(token) {
+    if (resolvePortfolioTier(token) === 'blocked' ||
+        token.securityStatus === 'blocked' ||
+        token.securityStatus === 'high') return 0
+    if (token.securityStatus === 'caution' || token.possibleSpam === true) return 1
+    return 2
+}
+
+/** Partitions held wallet assets before rendering so hidden tokens never mix into primary UI. */
+export function partitionPortfolioAssets(tokens) {
+    const primaryTokens = []
+    const hiddenTokens = []
+    const blockedTokens = []
+
+    for (const token of tokens) {
+        if (!isPositiveWalletBalance(token)) continue
+        const tier = resolvePortfolioTier(token)
+        if (tier === 'blocked' ||
+            token.securityStatus === 'blocked') {
+            blockedTokens.push(token)
+            hiddenTokens.push(token)
+            continue
+        }
+        if (isTrustedWalletToken(token) &&
+            token.visibility === 'primary') {
+            primaryTokens.push(token)
+        } else if (token.visibility === 'hidden' ||
+            token.classificationTier === 'hidden' ||
+            token.visibility === 'unverified') {
+            hiddenTokens.push(token)
+        }
+    }
+
+    return {
+        primaryTokens: sortWalletAssetsByValue(primaryTokens),
+        hiddenTokens: hiddenTokens.toSorted((left, right) =>
+            tokenRiskRank(left) - tokenRiskRank(right) ||
+            -(compareDecimalStrings(
+                left.marketPriceUSD ?? left.priceUSD ?? left.balance ?? '0',
+                right.marketPriceUSD ?? right.priceUSD ?? right.balance ?? '0',
+            ) ?? 0) ||
+            getAssetIdentity(left).localeCompare(getAssetIdentity(right)),
+        ),
+        blockedTokens,
+    }
 }

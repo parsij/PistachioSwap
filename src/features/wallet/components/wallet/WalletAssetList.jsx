@@ -5,14 +5,17 @@ import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
 import {
     filterPortfolioTokens,
     getAssetIdentity,
-    getHiddenPortfolioTokens,
-    getUnverifiedPortfolioTokens,
+    partitionPortfolioAssets,
     sortWalletAssetsByValue,
 } from '../../../tokens/services/portfolio.js'
 import {
     formatWalletTokenAmount,
     formatWalletUsdValue,
 } from '../../../tokens/services/walletTokens.js'
+import {
+    getTokenDisplayName,
+    getTokenDisplaySymbol,
+} from '../../../tokens/services/tokenDisplay.js'
 import {
     readWalletTokenSectionExpanded,
     writeWalletTokenSectionExpanded,
@@ -26,8 +29,48 @@ function shortContract(address) {
     return `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
+function uniqueTokens(tokens) {
+    const unique = new Map()
+    for (const token of tokens) {
+        const identity = getAssetIdentity(token)
+        if (!unique.has(identity)) unique.set(identity, token)
+    }
+    return [...unique.values()]
+}
+
+const REASON_LABELS = {
+    'insufficient-sellable-liquidity': 'Low liquidity',
+    'insufficient-trusted-liquidity': 'Low liquidity',
+    'token-too-new': 'New token',
+    'age-unavailable': 'Unverified',
+    'unverified-identity': 'Unverified',
+    'fallback-metadata': 'Unverified',
+    'provider-spam': 'Potential risk',
+    'security-caution': 'Potential risk',
+    'security-high': 'Potential risk',
+    'security-blocked': 'Potential risk',
+}
+
+function hiddenReason(token) {
+    const reason = Array.isArray(token?.classificationReasons)
+        ? token.classificationReasons.find((item) => REASON_LABELS[item])
+        : null
+    return {
+        label: reason ? REASON_LABELS[reason] : 'Potential risk',
+        reason: reason ?? token?.classificationReasons?.[0] ?? 'hidden-token',
+    }
+}
+
 function AssetRow({ token, selected, onSelect }) {
     const chain = getCuratedEvmChain(token.chainId)
+    const displayName = getTokenDisplayName(token)
+    const displaySymbol = getTokenDisplaySymbol(token)
+    const potentialRisk = token.visibility === 'hidden' ||
+        token.possibleSpam === true ||
+        ['high', 'blocked'].includes(token.securityStatus)
+    const unverified = !potentialRisk && token.visibility !== 'primary'
+    const reason = potentialRisk ? hiddenReason(token) : null
+
     async function copyContract(event) {
         if (token.isNative) return
         event.preventDefault()
@@ -38,9 +81,9 @@ function AssetRow({ token, selected, onSelect }) {
         <>
             <TokenIcon token={token} size="list" />
             <span className="wallet-asset-identity">
-                <strong>{token.name}</strong>
+                <strong>{displayName}</strong>
                 <span>
-                    {token.symbol}
+                    {displaySymbol}
                     {!token.isNative && token.address
                         ? ` · ${shortContract(token.address)}`
                         : ''}
@@ -53,19 +96,17 @@ function AssetRow({ token, selected, onSelect }) {
                     />
                     {chain?.name ?? `Chain ${token.chainId}`}
                 </span>
-                {(
-                    token.visibility === 'hidden' ||
-                    token.possibleSpam === true ||
-                    ['high', 'blocked'].includes(token.securityStatus)
-                ) && (
+                {(potentialRisk || unverified) && (
                     <span className="wallet-asset-risk">
-                        <ShieldAlert aria-hidden="true" /> Potential risk
+                        <ShieldAlert aria-hidden="true" />
+                        {potentialRisk ? reason.label : 'Unverified'}
                     </span>
                 )}
+                {reason && <span className="wallet-asset-chain">{reason.reason}</span>}
             </span>
             <span className="wallet-asset-values">
                 <strong>{formatWalletUsdValue(token)}</strong>
-                <span>{formatWalletTokenAmount(token.balance)} {token.symbol}</span>
+                <span>{formatWalletTokenAmount(token.balance)} {displaySymbol}</span>
             </span>
             {selected && <Check className="wallet-asset-check" aria-label="Selected" />}
         </>
@@ -87,7 +128,7 @@ function AssetRow({ token, selected, onSelect }) {
                 <button
                     type="button"
                     className="wallet-asset-copy"
-                    aria-label={`Copy ${token.symbol} contract address`}
+                    aria-label={`Copy ${displaySymbol} contract address`}
                     onClick={copyContract}
                 >
                     <Copy aria-hidden="true" />
@@ -99,7 +140,10 @@ function AssetRow({ token, selected, onSelect }) {
 
 const EMPTY_TOKENS = []
 
-/** Renders grouped wallet assets with value, classification, copy, and selection states. */
+/**
+ * Renders trusted wallet assets and keeps unknown holdings in an explicit,
+ * collapsed hidden-token section that never contributes to portfolio totals.
+ */
 export default function WalletAssetList({
     tokens,
     settings,
@@ -117,19 +161,14 @@ export default function WalletAssetList({
     const chainId = tokenChainIds.size > 1
         ? 'all'
         : [...tokenChainIds][0] ?? 56
-    const [unverifiedExpanded, setUnverifiedExpanded] = useState(() =>
-        readWalletTokenSectionExpanded({
-            chainId,
-            scope: storageScope,
-            section: 'unverified',
-        }),
-    )
     const [hiddenExpanded, setHiddenExpanded] = useState(() =>
-        readWalletTokenSectionExpanded({
-            chainId,
-            scope: storageScope,
-            section: 'risky',
-        }),
+        settings.hideUnknownTokens
+            ? false
+            : readWalletTokenSectionExpanded({
+                chainId,
+                scope: storageScope,
+                section: 'risky',
+            }),
     )
     const primary = sortWalletAssetsByValue(filterPortfolioTokens(
         tokens,
@@ -138,29 +177,20 @@ export default function WalletAssetList({
             selectedTokens,
         },
     ))
-    const hidden = sortWalletAssetsByValue(getHiddenPortfolioTokens(
-        tokens,
-        { ...settings, selectedTokens },
-    ))
-    const unverified = sortWalletAssetsByValue(getUnverifiedPortfolioTokens(
-        tokens,
-        { ...settings, selectedTokens },
-    ))
+    const hiddenByDefault = uniqueTokens(partitionPortfolioAssets(tokens).hiddenTokens)
     const hiddenVisible = expandHidden || hiddenExpanded
-    const unverifiedVisible = expandHidden || unverifiedExpanded
 
     useEffect(() => {
-        setUnverifiedExpanded(readWalletTokenSectionExpanded({
-            chainId,
-            scope: storageScope,
-            section: 'unverified',
-        }))
+        if (settings.hideUnknownTokens) {
+            setHiddenExpanded(false)
+            return
+        }
         setHiddenExpanded(readWalletTokenSectionExpanded({
             chainId,
             scope: storageScope,
             section: 'risky',
         }))
-    }, [chainId, storageScope])
+    }, [chainId, settings.hideUnknownTokens, storageScope])
 
     function toggleSection(section, setExpanded) {
         setExpanded((current) => writeWalletTokenSectionExpanded({
@@ -181,38 +211,12 @@ export default function WalletAssetList({
                     onSelect={onSelect}
                 />
             ))}
-            {primary.length === 0 && unverified.length === 0 && hidden.length === 0 && (
+
+            {primary.length === 0 && hiddenByDefault.length === 0 && (
                 <p className="wallet-assets-empty">No wallet assets match these filters.</p>
             )}
-            {!settings.hideUnknownTokens && unverified.length > 0 && (
-                <section className="wallet-hidden-assets">
-                    <button
-                        type="button"
-                        className="wallet-hidden-toggle"
-                        onClick={() => toggleSection('unverified', setUnverifiedExpanded)}
-                        aria-expanded={unverifiedVisible}
-                    >
-                        Unverified tokens ({unverified.length})
-                        <ChevronDown aria-hidden="true" />
-                    </button>
-                    {unverifiedVisible && (
-                        <>
-                            <p className="wallet-hidden-note">
-                                These tokens are not recognized by trusted asset sources.
-                            </p>
-                            {unverified.map((token) => (
-                                <AssetRow
-                                    key={getAssetIdentity(token)}
-                                    token={token}
-                                    selected={getAssetIdentity(token) === getAssetIdentity(selectedToken)}
-                                    onSelect={onSelect}
-                                />
-                            ))}
-                        </>
-                    )}
-                </section>
-            )}
-            {!settings.hideUnknownTokens && hidden.length > 0 && (
+
+            {hiddenByDefault.length > 0 && (
                 <section className="wallet-hidden-assets">
                     <button
                         type="button"
@@ -220,15 +224,12 @@ export default function WalletAssetList({
                         onClick={() => toggleSection('risky', setHiddenExpanded)}
                         aria-expanded={hiddenVisible}
                     >
-                        Hidden risky tokens ({hidden.length})
+                        Hidden tokens ({hiddenByDefault.length})
                         <ChevronDown aria-hidden="true" />
                     </button>
                     {hiddenVisible && (
                         <>
-                            <p className="wallet-hidden-note">
-                                These tokens have spam or severe security warnings. Interacting may result in loss.
-                            </p>
-                            {hidden.map((token) => (
+                            {hiddenByDefault.map((token) => (
                                 <AssetRow
                                     key={getAssetIdentity(token)}
                                     token={token}

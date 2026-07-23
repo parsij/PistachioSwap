@@ -1,0 +1,62 @@
+# Chain ID: 480
+# CoinGecko asset platform: world-chain
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 27
+
+# USDC | USDC | market-ranked
+0x79a02482a880bce3f13e09da970dc34db4cd24d1
+# LINK | Chainlink | market-ranked
+0x915b648e994d5f31059b38223b9fbe98ae185473
+# WLD | Worldcoin | market-ranked
+0x2cfc85d8e48f8eab294be644d9e25c3030863003
+# EURC | EURC | market-ranked
+0x1c60ba0a0ed1019e8eb035e6daf4155a5ce2380b
+# TRYB | BiLira | market-ranked
+0x2c537e5624e4af88a7ae4060c022609376c8d0eb
+# WBRL | Brazilian real | market-ranked
+0xd76f5faf6888e24d9f04bf92a0c8b921fe4390e0
+# IDRX | IDRX | market-ranked
+0x18bc5bcc660cf2b9ce3cd51a404afe1a0cbd3c22
+# POOL | PoolTogether | market-ranked
+0x7077c71b4af70737a08287e279b717dcf64fdc57
+# RUSD | Reservoir rUSD | market-ranked
+0x09d4214c03d01f49544c0448dbe3a27f768f2b34
+# WARS | Argentine Peso | market-ranked
+0x0dc4f92879b7670e5f4e4e6e3c801d229129d90d
+# ORO | ORO | market-ranked
+0xcd1e32b86953d79a6ac58e813d2ea7a1790cab63
+# BOWSER | Bowser | CoinGecko-listed
+0x7047b80cb47527e864029d3cfe1899534dc15402
+# WBTC | Bridged Wrapped Bitcoin (Worldchain) | CoinGecko-listed
+0x03c7054bcb39f7b2e5b2c7acb37583e32d70cfa3
+# WCLP | Chilean Peso | CoinGecko-listed
+0x61d450a098b6a7f69fc4b98ce68198fe59768651
+# WCOP | Colombian Peso | CoinGecko-listed
+0x8a1d45e102e886510e891d2ec656a708991e2d76
+# FOOTBALL | CrazyFootball token | CoinGecko-listed
+0x6fb9df9530e302be9dc126363bd7529b807f7167
+# DNA | DNA Token | CoinGecko-listed
+0xed49fe44fd4249a09843c2ba4bba7e50beca7113
+# WMXN | Mexican Peso | CoinGecko-listed
+0x337e7456b420bd3481e7fa61fa9850343d610d34
+# WPEN | Peruvian Sol | CoinGecko-listed
+0x4f34c8b3b5fb6d98da888f0fea543d4d9c9f2ebe
+# USDT0 | Stargate Bridged USDT0 | CoinGecko-listed
+0x102d758f688a4c1c5a80b116bd945d4455460282
+# WORLD CAT | World Cat | CoinGecko-listed
+0x6770a7133bd0d74f95e4c9e9b7735bb4cd5653a6
+# UDOGE | Wrapped DOGE (Universal) | CoinGecko-listed
+0x12e96c2bfea6e835cf8dd38a5834fa61cf723736
+# WETH | Wrapped ETH (World Chain) | CoinGecko-listed
+0x4200000000000000000000000000000000000006
+# WSRUSD | Wrapped Savings rUSD | CoinGecko-listed
+0x4809010926aec940b550d34a46a52739f996d75d
+# USOL | Wrapped Solana (Universal) | CoinGecko-listed
+0x9b8df6e244526ab5f6e6400d331db28c8fdddb55
+# USUI | Wrapped SUI (Universal) | CoinGecko-listed
+0xb0505e5a99abd03d94a1169e638b78edfed26ea4
+# UXRP | Wrapped XRP (Universal) | CoinGecko-listed
+0x2615a94df961278dcbc41fb0a54fec5f10a693ae

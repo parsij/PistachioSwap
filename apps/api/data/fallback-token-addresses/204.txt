@@ -1,0 +1,32 @@
+# Chain ID: 204
+# CoinGecko asset platform: opbnb
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 12
+
+# LINK | Chainlink | market-ranked
+0x99f0d88b81b758ab07e22c7aba00e0121a882dea
+# CAKE | PancakeSwap | market-ranked
+0x2779106e4f4a8a28d77a24c18283651a2ae22d1c
+# XVS | Venus | market-ranked
+0x3e2e61f1c075881f3fb8dd568043d8c221fd5c61
+# THE | Thena | market-ranked
+0x9d94a7ff461e83f161c8c040e78557e31d8cba72
+# DPET | My DeFi Pet | market-ranked
+0xfb62ae373aca027177d1c18ee0862817f9080d08
+# ANKRBNB | Ankr Staked BNB | CoinGecko-listed
+0x0c0efea731e3e9810c2b4822d5497eac107808ab
+# ETH | Bridged Binance-Peg Ethereum (opBNB) | CoinGecko-listed
+0xe7798f023fc62146e8aa1b36da45fb70855a77ea
+# CUBI | CUBISWAP | CoinGecko-listed
+0xb01d49c26416a352fac4fbb3d555d5f2543e3247
+# USDT | opBNB Bridged USDT (opBNB) | CoinGecko-listed
+0x9e5aac1ba1a2e6aed6b32689dfcf62a509ca96f3
+# WBNB | opBNB Bridged WBNB (opBNB) | CoinGecko-listed
+0x4200000000000000000000000000000000000006
+# WKG | WalkMining Governance | CoinGecko-listed
+0x317bc431f7ef8b012dfbb563814de202f5469516
+# XCAD | XCAD Network | CoinGecko-listed
+0xaf9fe3b5ccdae78188b1f8b9a49da7ae9510f151

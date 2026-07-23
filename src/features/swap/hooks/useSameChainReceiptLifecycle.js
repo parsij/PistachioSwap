@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useWaitForTransactionReceipt } from 'wagmi'
 
+import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+
 /**
  * Owns same-chain transaction hash/status and applies the existing receipt side effects once.
  *
@@ -18,7 +20,7 @@ import { useWaitForTransactionReceipt } from 'wagmi'
  * @param {(operation: string) => void} config.setReviewOperation Updates review progress.
  * @param {(event: string, payload?: object, level?: string) => void} config.diagnostic Existing logger.
  * @returns {{transactionHash: string|null, transactionStatus: string, setTransactionHash: Function, setTransactionStatus: Function, resetReceiptLifecycle: Function}} Public lifecycle API.
- * @sideEffects Uses Wagmi receipt polling; success closes review, resets inputs/quote, and refreshes balances.
+ * @sideEffects Uses Wagmi receipt polling; success closes review, records activity, resets inputs/quote, and refreshes balances.
  * @throws Does not throw receipt errors; maps them to existing state and diagnostics.
  * @security Assumes the supplied hash was produced by the validated same-chain submission path.
  */
@@ -72,6 +74,12 @@ export function useSameChainReceiptLifecycle({
             setTransactionStatus('confirmed')
             setVisibleStatus('Swap confirmed.')
             diagnostic('receipt.confirmed', { hash: transactionHash, chainId })
+            recordWalletActivity({
+                walletAddress: account,
+                chainId,
+                type: 'swapped',
+                hash: transactionHash,
+            })
             closeReview()
             resetInputsAfterSuccess()
             invalidateQuoteAfterSuccess()
@@ -86,6 +94,7 @@ export function useSameChainReceiptLifecycle({
             diagnostic('receipt.failed', { hash: transactionHash, chainId }, 'error')
         }
     }, [
+        account,
         chainId,
         closeReview,
         diagnostic,

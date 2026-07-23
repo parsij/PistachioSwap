@@ -1,6 +1,7 @@
 import { getApiConfig } from '../../config.js'
 import { ProviderError } from '../../lib/errors.js'
 import { fetchJson, isRecord } from '../../lib/http.js'
+import { logProviderResponse } from '../../lib/provider-response-debug.js'
 import { requireServerRpcUrl } from '../../token-discovery/context.js'
 
 export type JsonRpcRequest = {
@@ -66,6 +67,8 @@ export async function alchemyRpc(
         timeoutMs: getApiConfig().requestTimeoutMs,
         dedupeKey: `alchemy:${chainId}:${request.method}:${JSON.stringify(request.params)}`,
     })
+    logProviderResponse('alchemy', `rpc:${chainId}:${request.method}`, payload)
+
     const response = normalizeRpcResponse(payload)
 
     if (!response || response.error || !('result' in response)) {
@@ -101,6 +104,11 @@ export async function alchemyRpcBatch(
         timeoutMs: getApiConfig().requestTimeoutMs,
         dedupeKey: `alchemy:batch:${chainId}:${JSON.stringify(requests)}`,
     })
+    logProviderResponse(
+        'alchemy',
+        `rpc-batch:${chainId}:${requests.map((request) => request.method).join(',')}`,
+        payload,
+    )
 
     if (!Array.isArray(payload)) {
         throw new ProviderError({

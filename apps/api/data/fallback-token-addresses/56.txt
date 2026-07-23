@@ -1,0 +1,208 @@
+# Chain ID: 56
+# CoinGecko asset platform: binance-smart-chain
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 100
+
+# LINK | Chainlink | market-ranked
+0xf8a0bf9cf54bb92f17374d9e9a321e6a111a51bd
+# USD1 | USD1 | market-ranked
+0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d
+# GRAM | Gram (prev. Toncoin) | market-ranked
+0x76a797a59ba2c17726896976b7b3747bfd1d220f
+# USDE | Ethena USDe | market-ranked
+0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34
+# USYC | Circle USYC | market-ranked
+0x8d0fa28f221eb5735bc71d3a0da67ee5bc821311
+# BUIDL | BlackRock USD Institutional Digital Liquidity Fund | market-ranked
+0x2d5bdc96d9c8aabbdb38c9a27398513e7e5ef84f
+# UNI | Uniswap | market-ranked
+0xbf5140a22578168fd562dccf235e5d43a02ce9b1
+# USDY | Ondo US Dollar Yield | market-ranked
+0x608593d17a2decbbc4399e4185be4922f97ed32e
+# WLFI | World Liberty Financial | market-ranked
+0x47474747477b199288bf72a1d702f7fe0fb1deea
+# ASTER | Aster | market-ranked
+0x000ae314e2a2172a039b26378814c252734f556a
+# HTX | HTX DAO | market-ranked
+0x61ec85ab89377db65762e234c946b5c25a56e99e
+# USDD | USDD | market-ranked
+0x45e51bc23d592eb2dba86da3985299f7895d66ba
+# M | MemeCore | market-ranked
+0x22b1458e780f8fa71e2f84502cee8b5a3cc731fa
+# AAVE | Aave | market-ranked
+0xfb6115445bff7b52feb98650c87f44907e58f802
+# USDF | Falcon USD | market-ranked
+0xb3b02e4a9fb2bd28cc2ff97b0ab3f6b3ec1ee9d2
+# PEPE | Pepe | market-ranked
+0x25d887ce7a35172c62febfd67a1856f20faebb00
+# U | United Stables | market-ranked
+0xce24439f2d9c6a2289f741120fe202248b666666
+# STABLE | ​​Stable | market-ranked
+0x011ebe7d75e2c9d1e0bd0be0bef5c36f0a90075f
+# BEAT | Audiera | market-ranked
+0xcf3232b85b43bca90e51d38cc06cc8bb8c8a3e36
+# ATOM | Cosmos Hub | market-ranked
+0x0eb3a705fc54725037cc9e008bdede697f62f335
+# JAAA | Janus Henderson Anemoy AAA CLO Fund | market-ranked
+0x58f93d6b1ef2f44ec379cb975657c132cbed3b6b
+# BDX | Beldex | market-ranked
+0x9d10a1ec41fe7878429bb457e31f9b050d38c633
+# 币安人生 | 币安人生 (BinanceLife) | market-ranked
+0x924fa68a0fc644485b8df8abfa0a41c2e7744444
+# USD0 | Usual USD | market-ranked
+0x758a3e0b1f842c9306b783f8a4078c6c8c03a270
+# INJ | Injective | market-ranked
+0xa2b726b1145a4773f68593cf171187d8ebe4d495
+# TUSD | TrueUSD | market-ranked
+0x40af3827f39d0eacbf4a168f8d4ee67c121d11c9
+# CAKE | PancakeSwap | market-ranked
+0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82
+# PENGU | Pudgy Penguins | market-ranked
+0x6418c0dd099a9fda397c766304cdd918233e8847
+# DEXE | DeXe | market-ranked
+0x6e88056e8376ae7709496ba64d37fa2f8015ce3e
+# FDUSD | First Digital USD | market-ranked
+0xc5f0f7b66764f6ec8c8dff7ba683102295e16409
+# FET | Artificial Superintelligence Alliance | market-ranked
+0x031b41e504677879370e9dbcf937283a8691fa7f
+# NIGHT | Midnight | market-ranked
+0xfe930c2d63aed9b82fc4dbc801920dd2c1a3224f
+# APXUSD | apxUSD | market-ranked
+0x6b3788fd6604bbf03c5378d24e57bb334baad4af
+# KITE | Kite | market-ranked
+0x904567252d8f48555b7447c67dca23f0372e16be
+# UB | Unibase | market-ranked
+0x40b8129b786d766267a7a118cf8c07e31cdb6fde
+# ZRO | LayerZero | market-ranked
+0x6985884c4392d348587b19cb9eaaf157f13271cd
+# PENDLE | Pendle | market-ranked
+0xb3ed0a426155b79b898849803e3b36552f7ed507
+# ANTFUN | AntFun | market-ranked
+0x6ced5c6d3f913b48d59fa07abbfe9060c409087c
+# BTT | BitTorrent | market-ranked
+0x352cb5e19b12fc216548a2677bd0fce83bae434b
+# NFT | AINFT | market-ranked
+0x20ee7b720f4e4c4ffcb00c4065cdae55271aecca
+# BONK | Bonk | market-ranked
+0xa697e272a73744b343528c3bc4702f2565b2f422
+# GROK | GROK | market-ranked
+0xc53ca0d56c420e8f913316e84d2c492ede99c61e
+# REAL | RealLink | market-ranked
+0x65e7a112db1142eae919201b1232f7aa488ed83c
+# FRAX | Legacy Frax Dollar | market-ranked
+0x90c97f71e18723b0cf0dfa30ee176ab653e89f40
+# VELVET | Velvet | market-ranked
+0x8b194370825e37b33373e74a41009161808c1488
+# KOGE | KOGE | market-ranked
+0xe6df05ce8c8301223373cf5b969afcb1498c5528
+# B | BUILDon | market-ranked
+0x6bdcce4a559076e37755a78ce0c06214e59e4444
+# CRVUSD | crvUSD | market-ranked
+0xe2fb3f127f5450dee44afe054385d74c392bdef4
+# APR | aPriori | market-ranked
+0x299ad4299da5b2b93fba4c96967b040c7f611099
+# FLOKI | FLOKI | market-ranked
+0xfb5b838b6cfeedc2873ab27866079ac55363d37e
+# AUSD | AUSD | market-ranked
+0x00000000efe302beaa2b3e6e1b18d08d69a9012a
+# COCO | coco | market-ranked
+0x80f1ff15b887cb19295d88c8c16f89d47f6d8888
+# Q | Quack AI | market-ranked
+0xc07e1300dc138601fa6b0b59f8d0fa477e690589
+# ULTIMA | Ultima | market-ranked
+0x5668a83b46016b494a30dd14066a451e5417a8b8
+# VBILL | VanEck Treasury Fund | market-ranked
+0x14d72634328c4d03bba184a48081df65f1911279
+# WFI | WeFi | market-ranked
+0x90c48855bb69f9d2c261efd0d8c7f35990f2dd6f
+# PEANUT | Peanut | market-ranked
+0xd1ed7cae60660cf85848eb6ead0fc00c0f9c0dd1
+# PIEVERSE | Pieverse | market-ranked
+0x0e63b9c287e32a05e6b9ab8ee8df88a2760225a9
+# FF | Falcon Finance | market-ranked
+0xac23b90a79504865d52b49b327328411a23d4db2
+# COMP | Compound | market-ranked
+0x52ce071bd9b1c4b00a0b92d298c512478cad67e8
+# REUSD | Re Protocol reUSD | market-ranked
+0xba9425ec55ee0e72216d18e0ad8bbba2553bfb60
+# AXS | Axie Infinity | market-ranked
+0x715d400f88c167884bbcc41c5fea407ed4d2f8a0
+# VCNT | ViciCoin | market-ranked
+0xc6bdfc4f2e90196738873e824a9efa03f7c64176
+# APYUSD | apyUSD | market-ranked
+0xa14556f13516c53ff035858ffd21e1625e7eadfd
+# BTW | Bitway | market-ranked
+0x444045b0ee1ee319a660a5e3d604ca0ffa35acaa
+# XPIN | XPIN Network | market-ranked
+0xd955c9ba56fb1ab30e34766e252a97ccce3d31a6
+# APE | ApeCoin | market-ranked
+0x8f86a15ec17cb3369d8b3e666dadbc11daa82b79
+# TWT | Trust Wallet | market-ranked
+0x4b0f1812e5df2a09796481ff14017e6005508003
+# XCN | Onyxcoin | market-ranked
+0x7324c7c0d95cebc73eea7e85cbaac0dbdf88a05b
+# HOLO | Holoworld | market-ranked
+0x1a5d7e4c3a7f940b240b7357a4bfed30d17f9497
+# USDZ | Zedxion USDZ | market-ranked
+0x734d66f635523d7ddb7d2373c128333da313041b
+# ALLO | Allora | market-ranked
+0xcce5f304fd043d6a4e8ccb5376a4a4fb583b98d5
+# GOMINING | GoMining Token | market-ranked
+0x7ddc52c4de30e94be3a6a0a2b259b2850f421989
+# GENIUS | Genius | market-ranked
+0x1f12b85aac097e43aa1555b2881e98a51090e9a6
+# 1INCH | 1INCH | market-ranked
+0x111111111117dc0aa78b770fa6a738034120c302
+# TAG | TAGGER | market-ranked
+0x208bf3e7da9639f1eaefa2de78c23396b0682025
+# USDF | Aster USDF | market-ranked
+0x5a110fc00474038f6c02e89c707d638602ea44b5
+# FRXUSD | Frax USD | market-ranked
+0x80eede496655fb9047dd39d9f418d5483ed600df
+# SFP | SafePal | market-ranked
+0xd41fdb03ba84762dd66a0af1a6c8540ff1ba5dfb
+# ZAMA | Zama | market-ranked
+0x6907a5986c4950bdaf2f81828ec0737ce787519f
+# DUSD | StandX DUSD | market-ranked
+0xaf44a1e76f56ee12adbb7ba8acd3cbd474888122
+# GLIDR | Glidr | market-ranked
+0xc2b1ddb75046c4915c641cc0dc0d0f160ef82be5
+# O | o1.exchange | market-ranked
+0x500a02a20b0b0a3f3efccfc0559543f5743bd1c4
+# ZBT | ZEROBASE | market-ranked
+0xfab99fcf605fd8f4593edb70a43ba56542777777
+# BANK | Lorenzo Protocol | market-ranked
+0x3aee7602b612de36088f3ffed8c8f10e86ebf2bf
+# UUSD | Unity USD | market-ranked
+0x61a10e8556bed032ea176330e7f17d6a12a10000
+# CRCLON | Circle Internet Group (Ondo Tokenized Stock) | market-ranked
+0x992879cd8ce0c312d98648875b5a8d6d042cbf34
+# NEX | Nexus | market-ranked
+0x365de036a1f7dccb621530d517133521debb2013
+# USDA | USDa | market-ranked
+0x9356086146be5158e98ad827e21b5cf944699894
+# CHEEMS | Cheems Token | market-ranked
+0x0df0587216a4a1bb7d5082fdc491d93d2dd4b413
+# AB | AB | market-ranked
+0x95034f653d5d161890836ad2b6b8cc49d14e029a
+# SPCXB | SpaceX (bStocks Tokenized Stock) | market-ranked
+0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1
+# GPS | GoPlus Security | market-ranked
+0x9a4a67721573f2c9209dfff972c52be4e3f6642e
+# UAI | UnifAI Network | market-ranked
+0x3e5d4f8aee0d9b3082d5f6da5d6e225d17ba9ea0
+# SMILEK | Smilek to the Bank | market-ranked
+0x4f9d3adbfaf4579518b1ca7e06468a363897b997
+# USDA | USDA | market-ranked
+0x17eafd08994305d8ace37efb82f1523177ec70ee
+# MUB | Micron Technology (bStocks Tokenized Stock) | market-ranked
+0xcdf2f3e0fa43c47a6662a91c9e4a7c5f69762699
+# COW | CoW Protocol | market-ranked
+0x5bfdaa3f7c28b9994b56135403bf1acea02595b0
+# MYX | MYX Finance | market-ranked
+0xd82544bf0dfe8385ef8fa34d67e6e4940cc63e16
+# BEAM | Beam | market-ranked
+0x62d0a8458ed7719fdaf978fe5929c6d342b0bfce

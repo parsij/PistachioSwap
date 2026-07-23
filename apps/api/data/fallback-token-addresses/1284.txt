@@ -1,0 +1,54 @@
+# Chain ID: 1284
+# CoinGecko asset platform: moonbeam
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 23
+
+# LINK | Chainlink | market-ranked
+0x012414a392f9fa442a3109f1320c439c45518ac3
+# FRAX | Legacy Frax Dollar | market-ranked
+0x322e86852e492a7ee17f28a78c663da38fb33bfb
+# AXL | Axelar | market-ranked
+0x467719ad09025fcc6cf6f8311755809d45a5e5f3
+# BRLA | BRLA Digital BRLA | market-ranked
+0xfeb25f3fddad13f82c4d6dbc1481516f62236429
+# WELL | Moonwell | market-ranked
+0x511ab53f793683763e5a8829738301368a2411e3
+# MIMATIC | MAI | market-ranked
+0xdfa46478f9e5ea86d57387849598dbfb2e964b02
+# AXLUSDC | Axelar Bridged USDC | CoinGecko-listed
+0xca01a1d0993565291051daff390892518acfad3a
+# GLINT | BeamSwap | CoinGecko-listed
+0xcd3b51d98478d53f4515a306be565c6eebef1d58
+# CP | Cypress | CoinGecko-listed
+0x6021d2c27b6fbd6e7608d1f39b41398caee2f824
+# FRXETH | Frax Ether | CoinGecko-listed
+0x82bbd1b6f6de2b7bb63d3e1546e6b1553508be99
+# GU | Gu | CoinGecko-listed
+0xe8e8bd89a429526561e1283cb789719864ffd0b4
+# HPO | Hippo Wallet | CoinGecko-listed
+0x823d826d3ab6956ba934893f325e7c323faaf6ca
+# IBTC | interBTC | CoinGecko-listed
+0xffffffff5ac1f9a51a93f5c527385edf7fe98a52
+# DAI | Multichain Bridged DAI (Moonbeam) | CoinGecko-listed
+0x765277eebeca2e31912c9946eae1021199b39c61
+# USDC | Nomad Bridged USDC (Moonbeam) | CoinGecko-listed
+0x8f552a71efe5eefc207bf75485b356a0b3f01ec9
+# WETH | Nomad Bridged WETH (Moonbeam) | CoinGecko-listed
+0x30d2a9f5fdf90ace8c17952cbb4ee48a55d916a7
+# RMRK | RMRK | CoinGecko-listed
+0x524d524b4c9366be706d3a90dcf70076ca037ae3
+# SFRXETH | Staked Frax Ether | CoinGecko-listed
+0xecf91116348af1cffe335e9807f0051332be128d
+# STELLA | StellaSwap | CoinGecko-listed
+0x0e358838ce72d5e61e0018a2ffac4bec5f4c88d2
+# WELLE | Welle | CoinGecko-listed
+0x8389cf5be8f1e56211d226668a8b8f6cade61ee4
+# WGLMR | Wrapped Moonbeam | CoinGecko-listed
+0xacc15dc74880c9944775448304b263d191c6077f
+# DOT | xcDOT | CoinGecko-listed
+0xffffffff1fcacbd218edc0eba20fc2308c778080
+# XCUSDT | xcUSDT | CoinGecko-listed
+0xffffffffea09fb06d082fd1275cd48b191cbcd1d
