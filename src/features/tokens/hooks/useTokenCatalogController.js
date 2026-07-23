@@ -57,7 +57,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     const walletAddress = walletState.address
     const normalizedTokenSearch = tokenSearch.trim().toLowerCase()
     const useUniswapVolumeCatalog =
-        import.meta.env.VITE_USE_UNISWAP_VOLUME_TOKENS === 'true'
+        import.meta.env.VITE_USE_UNISWAP_VOLUME_TOKENS !== 'false'
 
     const preloadedMarketCatalog = useMarketTokens({ chainId: 'all' })
     const preloadedHasSelectedRankedTokens = discoveryChainId === 'all' ||
