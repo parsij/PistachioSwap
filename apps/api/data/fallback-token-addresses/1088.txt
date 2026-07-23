@@ -1,1 +1,66 @@
-# Metis Andromeda static fallback tokens
+# Chain ID: 1088
+# CoinGecko asset platform: metis-andromeda
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 29
+
+# LINK | Chainlink | market-ranked
+0xd2fe54d1e5f568eb710ba9d898bf4bd02c7c0353
+# USDE | Ethena USDe | market-ranked
+0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34
+# ENA | Ethena | market-ranked
+0x58538e6a46e07434d7e7375bc268d3cb839c0133
+# METIS | Metis | market-ranked
+0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000
+# MIMATIC | MAI | market-ranked
+0xdfa46478f9e5ea86d57387849598dbfb2e964b02
+# HERA | Hera Finance | market-ranked
+0x6f05709bc91bad933346f9e159f0d3fdbc2c9dce
+# ANON | Hey Anon | market-ranked
+0x79bbf4508b1391af3a0f4b30bb5fc4aa9ab0e07c
+# JEWEL | DeFi Kingdoms | market-ranked
+0x17c09cfc96c865cf546d73365cedb6dc66986963
+# NETT | Netswap | market-ranked
+0x90fe084f877c65e1b577c7b2ea64b8d8dd1ab278
+# WAGMI | Wagmi | market-ranked
+0xaf20f5f19698f1d19351028cd7103b63d30de7d7
+# ADAI | Aave v3 DAI | CoinGecko-listed
+0x85abaddcae06efee2cb5f75f33b6471759efde24
+# AMETIS | Aave v3 Metis | CoinGecko-listed
+0x7314ef2ca509490f65f52cc8fc9e0675c66390b8
+# AUSDC | Aave v3 USDC | CoinGecko-listed
+0x885c8aec5867571582545f894a5906971db9bf27
+# AWETH | Aave v3 WETH | CoinGecko-listed
+0x8acae35059c9ae27709028ff6689386a44c09f3a
+# ALETH | Alchemix ETH | CoinGecko-listed
+0x0e17934b9735d479b2388347faef0f4e58b9cc06
+# ALUSD | Alchemix USD | CoinGecko-listed
+0x303241e2b3b4aed0bb0f8623e7442368fed8faf3
+# ENKI | ENKI Protocol | CoinGecko-listed
+0x096a84536ab84e68ee210561ffd3a038e79736f1
+# SUSDE | Ethena Staked USDe | CoinGecko-listed
+0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2
+# TORCH | Hercules Token | CoinGecko-listed
+0xbb1676046c36bcd2f6fd08d8f60672c7087d9adf
+# M.USDC | Metis Bridged USDC (Metis Andromeda) | CoinGecko-listed
+0xea32a96608495e54156ae48931a7c20f0dcc1a21
+# WBTC | Metis Bridged WBTC (Metis Andromeda) | CoinGecko-listed
+0xa5b55ab1daf0f8e1efc0eb1931a957fd89b918f4
+# WETH | Metis Bridged WETH (Metis Andromeda) | CoinGecko-listed
+0x420000000000000000000000000000000000000a
+# ARTMETIS | Staked Metis Token | CoinGecko-listed
+0x2583a2538272f31e9a15dd12a432b8c96ab4821d
+# STONE | StakeStone ETH | CoinGecko-listed
+0x80137510979822322193fc997d400d5a6c747bf7
+# USDT | Stargate Bridged USDT | CoinGecko-listed
+0xbb06dca3ae6887fabf931640f67cab3e3a16f4dc
+# WOW | WOWswap | CoinGecko-listed
+0x5ce34d9abe4bf239cbc08b89287c87f4cd6d80b7
+# WMETIS | Wrapped Metis | CoinGecko-listed
+0x75cb093e4d61d2a2e65d8e0bbb01de8d89b53481
+# XCAD | XCAD Network | CoinGecko-listed
+0x66673f0a3b5d99524ba76a558b93a9ca1386f4cd
+# ZEUSD | ZeUSD | CoinGecko-listed
+0x2d3d1a6982840dd88bc2380fd557f8a9d5e27a77

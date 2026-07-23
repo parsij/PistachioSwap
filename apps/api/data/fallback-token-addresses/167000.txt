@@ -1,1 +1,36 @@
-# Taiko static fallback tokens
+# Chain ID: 167000
+# CoinGecko asset platform: taiko
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 14
+
+# LINK | Chainlink | market-ranked
+0x917a3964c37993e99a47c779beb5db1e9d13804d
+# CRVUSD | crvUSD | market-ranked
+0xc8f4518ed4bab9a972808a493107926ce8237068
+# TAIKO | Taiko | market-ranked
+0xa9d23408b9ba935c230493c40c73824df71a0975
+# STBTC | Lorenzo stBTC | CoinGecko-listed
+0xf6718b2701d4a6498ef77d7c152b2137ab28b8a3
+# M-BTC | Merlin's Seal BTC | CoinGecko-listed
+0xf7fb2df9280eb0a76427dc3b34761db8b1441a49
+# MINTY | Minterest | CoinGecko-listed
+0x2bd26ba2ef62ff90f807365c2bf363fb3bee9979
+# SOLVBTC | Solv Protocol BTC | CoinGecko-listed
+0x541fd749419ca806a8bc7da8ac23d346f2df8b77
+# XSOLVBTC | Solv Protocol Staked BTC | CoinGecko-listed
+0xcc0966d8418d412c599a6421b760a847eb169a8c
+# USDC.E | Stargate Bridged USDC | CoinGecko-listed
+0x19e26b0638bf63aa9fa4d14c6baf8d52ebe86c5c
+# USDT | Stargate Bridged USDT | CoinGecko-listed
+0x9c2dc7377717603eb92b2655c5f2e7997a4945bd
+# USDC | Taiko Bridged USDC (Taiko) | CoinGecko-listed
+0x07d83526730c7438048d55a4fc0b850e2aab6f0b
+# UNIBTC | Universal BTC | CoinGecko-listed
+0x93919784c523f39cacaa98ee0a9d96c3f32b593e
+# WETH | Wrapped ETH (Taiko) | CoinGecko-listed
+0xa51894664a773981c6c112c43ce576f315d5b1b6
+# YNETHX | ynETH MAX | CoinGecko-listed
+0xe231db5f348d709239ef1741ea30961b3b635a61

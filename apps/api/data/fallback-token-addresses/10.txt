@@ -1,7 +1,208 @@
-# OP Mainnet static fallback tokens
-0x4200000000000000000000000000000000000006
+# Chain ID: 10
+# CoinGecko asset platform: optimistic-ethereum
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 100
+
+# USDC | USDC | market-ranked
 0x0b2c639c533813f4aa9d7837caf62653d097ff85
-0x94b008aa00579c1307b0ef2c499ad98a8ce58e58
+# LINK | Chainlink | market-ranked
+0x350a791bfc2c21f9ed5d10980dad2e2638ffa7f6
+# USDE | Ethena USDe | market-ranked
+0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34
+# BUIDL | BlackRock USD Institutional Digital Liquidity Fund | market-ranked
+0xa1cdab15bba75a80df4089cafba013e376957cf5
+# UNI | Uniswap | market-ranked
+0x6fd9d7ad17242c41f7131d257212c54a0e816691
+# AAVE | Aave | market-ranked
+0x76fb31fb4af56892a25e32cfc43de717950c9278
+# WLD | Worldcoin | market-ranked
+0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1
+# ENA | Ethena | market-ranked
+0x58538e6a46e07434d7e7375bc268d3cb839c0133
+# EURC | EURC | market-ranked
+0xdcb612005417dc906ff72c87df732e5a90d49e11
+# LDO | Lido DAO | market-ranked
+0xfdb794692724153d1488ccdbe0c56c252596735f
+# CRV | Curve DAO | market-ranked
+0x0994206dfe8de6ec6920ff4d779b0d950605fb53
+# ZRO | LayerZero | market-ranked
+0x6985884c4392d348587b19cb9eaaf157f13271cd
+# PENDLE | Pendle | market-ranked
+0xbc7b1ff1c6989f006a1185318ed4e7b5796e66e1
+# OHM | Olympus | market-ranked
+0x060cb087a9730e13aa191f31a6d86bff8dfcdcc0
+# FRAX | Legacy Frax Dollar | market-ranked
+0x2e3d870790dc77a83dd1d18184acc7439a53f475
+# OP | Optimism | market-ranked
 0x4200000000000000000000000000000000000042
-0xda10009cbd5d07dd0cecc66161fc93d7c9000da1
-0x68f180fcce6836688e9084f035309e29bf0a2095
+# CRVUSD | crvUSD | market-ranked
+0xc52d7f23a2e460248db6ee192cb23dd12bddcbf6
+# VCNT | ViciCoin | market-ranked
+0xc6bdfc4f2e90196738873e824a9efa03f7c64176
+# SNX | Synthetix | market-ranked
+0x8700daec35af8ff88c16bdf0418774cb3d7599b4
+# DRV | Derive | market-ranked
+0x33800de7e817a70a694f31476313a7c572bba100
+# FRXUSD | Frax USD | market-ranked
+0x80eede496655fb9047dd39d9f418d5483ed600df
+# YFI | yearn.finance | market-ranked
+0x9046d36440290ffde54fe0dd84db8b1cfee9107b
+# AXL | Axelar | market-ranked
+0x23ee2343b892b1bb63503a4fabc840e0e2c6810f
+# MSUSD | Metronome Synth USD | market-ranked
+0x9dabae7274d28a45f0b65bf8ed201a5731492ca0
+# XVS | Venus | market-ranked
+0x4a971e87ad1f61f7f3081645f52a99277ae917cf
+# DOLA | DOLA | market-ranked
+0x8ae125e8653821e851f12a49f7765db9a9ce7384
+# ZCHF | Frankencoin | market-ranked
+0xd4dd9e2f021bb459d5a5f6c24c12fe09c5d45553
+# TRB | Tellor Tributes | market-ranked
+0xaf8ca653fa2772d58f4368b0a71980e9e3ceb888
+# T | Threshold Network | market-ranked
+0x747e42eb0591547a0ab429b3627816208c734ea7
+# CX | Cortex | market-ranked
+0x000000000000012def132e61759048be5b5c6033
+# VANA | Vana | market-ranked
+0x7ff7fa94b8b66ef313f7970d4eebd2cb3103a2c0
+# ANKR | Ankr Network | market-ranked
+0xaeaeed23478c3a4b798e4ed40d8b7f41366ae861
+# SYN | Synapse | market-ranked
+0x5a5fff6f753d7c11a56a52fe47a177a87e431655
+# AVLT | Altura Vault Tokens | market-ranked
+0x74db7a52773a52699dbc0c01b1254e5301e3e119
+# BOLD | BOLD | market-ranked
+0x03569cc076654f82679c4ba2124d64774781b01d
+# ACX | Across Protocol | market-ranked
+0xff733b2a3557a7ed6697007ab5d11b79fdd1b76b
+# LUSD | Liquity USD | market-ranked
+0xc40f949f8a4e094d1b49a23ea9241d289b7b2819
+# KNC | Kyber Network Crystal | market-ranked
+0xa00e3a3511aac35ca78530c85007afcd31753819
+# OCEAN | Ocean Protocol | market-ranked
+0x2561aa2bb1d2eb6629edd7b0938d7679b8b49f9e
+# CTSI | Cartesi | market-ranked
+0xec6adef5e1006bb305bb1975333e8fc4071295bf
+# VELO | Velodrome Finance | market-ranked
+0x9560e827af36c94d2ac33a39bce1fe78631088db
+# CYBER | CYBER | market-ranked
+0x14778860e937f509e651192a90589de711fb88a9
+# HYPER | Hyperlane | market-ranked
+0x9923db8d7fbacc2e69e87fad19b886c81cd74979
+# STG | Stargate Finance | market-ranked
+0x296f55f8fb28e498b858d0bcda06d955b2cb3f97
+# VEE | BLOCKv | market-ranked
+0xe3c332a5dce0e1d9bc2cc72a68437790570c28a4
+# ORDER | Orderly | market-ranked
+0x4e200fe2f3efb977d5fd9c430a41531fb04d97b8
+# OSAK | Osaka Protocol | market-ranked
+0xbfd5206962267c7b4b4a8b3d76ac2e1b2a5c4d5e
+# YUSD | YieldFi yToken | market-ranked
+0x4772d2e014f9fc3a820c444e3313968e9a5c8121
+# MONEY | Defi.money | market-ranked
+0x69420f9e38a4e60a62224c489be4bf7a94402496
+# MRE7ETH | Midas Re7 Ethereum | market-ranked
+0xe7ba07519dfa06e60059563f484d6090dedf21b3
+# BAL | Balancer | market-ranked
+0xfe8b128ba8c78aabc59d4c64cee7ff28e9379921
+# OVER | Overtime | market-ranked
+0xedf38688b27036816a50185caa430d5479e1c63e
+# L3 | Layer3 | market-ranked
+0x46777c76dbbe40fabb2aab99e33ce20058e76c59
+# WCT | WalletConnect Token | market-ranked
+0xef4461891dfb3ac8572ccf7c794664a8dd927945
+# OLAS | Autonolas | market-ranked
+0xfc2e6e6bcbd49ccf3a5f029c79984372dcbfe527
+# DOG | Own The Doge | market-ranked
+0x8f69ee043d52161fd29137aedf63f5e70cd504d5
+# PIKA | Pika Protocol | market-ranked
+0x9a601c5bb360811d96a23689066af316a30c3027
+# ITP | Infinite Trading Protocol | market-ranked
+0x0a7b751fcdbbaa8bb988b9217ad5fb5cfe7bf7a0
+# KRL | KRYLL | market-ranked
+0x2ed6222cb75e353b8789bec7bb443b7ec9022021
+# FBOMB | Fantom Bomb | market-ranked
+0x74ccbe53f77b08632ce0cb91d3a545bf6b8e0979
+# BOSON | Boson | market-ranked
+0x647fe0cca3df596ba414c8c600d441bb3d10d616
+# HLSCOPE | Hamilton Lane Senior Credit Opportunities Securitize Fund | market-ranked
+0x720f86f4b5b5d5d0ea3e5718ec43071d4d05134b
+# FOX | ShapeShift FOX | market-ranked
+0xf1a0da3367bc7aa04f8d94ba57b862ff37ced174
+# SETH | sETH | market-ranked
+0xe405de8f52ba7559f9df3c368500b6e6ae6cee49
+# SWEAT | SWEAT | market-ranked
+0x38761749330c23d681d136e8ea3fc47d4bb93db3
+# PERP | Perpetual Protocol | market-ranked
+0x9e1028f5f1d5ede59748ffcee5532509976840e0
+# VYUSD | YieldFi vyUSD | market-ranked
+0xf4f447e6afa04c9d11ef0e2fc0d7f19c24ee55de
+# AIN | AI Network | market-ranked
+0xd4423795fd904d9b87554940a95fb7016f172773
+# MTA | mStable Governance: Meta | market-ranked
+0x929b939f8524c3be977af57a4a0ad3fb1e374b50
+# GRG | RigoBlock | market-ranked
+0xecf46257ed31c329f204eb43e254c609dee143b3
+# BALN | Balanced | market-ranked
+0xd336c74b840f9962cf2c666f8666d6d61ec24440
+# ERN | Ethos Reserve Note | market-ranked
+0xc5b001dc33727f8f26880b184090d3e252470d45
+# EXTRA | Extra Finance | market-ranked
+0x2dad3a13ef0c6366220f989157009e501e7938f8
+# TAROT | Tarot | market-ranked
+0x1f514a61bcde34f94bc39731235690ab9da737f7
+# DEURO | Decentralized Euro | market-ranked
+0x1b5f7fa46ed0f487f049c42f374ca4827d65a264
+# GTUSDA | Gauntlet USD Alpha | market-ranked
+0x000000001dc8bd45d7e7829fb1c969cbe4d0d1ec
+# BEETS-LEGACY | Beethoven X (Legacy) | market-ranked
+0xb4bc46bc6cb217b59ea8f4530bae26bf69f677f0
+# NYA | Nya | market-ranked
+0x38f9bf9dce51833ec7f03c9dc218197999999999
+# USDM | Mountain Protocol USD | market-ranked
+0x59d9356e565ab3a36dd77763fc0d87feaf85508c
+# DHT | dHEDGE DAO | market-ranked
+0xaf9fe3b5ccdae78188b1f8b9a49da7ae9510f151
+# PNP | Penpie | market-ranked
+0xc4a65a93dd6cd9717551ebe827e8baee025d1d7e
+# PREMIA | Premia | market-ranked
+0x374ad0f47f4ca39c78e5cc54f1c9e426ff8f231a
+# SPECTRA | Spectra | market-ranked
+0x248f43b622ce2f35a14db3fc528284730b619cd5
+# LIQUIDRESERVE | EtherFi Liquid Reserve | market-ranked
+0xca5921df65e2e1b0b98ae91c0187ba80d4124898
+# RAI | Rai Reflex Index | market-ranked
+0x7fb688ccf682d58f86d7e38e03f9d22e7705448b
+# EURAU | AllUnity EUR | market-ranked
+0x4933a85b5b5466fbaf179f72d3de273c287ec2c2
+# MEED | Meeds DAO | market-ranked
+0xdd462e9399624dfcf73018793bd50a7ef47940b9
+# THALES | Thales | market-ranked
+0x217d47011b23bb961eb6d93ca9945b7501a5bb11
+# USDGLO | Glo Dollar | market-ranked
+0x4f604735c1cf31399c6e711d5962b2b3e0225ad3
+# PSP | ParaSwap | market-ranked
+0xd3594e879b358f430e20f82bea61e83562d49d48
+# SUPR | Superseed | market-ranked
+0x17906b1cd88aa8efaefc5e82891b52a22219bd45
+# FUSE | Fuse | market-ranked
+0xe453d6649643f1f460c371dc3d1da98f7922fe51
+# WAGMI | Wagmi | market-ranked
+0xaf20f5f19698f1d19351028cd7103b63d30de7d7
+# SHU | Shutter | market-ranked
+0xaf1d71bf947709315655514467d5158e5d3046d5
+# PRL | Parallel Governance | market-ranked
+0xfd28f108e95f4d41daae9dbfff707d677985998e
+# KITE | Kite | market-ranked
+0xf467c7d5a4a9c4687ffc7986ac6ad5a4c81e1404
+# EXA | Exactly Protocol | market-ranked
+0x1e925de1c68ef83bd98ee3e130ef14a50309c01b
+# VLR | Velora | market-ranked
+0x4e107a0000db66f0e9fd2039288bf811dd1f9c74
+# BOND | BarnBridge | market-ranked
+0x3e7ef8f50246f725885102e8238cbba33f276747
+# TAROT | Tarot V1 | market-ranked
+0x375488f097176507e39b9653b88fdc52cde736bf

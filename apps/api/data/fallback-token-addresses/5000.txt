@@ -1,1 +1,156 @@
-# Mantle static fallback tokens
+# Chain ID: 5000
+# CoinGecko asset platform: mantle
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 74
+
+# LINK | Chainlink | market-ranked
+0xfe36cf0b43aae49fbc5cfc5c0af22a623114e043
+# USD1 | USD1 | market-ranked
+0x111111d2bf19e43c34263401e0cad979ed1cdb61
+# USDE | Ethena USDe | market-ranked
+0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34
+# USDY | Ondo US Dollar Yield | market-ranked
+0x5be26527e817998a7206475496fde1e68957c5a6
+# MNT | Mantle | market-ranked
+0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000
+# ENA | Ethena | market-ranked
+0x58538e6a46e07434d7e7375bc268d3cb839c0133
+# AUSD | AUSD | market-ranked
+0x00000000efe302beaa2b3e6e1b18d08d69a9012a
+# USDA | USDa | market-ranked
+0x075df695b8e7f4361fa7f8c1426c63f11b06e326
+# BILL | Billions Network | market-ranked
+0x55b9f84605b30df9bb9d817a6900219f25218157
+# TSLAX | Tesla xStock | market-ranked
+0x8ad3c73f833d3f9a523ab01476625f269aeb7cf0
+# SCOR | Scor | market-ranked
+0x8ddb986b11c039a6cc1dbcabd62bae911b348f33
+# NVDAX | NVIDIA xStock | market-ranked
+0xc845b2894dbddd03858fd2d643b4ef725fe0849d
+# BSB | Block Street | market-ranked
+0xe5c330addf7aa9c7838da836436142c56a15aa95
+# SPCXX | SpaceX xStock | market-ranked
+0x68fa48b1c2fe52b3d776e1953e0e782b5044ce28
+# GOOGLX | Alphabet xStock | market-ranked
+0xe92f673ca36c5e2efd2de7628f815f84807e803f
+# WOO | WOO | market-ranked
+0xf3df0a31ec5ea438150987805e841f960b9471b6
+# OPG | OpenGradient | market-ranked
+0x45db70e1c808dae42f9c4dfea74ba5e6a113bdc1
+# STG | Stargate Finance | market-ranked
+0x8731d54e9d02c286767d56ac03e8037c07e01e98
+# PUFF | Puff The Dragon | market-ranked
+0x26a6b0dcdcfb981362afa56d581e4a7dba3be140
+# BOX | DeBox | market-ranked
+0x3d142cdb27b537af57a55ee8f54ada953b4b9ecd
+# SVL | Slash Vision Labs | market-ranked
+0xabbeed1d173541e0546b38b1c0394975be200000
+# JOE | JOE | market-ranked
+0x371c7ec6d8039ff7933a2aa28eb827ffe1f52f07
+# ELSA | Elsa | market-ranked
+0x29cc30f9d113b356ce408667aa6433589cecbdca
+# AAPLX | Apple xStock | market-ranked
+0x9d275685dc284c8eb1c79f6aba7a63dc75ec890a
+# AMZNX | Amazon xStock | market-ranked
+0x3557ba345b01efa20a1bddc61f573bfd87195081
+# MSFTX | Microsoft xStock | market-ranked
+0x5621737f42dae558b81269fcb9e9e70c19aa6b35
+# METAX | Meta xStock | market-ranked
+0x96702be57cd9777f835117a809c7124fe4ec989a
+# FBOMB | Fantom Bomb | market-ranked
+0x74ccbe53f77b08632ce0cb91d3a545bf6b8e0979
+# VOOI | VOOI | market-ranked
+0xd81a4adea9932a6bdba0bdbc8c5fd4c78e5a09f1
+# COOK | mETH Protocol | market-ranked
+0x9f0c013016e8656bc256f948cd4b79ab25c7b94d
+# TAROT | Tarot | market-ranked
+0x981bd9f77c8aafc14ebc86769503f86a3cc29af5
+# AVGOX | Broadcom xStock | market-ranked
+0x38bac69cbbd28156796e4163b2b6dcb81e336565
+# BRK.BX | Berkshire Hathaway xStock | market-ranked
+0x12992613fdd35abe95dec5a4964331b1ee23b50d
+# MOE | MOE | market-ranked
+0x4515a45337f461a11ff0fe8abf3c606ae5dc00c9
+# CVXX | Chevron xStock | market-ranked
+0xad5cdc3340904285b8159089974a99a1a09eb4c0
+# XOMX | Exxon Mobil xStock | market-ranked
+0xeedb0273c5af792745180e9ff568cd01550ffa13
+# LLYX | Eli Lilly xStock | market-ranked
+0x19c41ea77b34bbdee61c3a87a75d1abda2ed0be4
+# KOX | Coca-Cola xStock | market-ranked
+0xdcc1a2699441079da889b1f49e12b69cc791129b
+# VX | Visa xStock | market-ranked
+0x2363fd1235c1b6d3a5088ddf8df3a0b3a30c5293
+# YAK | Yield Yak | market-ranked
+0x7f4db37d7beb31f445307782bc3da0f18df13696
+# PGX | Procter & Gamble xStock | market-ranked
+0xa90424d5d3e770e8644103ab503ed775dd1318fd
+# UNHX | UnitedHealth xStock | market-ranked
+0x167a6375da1efc4a5be0f470e73ecefd66245048
+# JPMX | JPMorgan Chase xStock | market-ranked
+0xd9fc3e075d45254a1d834fea18af8041207dea0a
+# JNJX | Johnson & Johnson xStock | market-ranked
+0xdb0482cfad4789798623e64b15eeba01b16e917c
+# PFEX | Pfizer xStock | market-ranked
+0x1ac765b5bea23184802c7d2d497f7c33f1444a9e
+# CAI | Chasm | market-ranked
+0xf793ac038e7688aa3220005852836108cddb065c
+# ABBVX | AbbVie xStock | market-ranked
+0xfbf2398df672cee4afcc2a4a733222331c742a6a
+# MRKX | Merck xStock | market-ranked
+0x17d8186ed8f68059124190d147174d0f6697dc40
+# PEPX | PepsiCo xStock | market-ranked
+0x36c424a6ec0e264b1616102ad63ed2ad7857413e
+# IZI | iZUMi Finance | market-ranked
+0x60d01ec2d5e98ac51c8b4cf84dfcce98d527c747
+# ALMANAK | Almanak | market-ranked
+0xdefa1d21c5f1cbeac00eeb54b44c7d86467cc3a3
+# MAX | Mastercard xStock | market-ranked
+0xb365cd2588065f522d379ad19e903304f6b622c6
+# AXLUSDC | Axelar Bridged USDC | CoinGecko-listed
+0xeb466342c4d449bc9f53a865d5cb90586f405215
+# SUSDE | Ethena Staked USDe | CoinGecko-listed
+0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2
+# FBTC | Function FBTC | CoinGecko-listed
+0xc96de26018a54d51c097160568752c4e3bd6c364
+# HDX | Home Depot xStock | CoinGecko-listed
+0x766b0cd6ed6d90b5d49d2c36a3761e9728501ba9
+# RSETH | Kelp DAO Restaked ETH | CoinGecko-listed
+0x4186bfc76e2e237523cbc30fd220fe055156b41f
+# LEND | Lendle | CoinGecko-listed
+0x25356aeca4210ef7553140edb9b8026089e49396
+# USDC | Mantle Bridged USDC (Mantle) | CoinGecko-listed
+0x09bc4e0d864854c6afb6eb9a9cdf58ac190d0df9
+# WETH | Mantle Bridged WETH (Mantle) | CoinGecko-listed
+0xdeaddeaddeaddeaddeaddeaddeaddeaddead1111
+# MI4 | Mantle Index Four Fund | CoinGecko-listed
+0x671642ac281c760e34251d51bc9eef27026f3b7a
+# CMETH | Mantle Restaked ETH | CoinGecko-listed
+0xe6829d9a7ee3040e1276fa75293bde931859e8fa
+# METH | Mantle Staked Ether | CoinGecko-listed
+0xcda86a272531e8640cd7f1a92c01839911b90bb0
+# MINTY | Minterest | CoinGecko-listed
+0x5ecdb76feda945dc71f7d9ce62dfe7eafefffab4
+# LQDX | Reddex | CoinGecko-listed
+0x872952d3c1caf944852c5adda65633f1ef218a26
+# SOLVBTC | Solv Protocol BTC | CoinGecko-listed
+0xa68d25fc2af7278db4bcdcaabce31814252642a9
+# XSOLVBTC | Solv Protocol Staked BTC | CoinGecko-listed
+0x1d40bafc49c37cda49f2a5427e2fb95e1e3fcf20
+# USDLR | Stable USDLR | CoinGecko-listed
+0x8fe7176f0bf63358ad9490fd24ac0bdb4dac33a8
+# STONE | StakeStone ETH | CoinGecko-listed
+0x2fde62942759d7c0aaf25952da4098423bc1264c
+# USDT | Stargate Bridged USDT | CoinGecko-listed
+0x201eba5cc46d216ce6dc03f6a759e8e766e956ae
+# UNIBTC | Universal BTC | CoinGecko-listed
+0x93919784c523f39cacaa98ee0a9d96c3f32b593e
+# USDT0 | USDT0 | CoinGecko-listed
+0x779ded0c9e1022225f8e0630b35a9b54be713736
+# WMNT | Wrapped Mantle | CoinGecko-listed
+0x78c1b0c915c4faa5fffa6cabf0219da63d7f4cb8
+# YNETHX | ynETH MAX | CoinGecko-listed
+0xe231db5f348d709239ef1741ea30961b3b635a61

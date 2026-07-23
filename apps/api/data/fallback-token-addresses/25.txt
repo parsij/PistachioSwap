@@ -1,1 +1,208 @@
-# Cronos static fallback tokens
+# Chain ID: 25
+# CoinGecko asset platform: cronos
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 100
+
+# USDC | USDC | market-ranked
+0x3d7f2c478aafdb65542bcb44bceec05849999d2d
+# LINK | Chainlink | market-ranked
+0x8c80a01f461f297df7f9da3a4f740d7297c8ac85
+# EURC | EURC | market-ranked
+0xa6de01a2d62c6b5f3525d768f34d276652c554c8
+# LION | Loaded Lions | market-ranked
+0x9d8c68f185a04314ddc8b8216732455e8dbb7e45
+# AGENTFUN | AgentFun.AI | market-ranked
+0x96733708c4157218b6e6889eb9e16b1df7873061
+# VVS | VVS Finance | market-ranked
+0x2d03bece6747adc00e1a131bba1469c15fd11e03
+# ELON | Dogelon Mars | market-ranked
+0x02dccaf514c98451320a9365c5b46c61d3246ff3
+# CORGIAI | CorgiAI | market-ranked
+0x6b431b8a964bfcf28191b07c91189ff4403957d0
+# BARA | Capybara Nation | market-ranked
+0xf24409d155965ca87c45ad5bc084ad8ad3be4f39
+# ALI | Artificial Liquid Intelligence | market-ranked
+0x45c135c1cdce8d25a3b729a28659561385c52671
+# CROB | Crob Mob | market-ranked
+0x63ed0a82cac237667c89cd6ac5bfa2317186fdaa
+# CAW | crow with knife | market-ranked
+0xccccccccdbec186dc426f8b5628af94737df0e60
+# TONIC | Tectonic | market-ranked
+0xdd73dea10abc2bff99c60882ec5b2b81bb1dc5b2
+# FUL | Fulcrom | market-ranked
+0x83afb1c32e5637acd0a452d87c3249f4a9f0013a
+# LOAF | Loaf Token | market-ranked
+0x75689264a5e2dab1b27ddfb2b10592872139659a
+# VNO | Veno Finance | market-ranked
+0xdb7d0a1ec37de1de924f8e8adac6ed338d4404e9
+# FM | Full Moon | market-ranked
+0x37888159581ac2cdea5fb9c3ed50265a19ede8dd
+# CRONUS | CRONUS | market-ranked
+0x71b60b37f030d0cff949855b9d0405915057b116
+# MERY | Mistery | market-ranked
+0x3b41b27e74dd366ce27cb389dc7877d4e1516d4d
+# $H2 | H2 Finance | market-ranked
+0xd2ee4bd0d1be7e84160dc459006f6e0970f8313c
+# $XTC | Xitcoin | market-ranked
+0xe45fe733bc8617fa6dac8437fc44b5fffa949991
+# PACK | Wolfies | market-ranked
+0x0d0b4a6fc6e7f5635c2ff38de75af2e96d6d6804
+# EOP | EXCELLENCE | market-ranked
+0x13c0ff45d019a5888db92631f18556211001883d
+# CROID | Cronos ID | market-ranked
+0xcbf0adea24fd5f32c6e7f0474f0d1b94ace4e2e7
+# FER | Ferro | market-ranked
+0x39bc1e38c842c60775ce37566d03b41a7a66c782
+# BALLZ | Ballz of Steel | market-ranked
+0xb157c8560984eba102334c5eb4f0416952747a6e
+# BALL | Ballies | market-ranked
+0x6d96e46ec8938d94aee531daacba3d947eefd114
+# OBS | Obsidian | market-ranked
+0x0aeba21655185583367f19d0c882dfc654c6dd54
+# MTD | Minted | market-ranked
+0x0224010ba2d567ffa014222ed960d1fa43b8c8e1
+# CROAK | Croakey | market-ranked
+0xed70e1b02a63fafd5ece7c0a2a1b12d4b424b4a8
+# CROGE | Crogecoin | market-ranked
+0xc4a174ccb5fb54a6721e11e0ca961e42715023f9
+# MCGA | Make CRO Great Again | market-ranked
+0xd37015dbe943fc81053232de3f757154cbaa9e7c
+# SPHYNX | Sphynx Labs | market-ranked
+0xa776f5b86cc520861f55a261515264e3bd86e72e
+# ARGO | Argo Finance | CoinGecko-listed
+0x47a9d630dc5b28f75d3af3be3aaa982512cd89aa
+# ARY | Aryoshin | CoinGecko-listed
+0x41bc026dabe978bc2fafea1850456511ca4b01bc
+# AUT | AurumTrust | CoinGecko-listed
+0xd896aa25da8e3832d68d1c05fee9c851d42f1dc1
+# AWOO | Awoo | CoinGecko-listed
+0x91dd2788e3fbed8d7c027145c38fba86e49381dc
+# BAD | BAD TOKEN | CoinGecko-listed
+0x0e66ed8e8646472ab98a7acd38e7bdcb86da456f
+# BOBZ | BOBz | CoinGecko-listed
+0xbcfe5aff53fb269969725c12e5b9c3ab18b3b66c
+# BCRO | Bonded Cronos | CoinGecko-listed
+0xebaceb7f193955b946cc5dd8f8724a80671a1f2f
+# CANDY | Bored Candy City | CoinGecko-listed
+0x06c04b0ad236e7ca3b3189b1d049fe80109c7977
+# BUSD | Bridged BUSD | CoinGecko-listed
+0xc74d59a548ecf7fc1754bb7810d716e9ac3e3ae5
+# TUSD | Bridged TrueUSD | CoinGecko-listed
+0x87efb3ec1576dec8ed47e58b832bedcd86ee186e
+# WETH | Bridged WETH | CoinGecko-listed
+0xe44fd7fcb2b1581822d0c862b68222998a0c299a
+# CHUCKY | Chucky | CoinGecko-listed
+0x85608d6373fdcfc9fb1582187dc3a81c2942f3f2
+# CRX | Crodex | CoinGecko-listed
+0xe243ccab9e66e6cf1215376980811ddf1eb7f689
+# CROGINAL | Croginal Cats | CoinGecko-listed
+0xd50f5739a09f36c6f97cc9a4849c5462ba6129a3
+# CRONA | CronaSwap | CoinGecko-listed
+0xadbd1231fb360047525bedf962581f3eee7b49fe
+# CA | Cronos Army | CoinGecko-listed
+0x444075ea64d69bf5002ae1a7f44642e46f8b56d4
+# USDC | Cronos Bridged USDC (Cronos) | CoinGecko-listed
+0xc21223249ca28397b4b6541dffaecc539bff0c59
+# USDT | Cronos Bridged USDT (Cronos) | CoinGecko-listed
+0x66e428c3f67a68878562e79a0234c1f83c208770
+# WBTC | Cronos Bridged WBTC (Cronos) | CoinGecko-listed
+0x062e66477faf219f25d27dced647bf57c3107d52
+# CLG | Cronos Legends | CoinGecko-listed
+0x08d9cb5100c306c2909b63415d7ff05268633b41
+# DAI | Crypto.com Bridged DAI (Cronos) | CoinGecko-listed
+0xf2001b145b43032aaf5ee2884e456ccd805f677d
+# CDCETH | Crypto.com Staked ETH | CoinGecko-listed
+0x7a7c9db510ab29a2fc362a4c34260becb5ce3446
+# CDCBTC | Crypto.com Wrapped BTC | CoinGecko-listed
+0x2e53c5586e12a99d4cae366e9fc5c14fe9c6495d
+# DAMOON | Damoon | CoinGecko-listed
+0x431469ce9d70a5879e959bf15cffad003dc7f69f
+# DARK | DarkCrypto | CoinGecko-listed
+0x83b2ac8642ae46fc2823bc959ffeb3c1742c48b5
+# SKY | DarkCrypto Share | CoinGecko-listed
+0x9d3bbb0e988d9fb2d55d07fe471be2266ad9c81c
+# DEGG | DuckyDefi | CoinGecko-listed
+0xfd71fc52d34ed1cfc8363e5528285b12b6b942c2
+# ELK | Elk Finance | CoinGecko-listed
+0xeeeeeb57642040be42185f49c52f7e9b38f8eeee
+# ERIC | Eric | CoinGecko-listed
+0x707056bcaf0cd3d2ffa148c5d5771da4efa174ca
+# PFFT | FartcoinCRO | CoinGecko-listed
+0x45bd9349554eed8550186353a2ac4495ffdd0307
+# FFTB | FORTUNE FAVOURS THE BRAVE | CoinGecko-listed
+0xd677944df705924af369d2fccf4a989f343dbcdf
+# FRTN | Fortune Token | CoinGecko-listed
+0xaf02d78f39c0002d14b95a3be272da02379aff21
+# FROGS | FROGS | CoinGecko-listed
+0x88bf399d2bbbe7ba3c1ebef2ac83ae7571ff10d7
+# GM | GoodMorning | CoinGecko-listed
+0x7492450cc8897a4e444ad972eb1619251ef15c23
+# ICY | IcyCRO | CoinGecko-listed
+0x8f857af6ea31447bb502fe0e3f4e4340cdfcfc6c
+# INO | InoAi | CoinGecko-listed
+0x025f1575908d85815198390b2e5366fe754f8207
+# KREES | Krees | CoinGecko-listed
+0x181cc996eea445212e61bd45ff742b88c3907287
+# KRIS | Kris | CoinGecko-listed
+0x2829955d8aac64f184e363516fdfbb0394042b90
+# LIONESS | Lioness | CoinGecko-listed
+0x335ac13e6399d55f3f26698884d2ad9e74cb2201
+# LATOM | Liquid ATOM | CoinGecko-listed
+0xac974ee7fc5d083112c809ccb3fce4a4f385750d
+# LCRO | Liquid CRO | CoinGecko-listed
+0x9fae23a2700feecd5b93e43fdbc03c76aa7c08a6
+# MMO | Mad Meerkat Optimizer | CoinGecko-listed
+0x50c0c5bda591bc7e89a342a3ed672fb59b3c46a7
+# MUSD | Mad USD | CoinGecko-listed
+0x95aeaf383e2e86a47c11cffde1f7944ecb2c38c2
+# MIMATIC | MAI (Cronos) | CoinGecko-listed
+0x2ae35c8e3d4bd57e8898ff7cd2bbff87166ef8cb
+# RLM | MarbleVerse | CoinGecko-listed
+0x19258a1df9e929d02b34621cf52797998ae1aa27
+# MMF | MMFinance (Cronos) | CoinGecko-listed
+0x97749c9b61f878a880dfe312d2594ae07aed7656
+# MOON | Moonflow [OLD] | CoinGecko-listed
+0x46e2b5423f6ff46a8a35861ec9daff26af77ab9a
+# STUCK | Mouse In Pasta | CoinGecko-listed
+0xa0d445dc147f598d63518b5783ca97cd8bd9f5bc
+# MCS | MyCroStrategy | CoinGecko-listed
+0xd60d5a5e9b9bc7018ced7198ed71467f968e8a31
+# NEURO | NeurotiCat | CoinGecko-listed
+0xcfe223d06b86568c24ffd17e8ac748dbac096b3b
+# NFX | Nova Fox | CoinGecko-listed
+0xe1f864ae527d3646c222fe1b65460db2d6e62228
+# NUTS | Nuts | CoinGecko-listed
+0x59e60d641677cecae77868176f314f42572f5284
+# PPFT | Papparico Finance Token | CoinGecko-listed
+0x59bafb7168972ecca5e395f7da88e71ece47a260
+# PAWSFLOW | PawsFlow | CoinGecko-listed
+0xdf50068a8b84028884c5725613132b2c592baa61
+# PHOTON | PhotonSwap | CoinGecko-listed
+0xbdd4e5660839a088573191a9889a262c0efc0983
+# PIQ | PigeonToken | CoinGecko-listed
+0xfdea7ab3ce8cd76d6bf8d430beb9e0cb602ad392
+# PUUSH | puush da button | CoinGecko-listed
+0x288898a6057d2d4989c533e96cb3bc30843c91d7
+# RADIO | RadioShack | CoinGecko-listed
+0xf899e3909b4492859d44260e1de41a9e663e70f5
+# ROBIN | Robin on Cronos | CoinGecko-listed
+0x664e4b17ea045fe92868821f3ee0a76a5db38166
+# RYOSHI | ryoshi with knife | CoinGecko-listed
+0x055c517654d72a45b0d64dc8733f8a38e27fd49c
+# SINGLE | Single Finance | CoinGecko-listed
+0x0804702a4e749d39a35fde73d1df0b1f1d6b8347
+# RIP | skull with ripped hood | CoinGecko-listed
+0x34acea6cc02578af041a5e976b7289ca23ccb7a8
+# SONORC | Sonorc | CoinGecko-listed
+0x0cefcd5f75907b38c308b06b70d392ff19123094
+# USDC.E | Stargate Bridged USDC | CoinGecko-listed
+0xf951ec28187d9e5ca673da8fe6757e6f0be5f77c
+# WETH | Stargate Bridged WETH | CoinGecko-listed
+0xf44acfdc916898449e39062934c2b496799b6abe
+# PRIDE | The Pride | CoinGecko-listed
+0x2b986eeb82356b518d0deb1fcd5d102184bf4f7d
+# TDN | Todin | CoinGecko-listed
+0xca6acbbf0823a3c302426f81fc1e826ad84b005b

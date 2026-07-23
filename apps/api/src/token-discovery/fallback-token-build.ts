@@ -52,6 +52,14 @@ type BuildOptions = {
     writeFileAtomic?: (path: string, contents: string) => Promise<void>
 }
 
+type MetadataEvidence = {
+    source: string
+    name: string
+    symbol: string
+    decimals: number | null
+    address: string
+}
+
 function selectedChains(ids?: number[]) {
     if (!ids || ids.length === 0) return [...ACTIVE_TOKEN_DISCOVERY_CHAINS]
     const requested = new Set(ids)
@@ -64,36 +72,43 @@ function selectedChains(ids?: number[]) {
         requested.has(chain.chainId))
 }
 
+function validDecimals(value: unknown): value is number {
+    return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 255
+}
+
 function validMetadata(value: TokenMetadata | null | undefined) {
     const name = typeof value?.name === 'string' ? value.name.trim() : ''
     const symbol = typeof value?.symbol === 'string' ? value.symbol.trim() : ''
-    return value &&
-        normalizeAddress(value.address) !== null &&
-        name.length > 0 &&
-        name.length <= 120 &&
-        symbol.length > 0 &&
-        symbol.length <= 32 &&
-        Number.isInteger(value.decimals) &&
-        value.decimals >= 0 &&
-        value.decimals <= 255
-        ? { ...value, name, symbol, address: normalizeAddress(value.address)! }
+    const address = normalizeAddress(value?.address)
+    return value && address &&
+        name.length > 0 && name.length <= 120 &&
+        symbol.length > 0 && symbol.length <= 32
+        ? {
+              ...value,
+              name,
+              symbol,
+              address,
+              decimals: validDecimals(value.decimals) ? value.decimals : null,
+          }
         : null
 }
 
-function assertNoMetadataConflict(values: Array<{
-    source: string
-    name: string
-    symbol: string
-    decimals: number
-    address: string
-}>) {
+function resolveFallbackMetadata(values: MetadataEvidence[]) {
     const [first] = values
     if (!first) throw new Error('No valid metadata source found.')
     for (const next of values.slice(1)) {
-        if (next.address !== first.address || next.decimals !== first.decimals) {
+        if (next.address !== first.address) {
             throw new Error(
                 `Fallback metadata conflict for ${first.address}: ` +
                     `${first.source} != ${next.source}`,
+            )
+        }
+        if (first.decimals !== null && next.decimals !== null &&
+            first.decimals !== next.decimals) {
+            throw new Error(
+                `Fallback metadata conflict for ${first.address}: ` +
+                    `${first.source} decimals ${first.decimals} != ` +
+                    `${next.source} decimals ${next.decimals}`,
             )
         }
         if (
@@ -106,6 +121,18 @@ function assertNoMetadataConflict(values: Array<{
                     `${next.source}=${next.symbol}/${next.name}`,
             )
         }
+    }
+    const decimals = values
+        .map((value) => value.decimals)
+        .find((value): value is number => value !== null) ?? null
+    if (decimals === null) {
+        throw new Error(
+            `Fallback metadata for ${first.address} is missing valid decimals.`,
+        )
+    }
+    return {
+        ...first,
+        decimals,
     }
 }
 
@@ -257,36 +284,35 @@ export async function buildFallbackTokenCatalog(options: BuildOptions = {}) {
         const decimals = await fetchDecimals({ chainId: chain.chainId, addresses })
         for (const address of addresses) {
             const official = getOfficialAsset(chain.chainId, address)
-            const sourceValues = [
-                official ? {
+            const alchemy = validMetadata(metadata.get(address))
+            const rpcDecimals = decimals.get(address)
+            const sourceValues: MetadataEvidence[] = []
+            if (official) {
+                sourceValues.push({
                     source: 'curated-token-list',
-                    chainId: official.chainId,
                     address: official.address,
                     name: official.name,
                     symbol: official.symbol,
                     decimals: official.decimals,
-                } : null,
-                validMetadata(metadata.get(address))
-                    ? { ...validMetadata(metadata.get(address))!, source: 'alchemy-metadata' }
-                    : null,
-                Number.isInteger(decimals.get(address))
-                    ? {
-                          source: 'rpc-decimals',
-                          address,
-                          name: official?.name ?? metadata.get(address)?.name ?? '',
-                          symbol: official?.symbol ?? metadata.get(address)?.symbol ?? '',
-                          decimals: decimals.get(address)!,
-                      }
-                    : null,
-            ].filter((value): value is {
-                source: string
-                address: string
-                name: string
-                symbol: string
-                decimals: number
-            } => value !== null && Boolean(value.name.trim()) && Boolean(value.symbol.trim()))
-            assertNoMetadataConflict(sourceValues)
-            const [chosen] = sourceValues
+                })
+            }
+            if (alchemy) {
+                sourceValues.push({ ...alchemy, source: 'alchemy-metadata' })
+            }
+            if (validDecimals(rpcDecimals)) {
+                const name = official?.name ?? alchemy?.name ?? ''
+                const symbol = official?.symbol ?? alchemy?.symbol ?? ''
+                if (name.trim() && symbol.trim()) {
+                    sourceValues.push({
+                        source: 'rpc-decimals',
+                        address,
+                        name,
+                        symbol,
+                        decimals: rpcDecimals,
+                    })
+                }
+            }
+            const chosen = resolveFallbackMetadata(sourceValues)
             if (normalizeAddress(chosen.address) !== address) {
                 throw new Error(`Metadata identity mismatch for ${chain.chainId}:${address}`)
             }
@@ -294,7 +320,7 @@ export async function buildFallbackTokenCatalog(options: BuildOptions = {}) {
                 chainId: chain.chainId,
                 address,
                 curatedImages: official?.logoCandidates,
-                alchemyImage: metadata.get(address)?.logoURI,
+                alchemyImage: alchemy?.logoURI,
             }).filter((entry) => entry.source !== 'alchemy' || official !== null)
             const icon = await storeApprovedIcon({
                 chainId: chain.chainId,

@@ -1,1 +1,76 @@
-# Mode static fallback tokens
+# Chain ID: 34443
+# CoinGecko asset platform: mode
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 34
+
+# LINK | Chainlink | market-ranked
+0x183e3691eff3524b2315d3703d94f922cbe51f54
+# USDE | Ethena USDe | market-ranked
+0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34
+# ENA | Ethena | market-ranked
+0x58538e6a46e07434d7e7375bc268d3cb839c0133
+# FRXUSD | Frax USD | market-ranked
+0x80eede496655fb9047dd39d9f418d5483ed600df
+# ANKR | Ankr Network | market-ranked
+0xdf474b7109b73b7d57926d43598d5934131136b2
+# SFRXUSD | Frax Staked frxUSD | market-ranked
+0x5bff88ca1442c2496f7e475e9e7786383bc070c0
+# PEAS | Peapods Finance | market-ranked
+0x02f92800f57bcd74066f5709f1daa1a4302df875
+# OLAS | Autonolas | market-ranked
+0xcfd1d50ce23c46d3cf6407487b2f8934e96dc8f9
+# ALEX | ALEX Lab | market-ranked
+0xdfd0660032c2d0d38a9092a43d1669d6568caf71
+# MODE | Mode | market-ranked
+0xdfc7c877a950e49d2610114102175a06c2e3167a
+# ANKRETH | Ankr Staked ETH | CoinGecko-listed
+0x12d8ce035c5de3ce39b1fdd4c1d5a745eaba3b8c
+# BMX | Boardwalk [OLD] | CoinGecko-listed
+0x66eed5ff1701e6ed8470dc391f05e27b1d0657eb
+# IONX | Charged Particles | CoinGecko-listed
+0x77e7bcfee826b12cd498faa9831d7055b7478272
+# DACKIE | DackieSwap [OLD] | CoinGecko-listed
+0xf15578bcdb3ccba8585c563af9aae200c1413bca
+# SDUSD | Davos Protocol Staked DUSD | CoinGecko-listed
+0xd678b48dc9b92626b5c406c3f07a153fb9f23687
+# SUSDE | Ethena Staked USDe | CoinGecko-listed
+0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2
+# ION | Ionic Protocol | CoinGecko-listed
+0x18470019bf0e94611f15852f7e93cf5d65bc34ca
+# IONUSDT | Ionic Tether USD | CoinGecko-listed
+0x3120b4907851cc9d780eef9af88ae4d5360175fd
+# IONUSDC | Ionic USD Coin | CoinGecko-listed
+0xc53edeafb6d502daec5a7015d67936cea0cd0f52
+# RSETH | Kelp DAO Restaked ETH | CoinGecko-listed
+0x4186bfc76e2e237523cbc30fd220fe055156b41f
+# WETH | L2 Standard Bridged WETH (Mode) | CoinGecko-listed
+0x4200000000000000000000000000000000000006
+# M-BTC | Merlin's Seal BTC | CoinGecko-listed
+0x59889b7021243db5b1e065385f918316cd90d46c
+# USDC | Mode Bridged USDC (Mode) | CoinGecko-listed
+0xd988097fb8612cc24eec14542bc03424c656005f
+# USDT | Mode Bridged USDT (Mode) | CoinGecko-listed
+0xf0f161fda2712db8b566946122a5af183995e2ed
+# WBTC | Mode Bridged WBTC (Mode) | CoinGecko-listed
+0xcdd475325d6f564d27247d1dddbb0dac6fa0a5cf
+# OUSDT | OpenUSDT | CoinGecko-listed
+0x1217bfe6c773eec6cc4a38b5dc45b92292b6e189
+# EZETH | Renzo Restaked ETH | CoinGecko-listed
+0x2416092f143378750bb29b79ed961ab195cceea5
+# SOLVBTC | Solv Protocol BTC | CoinGecko-listed
+0x541fd749419ca806a8bc7da8ac23d346f2df8b77
+# STONE | StakeStone ETH | CoinGecko-listed
+0x80137510979822322193fc997d400d5a6c747bf7
+# USDT0 | Stargate Bridged USDT0 | CoinGecko-listed
+0x102d758f688a4c1c5a80b116bd945d4455460282
+# UNIBTC | Universal BTC | CoinGecko-listed
+0x6b2a01a5f79deb4c2f3c0eda7b01df456fbd726a
+# WEETH | Wrapped eETH | CoinGecko-listed
+0x04c0599ae5a44757c0af6f9ec3b93da8976c150a
+# WFRAX | Wrapped FRAX | CoinGecko-listed
+0x64445f0aecc51e94ad52d8ac56b7190e764e561a
+# WRSETH | Wrapped rsETH | CoinGecko-listed
+0xe7903b1f75c534dd8159b313d92cdcfbc62cb3cd

@@ -1,1 +1,128 @@
-# Celo static fallback tokens
+# Chain ID: 42220
+# CoinGecko asset platform: celo
+# Generated: 2026-07-23T05:59:50+00:00
+# Source: CoinGecko active coin platform mappings.
+# STATIC DIRECTORY ONLY. This does not grant core/verified trust,
+# portfolio valuation, security approval, or Gas Assist eligibility.
+# Entries: 60
+
+# USDT | Tether | market-ranked
+0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e
+# USDC | USDC | market-ranked
+0xceba9300f2b948710d2653dd7b07f33a8b32118c
+# LINK | Chainlink | market-ranked
+0xd07294e6e917e07dfdcee882dd1e2565085c2ae0
+# SUSHI | Sushi | market-ranked
+0xd15ec721c2a896512ad29c671997dd68f9593226
+# CELO | Celo | market-ranked
+0x471ece3750da237f93b8e339c536989b8978a438
+# BRLA | BRLA Digital BRLA | market-ranked
+0xfecb3f7c54e2caae9dc6ac9060a822d47e053760
+# USDM | Mento Dollar | market-ranked
+0x765de816845861e75a25fca122bb6898b8b1282a
+# MIMATIC | MAI | market-ranked
+0xb9c8f0d3254007ee4b98970b94544e473cd610ec
+# JMPT | JumpToken | market-ranked
+0x1d18d0386f51ab03e7e84e71bda1681eba865f1f
+# OLAS | Autonolas | market-ranked
+0xacffae8e57ec6e394eb1b41939a8cf7892dbdc51
+# VCHF | VNX Swiss Franc | market-ranked
+0xc5ebea9984c485ec5d58ca5a2d376620d93af871
+# SWEAT | SWEAT | market-ranked
+0x718aa4f7f026fd16086c842a68ce9ef55203b54f
+# VEUR | VNX EURO | market-ranked
+0x9346f43c1588b6df1d52bdd6bf846064f92d9cba
+# ETHIX | Ethix | market-ranked
+0x9995cc8f20db5896943afc8ee0ba463259c931ed
+# EURM | Mento Euro | market-ranked
+0xd8763cba276a3738e6de85b4b3bf5fded6d6ca73
+# USDM | Mountain Protocol USD | market-ranked
+0x59d9356e565ab3a36dd77763fc0d87feaf85508c
+# WBRL | Brazilian real | market-ranked
+0xd76f5faf6888e24d9f04bf92a0c8b921fe4390e0
+# ABR0 | Allbridge Zero | market-ranked
+0x6e512bfc33be36f2666754e996ff103ad1680cc9
+# USDGLO | Glo Dollar | market-ranked
+0x4f604735c1cf31399c6e711d5962b2b3e0225ad3
+# MCUSD | Moola Celo Dollars | market-ranked
+0x918146359264c492bd6934071c6bd31c854edbc3
+# GBPM | Mento British Pound | market-ranked
+0xccf663b1ff11028f0b19058d0f7b674004a40746
+# BRLM | Mento Brazilian Real | market-ranked
+0xe8537a3d056da446677b9e9d6c5db704eaab4787
+# REGEN | Regen | market-ranked
+0x2e6c05f1f7d1f4eb9a088bf12257f1647682b754
+# WARS | Argentine Peso | market-ranked
+0x0dc4f92879b7670e5f4e4e6e3c801d229129d90d
+# AXLUSDC | Axelar Bridged USDC | CoinGecko-listed
+0xeb466342c4d449bc9f53a865d5cb90586f405215
+# CHAR | Biochar | CoinGecko-listed
+0x50e85c754929840b58614f48e29c64bc78c58345
+# USDCET | Bridged USD Coin (Wormhole Ethereum) | CoinGecko-listed
+0x37f750b7cc259a2f741af45294f6a16572cf5cad
+# WBTC | Bridged WBTC | CoinGecko-listed
+0xd629eb00deced2a080b7ec630ef6ac117e614f1b
+# WBTC | Celo Bridged WBTC (Celo) | CoinGecko-listed
+0x8ac2901dd8a1f17a1a4768a6ba4c3751e3995b2d
+# WETH | Celo Bridged WETH (Celo) | CoinGecko-listed
+0xd221812de1bd094f35587ee8e174b07b6167d9af
+# CGHS | cGHS | CoinGecko-listed
+0xfaea5f3404bba20d3cc2f8c4b0a888f55a3c7313
+# WCLP | Chilean Peso | CoinGecko-listed
+0x61d450a098b6a7f69fc4b98ce68198fe59768651
+# WCOP | Colombian Peso | CoinGecko-listed
+0x8a1d45e102e886510e891d2ec656a708991e2d76
+# EURA | EURA | CoinGecko-listed
+0xc16b81af351ba9e64c1a069e3ab18c244a1e3049
+# $G | GoodDollar | CoinGecko-listed
+0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a
+# KRW | KROWN | CoinGecko-listed
+0xd252e98c5b6ea1e29a7e2789a9ec0493707a60b9
+# MCELO | mCELO | CoinGecko-listed
+0x7d00cd74ff385c955ea3d79e47bf06bd7386387d
+# MCEUR | mcEUR | CoinGecko-listed
+0xe273ad7ee11dcfaa87383ad5977ee1504ac07568
+# MENTO | MENTO | CoinGecko-listed
+0x7ff62f59e3e89ea34163ea1458eebcc81177cfb6
+# AUDM | Mento Australian Dollar | CoinGecko-listed
+0x7175504c455076f15c04a2f90a8e352281f492f9
+# CADM | Mento Canadian Dollar | CoinGecko-listed
+0xff4ab19391af240c311c54200a492233052b6325
+# COPM | Mento Colombian Peso | CoinGecko-listed
+0x8a567e2ae79ca692bd748ab832081c45de4041ea
+# JPYM | Mento Japanese Yen | CoinGecko-listed
+0xc45ecf20f3cd864b32d9794d6f76814ae8892e20
+# KESM | Mento Kenyan Shilling | CoinGecko-listed
+0x456a3d042c0dbd3db53d5489e98dfb038553b0d0
+# NGNM | Mento Nigerian Naira | CoinGecko-listed
+0xe2702bd97ee33c88c8f6f92da3b733608aa76f71
+# PHPM | Mento Philippine Peso | CoinGecko-listed
+0x105d4a9306d2e55a71d2eb95b81553ae1dc20d7b
+# ZARM | Mento South African Rand | CoinGecko-listed
+0x4c35853a3b4e647fd266f4de678dcc8fec410bf6
+# CHFM | Mento Swiss Franc | CoinGecko-listed
+0xb55a79f398e759e43c95b979163f30ec87ee131d
+# WMXN | Mexican Peso | CoinGecko-listed
+0x337e7456b420bd3481e7fa61fa9850343d610d34
+# PERKOS | PerkOS | CoinGecko-listed
+0xb7ba43fbd4f2e85fce929f7d4dfe3905ae846a46
+# WPEN | Peruvian Sol | CoinGecko-listed
+0x4f34c8b3b5fb6d98da888f0fea543d4d9c9f2ebe
+# SELFCLAW | SelfClaw | CoinGecko-listed
+0xcd88f99adf75a9110c0bcd22695a32a20ec54ecb
+# STCELO | Staked Celo | CoinGecko-listed
+0xc668583dcbdc9ae6fa3ce46462758188adfdfc24
+# TGS | Tegisto | CoinGecko-listed
+0xae978582de8ca83a53eb1d8f879ba854895f96b1
+# XAUT0 | Tether Gold Tokens | CoinGecko-listed
+0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff
+# UBE | Ubeswap | CoinGecko-listed
+0x71e26d0e519d14591b9de9a0fe9513a398101490
+# VGBP | VNX British Pound | CoinGecko-listed
+0x7ae4265ecfc1f31bc0e112dfcfe3d78e01f4bb7f
+# WETH | Wormhole Bridged WETH (Celo) | CoinGecko-listed
+0x66803fb87abd4aac3cbb3fad7c3aa01f6f3fb207
+# CETH | Wrapped cETH | CoinGecko-listed
+0x2def4285787d58a2f811af24755a8150622f4361
+# WUSDM | Wrapped USDM | CoinGecko-listed
+0x57f5e098cad7a3d1eed53991d4d66c45c9af7812

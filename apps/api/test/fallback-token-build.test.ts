@@ -27,6 +27,7 @@ async function writeAddressFiles(directory: string, values: Record<number, strin
 }
 
 const ADDRESS = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
+const MYX_ADDRESS = '0xd82544bf0dfe8385ef8fa34d67e6e4940cc63e16'
 
 function metadata(symbol = 'XAUt') {
     return new Map([[ADDRESS, {
@@ -37,6 +38,35 @@ function metadata(symbol = 'XAUt') {
         decimals: 6,
         logoURI: null,
     }]])
+}
+
+async function buildMyx({
+    alchemyDecimals,
+    rpcDecimals,
+}: {
+    alchemyDecimals: number | null
+    rpcDecimals: number | null
+}) {
+    const directory = await tempDirectory()
+    await writeAddressFiles(directory, { 56: `${MYX_ADDRESS}\n` })
+    return buildFallbackTokenCatalog({
+        addressDirectory: directory,
+        catalogPath: join(directory, 'catalog.json'),
+        iconDirectory: join(directory, 'icons'),
+        chains: [56],
+        getBytecode: async () => '0x01',
+        fetchMetadata: async () => new Map([[MYX_ADDRESS, {
+            chainId: 56,
+            address: MYX_ADDRESS,
+            name: 'MYX',
+            symbol: 'MYX',
+            decimals: alchemyDecimals as number,
+            logoURI: null,
+        }]]),
+        fetchDecimals: async () => new Map([[MYX_ADDRESS, rpcDecimals]]),
+        fetchImpl: vi.fn(async () => new Response(null, { status: 404 })),
+        now: () => new Date('2026-07-22T00:00:00.000Z'),
+    })
 }
 
 describe('fallback token catalog build', () => {
@@ -107,6 +137,64 @@ describe('fallback token catalog build', () => {
             fetchMetadata: async () => metadata('GOLD'),
             fetchDecimals: async () => new Map([[ADDRESS, 6]]),
         })).rejects.toThrow(/conflict/)
+    })
+
+    it('accepts RPC decimals when Alchemy decimals are missing', async () => {
+        await expect(buildMyx({ alchemyDecimals: null, rpcDecimals: 18 }))
+            .resolves.toMatchObject({
+                records: [
+                    expect.objectContaining({
+                        address: MYX_ADDRESS,
+                        name: 'MYX',
+                        symbol: 'MYX',
+                        decimals: 18,
+                        logoURI: '/icons/token-fallback.svg',
+                    }),
+                ],
+            })
+    })
+
+    it('accepts Alchemy decimals when RPC decimals are missing', async () => {
+        await expect(buildMyx({ alchemyDecimals: 18, rpcDecimals: null }))
+            .resolves.toMatchObject({
+                records: [
+                    expect.objectContaining({
+                        address: MYX_ADDRESS,
+                        decimals: 18,
+                    }),
+                ],
+            })
+    })
+
+    it('accepts matching Alchemy and RPC decimals', async () => {
+        await expect(buildMyx({ alchemyDecimals: 18, rpcDecimals: 18 }))
+            .resolves.toMatchObject({
+                records: [
+                    expect.objectContaining({
+                        address: MYX_ADDRESS,
+                        decimals: 18,
+                    }),
+                ],
+            })
+    })
+
+    it('rejects genuinely conflicting Alchemy and RPC decimals', async () => {
+        await expect(buildMyx({ alchemyDecimals: 6, rpcDecimals: 18 }))
+            .rejects.toThrow(/decimals 6 != rpc-decimals decimals 18/)
+    })
+
+    it('rejects tokens when both decimals sources are missing', async () => {
+        await expect(buildMyx({ alchemyDecimals: null, rpcDecimals: null }))
+            .rejects.toThrow(/missing valid decimals/)
+    })
+
+    it('uses the fallback icon when Alchemy logo is missing', async () => {
+        const result = await buildMyx({ alchemyDecimals: null, rpcDecimals: 18 })
+        expect(result.records[0]).toMatchObject({
+            logoURI: '/icons/token-fallback.svg',
+            logoCandidates: ['/icons/token-fallback.svg'],
+            iconSource: null,
+        })
     })
 
     it('stores approved icons locally and rejects oversized or HTML responses', async () => {
