@@ -5,7 +5,7 @@ import { getTokenKey } from '../model/tokenSelectorState.js'
 /**
  * Renders search loading, error, empty, and result states.
  * @param {object} props Controlled result inputs.
- * @param {boolean} props.loading Shows the existing skeleton.
+ * @param {boolean} props.loading Shows the existing skeleton only when no local result exists.
  * @param {string|null} props.error Visible catalog/search error.
  * @param {Array<object>} props.tokens Filtered canonical token records.
  * @param {(token: object) => void} props.onSelect Receives the clicked token.
@@ -13,10 +13,13 @@ import { getTokenKey } from '../model/tokenSelectorState.js'
  * @returns {import('react').ReactElement|Array<import('react').ReactElement>} Existing result markup.
  */
 export function TokenSearchResults({ loading, error, tokens, onSelect, onContextMenu, currentToken, oppositeToken }) {
-    if (loading) return <TokenSkeletonList />
-    if (error) return <div className="ps-token-message">{error}</div>
+    if (loading && tokens.length === 0) return <TokenSkeletonList />
+    if (error && tokens.length === 0) return <div className="ps-token-message">{error}</div>
     if (tokens.length === 0) return <div className="ps-token-message">No matching tokens</div>
-    return tokens.map((token) => <TokenRow key={getTokenKey(token)} token={token} currentToken={currentToken} oppositeToken={oppositeToken} onSelect={onSelect} onContextMenu={onContextMenu} />)
+    return <>
+        {loading && <div className="ps-token-inline-status" role="status">Searching more tokens…</div>}
+        {tokens.map((token) => <TokenRow key={getTokenKey(token)} token={token} currentToken={currentToken} oppositeToken={oppositeToken} onSelect={onSelect} onContextMenu={onContextMenu} />)}
+    </>
 }
 
 /**
