@@ -452,58 +452,75 @@ export const uniswapVolumeTokenRoutes: FastifyPluginAsync = async (app) => {
                 })
             }
 
-            const results = await Promise.all(requestedChainIds.map((value) =>
-                getChainCatalog(value, request.raw.signal)))
-            const query = normalizedQuery(request.query.q)
-            const defaultLimit = chainId === null ? 2_400 : 100
-            const limit = Math.min(Number(request.query.limit ?? defaultLimit), 2_400)
-            const flattened = results.flatMap((result) => result.tokens)
-                .filter((token) => !query ||
-                    token.name.toLowerCase().includes(query) ||
-                    token.symbol.toLowerCase().includes(query) ||
-                    token.address.includes(query))
-                .sort((left, right) =>
-                    right.volume24hUsd - left.volume24hUsd ||
-                    right.liquidityUsd - left.liquidityUsd ||
-                    left.symbol.localeCompare(right.symbol))
-                .slice(0, limit)
-                .map((token, index) => publicToken(token, index + 1))
-            const generatedAt = Math.min(...results.map((result) => result.generatedAt))
-            const partial = results.some((result) => result.failedEndpoints.length > 0)
-            const response = {
-                schemaVersion: 7,
-                generatedAt,
-                tokens: flattened,
-                count: flattened.length,
-                commonTokens: [],
-                commonCount: 0,
-                fallbackTokens: [],
-                fallbackCount: 0,
-                stale: false,
-                partial,
-                hardStale: false,
-                catalogUnavailable: flattened.length === 0,
-                chainErrors: {},
-                metadata: {
-                    source: 'uniswap-public-subgraphs',
-                    configuredChainIds: requestedChainIds,
-                    failedEndpointCount: results.reduce(
-                        (sum, result) => sum + result.failedEndpoints.length,
-                        0,
-                    ),
-                    providerPartial: partial,
-                },
-                query,
+            const controller = new AbortController()
+            const abort = () => controller.abort()
+            request.raw.once('aborted', abort)
+            try {
+                const results = await Promise.all(requestedChainIds.map((value) =>
+                    getChainCatalog(value, controller.signal)))
+                const query = normalizedQuery(request.query.q)
+                const defaultLimit = chainId === null ? 2_400 : 100
+                const limit = Math.min(
+                    Number(request.query.limit ?? defaultLimit),
+                    2_400,
+                )
+                const flattened = results.flatMap((result) => result.tokens)
+                    .filter((token) => !query ||
+                        token.name.toLowerCase().includes(query) ||
+                        token.symbol.toLowerCase().includes(query) ||
+                        token.address.includes(query))
+                    .sort((left, right) =>
+                        right.volume24hUsd - left.volume24hUsd ||
+                        right.liquidityUsd - left.liquidityUsd ||
+                        left.symbol.localeCompare(right.symbol))
+                    .slice(0, limit)
+                    .map((token, index) => publicToken(token, index + 1))
+                const generatedAt = Math.min(
+                    ...results.map((result) => result.generatedAt),
+                )
+                const partial = results.some(
+                    (result) => result.failedEndpoints.length > 0,
+                )
+                const response = {
+                    schemaVersion: 7,
+                    generatedAt,
+                    tokens: flattened,
+                    count: flattened.length,
+                    commonTokens: [],
+                    commonCount: 0,
+                    fallbackTokens: [],
+                    fallbackCount: 0,
+                    stale: false,
+                    partial,
+                    hardStale: false,
+                    catalogUnavailable: flattened.length === 0,
+                    chainErrors: {},
+                    metadata: {
+                        source: 'uniswap-public-subgraphs',
+                        configuredChainIds: requestedChainIds,
+                        failedEndpointCount: results.reduce(
+                            (sum, result) => sum + result.failedEndpoints.length,
+                            0,
+                        ),
+                        providerPartial: partial,
+                    },
+                    query,
+                }
+                const etag = `"${createHash('sha256')
+                    .update(JSON.stringify(response))
+                    .digest('hex')}"`
+                if (request.headers['if-none-match'] === etag) {
+                    return reply.code(304).send()
+                }
+                reply.header('etag', etag)
+                reply.header(
+                    'cache-control',
+                    'public, max-age=30, stale-while-revalidate=120',
+                )
+                return response
+            } finally {
+                request.raw.off('aborted', abort)
             }
-            const etag = `"${createHash('sha256')
-                .update(JSON.stringify(response))
-                .digest('hex')}"`
-            if (request.headers['if-none-match'] === etag) {
-                return reply.code(304).send()
-            }
-            reply.header('etag', etag)
-            reply.header('cache-control', 'public, max-age=30, stale-while-revalidate=120')
-            return response
         },
     )
 }
