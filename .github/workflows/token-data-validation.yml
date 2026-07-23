@@ -1,0 +1,50 @@
+name: Token data validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/token-data-validation.yml'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/modules/uniswap-volume-tokens.ts'
+      - 'apps/api/src/modules/wallet-tokens.ts'
+      - 'apps/api/src/providers/unchained/**'
+      - 'apps/api/test/unchained-wallet-tokens.test.ts'
+      - 'src/features/tokens/hooks/useTokenCatalogController.js'
+      - 'src/features/tokens/hooks/useUniswapVolumeTokens.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck API
+        run: pnpm --filter @pistachio/api typecheck
+
+      - name: Test Unchained wallet classification
+        run: >-
+          pnpm --filter @pistachio/api exec vitest run
+          test/unchained-wallet-tokens.test.ts
+          --reporter=verbose
+
+      - name: Lint changed frontend token hooks
+        run: >-
+          pnpm exec oxlint
+          src/features/tokens/hooks/useTokenCatalogController.js
+          src/features/tokens/hooks/useUniswapVolumeTokens.js
