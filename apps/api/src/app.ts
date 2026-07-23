@@ -16,6 +16,7 @@ import {
     marketCatalogService,
     marketTokenRoutes,
 } from './modules/market-tokens.js'
+import { uniswapVolumeTokenRoutes } from './modules/uniswap-volume-tokens.js'
 import { sameChainQuoteRoutes } from './features/quotes/routes/quote-routes.js'
 import { tokenDetailsRoutes } from './modules/token-details.js'
 import { walletTokenKnownBalanceRoutes } from './modules/wallet-token-known-balances.js'
@@ -137,6 +138,7 @@ export function createApp() {
     })
 
     app.register(marketTokenRoutes)
+    app.register(uniswapVolumeTokenRoutes)
     app.register(walletTokenRoutes)
     app.register(walletActivityRoutes)
     app.register(walletTokenKnownBalanceRoutes)
