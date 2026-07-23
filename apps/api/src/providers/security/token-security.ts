@@ -267,7 +267,9 @@ export function createTokenSecurityService(overrides: Partial<SecurityDependenci
         ...overrides,
     }
 
-    async function refresh(address: string, signal?: AbortSignal, chainId = 56) {
+    async function refresh(addressValue: string, signal?: AbortSignal, chainId = 56) {
+        const address = normalizeAddress(addressValue)
+        if (!address) throw new Error('A valid token address is required.')
         const chain = requireActiveTokenDiscoveryChain(chainId)
         const key = `${chainId}:${address}`
         const existing = pending.get(key)
@@ -323,7 +325,22 @@ export function createTokenSecurityService(overrides: Partial<SecurityDependenci
         }
     }
 
+    function peekCached(addressValue: string, chainId = 56) {
+        const address = normalizeAddress(addressValue)
+        if (!address) return null
+        return cache.get(`${chainId}:${address}`)?.assessment ?? null
+    }
+
+    /**
+     * Backward-compatible cached read used by wallet discovery. It deliberately
+     * performs no provider refresh; explicit security-sensitive flows call
+     * refresh() with the exact token selected by the user.
+     */
     function getCachedAndRefresh(addressValue: string, chainId = 56) {
+        return peekCached(addressValue, chainId)
+    }
+
+    function refreshIfStale(addressValue: string, chainId = 56) {
         const address = normalizeAddress(addressValue)
         if (!address) return null
         const key = `${chainId}:${address}`
@@ -332,13 +349,21 @@ export function createTokenSecurityService(overrides: Partial<SecurityDependenci
         if (!existing || existing.refreshAfter <= now) {
             void refresh(address, undefined, chainId).catch(() => {
                 const current = cache.get(key)
-                if (current) current.refreshAfter = now + getApiConfig().tokenSecurity.errorCacheTtlMs
+                if (current) {
+                    current.refreshAfter = now +
+                        getApiConfig().tokenSecurity.errorCacheTtlMs
+                }
             })
         }
         return existing?.assessment ?? null
     }
 
-    return { getCachedAndRefresh, refresh }
+    return {
+        getCachedAndRefresh,
+        peekCached,
+        refresh,
+        refreshIfStale,
+    }
 }
 
 export const tokenSecurityService = createTokenSecurityService()
