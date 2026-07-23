@@ -19,6 +19,10 @@ import {
     postgresMarketCatalogPersistence,
 } from '../market-catalog/persistence.js'
 import {
+    marketCatalogLockManager,
+    type MarketCatalogLockManager,
+} from '../market-catalog/locks.js'
+import {
     type TokenMetadata,
     getTokenMetadataBatch,
 } from '../providers/alchemy/token-metadata.js'
@@ -242,7 +246,14 @@ export type MarketDependencies = {
     loadSnapshot: () => Promise<Snapshot | null>
     saveSnapshot: (snapshot: Snapshot) => Promise<void>
     persistence: MarketCatalogPersistence
+    lockManager: MarketCatalogLockManager
     now: () => number
+}
+
+export type MarketCatalogRefreshOptions = {
+    force?: boolean
+    reason?: string
+    signal?: AbortSignal
 }
 
 const SNAPSHOT_PATH = fileURLToPath(
@@ -1274,6 +1285,7 @@ export function createMarketCatalogService(
         loadSnapshot: loadCatalogSnapshot,
         saveSnapshot: saveCatalogSnapshot,
         persistence: postgresMarketCatalogPersistence,
+        lockManager: marketCatalogLockManager,
         now: Date.now,
         ...dependencies,
     }
@@ -1524,7 +1536,10 @@ export function createMarketCatalogService(
         }
     }
 
-    async function buildCatalog(chainId: number): Promise<CatalogCache> {
+    async function buildCatalog(
+        chainId: number,
+        signal?: AbortSignal,
+    ): Promise<CatalogCache> {
         const config = getApiConfig()
         const chain = requireActiveTokenDiscoveryChain(chainId)
         const availableProviders = new Set<MarketCatalogProvider>()
@@ -1540,6 +1555,7 @@ export function createMarketCatalogService(
                       limit: config.dexPaprika.perChainLimit,
                       liquidityMinimumUsd: config.dexPaprika.minimumLiquidityUsd,
                       transactionMinimum24h: config.dexPaprika.minimumTransactions24h,
+                      signal,
                   }),
               })
             : null
@@ -1557,6 +1573,7 @@ export function createMarketCatalogService(
             run: () => resolved.discoverCandidates({
                 chainId,
                 minimumCandidates: config.market.candidateLimit,
+                signal,
             }),
         })
             : null
@@ -1591,7 +1608,7 @@ export function createMarketCatalogService(
                   capable: chain.capabilities.coinGeckoOnchain,
                   run: () => resolved.fetchRecognized(
                 candidates.map((candidate) => candidate.address),
-                undefined,
+                signal,
                 chainId,
                   ),
               })
@@ -1604,7 +1621,7 @@ export function createMarketCatalogService(
                   capable: chain.capabilities.dexScreener,
                   run: () => resolved.fetchMarkets(
                 candidates.map((candidate) => candidate.address),
-                undefined,
+                signal,
                 chainId,
                   ),
               })
@@ -1884,26 +1901,34 @@ export function createMarketCatalogService(
         }
     }
 
-    function refreshCatalog(chainId = 56) {
+    function refreshCatalog(
+        chainId = 56,
+        options: MarketCatalogRefreshOptions = {},
+    ) {
         const existingRefresh = refreshPromises.get(chainId)
         if (existingRefresh) return existingRefresh
 
         const refreshPromise = (async () => {
-            const attempt = await recordPersistenceAttempt(chainId)
-            const catalog = await buildCatalog(chainId)
-            await resolved.persistence.recordAttempt({
-                chainId,
-                schemaVersion: MARKET_CATALOG_SCHEMA_VERSION,
-                providerStatus: catalog.providerMetadata,
-                lastAttemptedAt: new Date(attempt.attemptedAt),
-                nextRefreshAt: new Date(attempt.nextRefreshAt),
-            }).catch(() => reportPersistenceWarning(
-                'MARKET_CATALOG_ATTEMPT_WRITE_FAILED',
-            ))
-            const nextSections = composePublicCatalogTokens([
-                ...catalog.tokens,
-                ...(catalog.commonTokens ?? []),
-            ])
+            const lock = await resolved.lockManager.acquire(`market-catalog:refresh:${chainId}`)
+            if (!lock) {
+                throw new Error(`Market catalog refresh is already active for chain ${chainId}.`)
+            }
+            try {
+                const attempt = await recordPersistenceAttempt(chainId)
+                const catalog = await buildCatalog(chainId, options.signal)
+                await resolved.persistence.recordAttempt({
+                    chainId,
+                    schemaVersion: MARKET_CATALOG_SCHEMA_VERSION,
+                    providerStatus: catalog.providerMetadata,
+                    lastAttemptedAt: new Date(attempt.attemptedAt),
+                    nextRefreshAt: new Date(attempt.nextRefreshAt),
+                }).catch(() => reportPersistenceWarning(
+                    'MARKET_CATALOG_ATTEMPT_WRITE_FAILED',
+                ))
+                const nextSections = composePublicCatalogTokens([
+                    ...catalog.tokens,
+                    ...(catalog.commonTokens ?? []),
+                ])
                 const existing = catalogCaches.get(chainId)
                 if (existing?.tokens.length) {
                     const existingSections = composePublicCatalogTokens([
@@ -1985,12 +2010,22 @@ export function createMarketCatalogService(
                         })
                 }
                 return catalog
-            })()
+            } finally {
+                await lock.release()
+            }
+        })()
             .finally(() => {
                 refreshPromises.delete(chainId)
             })
         refreshPromises.set(chainId, refreshPromise)
         return refreshPromise
+    }
+
+    function refreshChain(
+        chainId: number,
+        options: MarketCatalogRefreshOptions = {},
+    ) {
+        return refreshCatalog(chainId, options)
     }
 
     async function getCatalog(
@@ -2407,6 +2442,7 @@ export function createMarketCatalogService(
         getSearch,
         hydratePersistentCatalogs,
         refreshAllCatalogs,
+        refreshChain,
         refreshCatalog,
         runScheduledRefreshTick,
         selectScheduledChain,

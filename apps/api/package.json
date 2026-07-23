@@ -24,6 +24,7 @@
     "diagnose:market-cache": "tsx --env-file=.env scripts/diagnose-market-cache.ts",
     "diagnose:dexpaprika": "tsx --env-file=.env scripts/diagnose-dexpaprika.ts",
     "audit:market-catalog": "tsx --env-file=.env scripts/audit-market-catalog.ts",
+    "market-catalog:bootstrap": "tsx --env-file=.env scripts/bootstrap-market-catalog.ts",
     "diagnose:cross-chain": "tsx --env-file=.env scripts/diagnose-cross-chain.ts",
     "diagnose:official-token": "tsx scripts/diagnose-official-token.ts",
     "typecheck": "tsc --noEmit",
