@@ -26,6 +26,7 @@ import {
     sanitizeStoredToken,
     sortGlobalMarketTokens,
     sortWalletTokens,
+    tokenMatchesSearch,
     writeRecentTokens,
 } from '../model/tokenSelectorState.js'
 
@@ -92,6 +93,7 @@ export function useTokenSelectorState({
             ? tokens
             : filterEligibleMarketTokens(tokens),
     ).filter(tokenIsInScope).filter((token) =>
+        tokenMatchesSearch(token, normalizedSearch) &&
         !walletTokensByKey.has(getTokenKey(token))), [
         exactAddressSearch,
         normalizedSearch,
@@ -99,8 +101,26 @@ export function useTokenSelectorState({
         tokens,
         walletTokensByKey,
     ])
-    const commonMarketTokens = useMemo(() => normalizedSearch ? EMPTY_TOKENS : deduplicateTokens(commonTokens).filter(tokenIsInScope).filter(isCuratedCommonMarketToken).filter((token) => !walletTokensByKey.has(getTokenKey(token))).filter((token) => !safeMarketTokens.some((marketToken) => getTokenKey(marketToken) === getTokenKey(token))).sort((left, right) => String(left.symbol).localeCompare(String(right.symbol)) || String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))), [commonTokens, normalizedSearch, safeMarketTokens, tokenIsInScope, walletTokensByKey])
-    const primaryWalletTokens = useMemo(() => sortWalletTokens(positiveWalletTokens.filter((token) => { const displayValue = resolveWalletUsdValue(token); return token.visibility === 'primary' && (!hideUnknownTokens || isTrustedWalletToken(token)) && (!hideSmallBalances || !hideUnknownTokens || displayValue === null || compareDecimalStrings(displayValue, '0.20') !== -1) })), [hideSmallBalances, hideUnknownTokens, positiveWalletTokens])
+    const scopedCommonMarketTokens = useMemo(() => deduplicateTokens(commonTokens)
+        .filter(tokenIsInScope)
+        .filter(isCuratedCommonMarketToken)
+        .filter((token) => !walletTokensByKey.has(getTokenKey(token)))
+        .filter((token) => !safeMarketTokens.some((marketToken) => getTokenKey(marketToken) === getTokenKey(token)))
+        .sort((left, right) => String(left.symbol).localeCompare(String(right.symbol)) || String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))), [commonTokens, safeMarketTokens, tokenIsInScope, walletTokensByKey])
+    const commonMarketTokens = normalizedSearch ? EMPTY_TOKENS : scopedCommonMarketTokens
+    const primaryWalletTokens = useMemo(() => sortWalletTokens(positiveWalletTokens.filter((token) => {
+        const displayValue = resolveWalletUsdValue(token)
+        return token.visibility === 'primary' &&
+            (!hideUnknownTokens || isTrustedWalletToken(token)) &&
+            (!hideSmallBalances || !hideUnknownTokens || displayValue === null ||
+                compareDecimalStrings(displayValue, '0.20') !== -1)
+    })), [hideSmallBalances, hideUnknownTokens, positiveWalletTokens])
+    const matchingPrimaryWalletTokens = useMemo(() => normalizedSearch
+        ? primaryWalletTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
+        : primaryWalletTokens, [normalizedSearch, primaryWalletTokens])
+    const matchingCommonMarketTokens = useMemo(() => normalizedSearch
+        ? scopedCommonMarketTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
+        : EMPTY_TOKENS, [normalizedSearch, scopedCommonMarketTokens])
     const sortedGlobalMarketTokens = useMemo(() => sortGlobalMarketTokens(safeMarketTokens), [safeMarketTokens])
     const riskyWalletTokens = useMemo(() => positiveWalletTokens.filter((token) => token.visibility === 'hidden'), [positiveWalletTokens])
     const unverifiedWalletTokens = useMemo(() => positiveWalletTokens.filter((token) => token.visibility !== 'hidden' && !isTrustedWalletToken(token)), [positiveWalletTokens])
@@ -109,9 +129,18 @@ export function useTokenSelectorState({
         : deduplicateTokens([currentToken, oppositeToken]).filter((token) => token && (!isTrustedWalletToken(token) || ['unverified', 'hidden'].includes(token.visibility)) && walletTokensByKey.has(getTokenKey(token))), [currentToken, hideUnknownTokens, oppositeToken, walletTokensByKey])
     const visibleRecentTokens = useMemo(() => recentTokens.filter(tokenIsInScope).map((token) => walletTokensByKey.get(getTokenKey(token)) ?? token).filter((token) => { const walletToken = walletTokensByKey.get(getTokenKey(token)); const candidate = walletToken ?? token; return hideUnknownTokens ? isTrustedWalletToken(candidate) : walletToken ? walletToken.visibility !== 'hidden' : isTrustedWalletToken(candidate) }), [hideUnknownTokens, recentTokens, tokenIsInScope, walletTokensByKey])
     const searchResultTokens = useMemo(() => {
-        if (!exactAddressSearch) return safeMarketTokens
-        return deduplicateTokens([...positiveWalletTokens.filter((token) => normalizeAddress(token.address) === normalizedSearch), ...safeMarketTokens])
-    }, [exactAddressSearch, normalizedSearch, positiveWalletTokens, safeMarketTokens])
+        if (exactAddressSearch) {
+            return deduplicateTokens([
+                ...positiveWalletTokens.filter((token) => normalizeAddress(token.address) === normalizedSearch),
+                ...safeMarketTokens,
+            ])
+        }
+        return deduplicateTokens([
+            ...matchingPrimaryWalletTokens,
+            ...matchingCommonMarketTokens,
+            ...sortedGlobalMarketTokens,
+        ])
+    }, [exactAddressSearch, matchingCommonMarketTokens, matchingPrimaryWalletTokens, normalizedSearch, positiveWalletTokens, safeMarketTokens, sortedGlobalMarketTokens])
     const marketStatusMessage = sortedGlobalMarketTokens.length > 0 ? catalogNotice === 'Popular tokens are temporarily unavailable.' ? 'Some market data could not be refreshed.' : catalogNotice ?? (error ? 'Some market data could not be refreshed.' : null) : !loading ? 'Popular tokens are temporarily unavailable.' : null
     const lastCatalogDiagnostic = useRef(null)
 
@@ -149,8 +178,7 @@ export function useTokenSelectorState({
     const toggleHiddenTokens = useCallback(() => setShowHiddenTokens((value) => writeWalletTokenSectionExpanded({ chainId, scope: 'selector', section: 'risky', expanded: !value })), [chainId])
     const toggleUnverifiedTokens = useCallback(() => setShowUnverifiedTokens((value) => writeWalletTokenSectionExpanded({ chainId, scope: 'selector', section: 'unverified', expanded: !value })), [chainId])
     const saveRecentToken = useCallback((token) => {
-        if (!normalizedSearch) return
-        if (!isTrustedWalletToken(token)) return
+        if (!normalizedSearch || !isTrustedWalletToken(token)) return
         const stored = sanitizeStoredToken(token)
         if (!stored) return
         const next = [stored, ...recentTokens.filter((item) => getTokenKey(item) !== getTokenKey(stored))].slice(0, recentLimit)
