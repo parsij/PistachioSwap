@@ -179,12 +179,12 @@ describe('normalized wallet token response', () => {
         expect(hidden.every((token) => token.rawBalance === '1000000000000000000'))
             .toBe(true)
         expect(hidden.every((token) => token.visibilityReasons.includes(
-            'unverified-contract',
+            'unverified-identity',
         ))).toBe(true)
         expect(hidden.every((token) =>
             token.valueUSD === null && token.trustedPriceUSD === null,
         )).toBe(true)
-        expect(tokens.every((token) => token.classificationVersion === 5)).toBe(true)
+        expect(tokens.every((token) => token.classificationVersion === 6)).toBe(true)
         expect(native).toMatchObject({
             symbol: 'BNB',
             balance: '1',
@@ -386,7 +386,7 @@ describe('normalized wallet token response', () => {
             walletAddress: cachedWallet,
         })
         expect(mocks.alchemyRpc).toHaveBeenCalled()
-        expect(tokens.every((token) => token.classificationVersion === 5)).toBe(true)
+        expect(tokens.every((token) => token.classificationVersion === 6)).toBe(true)
         expect(tokens.find((item) => item.address === tokenAddresses[0])).toMatchObject({
             recognitionStatus: 'unverified',
             visibility: 'hidden',
@@ -416,10 +416,11 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000044',
         })
         expect(tokens.find((item) => item.address === address)).toMatchObject({
-            recognitionStatus: 'recognized',
-            visibility: 'primary',
-            trustedPriceUSD: '2',
-            priceConfidence: 'trusted',
+            recognitionStatus: 'unverified',
+            visibility: 'hidden',
+            trustedPriceUSD: null,
+            priceConfidence: 'untrusted',
+            classificationTier: 'hidden',
         })
         expect(tokens.find((item) => item.address === tokenAddresses[1])).toMatchObject({
             recognitionStatus: 'unverified',
@@ -507,8 +508,11 @@ describe('normalized wallet token response', () => {
                 name: 'SecantX AI',
                 symbol: 'SECA',
                 priceUSD: '447463.12',
-                volume24hUsd: 1000000,
-                liquidityUsd: 1000000,
+                volume24hUsd: 0,
+                liquidityUsd: 5,
+                largestTrustedPoolLiquidityUsd: 5,
+                transactionCount24h: 0,
+                uniqueTraders24h: 0,
                 pairCount: 4,
                 pairUrl: null,
                 oldestPairCreatedAt: null,
@@ -546,7 +550,8 @@ describe('normalized wallet token response', () => {
         expect(result?.visibilityReasons).toEqual(expect.arrayContaining([
             'moralis-verified-contract',
             'market-catalog-only',
-            'untrusted-market-price',
+            'untrusted-price',
+            'insufficient-trusted-liquidity',
         ]))
         expect(result?.visibilityReasons).not.toContain('trusted-market-contract')
     })
@@ -593,7 +598,7 @@ describe('normalized wallet token response', () => {
             spamStatus: 'possible-spam',
             possibleSpam: true,
             visibility: 'hidden',
-            visibilityReasons: expect.arrayContaining(['moralis-possible-spam']),
+            visibilityReasons: expect.arrayContaining(['provider-spam']),
             trustedPriceUSD: null,
             valueUSD: null,
         })
@@ -701,7 +706,7 @@ describe('normalized wallet token response', () => {
         })
         expect(tokens).toEqual([
             expect.objectContaining({
-                classificationVersion: 5,
+                classificationVersion: 6,
                 id: `56:${xautAddress}`,
                 name: 'Tether Gold',
                 symbol: 'XAUt',
@@ -720,10 +725,12 @@ describe('normalized wallet token response', () => {
                 logoURI: '/icons/tether-gold.png',
                 logoSource: 'curated',
                 priceUSD: '2400.25',
-                marketPriceUSD: '2400.25',
-                trustedPriceUSD: null,
+                marketPriceUSD: null,
+                trustedPriceUSD: '2400.25',
                 valueUSD: '3600.375',
-                priceConfidence: 'market',
+                priceConfidence: 'trusted',
+                classificationTier: 'core',
+                classificationReasons: expect.arrayContaining(['core-asset']),
             }),
         ])
         expect(tokens[0].logoCandidates[1])

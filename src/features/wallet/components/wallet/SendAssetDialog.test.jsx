@@ -183,7 +183,7 @@ describe('SendAssetDialog', () => {
         expect(mocks.send).not.toHaveBeenCalled()
     })
 
-    it('uses the setting to reveal all three collections without a balance refetch', () => {
+    it('keeps hidden assets separate when unknown-token hiding is disabled', () => {
         renderDialog({
             assets: [native, unverified, blocked],
             settings: { hideUnknownTokens: false, hideSmallBalances: false },
@@ -191,10 +191,14 @@ describe('SendAssetDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: /BNB/ }))
 
         expect(screen.getByText('BNB', { selector: 'strong' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Unverified tokens (1)' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Hidden risky tokens (1)' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Show all wallet assets' })
-            .getAttribute('aria-pressed')).toBe('false')
+        expect(screen.queryByText('Unverified token')).toBeNull()
+        expect(screen.queryByText('Unknown token')).toBeNull()
+
+        fireEvent.change(screen.getByLabelText('Search wallet assets'), {
+            target: { value: unverified.address },
+        })
+        expect(screen.getByRole('button', { name: 'Hidden tokens (1)' })).toBeTruthy()
+        expect(screen.getByText('Unverified token')).toBeTruthy()
     })
 
     it('keeps verified scam tokens out of the normal Send selector', () => {
@@ -209,7 +213,7 @@ describe('SendAssetDialog', () => {
         fireEvent.change(screen.getByLabelText('Search wallet assets'), {
             target: { value: secantX.address },
         })
-        expect(screen.getByRole('button', { name: 'Hidden risky tokens (1)' }))
+        expect(screen.getByRole('button', { name: 'Hidden tokens (1)' }))
             .toBeTruthy()
         expect(screen.getByText('SecantX AI')).toBeTruthy()
         expect(screen.getByText('Potential risk')).toBeTruthy()

@@ -10,13 +10,14 @@ import {
 
 const walletTokenRequests = new Map()
 
-export const WALLET_TOKEN_CLASSIFICATION_VERSION = 5
-export const WALLET_TOKEN_CACHE_NAMESPACE = 'pistachioswap:wallet-tokens:v5:'
+export const WALLET_TOKEN_CLASSIFICATION_VERSION = 6
+export const WALLET_TOKEN_CACHE_NAMESPACE = 'pistachioswap:wallet-tokens:v6:'
 const LEGACY_WALLET_TOKEN_CACHE_NAMESPACES = [
     'pistachioswap:wallet-tokens:v1:',
     'pistachioswap:wallet-tokens:v2:',
     'pistachioswap:wallet-tokens:v3:',
     'pistachioswap:wallet-tokens:v4:',
+    'pistachioswap:wallet-tokens:v5:',
 ]
 
 export function clearLegacyWalletTokenCacheKeys(storage) {
@@ -47,6 +48,8 @@ export function isCurrentWalletTokenRecord(token) {
         (token.verifiedContract === null || typeof token.verifiedContract === 'boolean') &&
         ['trusted', 'low', 'caution', 'high', 'blocked', 'unknown'].includes(token.securityStatus) &&
         ['primary', 'unverified', 'hidden'].includes(token.visibility) &&
+        ['core', 'established', 'hidden', 'blocked'].includes(token.classificationTier) &&
+        Array.isArray(token.classificationReasons) &&
         ['trusted', 'market', 'untrusted', 'unknown'].includes(token.priceConfidence)
 }
 

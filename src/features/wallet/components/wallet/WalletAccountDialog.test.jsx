@@ -88,11 +88,12 @@ const xaut = {
     rawBalance: '1000000',
     balance: '1',
     valueUSD: '2400',
-    trustedPriceUSD: null,
-    marketPriceUSD: '2400',
+    trustedPriceUSD: '2400',
+    marketPriceUSD: null,
     recognitionStatus: 'established',
     recognitionReasons: ['curated-official-contract'],
-    priceConfidence: 'market',
+    priceConfidence: 'trusted',
+    officialAsset: true,
 }
 const scam = {
     ...usdt,

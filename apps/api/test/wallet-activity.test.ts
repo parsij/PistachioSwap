@@ -34,6 +34,8 @@ function token(address: string, overrides = {}) {
         securityStatus: 'low',
         priceConfidence: 'trusted',
         includeInPortfolioValue: true,
+        classificationTier: 'established',
+        classificationReasons: ['established-market-asset'],
         visibility: 'primary',
         ...overrides,
     }

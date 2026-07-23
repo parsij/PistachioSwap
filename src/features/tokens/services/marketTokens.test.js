@@ -47,7 +47,7 @@ function classifiedToken(overrides = {}) {
 
 function catalogPayload(tokens = [], overrides = {}) {
     return {
-        schemaVersion: 5,
+        schemaVersion: 6,
         tokens,
         count: tokens.length,
         commonTokens: [],

@@ -8,6 +8,7 @@ import {
 import {
     compareDecimalStrings,
     isTrustedWalletToken,
+    partitionPortfolioAssets,
 } from '../services/portfolio.js'
 import { confirmRiskyTokenSelection } from '../services/tokenRisk.js'
 import { getCoinGeckoTokenUrl } from '../services/tokenDetails.js'
@@ -68,8 +69,6 @@ export function useTokenSelectorState({
     error,
     catalogNotice = null,
     catalogDiagnostics = null,
-    currentToken,
-    oppositeToken,
     onSelect,
     onClose,
     hideUnknownTokens = true,
@@ -87,6 +86,10 @@ export function useTokenSelectorState({
     const chainScope = String(chainId).trim().toLowerCase() === 'all' ? 'all' : Number(chainId)
     const tokenIsInScope = useCallback((token) => chainScope === 'all' || Number(token?.chainId) === chainScope, [chainScope])
     const positiveWalletTokens = useMemo(() => deduplicateTokens(walletTokens).filter(tokenIsInScope).filter(hasPositiveBalance), [tokenIsInScope, walletTokens])
+    const walletPartitions = useMemo(
+        () => partitionPortfolioAssets(positiveWalletTokens),
+        [positiveWalletTokens],
+    )
     const walletTokensByKey = useMemo(() => new Map(positiveWalletTokens.map((token) => [getTokenKey(token), token])), [positiveWalletTokens])
     const safeMarketTokens = useMemo(() => deduplicateTokens(
         normalizedSearch && exactAddressSearch
@@ -108,13 +111,13 @@ export function useTokenSelectorState({
         .filter((token) => !safeMarketTokens.some((marketToken) => getTokenKey(marketToken) === getTokenKey(token)))
         .sort((left, right) => String(left.symbol).localeCompare(String(right.symbol)) || String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))), [commonTokens, safeMarketTokens, tokenIsInScope, walletTokensByKey])
     const commonMarketTokens = normalizedSearch ? EMPTY_TOKENS : scopedCommonMarketTokens
-    const primaryWalletTokens = useMemo(() => sortWalletTokens(positiveWalletTokens.filter((token) => {
+    const primaryWalletTokens = useMemo(() => sortWalletTokens(walletPartitions.primaryTokens.filter((token) => {
         const displayValue = resolveWalletUsdValue(token)
         return token.visibility === 'primary' &&
             (!hideUnknownTokens || isTrustedWalletToken(token)) &&
             (!hideSmallBalances || !hideUnknownTokens || displayValue === null ||
                 compareDecimalStrings(displayValue, '0.20') !== -1)
-    })), [hideSmallBalances, hideUnknownTokens, positiveWalletTokens])
+    })), [hideSmallBalances, hideUnknownTokens, walletPartitions.primaryTokens])
     const matchingPrimaryWalletTokens = useMemo(() => normalizedSearch
         ? primaryWalletTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
         : primaryWalletTokens, [normalizedSearch, primaryWalletTokens])
@@ -122,16 +125,16 @@ export function useTokenSelectorState({
         ? scopedCommonMarketTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
         : EMPTY_TOKENS, [normalizedSearch, scopedCommonMarketTokens])
     const sortedGlobalMarketTokens = useMemo(() => sortGlobalMarketTokens(safeMarketTokens), [safeMarketTokens])
-    const riskyWalletTokens = useMemo(() => positiveWalletTokens.filter((token) => token.visibility === 'hidden'), [positiveWalletTokens])
-    const unverifiedWalletTokens = useMemo(() => positiveWalletTokens.filter((token) => token.visibility !== 'hidden' && !isTrustedWalletToken(token)), [positiveWalletTokens])
-    const selectedHiddenTokens = useMemo(() => hideUnknownTokens
-        ? EMPTY_TOKENS
-        : deduplicateTokens([currentToken, oppositeToken]).filter((token) => token && (!isTrustedWalletToken(token) || ['unverified', 'hidden'].includes(token.visibility)) && walletTokensByKey.has(getTokenKey(token))), [currentToken, hideUnknownTokens, oppositeToken, walletTokensByKey])
+    const riskyWalletTokens = useMemo(() => walletPartitions.hiddenTokens, [walletPartitions.hiddenTokens])
+    const unverifiedWalletTokens = useMemo(() => EMPTY_TOKENS, [])
+    const selectedHiddenTokens = useMemo(() => exactAddressSearch
+        ? riskyWalletTokens.filter((token) => normalizeAddress(token.address) === normalizedSearch)
+        : EMPTY_TOKENS, [exactAddressSearch, normalizedSearch, riskyWalletTokens])
     const visibleRecentTokens = useMemo(() => recentTokens.filter(tokenIsInScope).map((token) => walletTokensByKey.get(getTokenKey(token)) ?? token).filter((token) => { const walletToken = walletTokensByKey.get(getTokenKey(token)); const candidate = walletToken ?? token; return hideUnknownTokens ? isTrustedWalletToken(candidate) : walletToken ? walletToken.visibility !== 'hidden' : isTrustedWalletToken(candidate) }), [hideUnknownTokens, recentTokens, tokenIsInScope, walletTokensByKey])
     const searchResultTokens = useMemo(() => {
         if (exactAddressSearch) {
             return deduplicateTokens([
-                ...positiveWalletTokens.filter((token) => normalizeAddress(token.address) === normalizedSearch),
+                ...primaryWalletTokens.filter((token) => normalizeAddress(token.address) === normalizedSearch),
                 ...safeMarketTokens,
             ])
         }
@@ -140,7 +143,7 @@ export function useTokenSelectorState({
             ...matchingCommonMarketTokens,
             ...sortedGlobalMarketTokens,
         ])
-    }, [exactAddressSearch, matchingCommonMarketTokens, matchingPrimaryWalletTokens, normalizedSearch, positiveWalletTokens, safeMarketTokens, sortedGlobalMarketTokens])
+    }, [exactAddressSearch, matchingCommonMarketTokens, matchingPrimaryWalletTokens, normalizedSearch, primaryWalletTokens, safeMarketTokens, sortedGlobalMarketTokens])
     const marketStatusMessage = sortedGlobalMarketTokens.length > 0 ? catalogNotice === 'Popular tokens are temporarily unavailable.' ? 'Some market data could not be refreshed.' : catalogNotice ?? (error ? 'Some market data could not be refreshed.' : null) : !loading ? 'Popular tokens are temporarily unavailable.' : null
     const lastCatalogDiagnostic = useRef(null)
 

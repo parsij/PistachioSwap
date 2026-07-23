@@ -7,13 +7,14 @@ import {
 } from '../../../web3/curatedEvmChains.js'
 
 export const MARKET_TOKEN_CACHE_PREFIX =
-    'pistachioswap:market-tokens:v5:'
+    'pistachioswap:market-tokens:v6:'
 
 const LEGACY_CACHE_PREFIXES = [
     'pistachioswap:market-tokens:v1:',
     'pistachioswap:market-tokens:v2:',
     'pistachioswap:market-tokens:v3:',
     'pistachioswap:market-tokens:v4:',
+    'pistachioswap:market-tokens:v5:',
 ]
 
 let legacyCacheMigrated = false
@@ -88,7 +89,15 @@ export function getMarketTokenExclusionReason(token) {
         Number(token.decimals) > 255) return 'invalidMetadata'
     if (!(Number(token?.volume24hUsd) > 0)) return 'missingVolume'
     if (!(Number(token?.liquidityUsd) > 0) ||
-        !reasons.includes('minimum-liquidity-met')) return 'insufficientLiquidity'
+        (!reasons.includes('minimum-liquidity-met') &&
+            !reasons.includes('minimum-trusted-liquidity-met'))) {
+        return 'insufficientLiquidity'
+    }
+    if (token?.classificationTier !== undefined &&
+        !['core', 'established'].includes(token.classificationTier)) return 'hidden'
+    if (token?.includeInPortfolioValue === false ||
+        token?.priceConfidence === 'untrusted' ||
+        token?.priceConfidence === 'unknown') return 'hidden'
     return null
 }
 
@@ -205,7 +214,7 @@ function readCacheEntry(key) {
             !entry ||
             typeof entry.cachedAt !== 'number' ||
             !entry.payload ||
-            entry.payload.schemaVersion !== 5 ||
+            entry.payload.schemaVersion !== 6 ||
             !Array.isArray(entry.payload.tokens) ||
             !Array.isArray(entry.payload.commonTokens) ||
             entry.payload.commonCount !== entry.payload.commonTokens.length ||
@@ -510,7 +519,7 @@ export async function fetchMarketTokens({
 
     const payload = await response.json()
 
-    if (payload.schemaVersion !== 5 || !Array.isArray(payload.tokens)) {
+    if (payload.schemaVersion !== 6 || !Array.isArray(payload.tokens)) {
         throw new Error(
             'Backend returned an invalid token list',
         )

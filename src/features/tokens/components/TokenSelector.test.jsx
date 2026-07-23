@@ -17,7 +17,7 @@ import TokenSelector from './TokenSelector.jsx'
 import { clearTokenLogoCacheForTest } from './tokenLogoCache.js'
 
 const native = {
-    classificationVersion: 5,
+    classificationVersion: 6,
     id: '56:0x0000000000000000000000000000000000000000',
     chainId: 56,
     address: '0x0000000000000000000000000000000000000000',
@@ -42,7 +42,7 @@ const native = {
 }
 
 const hidden = {
-    classificationVersion: 5,
+    classificationVersion: 6,
     id: '56:0x0000000000000000000000000000000000000099',
     chainId: 56,
     address: '0x0000000000000000000000000000000000000099',
@@ -285,23 +285,19 @@ describe('TokenSelector wallet rows', () => {
         expect(screen.queryByText('Common tokens')).toBeNull()
     })
 
-    it('keeps unverified and risky wallet tokens in separate collapsed sections', () => {
+    it('keeps hidden wallet tokens in one collapsed section', () => {
         const onSelect = vi.fn()
         const first = renderSelector({ onSelect, hideUnknownTokens: false })
 
         expect(screen.queryByText(hidden.name)).toBeNull()
         expect(screen.queryByText(unverified.name)).toBeNull()
-        const unverifiedSection = screen.getByText('Unverified tokens (1)').closest('section')
-        fireEvent.click(within(unverifiedSection).getByRole('button', { name: 'Show' }))
-        expect(screen.getByText(unverified.name)).toBeTruthy()
-        const hiddenSection = screen.getByText('Hidden risky tokens (3)').closest('section')
+        const hiddenSection = screen.getByText('Hidden tokens (4)').closest('section')
         fireEvent.click(within(hiddenSection).getByRole('button', { name: 'Show' }))
+        expect(screen.getByText(unverified.name)).toBeTruthy()
         expect(screen.getByText(hidden.name).textContent).toBe(hidden.name)
         expect(screen.getByText(honeypot.name)).toBeTruthy()
         expect(screen.getByText(blocklisted.name)).toBeTruthy()
         expect(document.querySelectorAll('.ps-token-row')).toHaveLength(5)
-        expect(screen.getByText(/spam or severe security warnings/i))
-            .toBeTruthy()
         const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
         fireEvent.click(screen.getByText(hidden.name).closest('.ps-token-row'))
         expect(confirmation).toHaveBeenCalledWith(expect.stringContaining(
@@ -310,8 +306,7 @@ describe('TokenSelector wallet rows', () => {
         expect(onSelect).toHaveBeenCalledWith(hidden)
         first.unmount()
         renderSelector({ hideUnknownTokens: true })
-        expect(screen.queryByText('Unverified tokens (1)')).toBeNull()
-        expect(screen.queryByText('Hidden risky tokens (3)')).toBeNull()
+        expect(screen.queryByText('Hidden tokens (4)')).toBeNull()
         expect(screen.queryByText(hidden.name)).toBeNull()
         expect(screen.queryByText(unverified.name)).toBeNull()
     })
@@ -374,7 +369,7 @@ describe('TokenSelector wallet rows', () => {
         const primarySection = screen.queryByText('Your tokens')?.closest('section')
         expect(primarySection ? within(primarySection).queryByText(hidden.name) : null)
             .toBeNull()
-        expect(screen.queryByText('Hidden risky tokens (3)')).toBeNull()
+        expect(screen.queryByText('Hidden tokens (4)')).toBeNull()
     })
 
     it('filters screenshot junk wallet tokens during normal browsing but reveals exact-address search', () => {
@@ -443,13 +438,11 @@ describe('TokenSelector wallet rows', () => {
         expect(document.body.textContent).not.toContain('$447,463.12')
     })
 
-    it('persists the two collapsed-section states without touching other storage', () => {
+    it('persists the collapsed hidden-section state without touching other storage', () => {
         window.localStorage.setItem('unrelated-setting', 'keep')
         const first = renderSelector({ hideUnknownTokens: false })
-        const unverifiedSection = screen.getByText('Unverified tokens (1)').closest('section')
-        const riskySection = screen.getByText('Hidden risky tokens (3)').closest('section')
-        fireEvent.click(within(unverifiedSection).getByRole('button', { name: 'Show' }))
-        fireEvent.click(within(riskySection).getByRole('button', { name: 'Show' }))
+        const hiddenSection = screen.getByText('Hidden tokens (4)').closest('section')
+        fireEvent.click(within(hiddenSection).getByRole('button', { name: 'Show' }))
         first.unmount()
 
         renderSelector({ hideUnknownTokens: false })
@@ -718,9 +711,9 @@ describe('TokenSelector wallet rows', () => {
             rawBalance: '2500000',
             balance: '2.5',
             valueUSD: null,
-            trustedPriceUSD: null,
-            marketPriceUSD: '2400',
-            priceConfidence: 'market',
+            trustedPriceUSD: '2400',
+            marketPriceUSD: null,
+            priceConfidence: 'trusted',
             recognitionStatus: 'established',
             recognitionReasons: ['curated-official-contract'],
             verifiedContract: true,
@@ -755,7 +748,7 @@ describe('TokenSelector wallet rows', () => {
     it('resolves stale recent XAUt metadata to the refreshed wallet record', () => {
         const address = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
         window.localStorage.setItem(
-            'pistachioswap:recent-token-searches:v3:56',
+            'pistachioswap:recent-token-searches:v4:56',
             JSON.stringify([{
                 chainId: 56,
                 address,

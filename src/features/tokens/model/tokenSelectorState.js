@@ -75,6 +75,8 @@ function compareCanonicalIdentity(left, right) {
 }
 
 function walletTrustTier(token) {
+    if (token?.classificationTier === 'core') return 0
+    if (token?.classificationTier === 'established') return 1
     if (token?.isNative === true || token?.officialAsset === true) return 0
     const reasons = Array.isArray(token?.recognitionReasons)
         ? token.recognitionReasons
@@ -82,7 +84,6 @@ function walletTrustTier(token) {
           ? token.verificationReasons
           : []
     if (reasons.some((reason) => CORE_CURATED_REASONS.has(reason))) return 0
-    if (token?.coinGeckoId || reasons.includes('coingecko-exact-contract')) return 1
     return 2
 }
 
@@ -158,6 +159,10 @@ export function sanitizeStoredToken(token) {
         trustedPriceUSD: token.trustedPriceUSD ?? null,
         marketPriceUSD: token.marketPriceUSD ?? null,
         valueUSD: token.valueUSD ?? null,
+        classificationTier: token.classificationTier ?? 'hidden',
+        classificationReasons: Array.isArray(token.classificationReasons)
+            ? token.classificationReasons
+            : [],
     }
 }
 
@@ -165,7 +170,7 @@ export function sanitizeStoredToken(token) {
 export function getRecentStorageKey(chainId) {
     const scope = String(chainId).trim().toLowerCase() === 'all' ? 'all' : Number(chainId)
     if (scope !== 'all' && (!Number.isSafeInteger(scope) || scope <= 0)) return null
-    return ['pistachioswap', 'recent-token-searches', 'v3', scope].join(':')
+    return ['pistachioswap', 'recent-token-searches', 'v4', scope].join(':')
 }
 
 /** Reads recent token records and fails closed when browser storage is unavailable or malformed. */

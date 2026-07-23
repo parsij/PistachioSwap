@@ -92,12 +92,9 @@ describe('WalletAssetList security presentation', () => {
         expect(screen.getByText('Unverified')).toBeTruthy()
         expect(screen.getAllByText('—')).toHaveLength(2)
         expect(screen.getByText('5 UNKNOWN')).toBeTruthy()
-        expect(screen.getByText(
-            'Unknown, low-confidence, and risky tokens are excluded from your portfolio balance. Interact only when you trust the exact contract.',
-        )).toBeTruthy()
     })
 
-    it('preserves separate unverified and risky sections when unknown-token hiding is disabled', () => {
+    it('preserves a separate hidden section when unknown-token hiding is disabled', () => {
         render(<WalletAssetList
             tokens={[primary, unverified, hidden]}
             settings={{ hideUnknownTokens: false, hideSmallBalances: false }}
@@ -106,12 +103,8 @@ describe('WalletAssetList security presentation', () => {
         expect(screen.queryByText('Unknown token')).toBeNull()
         expect(screen.queryByText('Unverified token')).toBeNull()
 
-        fireEvent.click(screen.getByRole('button', { name: 'Unverified tokens (1)' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Hidden tokens (2)' }))
         expect(screen.getByText('Unverified token')).toBeTruthy()
-        expect(screen.getByText('These tokens are not recognized by trusted asset sources.'))
-            .toBeTruthy()
-
-        fireEvent.click(screen.getByRole('button', { name: 'Hidden risky tokens (1)' }))
         expect(screen.getByText('Unknown token')).toBeTruthy()
         expect(screen.getByText('Potential risk')).toBeTruthy()
         expect(screen.getAllByText('—')).toHaveLength(2)
@@ -142,9 +135,7 @@ describe('WalletAssetList security presentation', () => {
             settings={{ hideUnknownTokens: false, hideSmallBalances: false }}
         />)
 
-        expect(screen.queryByText('Hidden tokens (2)')).toBeNull()
-        expect(screen.getByText('Unverified tokens (1)')).toBeTruthy()
-        expect(screen.getByText('Hidden risky tokens (1)')).toBeTruthy()
+        expect(screen.getByText('Hidden tokens (2)')).toBeTruthy()
         expect(tokens).toHaveLength(3)
     })
 })

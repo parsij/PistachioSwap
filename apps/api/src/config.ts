@@ -455,14 +455,29 @@ export function getApiConfig() {
                 100_000,
                 0,
             ),
+            minimumLargestPoolLiquidityUsd: readConfiguredNumber(
+                'ESTABLISHED_TOKEN_MIN_LARGEST_POOL_LIQUIDITY_USD',
+                50_000,
+                0,
+            ),
             minimumVolume24hUsd: readConfiguredNumber(
                 'ESTABLISHED_TOKEN_MIN_VOLUME_24H_USD',
-                25_000,
+                10_000,
                 0,
             ),
             minimumPoolAgeDays: readConfiguredNumber(
                 'ESTABLISHED_TOKEN_MIN_POOL_AGE_DAYS',
-                30,
+                365,
+                0,
+            ),
+            minimumTransactions24h: readConfiguredInteger(
+                'ESTABLISHED_TOKEN_MIN_TXNS_24H',
+                100,
+                0,
+            ),
+            minimumUniqueTraders24h: readConfiguredInteger(
+                'ESTABLISHED_TOKEN_MIN_UNIQUE_TRADERS_24H',
+                25,
                 0,
             ),
             minimumPairCount: readConfiguredInteger(
@@ -472,9 +487,9 @@ export function getApiConfig() {
             ),
             defaultLimit: readConfiguredInteger(
                 'ESTABLISHED_TOKEN_LIMIT',
-                100,
+                1_000,
                 1,
-                100,
+                1_000,
             ),
             candidateLimit: readConfiguredInteger(
                 'ESTABLISHED_CANDIDATE_LIMIT',

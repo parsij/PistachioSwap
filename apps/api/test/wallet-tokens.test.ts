@@ -68,7 +68,7 @@ describe('wallet token inventory', () => {
     it('uses one canonical native BNB identity distinct from ERC-20 contracts', () => {
         const native = createNativeWalletToken(10n ** 18n, '500')
         expect(native).toMatchObject({
-            classificationVersion: 5,
+            classificationVersion: 6,
             chainId: 56,
             address: NATIVE_TOKEN_ADDRESS,
             symbol: 'BNB',

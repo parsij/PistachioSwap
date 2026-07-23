@@ -100,19 +100,32 @@ export type MarketToken = {
     chainLogoURI: string | null
     coinGeckoId: string | null
     priceUSD: string | null
+    trustedPriceUSD?: string | null
     marketPriceUSD?: string | null
+    priceConfidence?: 'trusted' | 'market' | 'untrusted' | 'unknown'
     priceChange24hPercent?: number | null
     volume24hUsd: number | null
     volume7dUsd?: number | null
     volume30dUsd?: number | null
     liquidityUsd: number | null
+    trustedLiquidityUsd?: number | null
+    largestTrustedPoolLiquidityUsd?: number | null
     fdvUsd?: number | null
     transactions24h?: number | null
+    transactionCount24h?: number | null
+    uniqueTraders24h?: number | null
     poolsCount?: number | null
     createdAt?: string | null
     hasProviderImage?: boolean
     pairCount: number | null
+    trustedPairCount?: number | null
     oldestPairCreatedAt: string | null
+    oldestTrustedPoolCreatedAt?: string | null
+    establishedAgeDays?: number | null
+    estimatedSellValueUsd?: string | null
+    classificationTier?: 'core' | 'established' | 'hidden' | 'blocked'
+    classificationReasons?: string[]
+    includeInPortfolioValue?: boolean
     marketUrl: string | null
     rank: number | null
     verificationStatus: VerificationStatus
@@ -235,7 +248,7 @@ export type MarketDependencies = {
 const SNAPSHOT_PATH = fileURLToPath(
     new URL('../../data/bsc-established-top-tokens.json', import.meta.url),
 )
-export const MARKET_CATALOG_SCHEMA_VERSION = 5
+export const MARKET_CATALOG_SCHEMA_VERSION = 6
 export const MARKET_PROVIDER_BACKOFF_INITIAL_MS = 60_000
 export const MARKET_PROVIDER_BACKOFF_MAX_MS = 15 * 60_000
 export const MARKET_CATALOG_ROLLING_REFRESH_MS = 60_000
@@ -475,42 +488,70 @@ function isRecognizedToken(
     )
 }
 
+function reliableAgeDays(market: TokenMarket | undefined, now: number) {
+    const oldest = market?.oldestPairCreatedAt
+        ? Date.parse(market.oldestPairCreatedAt)
+        : Number.NaN
+    if (!Number.isFinite(oldest)) return null
+    return Math.floor((now - oldest) / (24 * 60 * 60 * 1000))
+}
+
 function marketReasons(
     market: TokenMarket | undefined,
     now: number,
+    coreAsset = false,
 ) {
     const config = getApiConfig().market
     const reasons: string[] = []
     const failures: string[] = []
 
+    if (coreAsset) {
+        return { reasons: ['core-asset'], failures, ageDays: reliableAgeDays(market, now) }
+    }
+
     if ((market?.liquidityUsd ?? 0) >= config.minimumLiquidityUsd) {
-        reasons.push('minimum-liquidity-met')
+        reasons.push('minimum-trusted-liquidity-met')
     } else {
-        failures.push('below-liquidity-threshold')
+        failures.push('insufficient-trusted-liquidity')
+    }
+    if ((market?.largestTrustedPoolLiquidityUsd ?? market?.liquidityUsd ?? 0) >=
+        config.minimumLargestPoolLiquidityUsd) {
+        reasons.push('minimum-largest-pool-liquidity-met')
+    } else {
+        failures.push('insufficient-largest-pool-liquidity')
     }
     if ((market?.volume24hUsd ?? 0) >= config.minimumVolume24hUsd) {
         reasons.push('minimum-volume-met')
     } else {
-        failures.push('below-volume-threshold')
+        failures.push('insufficient-volume')
+    }
+    if ((market?.transactionCount24h ?? 0) >=
+        config.minimumTransactions24h) {
+        reasons.push('minimum-transaction-count-met')
+    } else {
+        failures.push('insufficient-transaction-count')
+    }
+    if ((market?.uniqueTraders24h ?? -1) >= config.minimumUniqueTraders24h) {
+        reasons.push('minimum-unique-traders-met')
+    } else {
+        failures.push('insufficient-unique-traders')
     }
     if ((market?.pairCount ?? 0) >= config.minimumPairCount) {
-        reasons.push('minimum-pair-count-met')
+        reasons.push('trusted-pair-count-met')
     } else {
-        failures.push('below-pair-count-threshold')
+        failures.push('no-trusted-pair')
     }
 
-    const oldest = market?.oldestPairCreatedAt
-        ? Date.parse(market.oldestPairCreatedAt)
-        : Number.NaN
-    const oldestAllowed =
-        now - config.minimumPoolAgeDays * 24 * 60 * 60 * 1000
-    if (Number.isFinite(oldest) && oldest <= oldestAllowed) {
+    const ageDays = reliableAgeDays(market, now)
+    if (ageDays === null) {
+        failures.push('age-unavailable')
+    } else if (ageDays >= config.minimumPoolAgeDays) {
         reasons.push('minimum-pool-age-met')
     } else {
-        failures.push('pool-too-new-or-age-unavailable')
+        failures.push('token-too-new')
     }
 
-    return { reasons, failures }
+    return { reasons, failures, ageDays }
 }
 
 function incrementReasons(
@@ -597,6 +638,13 @@ export function filterEligibleVolumeTokens(tokens: readonly MarketToken[]) {
         if (!Number.isFinite(token.liquidityUsd) ||
             Number(token.liquidityUsd) < minimumLiquidityUsd) {
             exclude('insufficientLiquidity')
+            continue
+        }
+        if ((token.classificationTier ?? 'hidden') === 'hidden' ||
+            token.includeInPortfolioValue === false ||
+            token.priceConfidence === 'untrusted' ||
+            token.priceConfidence === 'unknown') {
+            exclude('hidden')
             continue
         }
         if (!Number.isFinite(token.transactions24h) ||
@@ -695,6 +743,26 @@ export function normalizePublicMarketToken(
         spamStatus: 'clean',
         securityStatus: token.securityStatus ?? 'unknown',
         visibility: 'primary',
+        classificationTier: token.classificationTier ??
+            (officialAsset ? 'core' : 'established'),
+        classificationReasons: token.classificationReasons ??
+            [officialAsset ? 'core-asset' : 'established-market-asset'],
+        trustedPriceUSD: token.trustedPriceUSD ??
+            (token.priceConfidence === 'trusted' ? token.priceUSD : null),
+        priceConfidence: token.priceConfidence ??
+            (token.priceUSD ? 'trusted' : 'unknown'),
+        trustedLiquidityUsd: token.trustedLiquidityUsd ?? token.liquidityUsd ?? null,
+        largestTrustedPoolLiquidityUsd:
+            token.largestTrustedPoolLiquidityUsd ?? token.liquidityUsd ?? null,
+            transactionCount24h:
+                token.transactionCount24h ?? token.transactions24h ?? null,
+            transactions24h:
+                token.transactions24h ?? token.transactionCount24h ?? null,
+        uniqueTraders24h: token.uniqueTraders24h ?? null,
+        trustedPairCount: token.trustedPairCount ?? token.pairCount ?? null,
+        oldestTrustedPoolCreatedAt:
+            token.oldestTrustedPoolCreatedAt ?? token.oldestPairCreatedAt ?? null,
+        includeInPortfolioValue: token.includeInPortfolioValue ?? true,
         logoURI: logoCandidates[0] ?? '/icons/token-fallback.svg',
         logoCandidates,
         logoSource: token.logoSource ?? 'fallback',
@@ -712,11 +780,17 @@ function isCompatiblePersistedToken(
     if (typeof value !== 'object' || value === null) return false
     const token = value as Partial<MarketToken>
     const address = normalizeAddress(token.address)
-    const reasons = Array.isArray(token.recognitionReasons)
-        ? token.recognitionReasons
-        : []
+    const reasons = [
+        ...(Array.isArray(token.recognitionReasons) ? token.recognitionReasons : []),
+        ...(Array.isArray(token.verificationReasons) ? token.verificationReasons : []),
+    ]
     const trustedContract = reasons.some((reason) =>
         typeof reason === 'string' && TRUSTED_CONTRACT_REASONS.has(reason))
+    const valuePolicyValid = section === 'common'
+        ? ['trusted', 'unknown'].includes(String(token.priceConfidence)) &&
+            token.includeInPortfolioValue !== false
+        : token.includeInPortfolioValue === true &&
+            token.priceConfidence === 'trusted'
     const baseValid = token.chainId === chainId && address !== null &&
         canonicalTokenAddress(chainId, address) === token.address &&
         token.canonicalId === createTokenId(chainId, token.address) &&
@@ -725,6 +799,10 @@ function isCompatiblePersistedToken(
         token.verifiedContract === true && trustedContract &&
         token.possibleSpam === false && token.spamStatus === 'clean' &&
         token.visibility === 'primary' &&
+        ['core', 'established'].includes(String(token.classificationTier)) &&
+        Array.isArray(token.classificationReasons) &&
+        token.classificationReasons.length > 0 &&
+        valuePolicyValid &&
         token.securityStatus !== 'high' && token.securityStatus !== 'blocked' &&
         Boolean(normalizedText(token.name, 120)) &&
         Boolean(normalizedText(token.symbol, 32)) && validDecimals(token.decimals) &&
@@ -736,7 +814,8 @@ function isCompatiblePersistedToken(
     if (section === 'common') return true
     return Number.isFinite(token.volume24hUsd) && Number(token.volume24hUsd) > 0 &&
         Number.isFinite(token.liquidityUsd) && Number(token.liquidityUsd) > 0 &&
-        Number.isFinite(token.transactions24h) && Number(token.transactions24h) > 0
+        Number.isFinite(token.transactionCount24h ?? token.transactions24h) &&
+        Number(token.transactionCount24h ?? token.transactions24h) > 0
 }
 
 function safeProviderMetadata(value: unknown): MarketProviderMetadata {
@@ -890,7 +969,9 @@ async function buildEstablishedTokens({
     )
     const evaluated: Array<MarketToken | null> = await Promise.all(recognizedCandidates.map(async ({ candidate, officialAsset }): Promise<MarketToken | null> => {
         const market = markets.get(candidate.address)
-        const checks = marketReasons(market, now)
+        const coreAsset = officialAsset !== null ||
+            candidate.address === chain.wrappedNative.address
+        const checks = marketReasons(market, now, coreAsset)
         if (checks.failures.length > 0) {
             incrementReasons(exclusions, checks.failures)
             return null
@@ -928,6 +1009,10 @@ async function buildEstablishedTokens({
             return null
         }
 
+        const classificationTier = coreAsset ? 'core' as const : 'established' as const
+        const priceConfidence = market?.priceUSD ?? candidate.priceUSD
+            ? 'trusted' as const
+            : 'unknown' as const
         return {
             id: createTokenId(chainId, candidate.address),
             chainId,
@@ -939,10 +1024,35 @@ async function buildEstablishedTokens({
             chainLogoURI: chain.chainLogoURI,
             coinGeckoId: officialAsset?.coinGeckoId ?? candidate.coinGeckoId!.trim(),
             priceUSD: market?.priceUSD ?? candidate.priceUSD,
+            trustedPriceUSD: priceConfidence === 'trusted'
+                ? market?.priceUSD ?? candidate.priceUSD
+                : null,
+            marketPriceUSD: null,
+            priceConfidence,
             volume24hUsd: market?.volume24hUsd ?? null,
             liquidityUsd: market?.liquidityUsd ?? null,
+            trustedLiquidityUsd: market?.liquidityUsd ?? null,
+            largestTrustedPoolLiquidityUsd:
+                market?.largestTrustedPoolLiquidityUsd ?? market?.liquidityUsd ?? null,
+            transactionCount24h:
+                market?.transactionCount24h ?? null,
+            transactions24h:
+                market?.transactionCount24h ?? null,
+            uniqueTraders24h: market?.uniqueTraders24h ?? null,
             pairCount: market?.pairCount ?? null,
+            trustedPairCount: market?.pairCount ?? null,
             oldestPairCreatedAt: market?.oldestPairCreatedAt ?? null,
+            oldestTrustedPoolCreatedAt: market?.oldestPairCreatedAt ?? null,
+            establishedAgeDays: checks.ageDays,
+            estimatedSellValueUsd: null,
+            classificationTier,
+            classificationReasons: [
+                classificationTier === 'core'
+                    ? 'core-asset'
+                    : 'established-market-asset',
+                ...checks.reasons,
+            ],
+            includeInPortfolioValue: true,
             marketUrl: market?.pairUrl ?? null,
             rank: null,
             verificationStatus: 'established',
@@ -953,6 +1063,17 @@ async function buildEstablishedTokens({
                 ...checks.reasons,
                 'validated-logo',
             ],
+            recognitionStatus: classificationTier === 'core'
+                ? 'established'
+                : 'established',
+            recognitionReasons: [
+                officialAsset
+                    ? 'curated-official-contract'
+                    : 'coingecko-exact-contract',
+                ...checks.reasons,
+            ],
+            visibility: 'primary',
+            securityStatus: 'trusted',
         }
     }))
     const tokens = evaluated.filter(
@@ -986,6 +1107,13 @@ async function buildEstablishedTokens({
                 ...nativeLogo,
                 coinGeckoId: chain.native.coinGeckoId,
                 rank: null,
+                classificationTier: 'core',
+                classificationReasons: [
+                    'core-asset',
+                    ...(wrapped.classificationReasons?.filter(
+                        (reason) => reason !== 'established-market-asset',
+                    ) ?? []),
+                ],
                 verificationReasons: [
                     'explicit-native-allowlist',
                     ...wrapped.verificationReasons.filter(
@@ -1538,7 +1666,7 @@ export function createMarketCatalogService(
                   failedBatches: candidates.length > 0 ? 1 : 0,
               }
         const generatedAt = resolved.now()
-        const dexPaprikaMarkets = new Map((dexPaprika?.tokens ?? []).map((token) => [
+        const dexPaprikaMarkets = new Map<string, TokenMarket>((dexPaprika?.tokens ?? []).map((token) => [
             token.address,
             {
                 address: token.address,
@@ -1547,6 +1675,9 @@ export function createMarketCatalogService(
                 priceUSD: token.priceUSD,
                 volume24hUsd: token.volume24hUsd,
                 liquidityUsd: token.liquidityUsd,
+                largestTrustedPoolLiquidityUsd: token.liquidityUsd,
+                transactionCount24h: token.transactions24h,
+                uniqueTraders24h: null,
                 pairCount: token.poolsCount ?? 0,
                 pairUrl: null,
                 oldestPairCreatedAt: token.createdAt,

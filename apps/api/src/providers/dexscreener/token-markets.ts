@@ -12,6 +12,9 @@ export type TokenMarket = {
     priceUSD: string | null
     volume24hUsd: number
     liquidityUsd: number
+    largestTrustedPoolLiquidityUsd?: number | null
+    transactionCount24h?: number | null
+    uniqueTraders24h?: number | null
     pairCount: number
     pairUrl: string | null
     oldestPairCreatedAt: string | null
@@ -73,6 +76,9 @@ export function aggregateTokenMarkets(
                 priceUSD: null,
                 volume24hUsd: 0,
                 liquidityUsd: 0,
+                largestTrustedPoolLiquidityUsd: 0,
+                transactionCount24h: 0,
+                uniqueTraders24h: null,
                 pairCount: 0,
                 pairUrl: null,
                 oldestPairCreatedAt: null,
@@ -85,6 +91,13 @@ export function aggregateTokenMarkets(
             existing.seenPairs.add(identifier)
             existing.volume24hUsd += pair.volume24hUsd * volumeShare
             existing.liquidityUsd += pair.liquidityUsd
+            existing.largestTrustedPoolLiquidityUsd = Math.max(
+                existing.largestTrustedPoolLiquidityUsd ?? 0,
+                pair.liquidityUsd,
+            )
+            existing.transactionCount24h =
+                (existing.transactionCount24h ?? 0) +
+                pair.transactions24h * volumeShare
             existing.pairCount += 1
 
             if (

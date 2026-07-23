@@ -877,7 +877,7 @@ describe.sequential('established BSC market catalog', () => {
         await service.refreshCatalog(56)
         const response = await inject(service, '/v1/market-tokens?chainId=56&limit=100')
         const body = response.json()
-        expect(body.schemaVersion).toBe(5)
+        expect(body.schemaVersion).toBe(6)
         expect(body.count).toBe(body.tokens.length)
         expect(body.commonCount).toBe(body.commonTokens.length)
         expect(body.tokens).toEqual(expect.arrayContaining([

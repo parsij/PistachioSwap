@@ -258,8 +258,8 @@ function walletTokenKey(chainId: number, token: ActivityToken | null) {
 function trustedWalletToken(token: WalletToken | undefined) {
     if (!token) return false
     if (token.isNative === true) return true
-    return token.visibility === 'primary' &&
-        token.recognitionStatus !== 'unverified' &&
+    return ['core', 'established'].includes(token.classificationTier) &&
+        token.visibility === 'primary' &&
         token.possibleSpam !== true &&
         !['high', 'blocked'].includes(token.securityStatus)
 }

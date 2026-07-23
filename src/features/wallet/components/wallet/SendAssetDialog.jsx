@@ -101,13 +101,13 @@ export default function SendAssetDialog({
         : error
 
     const exactAddressSearch = /^0x[a-fA-F0-9]{40}$/.test(search.trim())
-    const revealHiddenAssets = exactAddressSearch || !settings.hideUnknownTokens
+    const revealHiddenAssets = exactAddressSearch
     const filteredAssets = (() => {
         const held = assets.filter(isPositiveWalletBalance)
         const exact = held.filter((token) => matchesExactContract(token, search.trim()))
         if (exact.length > 0) return exact
         const base = revealHiddenAssets
-            ? held
+            ? exact
             : filterPortfolioTokens(held, {
                 ...settings,
                 selectedTokens: [activeSelectedToken],

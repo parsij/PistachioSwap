@@ -69,7 +69,7 @@ describe('useMarketTokens reliability status', () => {
 
     it('renders ranked tokens from a partial schema-v5 response', async () => {
         fetchMarketTokens.mockResolvedValue({
-            schemaVersion: 5,
+            schemaVersion: 6,
             tokens: [{
                 chainId: '56',
                 address: '0x0000000000000000000000000000000000000001',
@@ -82,7 +82,7 @@ describe('useMarketTokens reliability status', () => {
 
         await waitFor(() => expect(result.current.loading).toBe(false))
         expect(result.current.tokens).toHaveLength(1)
-        expect(result.current.schemaVersion).toBe(5)
+        expect(result.current.schemaVersion).toBe(6)
         expect(result.current.notice).toBe('Some market data could not be refreshed.')
     })
 
@@ -90,14 +90,14 @@ describe('useMarketTokens reliability status', () => {
         vi.useFakeTimers()
         fetchMarketTokens
             .mockResolvedValueOnce({
-                schemaVersion: 5,
+                schemaVersion: 6,
                 tokens: [],
                 commonTokens: [],
                 partial: true,
                 catalogUnavailable: true,
             })
             .mockResolvedValueOnce({
-                schemaVersion: 5,
+                schemaVersion: 6,
                 tokens: [{
                     chainId: 56,
                     address: '0x0000000000000000000000000000000000000001',
@@ -125,7 +125,7 @@ describe('useMarketTokens reliability status', () => {
             get: () => visibilityState,
         })
         fetchMarketTokens.mockResolvedValue({
-            schemaVersion: 5,
+            schemaVersion: 6,
             tokens: [{
                 chainId: 56,
                 address: '0x0000000000000000000000000000000000000001',
@@ -159,7 +159,7 @@ describe('useMarketTokens reliability status', () => {
         vi.useFakeTimers()
         fetchMarketTokens
             .mockResolvedValueOnce({
-                schemaVersion: 5,
+                schemaVersion: 6,
                 tokens: [{
                     chainId: 56,
                     address: '0x0000000000000000000000000000000000000001',

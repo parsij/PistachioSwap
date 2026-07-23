@@ -36,7 +36,7 @@ import {
 import { getNativeBnbPrice, getTokenPrices } from './token-prices.js'
 
 export type WalletToken = {
-    classificationVersion: 5
+    classificationVersion: 6
     id: string
     chainId: number
     address: string
@@ -56,6 +56,17 @@ export type WalletToken = {
     priceConfidence: 'trusted' | 'market' | 'untrusted' | 'unknown'
     coinGeckoId: string | null
     liquidityUsd: number
+    trustedLiquidityUsd: number | null
+    largestTrustedPoolLiquidityUsd: number | null
+    volume24hUsd: number | null
+    transactionCount24h: number | null
+    uniqueTraders24h: number | null
+    trustedPairCount: number | null
+    oldestTrustedPoolCreatedAt: string | null
+    establishedAgeDays: number | null
+    estimatedSellValueUsd: string | null
+    classificationTier: 'core' | 'established' | 'hidden' | 'blocked'
+    classificationReasons: string[]
     isNative: boolean
     recognitionStatus: 'established' | 'recognized' | 'unverified'
     recognitionReasons: string[]
@@ -110,7 +121,7 @@ export type WalletTokenInventory = BalancePage & {
 
 const MAX_BALANCE_PAGES = 50
 const LEGACY_PAGE_SIZE = 100
-export const WALLET_TOKEN_CLASSIFICATION_VERSION = 5 as const
+export const WALLET_TOKEN_CLASSIFICATION_VERSION = 6 as const
 const cache = new Map<string, CacheEntry>()
 
 function walletCacheKey(
@@ -129,6 +140,8 @@ export function isCurrentWalletTokenRecord(value: unknown): value is WalletToken
         (value.possibleSpam === null || typeof value.possibleSpam === 'boolean') &&
         (value.verifiedContract === null || typeof value.verifiedContract === 'boolean') &&
         ['primary', 'unverified', 'hidden'].includes(String(value.visibility)) &&
+        ['core', 'established', 'hidden', 'blocked'].includes(String(value.classificationTier)) &&
+        Array.isArray(value.classificationReasons) &&
         ['trusted', 'market', 'untrusted', 'unknown'].includes(String(value.priceConfidence))
 }
 
@@ -295,6 +308,7 @@ type WalletVisibilityInput = {
 
 type WalletTokenTrustInput = {
     isNative?: boolean
+    wrappedNative?: boolean
     officialAsset?: boolean
     exactRecognition?: boolean
     moralisVerified?: boolean
@@ -315,6 +329,18 @@ type WalletTokenTrustInput = {
     malformedMetadata?: boolean
     unsolicitedTransfer?: boolean
     noVerifiedContractEvidence?: boolean
+    market?: {
+        trustedLiquidityUsd?: number | null
+        largestTrustedPoolLiquidityUsd?: number | null
+        volume24hUsd?: number | null
+        transactionCount24h?: number | null
+        uniqueTraders24h?: number | null
+        trustedPairCount?: number | null
+        oldestTrustedPoolCreatedAt?: string | null
+        establishedAgeDays?: number | null
+    }
+    catalogTier?: 'core' | 'established' | 'hidden' | 'blocked' | null
+    catalogReasons?: string[]
 }
 
 const STRONG_IDENTITY_REASONS = new Set([
@@ -329,9 +355,9 @@ const STRONG_IDENTITY_REASONS = new Set([
 
 export function isPrimaryTrustedAsset(input: WalletTokenTrustInput) {
     return input.isNative === true ||
+        input.wrappedNative === true ||
         input.officialAsset === true ||
         input.allowlisted === true ||
-        input.exactRecognition === true ||
         input.pancakeSwapRecognized === true ||
         input.trustWalletRecognized === true
 }
@@ -343,6 +369,7 @@ function hasStrongIdentity(input: WalletTokenTrustInput) {
 export function evaluateWalletTokenTrust(input: WalletTokenTrustInput) {
     const reasons = new Set<string>()
     if (input.isNative) reasons.add('native-token')
+    if (input.wrappedNative) reasons.add('core-asset')
     if (input.officialAsset) reasons.add('curated-official-contract')
     if (input.allowlisted) reasons.add('manual-allowlist')
     if (input.exactRecognition) reasons.add('coingecko-exact-contract')
@@ -352,73 +379,131 @@ export function evaluateWalletTokenTrust(input: WalletTokenTrustInput) {
     if (input.catalogToken) reasons.add('market-catalog-only')
     if (input.blocklisted) reasons.add('manual-blocklist')
 
-    const trustedIdentity = hasStrongIdentity(input)
-    const liquidity = Number(input.liquidityUsd)
-    const missingLiquidity = !input.isNative && !trustedIdentity && !Number.isFinite(liquidity)
-    const lowLiquidity = !input.isNative && !trustedIdentity &&
+    const coreAsset = hasStrongIdentity(input)
+    const trustedIdentity = coreAsset
+    const liquidity = Number(input.market?.trustedLiquidityUsd ?? input.liquidityUsd)
+    const missingLiquidity = !input.isNative && !coreAsset && !Number.isFinite(liquidity)
+    const lowLiquidity = !input.isNative && !coreAsset &&
         Number.isFinite(liquidity) &&
         liquidity < (input.meaningfulLiquidityUsd ?? 0)
     const priceSource = String(input.priceSource ?? '')
     const hasPrice = validPrice(input.priceUSD) !== null
-    const priceConfidence = trustedIdentity
+    const establishedCandidate = input.catalogTier === 'established'
+    const priceConfidence = coreAsset
+        ? hasPrice ? 'trusted' as const : 'unknown' as const
+        : establishedCandidate
         ? hasPrice
-            ? (priceSource === 'alchemy-portfolio' ||
-                priceSource === 'moralis' ||
-                priceSource === 'dexscreener'
-              ? 'market' as const
-              : 'trusted' as const)
+            ? (priceSource === 'catalog' || priceSource === 'coingecko'
+              ? 'trusted' as const
+              : 'market' as const)
             : 'unknown' as const
         : hasPrice
           ? 'untrusted' as const
           : 'unknown' as const
 
-    if (input.possibleSpam === true) reasons.add('moralis-possible-spam')
+    if (input.possibleSpam === true) reasons.add('provider-spam')
     if (input.securityStatus && ['caution', 'high', 'blocked'].includes(input.securityStatus)) {
         reasons.add(`security-${input.securityStatus}`)
     }
-    if (missingLiquidity) reasons.add('missing-liquidity')
-    if (lowLiquidity) reasons.add('low-liquidity')
+    if (missingLiquidity || lowLiquidity) reasons.add('insufficient-trusted-liquidity')
     if (!trustedIdentity && validPrice(input.walletValueUSD) !== null &&
         compareDecimal(input.walletValueUSD ?? null, '0.01') <= 0) {
         reasons.add('dust-airdrop')
     }
-    if (priceConfidence === 'untrusted') reasons.add('untrusted-market-price')
+    if (priceConfidence === 'untrusted' || priceConfidence === 'unknown') {
+        reasons.add('untrusted-price')
+    }
     if (input.fallbackMetadata) reasons.add('fallback-metadata')
     if (input.malformedMetadata) reasons.add('malformed-metadata')
     if (input.unsolicitedTransfer) reasons.add('unsolicited-transfer')
-    if (input.noVerifiedContractEvidence) reasons.add('unverified-contract')
+    if (input.noVerifiedContractEvidence) reasons.add('unverified-identity')
 
-    const hidden = input.blocklisted === true ||
-        input.possibleSpam === true ||
-        ['caution', 'high', 'blocked'].includes(String(input.securityStatus)) && !trustedIdentity ||
-        (!trustedIdentity && (
-            missingLiquidity ||
-            lowLiquidity ||
-            reasons.has('dust-airdrop') ||
-            priceConfidence === 'untrusted' ||
-            input.fallbackMetadata === true ||
-            input.malformedMetadata === true ||
-            input.unsolicitedTransfer === true ||
-            input.noVerifiedContractEvidence === true
-        ))
-    const recognitionStatus = input.isNative || input.officialAsset
+    const policy = getApiConfig().market
+    const metrics = input.market ?? {}
+    if (!coreAsset) {
+        const ageDays = metrics.establishedAgeDays
+        if (ageDays == null) reasons.add('age-unavailable')
+        else if (ageDays < policy.minimumPoolAgeDays) reasons.add('token-too-new')
+        if ((metrics.trustedLiquidityUsd ?? -1) < policy.minimumLiquidityUsd) {
+            reasons.add('insufficient-trusted-liquidity')
+        }
+        if ((metrics.largestTrustedPoolLiquidityUsd ?? -1) <
+            policy.minimumLargestPoolLiquidityUsd) {
+            reasons.add('insufficient-largest-pool-liquidity')
+        }
+        if ((metrics.volume24hUsd ?? -1) < policy.minimumVolume24hUsd) {
+            reasons.add('insufficient-volume')
+        }
+        if ((metrics.transactionCount24h ?? -1) < policy.minimumTransactions24h) {
+            reasons.add('insufficient-transaction-count')
+        }
+        if ((metrics.uniqueTraders24h ?? -1) < policy.minimumUniqueTraders24h) {
+            reasons.add('insufficient-unique-traders')
+        }
+        if ((metrics.trustedPairCount ?? 0) < policy.minimumPairCount) {
+            reasons.add('no-trusted-pair')
+        }
+        if (establishedCandidate === false) {
+            reasons.add('no-executable-sell-route')
+        }
+        if (priceConfidence !== 'trusted') reasons.add('untrusted-price')
+    }
+
+    if (!coreAsset && hasPrice && Number.isFinite(liquidity) && liquidity < 100) {
+        reasons.add('insufficient-sellable-liquidity')
+    }
+
+    const blocked = input.blocklisted === true ||
+        String(input.securityStatus) === 'blocked'
+    const established = !blocked && !coreAsset &&
+        establishedCandidate &&
+        priceConfidence === 'trusted' &&
+        ![
+            'age-unavailable',
+            'token-too-new',
+            'insufficient-trusted-liquidity',
+            'insufficient-largest-pool-liquidity',
+            'insufficient-volume',
+            'insufficient-transaction-count',
+            'insufficient-unique-traders',
+            'no-trusted-pair',
+            'no-executable-sell-route',
+            'untrusted-price',
+            'unverified-identity',
+            'fallback-metadata',
+            'malformed-metadata',
+            'unsolicited-transfer',
+            'provider-spam',
+            'security-caution',
+            'security-high',
+            'security-blocked',
+        ].some((reason) => reasons.has(reason))
+    const classificationTier = blocked
+        ? 'blocked' as const
+        : coreAsset
+          ? 'core' as const
+          : established
+            ? 'established' as const
+            : 'hidden' as const
+    if (classificationTier === 'core') reasons.add('core-asset')
+    if (classificationTier === 'established') reasons.add('established-market-asset')
+
+    const recognitionStatus = input.isNative || input.officialAsset || established
         ? 'established' as const
-        : trustedIdentity
+        : coreAsset
           ? 'recognized' as const
           : 'unverified' as const
-    const visibility = trustedIdentity
-        ? input.blocklisted || input.possibleSpam === true || ['high', 'blocked'].includes(String(input.securityStatus))
+    const visibility = classificationTier === 'core' || classificationTier === 'established'
+        ? ['high', 'blocked'].includes(String(input.securityStatus)) || input.possibleSpam === true
             ? 'hidden' as const
             : 'primary' as const
-        : hidden
-          ? 'hidden' as const
-          : 'unverified' as const
+        : 'hidden' as const
     const securityStatus = input.blocklisted
         ? 'blocked' as const
-        : !trustedIdentity && visibility === 'hidden' &&
+        : !coreAsset && visibility === 'hidden' &&
             !['high', 'blocked'].includes(String(input.securityStatus))
           ? 'caution' as const
-          : input.securityStatus ?? (trustedIdentity ? 'trusted' as const : 'unknown' as const)
+          : input.securityStatus ?? (coreAsset ? 'trusted' as const : 'unknown' as const)
 
     return {
         trustedIdentity,
@@ -426,9 +511,10 @@ export function evaluateWalletTokenTrust(input: WalletTokenTrustInput) {
         visibility,
         securityStatus,
         priceConfidence,
-        includeInPortfolioValue: trustedIdentity &&
+        classificationTier,
+        includeInPortfolioValue: ['core', 'established'].includes(classificationTier) &&
             visibility === 'primary' &&
-            (priceConfidence === 'trusted' || priceConfidence === 'market'),
+            priceConfidence === 'trusted',
         reasons: [...reasons],
         identityReasons: [...reasons].filter((reason) => STRONG_IDENTITY_REASONS.has(reason)),
     }
@@ -530,6 +616,19 @@ export function createNativeWalletToken(
         priceConfidence: priceUSD ? priceSource : 'unknown',
         coinGeckoId: NATIVE_BNB_TOKEN.coinGeckoId,
         liquidityUsd: 0,
+        trustedLiquidityUsd: null,
+        largestTrustedPoolLiquidityUsd: null,
+        volume24hUsd: null,
+        transactionCount24h: null,
+        uniqueTraders24h: null,
+        trustedPairCount: null,
+        oldestTrustedPoolCreatedAt: null,
+        establishedAgeDays: null,
+        estimatedSellValueUsd: trustedPriceUSD
+            ? multiplyDecimal(formattedBalance, trustedPriceUSD)
+            : null,
+        classificationTier: 'core',
+        classificationReasons: ['core-asset'],
         isNative: true,
         recognitionStatus: 'established',
         recognitionReasons: ['native-bnb'],
@@ -589,18 +688,19 @@ function createNativeWalletTokenForChain(
 }
 
 export function sortWalletTokens(tokens: WalletToken[]) {
-    const verificationRank = { established: 0, recognized: 1, unverified: 2 }
-    const visibilityRank = { primary: 0, unverified: 1, hidden: 2 }
+    const tierRank = { core: 0, established: 1, hidden: 2, blocked: 3 }
     return tokens.sort((left, right) => {
-        if (left.visibility !== right.visibility) {
-            return visibilityRank[left.visibility] - visibilityRank[right.visibility]
+        if (left.classificationTier !== right.classificationTier) {
+            return tierRank[left.classificationTier] - tierRank[right.classificationTier]
         }
         const value = compareDecimal(right.valueUSD, left.valueUSD)
         if (value !== 0) return value
-        const verification =
-            verificationRank[left.verificationStatus] -
-            verificationRank[right.verificationStatus]
-        if (verification !== 0) return verification
+        const balance = compareDecimal(right.balance, left.balance)
+        if (balance !== 0) return balance
+        const chain = left.chainId - right.chainId
+        if (chain !== 0) return chain
+        const address = left.address.localeCompare(right.address)
+        if (address !== 0) return address
         return left.name.localeCompare(right.name)
     })
 }
@@ -907,6 +1007,7 @@ export async function getWalletTokens({
             catalogReasons.some((reason) => STRONG_IDENTITY_REASONS.has(reason))
         const allowlisted = addressPolicy.allowlist.has(address)
         const blocklisted = addressPolicy.blocklist.has(address)
+        const wrappedNative = address === wrappedNativeAddress
         const fallbackMetadataUsed = name === fallback.name && symbol === fallback.symbol
         const malformedMetadata = malformedTokenText(name, 120) ||
             malformedTokenText(symbol, 32) ||
@@ -926,6 +1027,7 @@ export async function getWalletTokens({
             : null
         const provisionalTrust = evaluateWalletTokenTrust({
             officialAsset: officialAsset !== null,
+            wrappedNative,
             exactRecognition,
             moralisVerified,
             pancakeSwapRecognized,
@@ -948,6 +1050,7 @@ export async function getWalletTokens({
                 !allowlisted &&
                 !pancakeSwapRecognized &&
                 !trustWalletRecognized,
+            catalogTier: catalogToken?.classificationTier ?? null,
         })
         const recognitionStatus = provisionalTrust.recognitionStatus
         const spamStatus = possibleSpam === true
@@ -971,6 +1074,7 @@ export async function getWalletTokens({
         )
         const classification = evaluateWalletTokenTrust({
             officialAsset: officialAsset !== null,
+            wrappedNative,
             exactRecognition,
             moralisVerified,
             pancakeSwapRecognized,
@@ -994,6 +1098,43 @@ export async function getWalletTokens({
                 !allowlisted &&
                 !pancakeSwapRecognized &&
                 !trustWalletRecognized,
+            market: {
+                trustedLiquidityUsd:
+                    catalogToken?.trustedLiquidityUsd ?? market?.liquidityUsd ?? null,
+                largestTrustedPoolLiquidityUsd:
+                    catalogToken?.largestTrustedPoolLiquidityUsd ??
+                    market?.largestTrustedPoolLiquidityUsd ??
+                    market?.liquidityUsd ??
+                    null,
+                volume24hUsd:
+                    catalogToken?.volume24hUsd ?? market?.volume24hUsd ?? null,
+                transactionCount24h:
+                    catalogToken?.transactionCount24h ??
+                    catalogToken?.transactions24h ??
+                    market?.transactionCount24h ??
+                    market?.transactions24h ??
+                    null,
+                uniqueTraders24h:
+                    catalogToken?.uniqueTraders24h ?? market?.uniqueTraders24h ?? null,
+                trustedPairCount:
+                    catalogToken?.trustedPairCount ??
+                    catalogToken?.pairCount ??
+                    market?.pairCount ??
+                    null,
+                oldestTrustedPoolCreatedAt:
+                    catalogToken?.oldestTrustedPoolCreatedAt ??
+                    catalogToken?.oldestPairCreatedAt ??
+                    market?.oldestPairCreatedAt ??
+                    null,
+                establishedAgeDays: catalogToken?.establishedAgeDays ??
+                    (
+                        market?.oldestPairCreatedAt
+                            ? Math.floor((Date.now() - Date.parse(market.oldestPairCreatedAt)) / (24 * 60 * 60 * 1000))
+                            : null
+                    ),
+            },
+            catalogTier: catalogToken?.classificationTier ?? null,
+            catalogReasons: catalogToken?.classificationReasons,
         })
         const trustedPriceUSD = classification.includeInPortfolioValue &&
             classification.priceConfidence === 'trusted'
@@ -1038,6 +1179,47 @@ export async function getWalletTokens({
             priceConfidence,
             coinGeckoId: officialAsset?.coinGeckoId ?? coinGecko?.coinGeckoId ?? null,
             liquidityUsd: market?.liquidityUsd ?? 0,
+            trustedLiquidityUsd:
+                catalogToken?.trustedLiquidityUsd ?? market?.liquidityUsd ?? null,
+            largestTrustedPoolLiquidityUsd:
+                catalogToken?.largestTrustedPoolLiquidityUsd ??
+                market?.largestTrustedPoolLiquidityUsd ??
+                market?.liquidityUsd ??
+                null,
+            volume24hUsd:
+                catalogToken?.volume24hUsd ?? market?.volume24hUsd ?? null,
+            transactionCount24h:
+                catalogToken?.transactionCount24h ??
+                catalogToken?.transactions24h ??
+                market?.transactionCount24h ??
+                market?.transactions24h ??
+                null,
+            uniqueTraders24h:
+                catalogToken?.uniqueTraders24h ?? market?.uniqueTraders24h ?? null,
+            trustedPairCount:
+                catalogToken?.trustedPairCount ??
+                catalogToken?.pairCount ??
+                market?.pairCount ??
+                null,
+            oldestTrustedPoolCreatedAt:
+                catalogToken?.oldestTrustedPoolCreatedAt ??
+                catalogToken?.oldestPairCreatedAt ??
+                market?.oldestPairCreatedAt ??
+                null,
+            establishedAgeDays: catalogToken?.establishedAgeDays ??
+                (
+                    market?.oldestPairCreatedAt
+                        ? Math.floor((Date.now() - Date.parse(market.oldestPairCreatedAt)) / (24 * 60 * 60 * 1000))
+                        : null
+                ),
+            estimatedSellValueUsd: trustedPriceUSD
+                ? multiplyDecimal(formattedBalance, trustedPriceUSD)
+                : null,
+            classificationTier: classification.classificationTier,
+            classificationReasons: [...new Set([
+                ...classification.reasons,
+                ...(catalogToken?.classificationReasons ?? []),
+            ])],
             isNative: false,
             recognitionStatus,
             recognitionReasons,
