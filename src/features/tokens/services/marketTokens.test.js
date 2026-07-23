@@ -46,12 +46,15 @@ function classifiedToken(overrides = {}) {
 }
 
 function catalogPayload(tokens = [], overrides = {}) {
+    const fallbackTokens = overrides.fallbackTokens ?? []
     return {
-        schemaVersion: 6,
+        schemaVersion: 7,
         tokens,
         count: tokens.length,
-        commonTokens: [],
-        commonCount: 0,
+        commonTokens: fallbackTokens,
+        commonCount: fallbackTokens.length,
+        fallbackTokens,
+        fallbackCount: fallbackTokens.length,
         ...overrides,
     }
 }
@@ -76,7 +79,7 @@ describe.sequential('frontend market-token services', () => {
         expect(search.startsWith(MARKET_TOKEN_CACHE_PREFIX)).toBe(true)
         expect(search).not.toContain('market-tokens:v1:')
         expect(search).not.toContain('market-tokens:v2:')
-        expect(search).toContain('market-tokens:v5:')
+        expect(search).toContain('market-tokens:v7:')
         expect(search).toBe(
             getMarketTokenCacheKey({
                 chainId: 56,
@@ -169,12 +172,13 @@ describe.sequential('frontend market-token services', () => {
         expect(result.tokens[0].symbol).toBe('NEW')
     })
 
-    it('invalidates schema-v5 curated records with fallback-only logos', async () => {
+    it('invalidates old common-token records with fallback-only logos', async () => {
         const key = getMarketTokenCacheKey({ chainId: 56, query: '', limit: 100 })
         const storage = createLocalStorage({
             [key]: JSON.stringify({
                 cachedAt: Date.now(),
                 payload: catalogPayload([], {
+                    schemaVersion: 6,
                     commonCount: 1,
                     commonTokens: [{
                         chainId: 56,
@@ -260,7 +264,7 @@ describe.sequential('frontend market-token services', () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(new Response(
                 JSON.stringify(catalogPayload([token])),
-                { status: 200, headers: { etag: '"market-v5-content"' } },
+                { status: 200, headers: { etag: '"market-v7-content"' } },
             ))
             .mockResolvedValueOnce(new Response(null, { status: 304 }))
         vi.stubGlobal('window', { localStorage: storage })
@@ -273,7 +277,7 @@ describe.sequential('frontend market-token services', () => {
         })
 
         expect(fetchMock.mock.calls[1][1].headers['if-none-match'])
-            .toBe('"market-v5-content"')
+            .toBe('"market-v7-content"')
         expect(result.tokens).toEqual([token])
         expect(result.browserCache).toBe('revalidated')
     })
@@ -574,7 +578,7 @@ describe.sequential('frontend market-token services', () => {
             name: 'Celo',
             symbol: 'CELO',
             balance: '2',
-            marketPriceUSD: '0.75',
+            marketPriceUSD: null,
             isNative: true,
         })
         expect(getCanonicalTokenIdentity({ chainId: 1, address: celoAlias }))

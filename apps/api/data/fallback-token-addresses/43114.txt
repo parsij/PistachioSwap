@@ -1,0 +1,1 @@
+# Avalanche C-Chain static fallback tokens

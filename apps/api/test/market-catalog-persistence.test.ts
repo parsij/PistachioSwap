@@ -191,6 +191,7 @@ describe.sequential('persistent market catalog and rolling scheduler', () => {
 
     beforeEach(() => {
         process.env.ESTABLISHED_TOKEN_SNAPSHOT_ENABLED = 'false'
+        process.env.ESTABLISHED_TOKEN_MIN_UNIQUE_TRADERS_24H = '0'
         process.env.DEXPAPRIKA_MIN_LIQUIDITY_USD = '100000'
         process.env.DEXPAPRIKA_MIN_TXNS_24H = '50'
     })

@@ -7,7 +7,7 @@ import {
 } from '../../../web3/curatedEvmChains.js'
 
 export const MARKET_TOKEN_CACHE_PREFIX =
-    'pistachioswap:market-tokens:v6:'
+    'pistachioswap:market-tokens:v7:'
 
 const LEGACY_CACHE_PREFIXES = [
     'pistachioswap:market-tokens:v1:',
@@ -15,6 +15,7 @@ const LEGACY_CACHE_PREFIXES = [
     'pistachioswap:market-tokens:v3:',
     'pistachioswap:market-tokens:v4:',
     'pistachioswap:market-tokens:v5:',
+    'pistachioswap:market-tokens:v6:',
 ]
 
 let legacyCacheMigrated = false
@@ -134,6 +135,20 @@ export function isCuratedCommonMarketToken(token) {
         Number.isInteger(Number(token?.decimals))
 }
 
+export function isStaticFallbackMarketToken(token) {
+    return getCanonicalTokenIdentity(token) !== null &&
+        token?.catalogSource === 'static-fallback' &&
+        token?.directoryStatus === 'listed' &&
+        token?.catalogSection === 'fallback' &&
+        token?.rank === null &&
+        Boolean(String(token?.name ?? '').trim()) &&
+        Boolean(String(token?.symbol ?? '').trim()) &&
+        Number.isInteger(Number(token?.decimals)) &&
+        !('trustedPriceUSD' in Object(token)) &&
+        !('classificationTier' in Object(token)) &&
+        !('includeInPortfolioValue' in Object(token))
+}
+
 export function mergeCanonicalTokenRecords(left, right) {
     if (!left) return right
     if (!right) return left
@@ -214,10 +229,12 @@ function readCacheEntry(key) {
             !entry ||
             typeof entry.cachedAt !== 'number' ||
             !entry.payload ||
-            entry.payload.schemaVersion !== 6 ||
+            entry.payload.schemaVersion !== 7 ||
             !Array.isArray(entry.payload.tokens) ||
             !Array.isArray(entry.payload.commonTokens) ||
+            !Array.isArray(entry.payload.fallbackTokens) ||
             entry.payload.commonCount !== entry.payload.commonTokens.length ||
+            entry.payload.fallbackCount !== entry.payload.fallbackTokens.length ||
             entry.payload.tokens.some(
                 (token) => getCanonicalTokenIdentity(token) === null ||
                     (defaultCatalog && (
@@ -228,13 +245,9 @@ function readCacheEntry(key) {
                         !Array.isArray(token.logoCandidates)
                     )),
             ) ||
-            entry.payload.commonTokens.some((token) =>
+            entry.payload.fallbackTokens.some((token) =>
                 getCanonicalTokenIdentity(token) === null ||
-                token.catalogSection !== 'common' ||
-                !Array.isArray(token.logoCandidates) ||
-                (token.officialAsset === true && !token.logoCandidates.some(
-                    (url) => url !== '/icons/token-fallback.svg',
-                )),
+                !isStaticFallbackMarketToken(token),
             )
         ) {
             window.localStorage.removeItem(key)
@@ -338,7 +351,9 @@ function writeCacheEntry(key, payload, etag = null) {
         return
     }
 
-    if (!Array.isArray(payload?.tokens) || payload.tokens.length === 0) {
+    if (!Array.isArray(payload?.tokens) ||
+        !Array.isArray(payload?.fallbackTokens) ||
+        (payload.tokens.length === 0 && payload.fallbackTokens.length === 0)) {
         return
     }
 
@@ -519,7 +534,7 @@ export async function fetchMarketTokens({
 
     const payload = await response.json()
 
-    if (payload.schemaVersion !== 6 || !Array.isArray(payload.tokens)) {
+    if (payload.schemaVersion !== 7 || !Array.isArray(payload.tokens)) {
         throw new Error(
             'Backend returned an invalid token list',
         )
@@ -530,6 +545,10 @@ export async function fetchMarketTokens({
     if (!Array.isArray(payload.commonTokens) ||
         payload.commonCount !== payload.commonTokens.length) {
         throw new Error('Backend returned invalid common-token sections')
+    }
+    if (!Array.isArray(payload.fallbackTokens) ||
+        payload.fallbackCount !== payload.fallbackTokens.length) {
+        throw new Error('Backend returned invalid fallback-token sections')
     }
     if (payload.tokens.some((token) => getCanonicalTokenIdentity(token) === null)) {
         throw new Error('Backend returned a malformed token identity')
@@ -544,6 +563,7 @@ export async function fetchMarketTokens({
 
     return {
         ...payload,
+        commonTokens: payload.fallbackTokens,
         stale: payload.stale === true,
         partial: payload.partial === true,
         hardStale: payload.hardStale === true,

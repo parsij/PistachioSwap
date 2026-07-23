@@ -67,14 +67,15 @@ describe('useMarketTokens reliability status', () => {
         })
     })
 
-    it('renders ranked tokens from a partial schema-v5 response', async () => {
+    it('renders ranked tokens from a partial schema-v7 response', async () => {
         fetchMarketTokens.mockResolvedValue({
-            schemaVersion: 6,
+            schemaVersion: 7,
             tokens: [{
                 chainId: '56',
                 address: '0x0000000000000000000000000000000000000001',
             }],
             commonTokens: [],
+            fallbackTokens: [],
             partial: true,
             catalogUnavailable: true,
         })
@@ -82,7 +83,7 @@ describe('useMarketTokens reliability status', () => {
 
         await waitFor(() => expect(result.current.loading).toBe(false))
         expect(result.current.tokens).toHaveLength(1)
-        expect(result.current.schemaVersion).toBe(6)
+        expect(result.current.schemaVersion).toBe(7)
         expect(result.current.notice).toBe('Some market data could not be refreshed.')
     })
 
@@ -90,19 +91,21 @@ describe('useMarketTokens reliability status', () => {
         vi.useFakeTimers()
         fetchMarketTokens
             .mockResolvedValueOnce({
-                schemaVersion: 6,
+                schemaVersion: 7,
                 tokens: [],
                 commonTokens: [],
+                fallbackTokens: [],
                 partial: true,
                 catalogUnavailable: true,
             })
             .mockResolvedValueOnce({
-                schemaVersion: 6,
+                schemaVersion: 7,
                 tokens: [{
                     chainId: 56,
                     address: '0x0000000000000000000000000000000000000001',
                 }],
                 commonTokens: [],
+                fallbackTokens: [],
                 partial: true,
                 catalogUnavailable: false,
             })
@@ -125,12 +128,13 @@ describe('useMarketTokens reliability status', () => {
             get: () => visibilityState,
         })
         fetchMarketTokens.mockResolvedValue({
-            schemaVersion: 6,
+            schemaVersion: 7,
             tokens: [{
                 chainId: 56,
                 address: '0x0000000000000000000000000000000000000001',
             }],
             commonTokens: [],
+            fallbackTokens: [],
             partial: false,
         })
 
@@ -159,12 +163,13 @@ describe('useMarketTokens reliability status', () => {
         vi.useFakeTimers()
         fetchMarketTokens
             .mockResolvedValueOnce({
-                schemaVersion: 6,
+                schemaVersion: 7,
                 tokens: [{
                     chainId: 56,
                     address: '0x0000000000000000000000000000000000000001',
                 }],
                 commonTokens: [],
+                fallbackTokens: [],
                 partial: false,
             })
             .mockRejectedValueOnce(new Error('temporary provider failure'))

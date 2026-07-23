@@ -1,0 +1,1 @@
+# World Chain static fallback tokens

@@ -70,6 +70,11 @@ import {
     getTokenDiscoveryChain,
     requireActiveTokenDiscoveryChain,
 } from '../token-discovery/registry.js'
+import {
+    getFallbackTokensForAllChains,
+    getFallbackTokensForChain,
+    loadFallbackTokenCatalog,
+} from '../token-discovery/fallback-token-catalog.js'
 
 type TokenCandidate =
     | CoinGeckoToken
@@ -259,7 +264,7 @@ export type MarketCatalogRefreshOptions = {
 const SNAPSHOT_PATH = fileURLToPath(
     new URL('../../data/bsc-established-top-tokens.json', import.meta.url),
 )
-export const MARKET_CATALOG_SCHEMA_VERSION = 6
+export const MARKET_CATALOG_SCHEMA_VERSION = 7
 export const MARKET_PROVIDER_BACKOFF_INITIAL_MS = 60_000
 export const MARKET_PROVIDER_BACKOFF_MAX_MS = 15 * 60_000
 export const MARKET_CATALOG_ROLLING_REFRESH_MS = 60_000
@@ -516,10 +521,6 @@ function marketReasons(
     const reasons: string[] = []
     const failures: string[] = []
 
-    if (coreAsset) {
-        return { reasons: ['core-asset'], failures, ageDays: reliableAgeDays(market, now) }
-    }
-
     if ((market?.liquidityUsd ?? 0) >= config.minimumLiquidityUsd) {
         reasons.push('minimum-trusted-liquidity-met')
     } else {
@@ -542,7 +543,8 @@ function marketReasons(
     } else {
         failures.push('insufficient-transaction-count')
     }
-    if ((market?.uniqueTraders24h ?? -1) >= config.minimumUniqueTraders24h) {
+    if (config.minimumUniqueTraders24h <= 0 ||
+        (market?.uniqueTraders24h ?? -1) >= config.minimumUniqueTraders24h) {
         reasons.push('minimum-unique-traders-met')
     } else {
         failures.push('insufficient-unique-traders')
@@ -552,6 +554,7 @@ function marketReasons(
     } else {
         failures.push('no-trusted-pair')
     }
+    if (coreAsset) reasons.push('core-asset')
 
     const ageDays = reliableAgeDays(market, now)
     if (ageDays === null) {
@@ -658,8 +661,9 @@ export function filterEligibleVolumeTokens(tokens: readonly MarketToken[]) {
             exclude('hidden')
             continue
         }
-        if (!Number.isFinite(token.transactions24h) ||
-            Number(token.transactions24h) < config.dexPaprika.minimumTransactions24h) {
+        if (config.dexPaprika.minimumTransactions24h > 0 &&
+            (!Number.isFinite(token.transactions24h) ||
+                Number(token.transactions24h) < config.dexPaprika.minimumTransactions24h)) {
             exclude('insufficientTransactions')
             continue
         }
@@ -2647,11 +2651,17 @@ function publicPersistence(metadata: CatalogPersistenceMetadata) {
 function applyCatalogEtag(
     reply: FastifyReply,
     ifNoneMatch: string | string[] | undefined,
-    tokens: readonly MarketToken[],
-    commonTokens: readonly MarketToken[],
+    tokens: readonly unknown[],
+    fallbackTokens: readonly unknown[],
 ) {
     const etag = `"market-v${MARKET_CATALOG_SCHEMA_VERSION}-${
-        marketCatalogContentHash(tokens, commonTokens)
+        createHash('sha256')
+            .update(JSON.stringify({
+                schemaVersion: MARKET_CATALOG_SCHEMA_VERSION,
+                tokens,
+                fallbackTokens,
+            }))
+            .digest('hex')
     }"`
     reply.header('etag', etag)
     const values = Array.isArray(ifNoneMatch)
@@ -2665,6 +2675,9 @@ export function createMarketTokenRoutes(
     searchAcrossChains = searchTokensAcrossChains,
 ): FastifyPluginAsync {
     return async (app) => {
+        if (process.env.NODE_ENV === 'production') {
+            await loadFallbackTokenCatalog()
+        }
         app.get<{ Querystring: TokenQuery }>(
             '/v1/market-tokens',
             {
@@ -2750,20 +2763,22 @@ export function createMarketTokenRoutes(
                             const filtered = filterEligibleVolumeTokens(combined.tokens)
                             const sections = composePublicCatalogTokens(combined.tokens)
                             const tokens = sections.tokens.slice(0, limit)
-                            const commonTokens = sections.commonTokens
+                            const fallbackTokens = await getFallbackTokensForAllChains()
+                            const commonTokens = fallbackTokens
                             reply.header('cache-control', 'public, max-age=300')
                             if (applyCatalogEtag(
                                 reply,
                                 request.headers['if-none-match'],
                                 tokens,
-                                commonTokens,
+                                fallbackTokens,
                             )) return reply.code(304).send()
                             return {
                                 schemaVersion: MARKET_CATALOG_SCHEMA_VERSION,
                                 chainId: 'all',
                                 query,
                                 count: tokens.length,
-                                commonCount: commonTokens.length,
+                                commonCount: fallbackTokens.length,
+                                fallbackCount: fallbackTokens.length,
                                 stale: combined.stale ?? false,
                                 partial: combined.partial ??
                                     combined.unavailableChainIds.length > 0,
@@ -2777,6 +2792,7 @@ export function createMarketTokenRoutes(
                                 staleChainIds: combined.staleChainIds,
                                 partialChainIds: combined.partialChainIds,
                                 commonTokens,
+                                fallbackTokens,
                                 persistence: publicPersistence(
                                     combined.persistence ?? emptyPersistence('memory'),
                                 ),
@@ -2862,7 +2878,9 @@ export function createMarketTokenRoutes(
                             query,
                             count: tokens.length,
                             commonCount: 0,
+                            fallbackCount: 0,
                             commonTokens: [],
+                            fallbackTokens: [],
                             stale: groups.some((group) => group.stale),
                             partial: unavailableChainIds.length > 0,
                             hardStale: false,
@@ -2889,6 +2907,11 @@ export function createMarketTokenRoutes(
                         const searched = nativeQuery && query === NATIVE_TOKEN_ADDRESS
                             ? []
                             : await service.getSearch(query, selectedChainId)
+                        const localFallbackTokens = (await getFallbackTokensForChain(selectedChainId))
+                            .filter((token) =>
+                                token.name.toLowerCase().includes(query) ||
+                                token.symbol.toLowerCase().includes(query) ||
+                                token.address.toLowerCase().includes(query))
                         const wrapped = searched.find(
                             (token) => token.address === selectedChain.wrappedNative.address,
                         )
@@ -2900,14 +2923,23 @@ export function createMarketTokenRoutes(
                                   ),
                               ]
                             : searched
+                        const tokenIds = new Set(tokens.map((token) =>
+                            createTokenId(
+                                token.chainId,
+                                canonicalTokenAddress(token.chainId, token.address),
+                            )))
+                        const fallbackTokens = localFallbackTokens
+                            .filter((token) => !tokenIds.has(token.canonicalId))
                         reply.header('cache-control', 'public, max-age=300')
                         return {
                             schemaVersion: MARKET_CATALOG_SCHEMA_VERSION,
                             chainId: selectedChainId,
                             query,
                             count: Math.min(tokens.length, limit),
-                            commonCount: 0,
-                            commonTokens: [],
+                            commonCount: fallbackTokens.length,
+                            fallbackCount: fallbackTokens.length,
+                            commonTokens: fallbackTokens,
+                            fallbackTokens,
                             stale: false,
                             partial: false,
                             hardStale: false,
@@ -2947,12 +2979,15 @@ export function createMarketTokenRoutes(
                         ...catalog.tokens.filter(
                             (token) => token.address !== NATIVE_TOKEN_ADDRESS,
                         ),
-                        ...(catalog.commonTokens ?? []),
                     ]
                     const filtered = filterEligibleVolumeTokens(catalogCandidates)
                     const sections = composePublicCatalogTokens(catalogCandidates)
                     const tokens = sections.tokens.slice(0, limit)
-                    const commonTokens = sections.commonTokens
+                    const fallbackTokens = await getFallbackTokensForChain(selectedChainId)
+                    const tokenIds = new Set(tokens.map((token) => token.id))
+                    const mergedFallbackTokens = fallbackTokens
+                        .filter((token) => !tokenIds.has(token.canonicalId))
+                    const commonTokens = mergedFallbackTokens
                     for (const failure of catalog.providerMetadata.unavailableProviders) {
                         const rateLimited = failure.upstreamStatus === 429 ||
                             failure.code === 'PROVIDER_RATE_LIMITED'
@@ -2976,7 +3011,7 @@ export function createMarketTokenRoutes(
                             retryAfterMs: failure.retryAfterMs,
                             partialResultAvailable: tokens.length > 0 || commonTokens.length > 0,
                             ...(rateLimited && (tokens.length > 0 || commonTokens.length > 0)
-                                ? { fallback: stale ? 'cache' : 'curated' }
+                                ? { fallback: stale ? 'cache' : 'static-directory' }
                                 : {}),
                         }, 'Market token provider request was partially unavailable')
                     }
@@ -2992,7 +3027,9 @@ export function createMarketTokenRoutes(
                         query,
                         count: tokens.length,
                         commonCount: commonTokens.length,
+                        fallbackCount: commonTokens.length,
                         commonTokens,
+                        fallbackTokens: commonTokens,
                         stale,
                         partial: stale || catalog.partial,
                         hardStale,
@@ -3035,14 +3072,14 @@ export function createMarketTokenRoutes(
                     )
                     const fallbackTokens = chainId === null || query
                         ? []
-                        : curatedCommonTokens(chainId).map((token) =>
-                            normalizePublicMarketToken(token, 'common'))
+                        : await getFallbackTokensForChain(chainId)
                     return reply.code(200).send({
                         schemaVersion: MARKET_CATALOG_SCHEMA_VERSION,
                         chainId: chainId ?? 'all',
                         query,
                         count: 0,
                         commonCount: fallbackTokens.length,
+                        fallbackCount: fallbackTokens.length,
                         stale: false,
                         partial: true,
                         hardStale: false,
@@ -3056,6 +3093,7 @@ export function createMarketTokenRoutes(
                             }],
                         },
                         commonTokens: fallbackTokens,
+                        fallbackTokens,
                         tokens: [],
                     })
                 } finally {

@@ -223,6 +223,9 @@ describe.sequential('established BSC market catalog', () => {
         process.env.ESTABLISHED_TOKEN_MIN_LIQUIDITY_USD = '100000'
         process.env.ESTABLISHED_TOKEN_MIN_VOLUME_24H_USD = '25000'
         process.env.ESTABLISHED_TOKEN_MIN_POOL_AGE_DAYS = '30'
+        process.env.ESTABLISHED_TOKEN_MIN_TXNS_24H = '0'
+        process.env.ESTABLISHED_TOKEN_MIN_UNIQUE_TRADERS_24H = '0'
+        process.env.DEXPAPRIKA_MIN_TXNS_24H = '0'
         process.env.ESTABLISHED_TOKEN_MIN_PAIR_COUNT = '1'
         process.env.ESTABLISHED_TOKEN_LIMIT = '100'
         process.env.ESTABLISHED_CANDIDATE_LIMIT = '250'
@@ -296,10 +299,10 @@ describe.sequential('established BSC market catalog', () => {
     })
 
     it.each([
-        ['below-liquidity-threshold', { liquidityUsd: 99_999 }],
-        ['below-volume-threshold', { volume24hUsd: 24_999 }],
+        ['insufficient-trusted-liquidity', { liquidityUsd: 99_999 }],
+        ['insufficient-volume', { volume24hUsd: 24_999 }],
         [
-            'pool-too-new-or-age-unavailable',
+            'token-too-new',
             { oldestPairCreatedAt: new Date(NEW_POOL).toISOString() },
         ],
     ])('excludes tokens for %s', async (reason, marketOverride) => {
@@ -785,6 +788,8 @@ describe.sequential('established BSC market catalog', () => {
             chainLogoURI: null,
             coinGeckoId: `token-${index}`,
             priceUSD: '1',
+            trustedPriceUSD: '1',
+            priceConfidence: 'trusted',
             volume24hUsd: 500_000 - index,
             liquidityUsd: 250_000,
             transactions24h: 100,
@@ -793,10 +798,16 @@ describe.sequential('established BSC market catalog', () => {
             marketUrl: null,
             rank: null,
             verificationStatus: 'established',
-            verificationReasons: ['coingecko-exact-contract'],
+            verificationReasons: [
+                'coingecko-exact-contract',
+                'minimum-liquidity-met',
+                'minimum-volume-met',
+            ],
             possibleSpam: false,
             visibility: 'primary',
             securityStatus: 'low',
+            classificationTier: 'established',
+            includeInPortfolioValue: true,
             ...overrides,
         })
         const { tokens, exclusionReasons } = filterEligibleVolumeTokens([
@@ -877,9 +888,10 @@ describe.sequential('established BSC market catalog', () => {
         await service.refreshCatalog(56)
         const response = await inject(service, '/v1/market-tokens?chainId=56&limit=100')
         const body = response.json()
-        expect(body.schemaVersion).toBe(6)
+        expect(body.schemaVersion).toBe(7)
         expect(body.count).toBe(body.tokens.length)
         expect(body.commonCount).toBe(body.commonTokens.length)
+        expect(body.fallbackCount).toBe(body.fallbackTokens.length)
         expect(body.tokens).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 canonicalId: `56:${address(41)}`,
@@ -895,32 +907,33 @@ describe.sequential('established BSC market catalog', () => {
             }),
         ]))
         const rankedIds = new Set(body.tokens.map((token: MarketToken) => token.canonicalId))
-        expect(body.commonTokens.every((token: MarketToken) =>
+        expect(body.fallbackTokens.every((token: MarketToken) =>
             !rankedIds.has(token.canonicalId))).toBe(true)
     })
 
-    it('gives every curated OP asset a non-generic trusted logo candidate', async () => {
+    it('returns metadata-only OP fallback assets', async () => {
         const service = serviceFor([])
         const response = await inject(service, '/v1/market-tokens?chainId=10')
         const body = response.json()
-        expect(body.commonCount).toBe(body.commonTokens.length)
-        for (const token of body.commonTokens as MarketToken[]) {
-            expect(token.logoCandidates.some((url) =>
-                url !== '/icons/token-fallback.svg')).toBe(true)
-            expect(token.logoURI).not.toBe('/icons/token-fallback.svg')
+        expect(body.fallbackCount).toBe(body.fallbackTokens.length)
+        for (const token of body.fallbackTokens as MarketToken[]) {
+            expect(token.catalogSource).toBe('static-fallback')
+            expect(token.directoryStatus).toBe('listed')
+            expect(token.catalogSection).toBe('fallback')
+            expect(token.rank).toBeNull()
+            expect(token).not.toHaveProperty('classificationTier')
+            expect(token).not.toHaveProperty('trustedPriceUSD')
         }
     })
 
-    it('deduplicates the Celo native ERC-20 alias in authoritative common tokens', async () => {
+    it('deduplicates the Celo native ERC-20 alias in fallback tokens', async () => {
         const response = await inject(serviceFor([]), '/v1/market-tokens?chainId=42220')
         const body = response.json()
-        const ids = body.commonTokens.map((token: MarketToken) => token.canonicalId)
+        const ids = body.fallbackTokens.map((token: MarketToken) => token.canonicalId)
         expect(new Set(ids).size).toBe(ids.length)
-        expect(body.commonCount).toBe(body.commonTokens.length)
-        expect(body.commonTokens.filter((token: MarketToken) => token.symbol === 'CELO'))
+        expect(body.fallbackCount).toBe(body.fallbackTokens.length)
+        expect(body.fallbackTokens.filter((token: MarketToken) => token.symbol === 'CELO'))
             .toHaveLength(1)
-        const combined = await serviceFor([]).getCombinedCatalog()
-        expect(combined.chains['42220'].commonCount).toBe(1)
     })
 
     it('fails startup validation for invalid established-token numbers', () => {

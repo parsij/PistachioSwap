@@ -95,6 +95,8 @@ describe.sequential('market catalog reliability', () => {
         process.env.ESTABLISHED_TOKEN_MIN_LIQUIDITY_USD = '100000'
         process.env.ESTABLISHED_TOKEN_MIN_VOLUME_24H_USD = '25000'
         process.env.ESTABLISHED_TOKEN_MIN_POOL_AGE_DAYS = '30'
+        process.env.ESTABLISHED_TOKEN_MIN_TXNS_24H = '0'
+        process.env.ESTABLISHED_TOKEN_MIN_UNIQUE_TRADERS_24H = '0'
     })
 
     it('retains discovered candidates when DexScreener fails', async () => {
@@ -162,7 +164,7 @@ describe.sequential('market catalog reliability', () => {
             .toEqual(first.catalog.tokens)
     })
 
-    it('returns HTTP 200 with curated tokens on an uncached outage', async () => {
+    it('returns HTTP 200 with fallback tokens on an uncached outage', async () => {
         const service = createMarketCatalogService(dependencies({
             discoverCandidates: async () => { throw new Error('unavailable') },
         }))
@@ -175,10 +177,15 @@ describe.sequential('market catalog reliability', () => {
             catalogUnavailable: true,
             count: 0,
             commonCount: 3,
+            fallbackCount: 3,
             tokens: [],
-            commonTokens: expect.arrayContaining([
+            fallbackTokens: expect.arrayContaining([
                 expect.objectContaining({ address: NATIVE_TOKEN_ADDRESS }),
-                expect.objectContaining({ symbol: 'WBNB', source: 'curated' }),
+                expect.objectContaining({
+                    symbol: 'WBNB',
+                    catalogSource: 'static-fallback',
+                    directoryStatus: 'listed',
+                }),
             ]),
         })
         await app.close()
@@ -213,7 +220,7 @@ describe.sequential('market catalog reliability', () => {
             .toEqual([])
     })
 
-    it('returns the OP curated fallback without starting a request-time refresh', async () => {
+    it('returns the OP fallback directory without starting a request-time refresh', async () => {
         let finishDiscovery!: () => void
         const discover = vi.fn(() => new Promise<{
             candidates: DiscoveredTokenCandidate[]
@@ -234,7 +241,7 @@ describe.sequential('market catalog reliability', () => {
 
         const response = await app.inject('/v1/market-tokens?chainId=10')
         expect(response.statusCode).toBe(200)
-        expect(response.json().commonTokens.map((token: MarketToken) => token.symbol))
+        expect(response.json().fallbackTokens.map((token: MarketToken) => token.symbol))
             .toEqual(expect.arrayContaining([
                 'ETH', 'WETH', 'USDC', 'USDT', 'OP', 'DAI', 'WBTC',
             ]))

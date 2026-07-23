@@ -62,6 +62,7 @@ export function useMarketTokens({
         requestKey: null,
         tokens: [],
         commonTokens: [],
+        fallbackTokens: [],
         loading: true,
         error: null,
         chainErrors: {},
@@ -115,6 +116,9 @@ export function useMarketTokens({
                 const commonTokens = Array.isArray(result.commonTokens)
                     ? result.commonTokens
                     : []
+                const fallbackTokens = Array.isArray(result.fallbackTokens)
+                    ? result.fallbackTokens
+                    : commonTokens
                 setState((current) => {
                     const degradedEmpty = tokens.length === 0 &&
                         (result.partial === true || result.catalogUnavailable === true)
@@ -124,6 +128,9 @@ export function useMarketTokens({
                     const visibleCommonTokens = retainCurrent
                         ? current.commonTokens
                         : commonTokens
+                    const visibleFallbackTokens = retainCurrent
+                        ? current.fallbackTokens
+                        : fallbackTokens
                     const visibleResult = retainCurrent
                         ? { ...result, tokens: visibleTokens, stale: true }
                         : { ...result, tokens: visibleTokens }
@@ -131,6 +138,7 @@ export function useMarketTokens({
                         requestKey,
                         tokens: visibleTokens,
                         commonTokens: visibleCommonTokens,
+                        fallbackTokens: visibleFallbackTokens,
                         loading: false,
                         error: null,
                         chainErrors: result.chainErrors ?? result.errors ?? {},
@@ -143,6 +151,7 @@ export function useMarketTokens({
                         schemaVersion: result.schemaVersion ?? current.schemaVersion ?? null,
                         count: visibleTokens.length,
                         commonCount: visibleCommonTokens.length,
+                        fallbackCount: visibleFallbackTokens.length,
                         query: normalizedSearch,
                     }
                 })
@@ -171,6 +180,7 @@ export function useMarketTokens({
                           requestKey,
                           tokens: [],
                           commonTokens: [],
+                          fallbackTokens: [],
                           loading: false,
                           error: null,
                           browserCache: null,
@@ -183,6 +193,7 @@ export function useMarketTokens({
                           schemaVersion: null,
                           count: 0,
                           commonCount: 0,
+                          fallbackCount: 0,
                           query: normalizedSearch,
                       })
                 scheduleRetry(attempt)
@@ -225,10 +236,10 @@ export function useMarketTokens({
 
     if (!enabled) {
         return {
-            tokens: [], commonTokens: [], loading: false, error: null, chainErrors: {},
+            tokens: [], commonTokens: [], fallbackTokens: [], loading: false, error: null, chainErrors: {},
             browserCache: null, partial: false, stale: false, hardStale: false,
             catalogUnavailable: false, notice: null, schemaVersion: null,
-            count: 0, commonCount: 0, query: normalizedSearch,
+            count: 0, commonCount: 0, fallbackCount: 0, query: normalizedSearch,
         }
     }
 
@@ -236,6 +247,7 @@ export function useMarketTokens({
         return {
             tokens: [],
             commonTokens: [],
+            fallbackTokens: [],
             loading: true,
             error: null,
             chainErrors: {},
@@ -248,6 +260,7 @@ export function useMarketTokens({
             schemaVersion: null,
             count: 0,
             commonCount: 0,
+            fallbackCount: 0,
             query: normalizedSearch,
         }
     }

@@ -74,6 +74,9 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         commonTokens: discoveryChainId === 'all'
             ? (preloadedMarketCatalog.commonTokens ?? [])
             : (preloadedMarketCatalog.commonTokens ?? []).filter((token) => Number(token.chainId) === Number(discoveryChainId)),
+        fallbackTokens: discoveryChainId === 'all'
+            ? (preloadedMarketCatalog.fallbackTokens ?? preloadedMarketCatalog.commonTokens ?? [])
+            : (preloadedMarketCatalog.fallbackTokens ?? preloadedMarketCatalog.commonTokens ?? []).filter((token) => Number(token.chainId) === Number(discoveryChainId)),
     }), [discoveryChainId, preloadedMarketCatalog])
     const activeMarketCatalog = useMemo(() => {
         if (!shouldFetchSelectedCatalog) return filteredPreloadedMarketCatalog
@@ -82,6 +85,8 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         const localTokens = filteredPreloadedMarketCatalog.tokens.filter((token) =>
             tokenMatchesSearch(token, normalizedTokenSearch))
         const localCommonTokens = (filteredPreloadedMarketCatalog.commonTokens ?? []).filter((token) =>
+            tokenMatchesSearch(token, normalizedTokenSearch))
+        const localFallbackTokens = (filteredPreloadedMarketCatalog.fallbackTokens ?? []).filter((token) =>
             tokenMatchesSearch(token, normalizedTokenSearch))
         return {
             ...selectedMarketCatalog,
@@ -95,8 +100,13 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
                 selectedMarketCatalog.commonTokens ?? [],
                 discoveryChainId,
             ),
+            fallbackTokens: mergeSearchCatalogTokens(
+                localFallbackTokens,
+                selectedMarketCatalog.fallbackTokens ?? selectedMarketCatalog.commonTokens ?? [],
+                discoveryChainId,
+            ),
             notice: selectedMarketCatalog.notice ??
-                (localTokens.length > 0 || localCommonTokens.length > 0
+                (localTokens.length > 0 || localCommonTokens.length > 0 || localFallbackTokens.length > 0
                     ? null
                     : filteredPreloadedMarketCatalog.notice),
         }
@@ -104,6 +114,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     const {
         tokens: marketTokens,
         commonTokens: commonMarketTokens = [],
+        fallbackTokens: fallbackMarketTokens = commonMarketTokens,
         loading: marketTokensLoading,
         error: marketTokensError,
         notice: marketTokensNotice,
@@ -211,6 +222,8 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         normalizeMarketToken(token, discoveryChainId, fallbackChainLogo)), [discoveryChainId, fallbackChainLogo, marketTokens])
     const catalogCommonTokens = useMemo(() => commonMarketTokens.map((token) =>
         normalizeMarketToken(token, discoveryChainId, fallbackChainLogo)), [commonMarketTokens, discoveryChainId, fallbackChainLogo])
+    const catalogFallbackTokens = useMemo(() => fallbackMarketTokens.map((token) =>
+        normalizeMarketToken(token, discoveryChainId, fallbackChainLogo)), [fallbackMarketTokens, discoveryChainId, fallbackChainLogo])
     const availableTokens = useMemo(() => {
         const merged = mergeWalletBalances(catalogTokens, walletTokens)
         if (!normalizedTokenSearch) return merged
@@ -257,6 +270,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
             search: tokenSearch,
             marketTokens: selectorMarketTokens,
             commonTokens: catalogCommonTokens,
+            fallbackTokens: catalogFallbackTokens,
             walletTokens: selectorWalletTokens,
             loading: marketTokensLoading,
             error: marketTokensError,
@@ -265,6 +279,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
                 scope: discoveryChainId,
                 apiRankedCount: marketTokens.length,
                 apiCommonCount: commonMarketTokens.length,
+                apiFallbackCount: fallbackMarketTokens.length,
                 partial: marketTokensPartial === true,
                 stale: marketTokensStale === true,
                 schemaVersion: marketTokensSchemaVersion,

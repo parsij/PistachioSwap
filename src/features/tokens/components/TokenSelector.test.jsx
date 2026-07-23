@@ -216,46 +216,45 @@ describe('TokenSelector wallet rows', () => {
         const walletSection = screen.getByText('Your tokens').closest('section')
         expect(within(walletSection).getByText('BNB', { selector: 'strong' }))
             .toBeTruthy()
-        expect(screen.getByText('Popular tokens are temporarily unavailable.'))
+        expect(screen.getByText('24H volume rankings are temporarily unavailable.'))
             .toBeTruthy()
     })
 
-    it('shows curated OP tokens and address search during a provider outage', () => {
+    it('shows static fallback tokens and address search during a provider outage', () => {
         const common = ['WETH', 'USDC', 'USDT', 'OP', 'DAI', 'WBTC']
             .map((symbol, index) => ({
-                ...native,
                 id: `10:0x${String(index + 1).padStart(40, '0')}`,
                 chainId: 10,
                 address: `0x${String(index + 1).padStart(40, '0')}`,
                 isNative: false,
                 name: symbol,
                 symbol,
-                volume24hUsd: null,
-                liquidityUsd: null,
-                source: 'curated',
-                catalogSection: 'common',
-                verifiedContract: true,
-                verificationReasons: ['curated-official-contract'],
-                verificationStatus: 'established',
-                visibility: 'primary',
-                securityStatus: 'trusted',
+                decimals: 18,
+                logoURI: '/icons/token-fallback.svg',
+                logoCandidates: ['/icons/token-fallback.svg'],
+                chainLogoURI: '/networkIcons/optimism.webp',
+                coinGeckoId: null,
+                catalogSource: 'static-fallback',
+                directoryStatus: 'listed',
+                catalogSection: 'fallback',
+                rank: null,
             }))
         renderSelector({
             chainId: 10,
             tokens: [],
-            commonTokens: common,
+            fallbackTokens: common,
             walletTokens: [],
             currentToken: null,
             catalogNotice: 'Popular tokens are temporarily unavailable.',
         })
 
-        expect(screen.getByText('Common tokens')).toBeTruthy()
-        expect(screen.getByText('Common tokens').closest('.ps-token-section-heading')
+        expect(screen.getByText('Tokens')).toBeTruthy()
+        expect(screen.getByText('Tokens').closest('.ps-token-section-heading')
             .querySelector('svg')).toBeNull()
         for (const symbol of common.map((token) => token.symbol)) {
             expect(screen.getByText(symbol, { selector: 'strong' })).toBeTruthy()
         }
-        expect(screen.getByText('Popular tokens are temporarily unavailable.'))
+        expect(screen.getByText('24H volume rankings are temporarily unavailable.'))
             .toBeTruthy()
         expect(screen.getByRole('textbox')).toBeTruthy()
     })
@@ -276,13 +275,19 @@ describe('TokenSelector wallet rows', () => {
         }
         renderSelector({
             tokens: [shared],
-            commonTokens: [{ ...shared, source: 'curated', catalogSection: 'common' }],
+            fallbackTokens: [{
+                ...shared,
+                catalogSource: 'static-fallback',
+                directoryStatus: 'listed',
+                catalogSection: 'fallback',
+                rank: null,
+            }],
             walletTokens: [{ ...shared, balance: '1', visibility: 'primary' }],
             currentToken: null,
         })
         expect(screen.getAllByText('Shared Token', { selector: 'strong' }))
             .toHaveLength(1)
-        expect(screen.queryByText('Common tokens')).toBeNull()
+        expect(screen.queryByText('Tokens')).toBeNull()
     })
 
     it('keeps hidden wallet tokens in one collapsed section', () => {

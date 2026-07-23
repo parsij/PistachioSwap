@@ -25,6 +25,8 @@
     "diagnose:dexpaprika": "tsx --env-file=.env scripts/diagnose-dexpaprika.ts",
     "audit:market-catalog": "tsx --env-file=.env scripts/audit-market-catalog.ts",
     "market-catalog:bootstrap": "tsx --env-file=.env scripts/bootstrap-market-catalog.ts",
+    "fallback-tokens:build": "tsx --env-file=.env scripts/build-fallback-token-catalog.ts",
+    "fallback-tokens:audit": "tsx --env-file=.env scripts/audit-fallback-token-catalog.ts",
     "diagnose:cross-chain": "tsx --env-file=.env scripts/diagnose-cross-chain.ts",
     "diagnose:official-token": "tsx scripts/diagnose-official-token.ts",
     "typecheck": "tsc --noEmit",

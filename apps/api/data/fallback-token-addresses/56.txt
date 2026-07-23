@@ -1,0 +1,2 @@
+# BNB Chain static fallback tokens
+0x21caef8a43163eea865baee23b9c2e327696a3bf

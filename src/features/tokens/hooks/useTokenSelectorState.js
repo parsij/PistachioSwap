@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { swapUiConfig } from '../../../swapConfig.js'
 import {
     filterEligibleMarketTokens,
-    isCuratedCommonMarketToken,
+    isStaticFallbackMarketToken,
 } from '../services/marketTokens.js'
 import {
     compareDecimalStrings,
@@ -63,6 +63,7 @@ export function useTokenSelectorState({
     chainId,
     tokens = EMPTY_TOKENS,
     commonTokens = EMPTY_TOKENS,
+    fallbackTokens = commonTokens,
     walletTokens = EMPTY_TOKENS,
     search,
     loading,
@@ -104,13 +105,13 @@ export function useTokenSelectorState({
         tokens,
         walletTokensByKey,
     ])
-    const scopedCommonMarketTokens = useMemo(() => deduplicateTokens(commonTokens)
+    const scopedFallbackMarketTokens = useMemo(() => deduplicateTokens(fallbackTokens)
         .filter(tokenIsInScope)
-        .filter(isCuratedCommonMarketToken)
+        .filter(isStaticFallbackMarketToken)
         .filter((token) => !walletTokensByKey.has(getTokenKey(token)))
         .filter((token) => !safeMarketTokens.some((marketToken) => getTokenKey(marketToken) === getTokenKey(token)))
-        .sort((left, right) => String(left.symbol).localeCompare(String(right.symbol)) || String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))), [commonTokens, safeMarketTokens, tokenIsInScope, walletTokensByKey])
-    const commonMarketTokens = normalizedSearch ? EMPTY_TOKENS : scopedCommonMarketTokens
+        .sort((left, right) => Number(left.rank ?? 9999) - Number(right.rank ?? 9999) || String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))), [fallbackTokens, safeMarketTokens, tokenIsInScope, walletTokensByKey])
+    const commonMarketTokens = normalizedSearch ? EMPTY_TOKENS : scopedFallbackMarketTokens
     const primaryWalletTokens = useMemo(() => sortWalletTokens(walletPartitions.primaryTokens.filter((token) => {
         const displayValue = resolveWalletUsdValue(token)
         return token.visibility === 'primary' &&
@@ -122,8 +123,8 @@ export function useTokenSelectorState({
         ? primaryWalletTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
         : primaryWalletTokens, [normalizedSearch, primaryWalletTokens])
     const matchingCommonMarketTokens = useMemo(() => normalizedSearch
-        ? scopedCommonMarketTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
-        : EMPTY_TOKENS, [normalizedSearch, scopedCommonMarketTokens])
+        ? scopedFallbackMarketTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
+        : EMPTY_TOKENS, [normalizedSearch, scopedFallbackMarketTokens])
     const sortedGlobalMarketTokens = useMemo(() => sortGlobalMarketTokens(safeMarketTokens), [safeMarketTokens])
     const riskyWalletTokens = useMemo(() => walletPartitions.hiddenTokens, [walletPartitions.hiddenTokens])
     const unverifiedWalletTokens = useMemo(() => EMPTY_TOKENS, [])
@@ -144,19 +145,19 @@ export function useTokenSelectorState({
             ...sortedGlobalMarketTokens,
         ])
     }, [exactAddressSearch, matchingCommonMarketTokens, matchingPrimaryWalletTokens, normalizedSearch, primaryWalletTokens, safeMarketTokens, sortedGlobalMarketTokens])
-    const marketStatusMessage = sortedGlobalMarketTokens.length > 0 ? catalogNotice === 'Popular tokens are temporarily unavailable.' ? 'Some market data could not be refreshed.' : catalogNotice ?? (error ? 'Some market data could not be refreshed.' : null) : !loading ? 'Popular tokens are temporarily unavailable.' : null
+    const marketStatusMessage = sortedGlobalMarketTokens.length > 0 ? catalogNotice === 'Popular tokens are temporarily unavailable.' ? 'Some market data could not be refreshed.' : catalogNotice ?? (error ? 'Some market data could not be refreshed.' : null) : !loading ? '24H volume rankings are temporarily unavailable.' : null
     const lastCatalogDiagnostic = useRef(null)
 
     useEffect(() => {
         if (!import.meta.env.DEV || !catalogDiagnostics || loading) return
         const scopedRankedTokens = tokens.filter(tokenIsInScope)
         const uniqueScopedRankedTokens = deduplicateTokens(scopedRankedTokens)
-        const diagnostic = { scope: catalogDiagnostics.scope === 'all' ? 'all' : Number(catalogDiagnostics.scope), apiRankedCount: catalogDiagnostics.apiRankedCount, apiCommonCount: catalogDiagnostics.apiCommonCount, normalizedRankedCount: tokens.length, normalizedCommonCount: commonTokens.length, walletDuplicateCount: uniqueScopedRankedTokens.filter((token) => walletTokensByKey.has(getTokenKey(token))).length, rankedDuplicateCount: scopedRankedTokens.length - uniqueScopedRankedTokens.length, renderedRankedCount: sortedGlobalMarketTokens.length, renderedCommonCount: commonMarketTokens.length, partial: catalogDiagnostics.partial === true, stale: catalogDiagnostics.stale === true, schemaVersion: catalogDiagnostics.schemaVersion }
+        const diagnostic = { scope: catalogDiagnostics.scope === 'all' ? 'all' : Number(catalogDiagnostics.scope), apiRankedCount: catalogDiagnostics.apiRankedCount, apiCommonCount: catalogDiagnostics.apiCommonCount, apiFallbackCount: catalogDiagnostics.apiFallbackCount, normalizedRankedCount: tokens.length, normalizedCommonCount: commonTokens.length, normalizedFallbackCount: fallbackTokens.length, walletDuplicateCount: uniqueScopedRankedTokens.filter((token) => walletTokensByKey.has(getTokenKey(token))).length, rankedDuplicateCount: scopedRankedTokens.length - uniqueScopedRankedTokens.length, renderedRankedCount: sortedGlobalMarketTokens.length, renderedCommonCount: commonMarketTokens.length, partial: catalogDiagnostics.partial === true, stale: catalogDiagnostics.stale === true, schemaVersion: catalogDiagnostics.schemaVersion }
         const signature = JSON.stringify(diagnostic)
         if (lastCatalogDiagnostic.current === signature) return
         lastCatalogDiagnostic.current = signature
         console.debug('[market-catalog-normalized]', diagnostic)
-    }, [catalogDiagnostics, commonMarketTokens.length, commonTokens.length, loading, sortedGlobalMarketTokens.length, tokenIsInScope, tokens, walletTokensByKey])
+    }, [catalogDiagnostics, commonMarketTokens.length, commonTokens.length, fallbackTokens.length, loading, sortedGlobalMarketTokens.length, tokenIsInScope, tokens, walletTokensByKey])
 
     useEffect(() => {
         setRecentTokens(readRecentTokens(chainId))

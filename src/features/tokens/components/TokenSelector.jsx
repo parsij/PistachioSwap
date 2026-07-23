@@ -16,7 +16,8 @@ import './TokenSelector.css'
  * @param {'sell'|'buy'} props.side Side whose token is being selected; used only for the dialog label.
  * @param {number|'all'} props.chainId Active token-discovery chain scope.
  * @param {Array<object>} props.tokens Ranked market token records.
- * @param {Array<object>} [props.commonTokens] Curated fallback market records.
+ * @param {Array<object>} [props.commonTokens] Legacy fallback alias.
+ * @param {Array<object>} [props.fallbackTokens] Static fallback directory records.
  * @param {Array<object>} [props.walletTokens] Wallet-owned token records.
  * @param {string} props.search Controlled search value.
  * @param {(value: string) => void} props.onSearchChange Search callback receiving the input value.
@@ -31,6 +32,7 @@ export default function TokenSelector({
     chainId,
     tokens = [],
     commonTokens = [],
+    fallbackTokens = commonTokens,
     walletTokens = [],
     search,
     loading,
@@ -48,7 +50,7 @@ export default function TokenSelector({
 }) {
     const reducedMotion = useReducedMotion()
     const motionConfig = swapUiConfig.motion.dialog
-    const state = useTokenSelectorState({ chainId, tokens, commonTokens, walletTokens, search, loading, error, catalogNotice, catalogDiagnostics, currentToken, oppositeToken, onSelect, onClose, hideUnknownTokens, hideSmallBalances })
+    const state = useTokenSelectorState({ chainId, tokens, commonTokens, fallbackTokens, walletTokens, search, loading, error, catalogNotice, catalogDiagnostics, currentToken, oppositeToken, onSelect, onClose, hideUnknownTokens, hideSmallBalances })
     const handleChainChange = (value) => {
         if (!onChainChange) return
         onSearchChange('')
