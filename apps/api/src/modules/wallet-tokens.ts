@@ -16,6 +16,11 @@ import {
     type WalletToken,
 } from '../providers/alchemy/wallet-tokens.js'
 import {
+    getConfiguredUnchainedChainIds,
+    getUnchainedWalletTokens,
+    isUnchainedWalletEnabled,
+} from '../providers/unchained/wallet-tokens.js'
+import {
     ACTIVE_TOKEN_DISCOVERY_CHAINS,
     getTokenDiscoveryChain,
 } from '../token-discovery/registry.js'
@@ -172,38 +177,71 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
             const requestedChainIds = allChains
                 ? ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => chain.chainId)
                 : [chainId!]
-            const supportedChainIds = requestedChainIds.filter(
+            const alchemySupportedChainIds = requestedChainIds.filter(
                 (requestedChainId) =>
                     getAlchemyPortfolioNetwork(requestedChainId) !== null,
             )
-            const unsupportedChainIds = requestedChainIds.filter(
+            const alchemyUnsupportedChainIds = requestedChainIds.filter(
                 (requestedChainId) =>
                     getAlchemyPortfolioNetwork(requestedChainId) === null,
             )
+            const configuredUnchained = new Set(
+                isUnchainedWalletEnabled()
+                    ? getConfiguredUnchainedChainIds()
+                    : [],
+            )
+            const unchainedChainIds = requestedChainIds.filter((value) =>
+                configuredUnchained.has(value))
             const controller = new AbortController()
             const abort = () => controller.abort()
             request.raw.once('aborted', abort)
 
             try {
-                let result
-                if (
+                let result: Awaited<ReturnType<typeof legacyAllChainWalletTokens>> |
+                    Awaited<ReturnType<typeof getAlchemyPortfolioWalletTokens>> |
+                    Awaited<ReturnType<typeof getUnchainedWalletTokens>> |
+                    null = null
+                let responseUnsupportedChainIds = alchemyUnsupportedChainIds
+
+                if (unchainedChainIds.length > 0) {
+                    try {
+                        result = await getUnchainedWalletTokens({
+                            walletAddress: address,
+                            chainIds: unchainedChainIds,
+                            includeZero,
+                            signal: controller.signal,
+                        })
+                        responseUnsupportedChainIds = requestedChainIds.filter(
+                            (value) => !configuredUnchained.has(value),
+                        )
+                    } catch (error) {
+                        request.log.warn({
+                            provider: 'unchained',
+                            requestedChainIds: unchainedChainIds,
+                            err: error,
+                        }, 'Unchained wallet provider failed; using fallback')
+                    }
+                }
+
+                if (!result &&
                     config.alchemy.portfolio.enabled &&
-                    supportedChainIds.length > 0
-                ) {
+                    alchemySupportedChainIds.length > 0) {
                     result = await getAlchemyPortfolioWalletTokens({
                         walletAddress: address,
-                        chainIds: supportedChainIds,
+                        chainIds: alchemySupportedChainIds,
                         includeZero,
                         signal: controller.signal,
                     })
-                } else if (allChains) {
+                    responseUnsupportedChainIds = alchemyUnsupportedChainIds
+                } else if (!result && allChains) {
                     result = await legacyAllChainWalletTokens({
                         chainIds: requestedChainIds,
                         address,
                         includeZero,
                         signal: controller.signal,
                     })
-                } else {
+                    responseUnsupportedChainIds = []
+                } else if (!result) {
                     const tokens = await getWalletTokens({
                         chainId: chainId!,
                         walletAddress: address,
@@ -213,7 +251,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                     result = {
                         classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
                         address,
-                        source: 'legacy-single-chain' as const,
+                        source: 'legacy' as const,
                         tokens,
                         queriedChainIds: [chainId!],
                         successfulChainIds: [chainId!],
@@ -229,23 +267,27 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                             failureCode: null,
                         },
                     }
+                    responseUnsupportedChainIds = []
                 }
 
                 const response = {
                     classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
                     ...(allChains ? {} : { chainId }),
                     address,
-                    source: result.source,
+                    // Existing clients validate this legacy source enum. The real
+                    // provider remains explicit in the provider field below.
+                    source: result.source === 'unchained' ? 'legacy' : result.source,
+                    provider: result.source,
                     tokens: result.tokens,
                     queriedChainIds: result.queriedChainIds,
                     successfulChainIds: result.successfulChainIds,
                     failedChainIds: result.failedChainIds,
                     providerRejectedChainIds:
                         result.providerRejectedChainIds ?? [],
-                    unsupportedChainIds,
+                    unsupportedChainIds: responseUnsupportedChainIds,
                     chainErrors: result.chainErrors,
                     batchErrors: result.batchErrors,
-                    partial: result.partial,
+                    partial: result.partial || responseUnsupportedChainIds.length > 0,
                     stale: result.stale,
                 }
                 if (process.env.NODE_ENV !== 'production') {
@@ -253,12 +295,13 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                         provider: result.source,
                         addressSuffix: address.slice(-4),
                         requestedChainIds,
-                        supportedChainIds,
-                        unsupportedChainIds,
+                        alchemySupportedChainIds,
+                        unchainedChainIds,
+                        unsupportedChainIds: responseUnsupportedChainIds,
                         tokenCount: result.tokens.length,
                         pageCount: result.diagnostics.pageCount,
                         cacheStatus: result.diagnostics.cacheStatus,
-                        partial: result.partial,
+                        partial: response.partial,
                         durationMs: Date.now() - startedAt,
                         failureCode: result.diagnostics.failureCode,
                     }, 'Wallet portfolio request completed')
@@ -269,7 +312,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                 const safe = getSafeError(error)
                 const staleEntryAvailable = hasStaleAlchemyPortfolioWalletCache({
                     walletAddress: address,
-                    chainIds: supportedChainIds,
+                    chainIds: alchemySupportedChainIds,
                     includeZero,
                 })
                 const log = safe.body.error.code === 'ALCHEMY_PORTFOLIO_REQUEST_ABORTED'
@@ -281,9 +324,11 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                         : 'wallet-tokens-single-chain',
                     classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
                     cacheVersion: `v${WALLET_TOKEN_CLASSIFICATION_VERSION}`,
-                    provider: config.alchemy.portfolio.enabled
-                        ? 'alchemy-portfolio'
-                        : 'legacy',
+                    provider: unchainedChainIds.length > 0
+                        ? 'unchained-with-fallback'
+                        : config.alchemy.portfolio.enabled
+                          ? 'alchemy-portfolio'
+                          : 'legacy',
                     safeCode: safe.body.error.code,
                     staleEntryAvailable,
                 }, 'Wallet token request failed')
