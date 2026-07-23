@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { zeroAddress } from 'viem'
 import { useMarketTokens } from './useMarketTokens.js'
+import { useUniswapVolumeTokens } from './useUniswapVolumeTokens.js'
 import { useWalletTokens } from './useWalletTokens.js'
 import { useNativeBalance } from './useNativeBalance.js'
 import { mergeWalletBalances, WALLET_TOKEN_CLASSIFICATION_VERSION } from '../../tokens/services/walletTokens.js'
@@ -55,6 +56,8 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     const discoveryChainId = tokenSelectorSide ? selectorChainId : swapChainId
     const walletAddress = walletState.address
     const normalizedTokenSearch = tokenSearch.trim().toLowerCase()
+    const useUniswapVolumeCatalog =
+        import.meta.env.VITE_USE_UNISWAP_VOLUME_TOKENS === 'true'
 
     const preloadedMarketCatalog = useMarketTokens({ chainId: 'all' })
     const preloadedHasSelectedRankedTokens = discoveryChainId === 'all' ||
@@ -65,6 +68,11 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         chainId: discoveryChainId,
         search: tokenSearch,
         enabled: shouldFetchSelectedCatalog,
+    })
+    const uniswapVolumeCatalog = useUniswapVolumeTokens({
+        chainId: discoveryChainId,
+        search: tokenSearch,
+        enabled: useUniswapVolumeCatalog,
     })
     const filteredPreloadedMarketCatalog = useMemo(() => ({
         ...preloadedMarketCatalog,
@@ -111,6 +119,35 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
                     : filteredPreloadedMarketCatalog.notice),
         }
     }, [discoveryChainId, filteredPreloadedMarketCatalog, normalizedTokenSearch, selectedMarketCatalog, shouldFetchSelectedCatalog])
+    const preferredMarketCatalog = useMemo(() => {
+        if (!useUniswapVolumeCatalog || uniswapVolumeCatalog.tokens.length === 0) {
+            return activeMarketCatalog
+        }
+        const tokens = mergeSearchCatalogTokens(
+            uniswapVolumeCatalog.tokens,
+            activeMarketCatalog.tokens ?? [],
+            discoveryChainId,
+        )
+        return {
+            ...activeMarketCatalog,
+            tokens,
+            loading: tokens.length === 0 &&
+                activeMarketCatalog.loading &&
+                uniswapVolumeCatalog.loading,
+            error: tokens.length > 0
+                ? null
+                : activeMarketCatalog.error ?? uniswapVolumeCatalog.error,
+            partial: activeMarketCatalog.partial === true ||
+                uniswapVolumeCatalog.partial === true,
+            stale: activeMarketCatalog.stale === true ||
+                uniswapVolumeCatalog.stale === true,
+            schemaVersion: uniswapVolumeCatalog.schemaVersion ??
+                activeMarketCatalog.schemaVersion,
+            notice: uniswapVolumeCatalog.partial
+                ? 'Some Uniswap volume data could not be refreshed.'
+                : activeMarketCatalog.notice,
+        }
+    }, [activeMarketCatalog, discoveryChainId, uniswapVolumeCatalog, useUniswapVolumeCatalog])
     const {
         tokens: marketTokens,
         commonTokens: commonMarketTokens = [],
@@ -121,7 +158,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         partial: marketTokensPartial,
         stale: marketTokensStale,
         schemaVersion: marketTokensSchemaVersion,
-    } = activeMarketCatalog
+    } = preferredMarketCatalog
 
     const activeChain = getCuratedEvmChain(swapChainId)
     const fallbackChainLogo = Number(tokensConfig.initialSellToken?.chainId) === discoveryChainId
@@ -278,6 +315,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
             diagnostics: {
                 scope: discoveryChainId,
                 apiRankedCount: marketTokens.length,
+                uniswapVolumeCount: uniswapVolumeCatalog.tokens.length,
                 apiCommonCount: commonMarketTokens.length,
                 apiFallbackCount: fallbackMarketTokens.length,
                 partial: marketTokensPartial === true,
