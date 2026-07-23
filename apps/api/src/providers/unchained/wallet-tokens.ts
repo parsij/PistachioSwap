@@ -1,6 +1,5 @@
 import {
     NATIVE_TOKEN_ADDRESS,
-    canonicalTokenAddress,
     createTokenId,
     normalizeAddress,
 } from '../../lib/address.js'
@@ -12,6 +11,8 @@ import {
 } from '../../modules/market-tokens.js'
 import {
     ACTIVE_TOKEN_DISCOVERY_CHAINS,
+    canonicalTokenAddress,
+    getTokenDiscoveryChain,
     requireActiveTokenDiscoveryChain,
 } from '../../token-discovery/registry.js'
 import {
@@ -24,7 +25,7 @@ import {
 import { getOfficialAsset } from '../recognition/curated-token-lists.js'
 import { buildTokenLogo } from '../token-logos.js'
 
-type UnchainedAccountToken = {
+type AccountToken = {
     balance: bigint
     contract: string
     decimals: number
@@ -32,10 +33,10 @@ type UnchainedAccountToken = {
     symbol: string
 }
 
-type UnchainedAccount = {
+type Account = {
     balance: bigint
     pubkey: string
-    tokens: UnchainedAccountToken[]
+    tokens: AccountToken[]
 }
 
 type CacheEntry = {
@@ -79,13 +80,15 @@ function normalizeEndpoint(value: unknown) {
     if (typeof value !== 'string' || !value.trim()) return null
     const url = new URL(value.trim())
     const local = ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
-    const insecureAllowed = readBoolean('UNCHAINED_ALLOW_INSECURE_HTTP', false)
+    const allowHttp = readBoolean('UNCHAINED_ALLOW_INSECURE_HTTP', false)
     if (
         url.username ||
         url.password ||
-        (url.protocol !== 'https:' && !(url.protocol === 'http:' && (local || insecureAllowed)))
+        (url.protocol !== 'https:' && !(url.protocol === 'http:' && (local || allowHttp)))
     ) {
-        throw new Error('Unchained endpoints must use HTTPS unless insecure HTTP is explicitly enabled.')
+        throw new Error(
+            'Unchained endpoints must use HTTPS unless insecure HTTP is explicitly enabled.',
+        )
     }
     return url.toString().replace(/\/+$/, '')
 }
@@ -100,14 +103,13 @@ function configuredEndpoints() {
         }
         for (const [chainIdText, value] of Object.entries(parsed)) {
             const chainId = Number(chainIdText)
-            if (!Number.isSafeInteger(chainId) || !requireActiveTokenDiscoveryChain(chainId)) {
+            if (!Number.isSafeInteger(chainId) || !getTokenDiscoveryChain(chainId)?.active) {
                 continue
             }
             const endpoint = normalizeEndpoint(value)
             if (endpoint) endpoints.set(chainId, endpoint)
         }
     }
-
     for (const chain of ACTIVE_TOKEN_DISCOVERY_CHAINS) {
         const endpoint = normalizeEndpoint(process.env[`UNCHAINED_HTTP_URL_${chain.chainId}`])
         if (endpoint) endpoints.set(chain.chainId, endpoint)
@@ -125,11 +127,10 @@ export function isUnchainedWalletEnabled() {
 
 function accountUrl(endpoint: string, walletAddress: string) {
     const base = new URL(`${endpoint}/`)
-    const basePath = base.pathname.replace(/\/+$/, '')
-    const relative = basePath.endsWith('/api/v1')
+    const path = base.pathname.replace(/\/+$/, '').endsWith('/api/v1')
         ? `account/${walletAddress}`
         : `api/v1/account/${walletAddress}`
-    return new URL(relative, base)
+    return new URL(path, base)
 }
 
 function nonnegativeInteger(value: unknown) {
@@ -150,43 +151,32 @@ function cleanText(value: unknown, maximum: number) {
     return text && text.length <= maximum ? text : null
 }
 
-export function normalizeUnchainedAccount(value: unknown): UnchainedAccount | null {
+export function normalizeUnchainedAccount(value: unknown): Account | null {
     if (!isRecord(value)) return null
     const balance = nonnegativeInteger(value.balance)
     const pubkey = normalizeAddress(value.pubkey)
     if (balance === null || !pubkey || !Array.isArray(value.tokens)) return null
-
-    const tokens: UnchainedAccountToken[] = []
+    const tokens: AccountToken[] = []
     for (const candidate of value.tokens) {
         if (!isRecord(candidate)) continue
         const contract = normalizeAddress(candidate.contract)
-        const rawBalance = nonnegativeInteger(candidate.balance)
+        const tokenBalance = nonnegativeInteger(candidate.balance)
         const decimals = validDecimals(candidate.decimals)
         const name = cleanText(candidate.name, 120)
         const symbol = cleanText(candidate.symbol, 32)
-        if (!contract || rawBalance === null || decimals === null || !name || !symbol) {
+        if (!contract || tokenBalance === null || decimals === null || !name || !symbol) {
             continue
         }
-        tokens.push({
-            balance: rawBalance,
-            contract,
-            decimals,
-            name,
-            symbol,
-        })
+        tokens.push({ balance: tokenBalance, contract, decimals, name, symbol })
     }
     return { balance, pubkey, tokens }
 }
 
-async function fetchAccount({
-    endpoint,
-    walletAddress,
-    signal,
-}: {
-    endpoint: string
-    walletAddress: string
-    signal?: AbortSignal
-}) {
+async function fetchAccount(
+    endpoint: string,
+    walletAddress: string,
+    signal?: AbortSignal,
+) {
     const payload = await fetchJson(accountUrl(endpoint, walletAddress), {
         signal,
         timeoutMs: Number(process.env.UNCHAINED_REQUEST_TIMEOUT_MS ?? 8_000),
@@ -205,17 +195,9 @@ async function fetchAccount({
     return account
 }
 
-function trustedCatalogToken(token: MarketToken | undefined) {
-    if (!token || token.verifiedContract !== true || token.possibleSpam === true) return false
-    if (token.visibility !== 'primary') return false
-    if (!['core', 'established'].includes(String(token.classificationTier))) return false
-    return !['high', 'blocked'].includes(String(token.securityStatus))
-}
-
 async function catalogByAddress(chainId: number) {
     try {
-        const result = await marketCatalogService.getCatalog(chainId)
-        const catalog = result.catalog
+        const { catalog } = await marketCatalogService.getCatalog(chainId)
         return new Map<string, MarketToken>([
             ...catalog.tokens,
             ...(catalog.commonTokens ?? []),
@@ -228,34 +210,39 @@ async function catalogByAddress(chainId: number) {
     }
 }
 
-function unavailableSecurity() {
+function trustedCatalogToken(token?: MarketToken) {
+    return Boolean(
+        token &&
+        token.verifiedContract === true &&
+        token.possibleSpam !== true &&
+        token.visibility === 'primary' &&
+        ['core', 'established'].includes(String(token.classificationTier)) &&
+        !['high', 'blocked'].includes(String(token.securityStatus)),
+    )
+}
+
+function securityProviders() {
     return {
-        securityProviders: {
-            honeypot: {
-                available: false,
-                checkedAt: null,
-                risk: null,
-                riskLevel: null,
-                isHoneypot: null,
-            },
-            goPlus: {
-                available: false,
-                checkedAt: null,
-                isHoneypot: null,
-            },
+        honeypot: {
+            available: false,
+            checkedAt: null,
+            risk: null,
+            riskLevel: null,
+            isHoneypot: null,
+        },
+        goPlus: {
+            available: false,
+            checkedAt: null,
+            isHoneypot: null,
         },
     }
 }
 
-function createNativeToken({
-    chainId,
-    rawBalance,
-    catalog,
-}: {
-    chainId: number
-    rawBalance: bigint
-    catalog: Map<string, MarketToken>
-}): WalletToken {
+function nativeToken(
+    chainId: number,
+    rawBalance: bigint,
+    catalog: Map<string, MarketToken>,
+): WalletToken {
     const chain = requireActiveTokenDiscoveryChain(chainId)
     const wrapped = catalog.get(chain.wrappedNative.address)
     const priceUSD = wrapped?.trustedPriceUSD ?? wrapped?.priceUSD ?? null
@@ -310,32 +297,28 @@ function createNativeToken({
         securityStatus: 'trusted',
         securityScore: null,
         securityReasons: ['native-token'],
-        ...unavailableSecurity(),
+        securityProviders: securityProviders(),
         visibility: 'primary',
         visibilityReasons: ['native-token'],
         includeInPortfolioValue: true,
     }
 }
 
-function createAccountToken({
-    chainId,
-    accountToken,
-    catalogToken,
-}: {
-    chainId: number
-    accountToken: UnchainedAccountToken
-    catalogToken?: MarketToken
-}): WalletToken {
-    const official = getOfficialAsset(chainId, accountToken.contract)
+function accountToken(
+    chainId: number,
+    token: AccountToken,
+    catalogToken?: MarketToken,
+): WalletToken {
+    const official = getOfficialAsset(chainId, token.contract)
     const trusted = official !== null || trustedCatalogToken(catalogToken)
-    const decimals = official?.decimals ?? catalogToken?.decimals ?? accountToken.decimals
-    const name = official?.name ?? catalogToken?.name ?? accountToken.name
-    const symbol = official?.symbol ?? catalogToken?.symbol ?? accountToken.symbol
-    const balance = formatTokenUnits(accountToken.balance, decimals)
+    const decimals = official?.decimals ?? catalogToken?.decimals ?? token.decimals
+    const name = official?.name ?? catalogToken?.name ?? token.name
+    const symbol = official?.symbol ?? catalogToken?.symbol ?? token.symbol
+    const balance = formatTokenUnits(token.balance, decimals)
     const priceUSD = trusted
         ? catalogToken?.trustedPriceUSD ?? catalogToken?.priceUSD ?? null
         : null
-    const recognitionReasons = trusted
+    const reasons = trusted
         ? [...new Set([
               ...(catalogToken?.recognitionReasons ?? catalogToken?.verificationReasons ?? []),
               ...(official ? ['curated-official-contract'] : []),
@@ -344,7 +327,7 @@ function createAccountToken({
         : ['unchained-account-balance']
     const logo = buildTokenLogo({
         chainId,
-        address: accountToken.contract,
+        address: token.contract,
         curatedImages: official?.logoCandidates ?? catalogToken?.logoCandidates,
         localImage: catalogToken?.logoURI?.startsWith('/')
             ? catalogToken.logoURI
@@ -353,30 +336,43 @@ function createAccountToken({
             ? catalogToken.logoURI
             : null,
     })
-    const classificationTier = trusted
-        ? catalogToken?.classificationTier ?? (official ? 'core' : 'established')
+    const catalogTier = catalogToken?.classificationTier
+    const tier: WalletToken['classificationTier'] = trusted
+        ? catalogTier === 'core' || catalogTier === 'established'
+            ? catalogTier
+            : official ? 'core' : 'established'
         : 'hidden'
-    const securityStatus = trusted
-        ? catalogToken?.securityStatus ?? 'trusted'
+    const catalogSecurity = catalogToken?.securityStatus
+    const securityStatus: WalletToken['securityStatus'] = trusted
+        ? ['trusted', 'low', 'caution'].includes(String(catalogSecurity))
+            ? catalogSecurity as WalletToken['securityStatus']
+            : 'trusted'
         : 'unknown'
+    const valueUSD = trusted && priceUSD ? multiplyDecimal(balance, priceUSD) : null
     return {
         classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
-        id: createTokenId(chainId, accountToken.contract),
+        id: createTokenId(chainId, token.contract),
         chainId,
-        address: accountToken.contract,
+        address: token.contract,
         name,
         symbol,
         decimals,
-        ...logo,
-        rawBalance: accountToken.balance.toString(),
+        logoURI: logo.logoURI,
+        logoCandidates: logo.logoCandidates,
+        logoSource: official
+            ? 'curated'
+            : logo.logoURI === '/icons/token-fallback.svg'
+              ? 'fallback'
+              : 'provider',
+        rawBalance: token.balance.toString(),
         formattedBalance: balance,
         balance,
         priceUSD,
         trustedPriceUSD: trusted ? priceUSD : null,
         marketPriceUSD: null,
-        valueUSD: trusted && priceUSD ? multiplyDecimal(balance, priceUSD) : null,
+        valueUSD,
         priceConfidence: trusted && priceUSD
-            ? catalogToken?.priceConfidence ?? 'trusted'
+            ? catalogToken?.priceConfidence === 'market' ? 'market' : 'trusted'
             : 'unknown',
         coinGeckoId: official?.coinGeckoId ?? catalogToken?.coinGeckoId ?? null,
         liquidityUsd: trusted ? catalogToken?.liquidityUsd ?? 0 : 0,
@@ -398,18 +394,16 @@ function createAccountToken({
             ? catalogToken?.oldestTrustedPoolCreatedAt ?? catalogToken?.oldestPairCreatedAt ?? null
             : null,
         establishedAgeDays: trusted ? catalogToken?.establishedAgeDays ?? null : null,
-        estimatedSellValueUsd: trusted && priceUSD
-            ? multiplyDecimal(balance, priceUSD)
-            : null,
-        classificationTier,
+        estimatedSellValueUsd: valueUSD,
+        classificationTier: tier,
         classificationReasons: trusted
             ? catalogToken?.classificationReasons ?? ['established-market-asset']
             : ['unverified-unchained-token'],
         isNative: false,
         recognitionStatus: trusted ? 'established' : 'unverified',
-        recognitionReasons,
+        recognitionReasons: reasons,
         verificationStatus: trusted ? 'established' : 'unverified',
-        verificationReasons: recognitionReasons,
+        verificationReasons: reasons,
         spamStatus: trusted ? 'clean' : 'unknown',
         possibleSpam: trusted ? false : null,
         verifiedContract: official?.verifiedContract ?? (trusted ? true : null),
@@ -424,12 +418,10 @@ function createAccountToken({
         securityReasons: trusted
             ? catalogToken?.classificationReasons ?? ['established-market-asset']
             : ['security-provider-unavailable'],
-        ...unavailableSecurity(),
+        securityProviders: securityProviders(),
         visibility: trusted ? 'primary' : 'unverified',
-        visibilityReasons: trusted
-            ? recognitionReasons
-            : ['unverified-unchained-token'],
-        includeInPortfolioValue: trusted && priceUSD !== null,
+        visibilityReasons: trusted ? reasons : ['unverified-unchained-token'],
+        includeInPortfolioValue: valueUSD !== null,
     }
 }
 
@@ -451,44 +443,32 @@ async function loadChainTokens({
     if (cached && cached.expiresAt > Date.now()) {
         return { tokens: cached.tokens, cacheStatus: 'hit' as const }
     }
-
     let request = inFlight.get(key)
     if (!request) {
         request = (async () => {
             const [account, catalog] = await Promise.all([
-                fetchAccount({ endpoint, walletAddress, signal }),
+                fetchAccount(endpoint, walletAddress, signal),
                 catalogByAddress(chainId),
             ])
             const chain = requireActiveTokenDiscoveryChain(chainId)
             const tokens: WalletToken[] = []
             if (includeZero || account.balance > 0n) {
-                tokens.push(createNativeToken({
-                    chainId,
-                    rawBalance: account.balance,
-                    catalog,
-                }))
+                tokens.push(nativeToken(chainId, account.balance, catalog))
             }
-            for (const accountToken of account.tokens) {
-                if (!includeZero && accountToken.balance === 0n) continue
-                if (chain.native.erc20Aliases.includes(accountToken.contract as `0x${string}`)) {
-                    continue
-                }
-                const address = canonicalTokenAddress(chainId, accountToken.contract)
-                tokens.push(createAccountToken({
+            for (const held of account.tokens) {
+                if (!includeZero && held.balance === 0n) continue
+                if (chain.native.erc20Aliases.includes(held.contract as `0x${string}`)) continue
+                const address = canonicalTokenAddress(chainId, held.contract)
+                tokens.push(accountToken(
                     chainId,
-                    accountToken: { ...accountToken, contract: address },
-                    catalogToken: catalog.get(address),
-                }))
+                    { ...held, contract: address },
+                    catalog.get(address),
+                ))
             }
             sortWalletTokens(tokens)
-            cache.set(key, {
-                tokens,
-                expiresAt: Date.now() + CACHE_TTL_MS,
-            })
+            cache.set(key, { tokens, expiresAt: Date.now() + CACHE_TTL_MS })
             return tokens
-        })().finally(() => {
-            inFlight.delete(key)
-        })
+        })().finally(() => inFlight.delete(key))
         inFlight.set(key, request)
     }
     return { tokens: await request, cacheStatus: 'miss' as const }
@@ -533,32 +513,29 @@ export async function getUnchainedWalletTokens({
     let pageCount = 0
     let anyCacheHit = false
     let cursor = 0
-    const workers = Array.from(
-        { length: Math.min(4, requested.length) },
-        async () => {
-            while (cursor < requested.length) {
-                const chainId = requested[cursor]
-                cursor += 1
-                try {
-                    const result = await loadChainTokens({
-                        chainId,
-                        endpoint: endpoints.get(chainId)!,
-                        walletAddress: wallet,
-                        includeZero,
-                        signal,
-                    })
-                    tokens.push(...result.tokens)
-                    successfulChainIds.push(chainId)
-                    pageCount += 1
-                    anyCacheHit ||= result.cacheStatus === 'hit'
-                } catch {
-                    failedChainIds.push(chainId)
-                    chainErrors[String(chainId)] =
-                        'This Unchained network balance could not be refreshed.'
-                }
+    const workers = Array.from({ length: Math.min(4, requested.length) }, async () => {
+        while (cursor < requested.length) {
+            const chainId = requested[cursor]
+            cursor += 1
+            try {
+                const result = await loadChainTokens({
+                    chainId,
+                    endpoint: endpoints.get(chainId)!,
+                    walletAddress: wallet,
+                    includeZero,
+                    signal,
+                })
+                tokens.push(...result.tokens)
+                successfulChainIds.push(chainId)
+                pageCount += 1
+                anyCacheHit ||= result.cacheStatus === 'hit'
+            } catch {
+                failedChainIds.push(chainId)
+                chainErrors[String(chainId)] =
+                    'This Unchained network balance could not be refreshed.'
             }
-        },
-    )
+        }
+    })
     await Promise.all(workers)
     if (successfulChainIds.length === 0) {
         throw new ProviderError({
