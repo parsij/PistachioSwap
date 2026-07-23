@@ -9,6 +9,15 @@ import {
     resolveWalletUsdValue,
 } from '../services/walletTokens.js'
 
+const CORE_CURATED_REASONS = new Set([
+    'native-token',
+    'native-bnb',
+    'curated-official-contract',
+    'manual-allowlist',
+    'pancakeswap-curated-list',
+    'trustwallet-reviewed-asset',
+])
+
 /** Returns the canonical identity used to compare token records safely. */
 export function getTokenKey(token) {
     return getCanonicalTokenIdentity(token)
@@ -17,6 +26,18 @@ export function getTokenKey(token) {
 /** Normalizes an address for exact, case-insensitive search matching. */
 export function normalizeAddress(address) {
     return String(address ?? '').trim().toLowerCase()
+}
+
+/** Returns whether a token matches a name, symbol, or address query locally. */
+export function tokenMatchesSearch(token, query) {
+    const normalizedQuery = String(query ?? '').trim().toLowerCase()
+    if (!normalizedQuery) return true
+
+    return [
+        token?.name,
+        token?.symbol,
+        token?.address,
+    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery))
 }
 
 /** Formats a contract address for the selector metadata line. */
@@ -53,17 +74,38 @@ function compareCanonicalIdentity(left, right) {
     return String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))
 }
 
-/** Sorts wallet records by trusted USD value, balance, and deterministic identity. */
+function walletTrustTier(token) {
+    if (token?.isNative === true || token?.officialAsset === true) return 0
+    const reasons = Array.isArray(token?.recognitionReasons)
+        ? token.recognitionReasons
+        : Array.isArray(token?.verificationReasons)
+          ? token.verificationReasons
+          : []
+    if (reasons.some((reason) => CORE_CURATED_REASONS.has(reason))) return 0
+    if (token?.coinGeckoId || reasons.includes('coingecko-exact-contract')) return 1
+    return 2
+}
+
+/**
+ * Sorts wallet records by identity confidence, trusted USD value, balance, and
+ * deterministic identity. Curated/native assets cannot be displaced by an
+ * implausibly priced merely-recognized token.
+ */
 export function sortWalletTokens(tokens) {
     return tokens.toSorted((left, right) => {
+        const trustDifference = walletTrustTier(left) - walletTrustTier(right)
+        if (trustDifference !== 0) return trustDifference
+
         const leftValue = resolveWalletUsdValue(left)
         const rightValue = resolveWalletUsdValue(right)
         if (leftValue !== null && rightValue !== null) {
-            return compareDescendingDecimal(leftValue, rightValue) || compareCanonicalIdentity(left, right)
+            return compareDescendingDecimal(leftValue, rightValue) ||
+                compareCanonicalIdentity(left, right)
         }
         if (leftValue !== null) return -1
         if (rightValue !== null) return 1
-        return compareDescendingDecimal(left.balance, right.balance) || compareCanonicalIdentity(left, right)
+        return compareDescendingDecimal(left.balance, right.balance) ||
+            compareCanonicalIdentity(left, right)
     })
 }
 
