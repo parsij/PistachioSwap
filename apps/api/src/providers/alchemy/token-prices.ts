@@ -10,6 +10,8 @@ import { ProviderError } from '../../lib/errors.js'
 
 const PRICE_TTL_MS = 45_000
 const USD_PRICE_SCALE = 6
+export const ALCHEMY_TOKEN_PRICE_BATCH_SIZE = 25
+const ALCHEMY_TOKEN_PRICE_MAX_CONCURRENCY = 2
 const priceCache = new Map<string, { expiresAt: number; observedAt: number; value: string | null }>()
 const pendingPrices = new Map<string, Promise<Map<string, string>>>()
 const nativePriceCache = new Map<number, { expiresAt: number; value: string | null }>()
@@ -92,6 +94,215 @@ function readPrice(key: string) {
     return cached.value
 }
 
+function chunkAddresses(addresses: readonly string[]) {
+    const batches: string[][] = []
+    for (let index = 0; index < addresses.length; index += ALCHEMY_TOKEN_PRICE_BATCH_SIZE) {
+        batches.push(addresses.slice(index, index + ALCHEMY_TOKEN_PRICE_BATCH_SIZE))
+    }
+    return batches
+}
+
+function tokenPriceRequestKey({
+    chainId,
+    requireProviderSuccess,
+    addresses,
+}: {
+    chainId: number
+    requireProviderSuccess: boolean
+    addresses: readonly string[]
+}) {
+    return [
+        chainId,
+        requireProviderSuccess ? 'strict' : 'best-effort',
+        [...addresses].sort().join(','),
+    ].join(':')
+}
+
+function toTrustedPriceProviderUnavailable(error: unknown) {
+    const providerError = error instanceof ProviderError
+        ? error
+        : new ProviderError({
+              code: 'PROVIDER_UNAVAILABLE',
+              message: 'The trusted price provider request failed.',
+              retryable: true,
+              cause: error,
+          })
+    return new ProviderError({
+        code: 'TRUSTED_PRICE_PROVIDER_UNAVAILABLE',
+        message: 'The trusted token price provider is temporarily unavailable.',
+        statusCode: 503,
+        retryable: providerError.retryable,
+        outcome: providerError.outcome,
+        upstreamStatus: providerError.upstreamStatus,
+        retryAfterMs: providerError.retryAfterMs,
+        providers: [{
+            provider: 'alchemy',
+            outcome: providerError.outcome,
+            upstreamStatus: providerError.upstreamStatus,
+            code: providerError.code,
+            message: providerError.message,
+            retryable: providerError.retryable,
+        }],
+        cause: providerError,
+    })
+}
+
+function compactProviderError(error: unknown) {
+    if (error instanceof ProviderError) {
+        return {
+            code: error.code,
+            outcome: error.outcome,
+            upstreamStatus: error.upstreamStatus,
+            retryable: error.retryable,
+            message: error.message,
+        }
+    }
+    return {
+        code: 'UNKNOWN_PROVIDER_ERROR',
+        outcome: 'upstream',
+        upstreamStatus: null,
+        retryable: false,
+        message: error instanceof Error ? error.message : 'Provider request failed.',
+    }
+}
+
+function logTokenPriceBatchFailure({
+    chainId,
+    batchNumber,
+    batchCount,
+    batchSize,
+    error,
+    signal,
+}: {
+    chainId: number
+    batchNumber: number
+    batchCount: number
+    batchSize: number
+    error: unknown
+    signal?: AbortSignal
+}) {
+    if (signal?.aborted) return
+    const details = compactProviderError(error)
+    console.warn('[alchemy-token-prices-batch-failed]', {
+        chainId,
+        batch: `${batchNumber}-of-${batchCount}`,
+        batchSize,
+        ...details,
+    })
+}
+
+async function runWithBoundedConcurrency<T>(
+    items: readonly T[],
+    concurrency: number,
+    worker: (item: T, index: number) => Promise<void>,
+    signal?: AbortSignal,
+) {
+    let nextIndex = 0
+    let stopped = false
+    async function runWorker() {
+        while (!stopped && nextIndex < items.length) {
+            if (signal?.aborted) break
+            const index = nextIndex
+            nextIndex += 1
+            try {
+                await worker(items[index]!, index)
+            } catch (error) {
+                stopped = true
+                throw error
+            }
+        }
+    }
+
+    const workers = Array.from(
+        { length: Math.min(concurrency, items.length) },
+        () => runWorker(),
+    )
+    await Promise.all(workers)
+}
+
+async function fetchTokenPriceBatch({
+    apiKey,
+    chainId,
+    chainNetwork,
+    addresses,
+    signal,
+    requireProviderSuccess,
+    operation,
+}: {
+    apiKey: string
+    chainId: number
+    chainNetwork: string
+    addresses: readonly string[]
+    signal?: AbortSignal
+    requireProviderSuccess: boolean
+    operation: string
+}) {
+    const requestKey = tokenPriceRequestKey({
+        chainId,
+        requireProviderSuccess,
+        addresses,
+    })
+    const pending = pendingPrices.get(requestKey)
+    if (pending) return pending
+
+    const url = new URL(
+        `https://api.g.alchemy.com/prices/v1/${encodeURIComponent(apiKey)}/tokens/by-address`,
+    )
+    const request = (async () => {
+        const fetched = new Map<string, string>()
+        const payload = await fetchJson(url, {
+            method: 'POST',
+            body: {
+                addresses: addresses.map((address) => ({
+                    network: chainNetwork,
+                    address,
+                })),
+            },
+            signal,
+            timeoutMs: getApiConfig().requestTimeoutMs,
+            dedupeKey: `alchemy:prices:${requestKey}`,
+        })
+        logProviderResponse('alchemy', operation, payload)
+
+        if (!isRecord(payload) || !Array.isArray(payload.data)) {
+            return fetched
+        }
+
+        for (const item of payload.data) {
+            if (!isRecord(item) || !Array.isArray(item.prices)) continue
+            const address = normalizeAddress(item.address)
+            const usd = item.prices.find(
+                (price) =>
+                    isRecord(price) &&
+                    String(price.currency).toLowerCase() === 'usd',
+            )
+            const value = isRecord(usd) && typeof usd.value === 'string'
+                ? normalizeUsdPrice(usd.value)
+                : null
+
+            if (address && value !== null) {
+                fetched.set(address, value)
+            }
+        }
+
+        const now = Date.now()
+        for (const address of addresses) {
+            const value = fetched.get(address) ?? null
+            if (requireProviderSuccess && value === null) continue
+            setBoundedCacheEntry(priceCache, `${chainId}:${address}`, {
+                expiresAt: now + PRICE_TTL_MS,
+                observedAt: now,
+                value,
+            })
+        }
+
+        return fetched
+    })().finally(() => pendingPrices.delete(requestKey))
+
+    pendingPrices.set(requestKey, request)
+    return request
+}
+
 export async function getTokenPrices({
     chainId = 56,
     addresses,
@@ -125,102 +336,48 @@ export async function getTokenPrices({
 
     if (!chain.capabilities.alchemy || !chain.providers.alchemyNetwork ||
         !config.apiKey || missing.length === 0) return prices
+    const apiKey = config.apiKey
+    const alchemyNetwork = chain.providers.alchemyNetwork
 
-    const requestKey = `${chainId}:${requireProviderSuccess ? 'strict' : 'best-effort'}:${missing.sort().join(',')}`
-    const pending = pendingPrices.get(requestKey)
-    if (pending) {
-        const values = await pending
-        for (const [address, value] of values) prices.set(address, value)
-        return prices
-    }
+    const batches = chunkAddresses(missing)
+    const batchCount = batches.length
 
-    const url = new URL(
-        `https://api.g.alchemy.com/prices/v1/${encodeURIComponent(config.apiKey)}/tokens/by-address`,
-    )
-
-    const request = (async () => {
-        const fetched = new Map<string, string>()
-        try {
-            const payload = await fetchJson(url, {
-                method: 'POST',
-                body: {
-                    addresses: missing.map((address) => ({
-                        network: chain.providers.alchemyNetwork,
-                        address,
-                    })),
-                },
-                signal,
-                timeoutMs: getApiConfig().requestTimeoutMs,
-                dedupeKey: `alchemy:prices:${requestKey}`,
-            })
-            logProviderResponse('alchemy', `token-prices:${chainId}`, payload)
-
-            if (!isRecord(payload) || !Array.isArray(payload.data)) {
-                return fetched
-            }
-
-            for (const item of payload.data) {
-                if (!isRecord(item) || !Array.isArray(item.prices)) continue
-                const address = normalizeAddress(item.address)
-                const usd = item.prices.find(
-                    (price) =>
-                        isRecord(price) &&
-                        String(price.currency).toLowerCase() === 'usd',
-                )
-                const value = isRecord(usd) && typeof usd.value === 'string'
-                    ? normalizeUsdPrice(usd.value)
-                    : null
-
-                if (address && value !== null) {
-                    fetched.set(address, value)
+    await runWithBoundedConcurrency(
+        batches,
+        ALCHEMY_TOKEN_PRICE_MAX_CONCURRENCY,
+        async (batch, index) => {
+            if (signal?.aborted) return
+            const operation = `token-prices:${chainId}:batch-${index + 1}-of-${batchCount}`
+            try {
+                const values = await fetchTokenPriceBatch({
+                    apiKey,
+                    chainId,
+                    chainNetwork: alchemyNetwork,
+                    addresses: batch,
+                    signal,
+                    requireProviderSuccess,
+                    operation,
+                })
+                for (const [address, value] of values) {
+                    prices.set(address, value)
                 }
-            }
-        } catch (error) {
-            logProviderResponse('alchemy', `token-prices-error:${chainId}`, error)
-            if (requireProviderSuccess) {
-                const providerError = error instanceof ProviderError
-                    ? error
-                    : new ProviderError({
-                          code: 'PROVIDER_UNAVAILABLE',
-                          message: 'The trusted price provider request failed.',
-                          retryable: true,
-                          cause: error,
-                      })
-                throw new ProviderError({
-                    code: 'TRUSTED_PRICE_PROVIDER_UNAVAILABLE',
-                    message: 'The trusted token price provider is temporarily unavailable.',
-                    statusCode: 503,
-                    retryable: providerError.retryable,
-                    outcome: providerError.outcome,
-                    upstreamStatus: providerError.upstreamStatus,
-                    retryAfterMs: providerError.retryAfterMs,
-                    providers: [{
-                        provider: 'alchemy',
-                        outcome: providerError.outcome,
-                        upstreamStatus: providerError.upstreamStatus,
-                        code: providerError.code,
-                        message: providerError.message,
-                        retryable: providerError.retryable,
-                    }],
-                    cause: providerError,
+            } catch (error) {
+                logProviderResponse('alchemy', `${operation}:error`, compactProviderError(error))
+                if (requireProviderSuccess) {
+                    throw toTrustedPriceProviderUnavailable(error)
+                }
+                logTokenPriceBatchFailure({
+                    chainId,
+                    batchNumber: index + 1,
+                    batchCount,
+                    batchSize: batch.length,
+                    error,
+                    signal,
                 })
             }
-        }
-
-        for (const address of missing) {
-            const value = fetched.get(address) ?? null
-            if (requireProviderSuccess && value === null) continue
-            setBoundedCacheEntry(priceCache, `${chainId}:${address}`, {
-                expiresAt: Date.now() + PRICE_TTL_MS,
-                observedAt: Date.now(),
-                value,
-            })
-        }
-        return fetched
-    })().finally(() => pendingPrices.delete(requestKey))
-
-    pendingPrices.set(requestKey, request)
-    for (const [address, value] of await request) prices.set(address, value)
+        },
+        signal,
+    )
 
     return prices
 }
@@ -346,6 +503,15 @@ export function getNativeBnbPrice(signal?: AbortSignal, chainId = 56) {
 }
 
 export const tokenPriceInternals = {
+    ALCHEMY_TOKEN_PRICE_BATCH_SIZE,
+    chunkAddresses,
+    clearCacheForTest: () => {
+        priceCache.clear()
+        pendingPrices.clear()
+        nativePriceCache.clear()
+        pendingNativePrices.clear()
+    },
     normalizeUsdPrice,
     resolveNativePriceSources,
+    tokenPriceRequestKey,
 }
