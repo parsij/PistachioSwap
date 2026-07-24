@@ -21,14 +21,26 @@ import {
 } from '../token-discovery/token-catalog-overrides.js'
 
 const MAX_LIMIT = 250
-const MAX_CHAIN_LIMIT = 6_000
 const DEFAULT_CHAIN_LIMIT = 11
+const DEFAULT_PAGE_SIZE = 30
+const MAX_PAGE_SIZE = 100
+const MAX_SEARCH_RESULTS = 20
+
+const CURSOR_VERSION = 1
 
 type CatalogQuery = {
     chainId?: string
     search?: string
     limit?: string
     mode?: string
+    pageSize?: string
+    cursor?: string
+}
+
+type CatalogCursor = {
+    v: number
+    scope: string
+    offset: number
 }
 
 function parseChainId(value: string | undefined) {
@@ -46,10 +58,45 @@ function parseMode(value: string | undefined) {
     return null
 }
 
-function parseLimit(value: string | undefined, mode: 'featured' | 'all') {
+function parseLimit(value: string | undefined) {
     const parsed = Number(value)
     if (!Number.isSafeInteger(parsed) || parsed <= 0) return DEFAULT_CHAIN_LIMIT
-    return Math.min(parsed, mode === 'all' ? MAX_CHAIN_LIMIT : MAX_LIMIT)
+    return Math.min(parsed, MAX_LIMIT)
+}
+
+function parsePageSize(value: string | undefined) {
+    const parsed = Number(value)
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) return DEFAULT_PAGE_SIZE
+    return Math.min(parsed, MAX_PAGE_SIZE)
+}
+
+function encodeCursor(scope: number | 'all', offset: number) {
+    const payload: CatalogCursor = {
+        v: CURSOR_VERSION,
+        scope: String(scope),
+        offset,
+    }
+    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
+}
+
+function decodeCursor(value: string | undefined, scope: number | 'all') {
+    if (!value) return 0
+    try {
+        const decoded = JSON.parse(
+            Buffer.from(value, 'base64url').toString('utf8'),
+        ) as Partial<CatalogCursor>
+        if (
+            decoded.v !== CURSOR_VERSION ||
+            decoded.scope !== String(scope) ||
+            !Number.isSafeInteger(decoded.offset) ||
+            Number(decoded.offset) < 0
+        ) {
+            return null
+        }
+        return Number(decoded.offset)
+    } catch {
+        return null
+    }
 }
 
 function tokenSearchCategory(token: ShapeShiftCatalogToken, query: string) {
@@ -116,22 +163,27 @@ async function legacyFallbackCatalog(chainScope: number | 'all', limit: number, 
     const tokens = chainIds.flatMap((chainId) =>
         getFallbackTokensForChain(chainId).then((chainTokens) =>
             chainTokens.filter((token) => {
-            if (!search) return true
-            return [token.address, token.symbol, token.name].some((value) =>
-                String(value ?? '').toLowerCase().includes(search))
+                if (!search) return true
+                return [token.address, token.symbol, token.name].some((value) =>
+                    String(value ?? '').toLowerCase().includes(search))
             }),
         ),
     )
     const resolvedTokens = (await Promise.all(tokens)).flat()
+    const selected = resolvedTokens.slice(0, Math.min(limit, search ? MAX_SEARCH_RESULTS : limit))
     return {
         schemaVersion: 1,
         generatedAt: null,
-        tokens: resolvedTokens.slice(0, limit),
+        tokens: selected,
+        nextCursor: null,
+        hasMore: false,
         diagnostics: {
             source: 'legacy-fallback',
             generatedAt: null,
             stale: false,
-            count: resolvedTokens.slice(0, limit).length,
+            count: selected.length,
+            returned: selected.length,
+            totalForChain: resolvedTokens.length,
             fallbackLoaded: Boolean(fallback),
         },
     }
@@ -142,11 +194,15 @@ export async function getTokenCatalog({
     search = '',
     limit,
     mode,
+    pageSize,
+    cursor,
 }: {
     chainId?: string
     search?: string
     limit?: string
     mode?: string
+    pageSize?: string
+    cursor?: string
 }) {
     const chainScope = parseChainId(chainId)
     if (chainScope === null) {
@@ -157,7 +213,7 @@ export async function getTokenCatalog({
         return { statusCode: 400, body: { error: { code: 'INVALID_MODE' } } }
     }
     const normalizedSearch = search.trim().toLowerCase()
-    const requestedLimit = parseLimit(limit, catalogMode)
+    const requestedLimit = parseLimit(limit)
     const loaded = await loadShapeShiftAssetCatalog()
     if (!loaded.catalog) {
         return {
@@ -189,7 +245,13 @@ export async function getTokenCatalog({
     }
 
     let selected = ranked
-    if (!normalizedSearch && catalogMode === 'featured') {
+    let nextCursor: string | null = null
+    let hasMore = false
+    let effectivePageSize: number | null = null
+
+    if (normalizedSearch) {
+        selected = ranked.slice(0, Math.min(requestedLimit, MAX_SEARCH_RESULTS))
+    } else if (catalogMode === 'featured') {
         if (chainScope === 'all') {
             selected = ACTIVE_TOKEN_DISCOVERY_CHAINS.flatMap((chain) =>
                 featuredTokensForChain(ranked, chain.chainId),
@@ -199,8 +261,17 @@ export async function getTokenCatalog({
                 .slice(0, Math.min(requestedLimit, DEFAULT_CHAIN_LIMIT))
         }
     } else {
-        selected = ranked.slice(0, requestedLimit)
+        const offset = decodeCursor(cursor, chainScope)
+        if (offset === null) {
+            return { statusCode: 400, body: { error: { code: 'INVALID_CURSOR' } } }
+        }
+        effectivePageSize = parsePageSize(pageSize ?? limit)
+        selected = ranked.slice(offset, offset + effectivePageSize)
+        const nextOffset = offset + selected.length
+        hasMore = nextOffset < ranked.length
+        nextCursor = hasMore ? encodeCursor(chainScope, nextOffset) : null
     }
+
     const tokens = selected.map(({ token, index }) => publicToken(token, index))
     return {
         statusCode: 200,
@@ -209,11 +280,16 @@ export async function getTokenCatalog({
             generatedAt: loaded.catalog.generatedAt,
             source: loaded.catalog.source,
             tokens,
+            nextCursor,
+            hasMore,
             diagnostics: {
                 source: 'shapeshift-local',
                 generatedAt: loaded.catalog.generatedAt,
                 stale: false,
                 count: tokens.length,
+                returned: tokens.length,
+                totalForChain: ranked.length,
+                pageSize: effectivePageSize,
                 mode: catalogMode,
                 featuredCounts: getFeaturedTokenCountsByChain(),
             },
