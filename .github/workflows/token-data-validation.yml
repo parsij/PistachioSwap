@@ -14,6 +14,7 @@ on:
       - 'apps/api/test/token-catalog-ranking.test.ts'
       - 'apps/api/test/unchained-wallet-tokens.test.ts'
       - 'src/features/tokens/components/TokenIcon.jsx'
+      - 'src/features/tokens/components/TokenIcon.test.jsx'
       - 'src/features/tokens/components/TokenIconLoading.css'
       - 'src/features/tokens/components/TokenSelector.jsx'
       - 'src/features/tokens/components/TokenSelector.test.jsx'
@@ -59,6 +60,7 @@ jobs:
         run: >-
           pnpm exec vitest run
           src/features/tokens/hooks/useTokenCatalog.test.jsx
+          src/features/tokens/components/TokenIcon.test.jsx
           src/features/tokens/components/TokenSelector.test.jsx
           --reporter=verbose
 
@@ -68,6 +70,7 @@ jobs:
           src/features/tokens/hooks/useTokenCatalog.js
           src/features/tokens/hooks/useTokenCatalogController.js
           src/features/tokens/components/TokenIcon.jsx
+          src/features/tokens/components/TokenIcon.test.jsx
           src/features/tokens/components/TokenSelector.jsx
           src/features/tokens/services/walletTokens.js
 
