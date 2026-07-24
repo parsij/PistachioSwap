@@ -55,7 +55,7 @@ describe('TokenIcon', () => {
         expect(image).not.toBeNull()
 
         await waitFor(() => {
-            expect(image).toHaveClass('ps-token-main-logo-loaded')
+            expect(image.classList.contains('ps-token-main-logo-loaded')).toBe(true)
         })
         expect(container.querySelector('.ps-token-logo-skeleton')).toBeNull()
     })
