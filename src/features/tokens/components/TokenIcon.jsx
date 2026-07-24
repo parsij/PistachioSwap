@@ -1,4 +1,5 @@
 import {
+    useEffect,
     useMemo,
     useState,
 } from 'react'
@@ -20,8 +21,8 @@ import {
 } from '../../../web3/curatedEvmChains.js'
 
 function NetworkFallbackIcon({
-                                 token,
-                             }) {
+                                  token,
+                              }) {
     const label = String(
         token?.chainSymbol ??
         token?.networkSymbol ??
@@ -54,25 +55,45 @@ function TokenLogoImage({
             return firstUsable >= 0 ? firstUsable : candidates.length
         })
     const candidate = candidates[candidateIndex] ?? null
+    const [loaded, setLoaded] = useState(false)
+
+    useEffect(() => {
+        setLoaded(false)
+    }, [candidate])
 
     return candidate ? (
-        <img
-            src={candidate}
-            alt=""
-            className="ps-token-main-logo"
-            draggable="false"
-            onLoad={() => markTokenLogoSuccessful(canonicalIdentity, candidate)}
-            onError={() => {
-                markTokenLogoFailed(canonicalIdentity, candidate)
-                const failedUrls = getFailedTokenLogoUrls(canonicalIdentity)
-                setCandidateIndex((current) => {
-                    const next = candidates.findIndex(
-                        (url, index) => index > current && !failedUrls.has(url),
-                    )
-                    return next >= 0 ? next : candidates.length
-                })
-            }}
-        />
+        <span className="ps-token-logo-frame">
+            {!loaded && (
+                <span
+                    aria-hidden="true"
+                    className="ps-token-logo-skeleton ps-skeleton"
+                />
+            )}
+            <img
+                src={candidate}
+                alt=""
+                className={[
+                    'ps-token-main-logo',
+                    loaded ? 'ps-token-main-logo-loaded' : 'ps-token-main-logo-loading',
+                ].join(' ')}
+                draggable="false"
+                onLoad={() => {
+                    setLoaded(true)
+                    markTokenLogoSuccessful(canonicalIdentity, candidate)
+                }}
+                onError={() => {
+                    setLoaded(false)
+                    markTokenLogoFailed(canonicalIdentity, candidate)
+                    const failedUrls = getFailedTokenLogoUrls(canonicalIdentity)
+                    setCandidateIndex((current) => {
+                        const next = candidates.findIndex(
+                            (url, index) => index > current && !failedUrls.has(url),
+                        )
+                        return next >= 0 ? next : candidates.length
+                    })
+                }}
+            />
+        </span>
     ) : (
         <span className="ps-token-logo-fallback">
           {fallbackLetter}
