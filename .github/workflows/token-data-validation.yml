@@ -5,12 +5,22 @@ on:
     paths:
       - '.github/workflows/token-data-validation.yml'
       - 'apps/api/src/app.ts'
+      - 'apps/api/src/modules/token-catalog.ts'
       - 'apps/api/src/modules/uniswap-volume-tokens.ts'
       - 'apps/api/src/modules/wallet-tokens.ts'
+      - 'apps/api/src/token-discovery/**'
       - 'apps/api/src/providers/unchained/**'
+      - 'apps/api/test/shapeshift-asset-catalog.test.ts'
+      - 'apps/api/test/token-catalog-ranking.test.ts'
       - 'apps/api/test/unchained-wallet-tokens.test.ts'
+      - 'src/features/tokens/components/TokenIcon.jsx'
+      - 'src/features/tokens/components/TokenIconLoading.css'
+      - 'src/features/tokens/components/TokenSelector.jsx'
+      - 'src/features/tokens/components/TokenSelector.test.jsx'
+      - 'src/features/tokens/hooks/useTokenCatalog.js'
+      - 'src/features/tokens/hooks/useTokenCatalog.test.jsx'
       - 'src/features/tokens/hooks/useTokenCatalogController.js'
-      - 'src/features/tokens/hooks/useUniswapVolumeTokens.js'
+      - 'src/features/tokens/services/walletTokens.js'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +29,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -37,14 +47,29 @@ jobs:
       - name: Typecheck API
         run: pnpm --filter @pistachio/api typecheck
 
-      - name: Test Unchained wallet classification
+      - name: Test backend token data
         run: >-
           pnpm --filter @pistachio/api exec vitest run
           test/unchained-wallet-tokens.test.ts
+          test/shapeshift-asset-catalog.test.ts
+          test/token-catalog-ranking.test.ts
           --reporter=verbose
 
-      - name: Lint changed frontend token hooks
+      - name: Test frontend token catalog
+        run: >-
+          pnpm exec vitest run
+          src/features/tokens/hooks/useTokenCatalog.test.jsx
+          src/features/tokens/components/TokenSelector.test.jsx
+          --reporter=verbose
+
+      - name: Lint changed token files
         run: >-
           pnpm exec oxlint
+          src/features/tokens/hooks/useTokenCatalog.js
           src/features/tokens/hooks/useTokenCatalogController.js
-          src/features/tokens/hooks/useUniswapVolumeTokens.js
+          src/features/tokens/components/TokenIcon.jsx
+          src/features/tokens/components/TokenSelector.jsx
+          src/features/tokens/services/walletTokens.js
+
+      - name: Build frontend
+        run: pnpm build
