@@ -145,7 +145,7 @@ export function useTokenSelectorState({
             ...sortedGlobalMarketTokens,
         ])
     }, [exactAddressSearch, matchingCommonMarketTokens, matchingPrimaryWalletTokens, normalizedSearch, primaryWalletTokens, safeMarketTokens, sortedGlobalMarketTokens])
-    const marketStatusMessage = sortedGlobalMarketTokens.length > 0 ? catalogNotice === 'Popular tokens are temporarily unavailable.' ? 'Some market data could not be refreshed.' : catalogNotice ?? (error ? 'Some market data could not be refreshed.' : null) : !loading ? '24H volume rankings are temporarily unavailable.' : null
+    const marketStatusMessage = sortedGlobalMarketTokens.length > 0 ? catalogNotice === 'Popular tokens are temporarily unavailable.' ? 'Some token data could not be refreshed.' : catalogNotice ?? (error ? 'Some token data could not be refreshed.' : null) : !loading ? 'Token catalog is temporarily unavailable.' : null
     const lastCatalogDiagnostic = useRef(null)
 
     useEffect(() => {

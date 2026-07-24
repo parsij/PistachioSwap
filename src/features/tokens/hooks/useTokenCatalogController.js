@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { zeroAddress } from 'viem'
 import { useMarketTokens } from './useMarketTokens.js'
+import { useTokenCatalog } from './useTokenCatalog.js'
 import { useWalletTokens } from './useWalletTokens.js'
 import { useNativeBalance } from './useNativeBalance.js'
 import { mergeWalletBalances, WALLET_TOKEN_CLASSIFICATION_VERSION } from '../../tokens/services/walletTokens.js'
+import { getCanonicalTokenIdentity } from '../services/marketTokens.js'
 import { isNativeEvmToken } from '../../../services/balances.js'
 import { getCuratedEvmChain, getCuratedEvmChainLogoUri } from '../../../web3/curatedEvmChains.js'
 import { getTokenIdentity, normalizeMarketToken } from '../model/tokenNormalization.js'
@@ -40,6 +42,12 @@ function mergeSearchCatalogTokens(localTokens, remoteTokens, fallbackChainId) {
     return [...merged.values()]
 }
 
+function normalizeValidTokens(tokens, fallbackChainId, fallbackChainLogo) {
+    return tokens
+        .map((token) => normalizeMarketToken(token, fallbackChainId, fallbackChainLogo))
+        .filter((token) => getCanonicalTokenIdentity(token) !== null)
+}
+
 /**
  * Owns token catalog/wallet balance loading and token-selector search/chain state.
  *
@@ -55,6 +63,8 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     const discoveryChainId = tokenSelectorSide ? selectorChainId : swapChainId
     const walletAddress = walletState.address
     const normalizedTokenSearch = tokenSearch.trim().toLowerCase()
+    const useShapeShiftTokenCatalog =
+        import.meta.env.VITE_USE_UNISWAP_VOLUME_TOKENS !== 'false'
 
     const preloadedMarketCatalog = useMarketTokens({ chainId: 'all' })
     const preloadedHasSelectedRankedTokens = discoveryChainId === 'all' ||
@@ -65,6 +75,11 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         chainId: discoveryChainId,
         search: tokenSearch,
         enabled: shouldFetchSelectedCatalog,
+    })
+    const tokenCatalog = useTokenCatalog({
+        chainId: discoveryChainId,
+        search: tokenSearch,
+        enabled: useShapeShiftTokenCatalog && discoveryChainId !== 'all',
     })
     const filteredPreloadedMarketCatalog = useMemo(() => ({
         ...preloadedMarketCatalog,
@@ -111,6 +126,33 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
                     : filteredPreloadedMarketCatalog.notice),
         }
     }, [discoveryChainId, filteredPreloadedMarketCatalog, normalizedTokenSearch, selectedMarketCatalog, shouldFetchSelectedCatalog])
+    const preferredMarketCatalog = useMemo(() => {
+        if (!useShapeShiftTokenCatalog || tokenCatalog.tokens.length === 0) {
+            return activeMarketCatalog
+        }
+        const tokens = mergeSearchCatalogTokens(
+            tokenCatalog.tokens,
+            activeMarketCatalog.tokens ?? [],
+            discoveryChainId,
+        )
+        return {
+            ...activeMarketCatalog,
+            tokens,
+            loading: tokens.length === 0 &&
+                activeMarketCatalog.loading &&
+                tokenCatalog.loading,
+            error: tokens.length > 0
+                ? null
+                : activeMarketCatalog.error ?? tokenCatalog.error,
+            partial: activeMarketCatalog.partial === true ||
+                tokenCatalog.partial === true,
+            stale: activeMarketCatalog.stale === true ||
+                tokenCatalog.stale === true,
+            schemaVersion: tokenCatalog.schemaVersion ??
+                activeMarketCatalog.schemaVersion,
+            notice: activeMarketCatalog.notice,
+        }
+    }, [activeMarketCatalog, discoveryChainId, tokenCatalog, useShapeShiftTokenCatalog])
     const {
         tokens: marketTokens,
         commonTokens: commonMarketTokens = [],
@@ -121,7 +163,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         partial: marketTokensPartial,
         stale: marketTokensStale,
         schemaVersion: marketTokensSchemaVersion,
-    } = activeMarketCatalog
+    } = preferredMarketCatalog
 
     const activeChain = getCuratedEvmChain(swapChainId)
     const fallbackChainLogo = Number(tokensConfig.initialSellToken?.chainId) === discoveryChainId
@@ -140,12 +182,11 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         refetch: refetchWalletTokens,
     } = useWalletTokens({ chainId: 'all', walletAddress, enabled: walletState.isConnected })
 
-    const normalizedWalletTokens = useMemo(() => walletTokenResponse.map((token) =>
-        normalizeMarketToken(token, discoveryChainId, fallbackChainLogo)), [
+    const normalizedWalletTokens = useMemo(() => normalizeValidTokens(
+        walletTokenResponse,
         discoveryChainId,
         fallbackChainLogo,
-        walletTokenResponse,
-    ])
+    ), [discoveryChainId, fallbackChainLogo, walletTokenResponse])
     const walletTokens = useMemo(() => {
         if (nativeBalance.value === null) return normalizedWalletTokens
         const nativeBalanceText = nativeBalance.formatted
@@ -200,7 +241,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
                 rawBalance: nativeBalance.value.toString(),
             }, swapChainId, getCuratedEvmChainLogoUri(swapChainId)))
         }
-        return updated
+        return updated.filter((token) => getCanonicalTokenIdentity(token) !== null)
     }, [activeChain, nativeBalance.formatted, nativeBalance.value, normalizedWalletTokens, swapChainId, tokensConfig.initialSellToken])
 
     useEffect(() => {
@@ -218,12 +259,21 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         })
     }, [walletTokenResponse])
 
-    const catalogTokens = useMemo(() => marketTokens.map((token) =>
-        normalizeMarketToken(token, discoveryChainId, fallbackChainLogo)), [discoveryChainId, fallbackChainLogo, marketTokens])
-    const catalogCommonTokens = useMemo(() => commonMarketTokens.map((token) =>
-        normalizeMarketToken(token, discoveryChainId, fallbackChainLogo)), [commonMarketTokens, discoveryChainId, fallbackChainLogo])
-    const catalogFallbackTokens = useMemo(() => fallbackMarketTokens.map((token) =>
-        normalizeMarketToken(token, discoveryChainId, fallbackChainLogo)), [fallbackMarketTokens, discoveryChainId, fallbackChainLogo])
+    const catalogTokens = useMemo(() => normalizeValidTokens(
+        marketTokens,
+        discoveryChainId,
+        fallbackChainLogo,
+    ), [discoveryChainId, fallbackChainLogo, marketTokens])
+    const catalogCommonTokens = useMemo(() => normalizeValidTokens(
+        commonMarketTokens,
+        discoveryChainId,
+        fallbackChainLogo,
+    ), [commonMarketTokens, discoveryChainId, fallbackChainLogo])
+    const catalogFallbackTokens = useMemo(() => normalizeValidTokens(
+        fallbackMarketTokens,
+        discoveryChainId,
+        fallbackChainLogo,
+    ), [fallbackMarketTokens, discoveryChainId, fallbackChainLogo])
     const availableTokens = useMemo(() => {
         const merged = mergeWalletBalances(catalogTokens, walletTokens)
         if (!normalizedTokenSearch) return merged
@@ -278,6 +328,10 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
             diagnostics: {
                 scope: discoveryChainId,
                 apiRankedCount: marketTokens.length,
+                tokenCatalogCount: tokenCatalog.tokens.length,
+                tokenCatalogLoadedCount: tokenCatalog.loadedCount,
+                tokenCatalogTotalCount: tokenCatalog.totalCount,
+                tokenCatalogHasMore: tokenCatalog.hasMore,
                 apiCommonCount: commonMarketTokens.length,
                 apiFallbackCount: fallbackMarketTokens.length,
                 partial: marketTokensPartial === true,

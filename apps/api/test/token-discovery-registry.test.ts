@@ -7,7 +7,9 @@ import { createMarketTokenRoutes, type MarketToken } from '../src/modules/market
 import { createTokenDetailsRoutes } from '../src/modules/token-details.js'
 import {
     ACTIVE_TOKEN_DISCOVERY_CHAINS,
+    ACTIVE_TOKEN_DISCOVERY_WALLET_CAPABILITIES,
     TOKEN_DISCOVERY_CHAINS,
+    UNCHAINED_EVM_COINSTACKS_BY_CHAIN_ID,
     getTokenDiscoveryChain,
 } from '../src/token-discovery/registry.js'
 
@@ -50,6 +52,26 @@ describe('token-discovery registry', () => {
             .map((chain) => chain.chainId)).toEqual([1101])
         expect(Object.isFrozen(TOKEN_DISCOVERY_CHAINS)).toBe(true)
         expect(Object.isFrozen(getTokenDiscoveryChain(56))).toBe(true)
+    })
+
+    it('derives wallet discovery capabilities from active chains', () => {
+        expect(ACTIVE_TOKEN_DISCOVERY_WALLET_CAPABILITIES.map((chain) => chain.chainId))
+            .toEqual(ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => chain.chainId))
+        expect(Object.keys(UNCHAINED_EVM_COINSTACKS_BY_CHAIN_ID).map(Number).sort((a, b) => a - b))
+            .toEqual([1, 10, 56, 100, 137, 8453, 42161, 43114])
+        expect(ACTIVE_TOKEN_DISCOVERY_WALLET_CAPABILITIES
+            .filter((chain) => chain.unchainedSupported)
+            .map((chain) => chain.unchainedCoinstack))
+            .toEqual([
+                'ethereum',
+                'bnbsmartchain',
+                'polygon',
+                'arbitrum',
+                'optimism',
+                'base',
+                'avalanche',
+                'gnosis',
+            ])
     })
 
     it('locks distinct provider mappings and native metadata', () => {

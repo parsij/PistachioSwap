@@ -1,0 +1,317 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-24T05:42:56.430Z",
+  "source": "uniswap-volume-token-catalog",
+  "configuredChainIds": [
+    56
+  ],
+  "successfulChainIds": [
+    56
+  ],
+  "failedChainIds": [],
+  "stale": false,
+  "partial": false,
+  "tokens": [
+    {
+      "chainId": 56,
+      "address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+      "name": "Wrapped BNB",
+      "symbol": "WBNB",
+      "decimals": 18,
+      "logoURI": "https://raw.githubusercontent.com/Uniswap/assets/master/blockchains/smartchain/assets/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c/logo.png",
+      "priceUSD": "567.2385540815197730051255047188686",
+      "volume24hUsd": 16430970.069630923,
+      "liquidityUsd": 20359110.032343425,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x55d398326f99059ff775485246999027b3197955",
+      "name": "Tether USD",
+      "symbol": "USDT",
+      "decimals": 18,
+      "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png",
+      "priceUSD": "1",
+      "volume24hUsd": 10703857.113573214,
+      "liquidityUsd": 39621953.30821011,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x2170ed0880ac9a755fd29b2688956bd959f933f8",
+      "name": "Wrapped Ether",
+      "symbol": "WETH",
+      "decimals": 18,
+      "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png",
+      "priceUSD": "1879.311041410948789102999677232141",
+      "volume24hUsd": 2419844.909820384,
+      "liquidityUsd": 4301890.301631028,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "name": "USDCoin",
+      "symbol": "USDC",
+      "decimals": 18,
+      "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
+      "priceUSD": "1",
+      "volume24hUsd": 78970.07822710188,
+      "liquidityUsd": 1804093.9084458812,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x000ae314e2a2172a039b26378814c252734f556a",
+      "name": "Aster",
+      "symbol": "ASTER",
+      "decimals": 18,
+      "logoURI": "https://coin-images.coingecko.com/coins/images/69040/large/_ASTER.png?1757326782",
+      "priceUSD": "0.6253840058853410868230254011047411",
+      "volume24hUsd": 56276.63343706825,
+      "liquidityUsd": 1191838.4960015803,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xf8a0bf9cf54bb92f17374d9e9a321e6a111a51bd",
+      "name": "ChainLink Token",
+      "symbol": "LINK",
+      "decimals": 18,
+      "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0x514910771AF9Ca656af840dff83E8264EcF986CA/logo.png",
+      "priceUSD": "0",
+      "volume24hUsd": 46834.85789364327,
+      "liquidityUsd": 250412.459734864,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xf486ad071f3bee968384d2e39e2d8af0fcf6fd46",
+      "name": "Velo",
+      "symbol": "VELO",
+      "decimals": 18,
+      "logoURI": "https://coin-images.coingecko.com/coins/images/12538/large/Logo_200x_200.png?1696512350",
+      "priceUSD": "0.004107369512179303879560535260497516",
+      "volume24hUsd": 19818.34314592772,
+      "liquidityUsd": 213231.5229091507,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xfb6115445bff7b52feb98650c87f44907e58f802",
+      "name": "Aave",
+      "symbol": "AAVE",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/12645/thumb/AAVE.png?1601374110",
+      "priceUSD": "96.25668022190388763885172003950633",
+      "volume24hUsd": 14273.272557146567,
+      "liquidityUsd": 131597.84374025423,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xbf5140a22578168fd562dccf235e5d43a02ce9b1",
+      "name": "Uniswap",
+      "symbol": "UNI",
+      "decimals": 18,
+      "logoURI": "ipfs://QmXttGpZrECX5qCyXbBQiqgQNytVGeZW5Anewvh2jc4psg",
+      "priceUSD": "0",
+      "volume24hUsd": 11438.17278674455,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x031b41e504677879370e9dbcf937283a8691fa7f",
+      "name": "Fetch ai",
+      "symbol": "FET",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/5681/thumb/Fetch.jpg?1572098136",
+      "priceUSD": "0.1527200285527004073419021524617511",
+      "volume24hUsd": 10357.826071012167,
+      "liquidityUsd": 150061.9645256801,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xfa54ff1a158b5189ebba6ae130ced6bbd3aea76e",
+      "name": "SOL Wormhole",
+      "symbol": "SOL",
+      "decimals": 9,
+      "logoURI": "https://assets.coingecko.com/coins/images/22876/thumb/SOL_wh_small.png?1644224316",
+      "priceUSD": "0",
+      "volume24hUsd": 6597.489878493124,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x111111111117dc0aa78b770fa6a738034120c302",
+      "name": "1inch",
+      "symbol": "1INCH",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/13469/thumb/1inch-token.png?1608803028",
+      "priceUSD": "0",
+      "volume24hUsd": 5742.01961449302,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xe9e7cea3dedca5984780bafc599bd69add087d56",
+      "name": "Binance USD",
+      "symbol": "BUSD",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/9576/thumb/BUSD.png?1568947766",
+      "priceUSD": "0",
+      "volume24hUsd": 954.607089031328,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xa2b726b1145a4773f68593cf171187d8ebe4d495",
+      "name": "Injective",
+      "symbol": "INJ",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/12882/thumb/Secondary_Symbol.png?1628233237",
+      "priceUSD": "0",
+      "volume24hUsd": 885.2397471862282,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x21caef8a43163eea865baee23b9c2e327696a3bf",
+      "name": "Tether Gold",
+      "symbol": "XAUt0",
+      "decimals": 6,
+      "logoURI": "https://coin-images.coingecko.com/coins/images/66560/large/XAUt0_Token_Icon_Gold.png?1749747942",
+      "priceUSD": "0",
+      "volume24hUsd": 405.66063396811006,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3",
+      "name": "Dai Stablecoin",
+      "symbol": "DAI",
+      "decimals": 18,
+      "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0x6B175474E89094C44Da98b954EedeAC495271d0F/logo.png",
+      "priceUSD": "0",
+      "volume24hUsd": 2.042143603957107,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x715d400f88c167884bbcc41c5fea407ed4d2f8a0",
+      "name": "Axie Infinity",
+      "symbol": "AXS",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/13029/thumb/axie_infinity_logo.png?1604471082",
+      "priceUSD": "0",
+      "volume24hUsd": 0.6308106947447782,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0x5f4bde007dc06b867f86ebfe4802e34a1ffeed63",
+      "name": "Highstreet",
+      "symbol": "HIGH",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/18973/thumb/logosq200200Coingecko.png?1634090470",
+      "priceUSD": "0",
+      "volume24hUsd": 0.05586128344777538,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    },
+    {
+      "chainId": 56,
+      "address": "0xad29abb318791d579433d831ed122afeaf29dcfe",
+      "name": "Fantom",
+      "symbol": "FTM",
+      "decimals": 18,
+      "logoURI": "https://assets.coingecko.com/coins/images/4001/thumb/Fantom.png?1558015016",
+      "priceUSD": "0",
+      "volume24hUsd": 0.0048304718802116035,
+      "liquidityUsd": 0,
+      "source": "uniswap-v3",
+      "protocols": [
+        "v3"
+      ]
+    }
+  ],
+  "diagnostics": {
+    "tokenListUrl": "https://tokens.uniswap.org",
+    "registryVersion": "2026-07-24",
+    "sources": [
+      {
+        "chainId": 56,
+        "protocol": "v3",
+        "subgraphId": "F85MNzUGYqgSHSHRGgeVMNsdnW1KtZSVgFULumXRZTw2",
+        "status": "success",
+        "tokenRows": 19,
+        "error": null
+      }
+    ],
+    "missingApiKey": false,
+    "persisted": false
+  }
+}

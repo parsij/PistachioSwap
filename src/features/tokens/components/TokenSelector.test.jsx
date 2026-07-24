@@ -216,7 +216,7 @@ describe('TokenSelector wallet rows', () => {
         const walletSection = screen.getByText('Your tokens').closest('section')
         expect(within(walletSection).getByText('BNB', { selector: 'strong' }))
             .toBeTruthy()
-        expect(screen.getByText('24H volume rankings are temporarily unavailable.'))
+        expect(screen.getByText('Token catalog is temporarily unavailable.'))
             .toBeTruthy()
     })
 
@@ -254,7 +254,7 @@ describe('TokenSelector wallet rows', () => {
         for (const symbol of common.map((token) => token.symbol)) {
             expect(screen.getByText(symbol, { selector: 'strong' })).toBeTruthy()
         }
-        expect(screen.getByText('24H volume rankings are temporarily unavailable.'))
+        expect(screen.getByText('Token catalog is temporarily unavailable.'))
             .toBeTruthy()
         expect(screen.getByRole('textbox')).toBeTruthy()
     })
@@ -473,8 +473,8 @@ describe('TokenSelector wallet rows', () => {
             name: 'All Chains',
         }).textContent).toContain('∞')
         expect(listbox.querySelectorAll('.ps-chain-icon img')).toHaveLength(25)
-        expect(screen.getByText(/Polygon zkEVM is temporarily unavailable/))
-            .toBeTruthy()
+        expect(screen.queryByText(/Polygon zkEVM is temporarily unavailable/))
+            .toBeNull()
 
         fireEvent.click(within(listbox).getByRole('option', {
             name: 'Ethereum',
@@ -595,7 +595,7 @@ describe('TokenSelector wallet rows', () => {
         })
 
         expect(screen.getByText('Available partial token')).toBeTruthy()
-        expect(screen.getByText('Some market data could not be refreshed.')).toBeTruthy()
+        expect(screen.getByText('Some token data could not be refreshed.')).toBeTruthy()
         expect(screen.queryByText('Popular tokens are temporarily unavailable.')).toBeNull()
     })
 
@@ -685,7 +685,9 @@ describe('TokenSelector wallet rows', () => {
         })
 
         const walletSection = screen.getByText('Your tokens').closest('section')
-        const marketSection = screen.getByText('Tokens by 24H volume').closest('section')
+        const marketSection = screen.getAllByText('Tokens')
+            .map((node) => node.closest('section'))
+            .find((section) => within(section).queryByText('Higher Ethereum'))
         expect(walletSection.compareDocumentPosition(marketSection) & Node.DOCUMENT_POSITION_FOLLOWING)
             .toBeTruthy()
         expect([...marketSection.querySelectorAll('.ps-token-row strong')].map((node) => node.textContent))

@@ -1,5 +1,7 @@
 import {
+    useEffect,
     useMemo,
+    useRef,
     useState,
 } from 'react'
 
@@ -18,10 +20,11 @@ import {
     getCuratedEvmChain,
     getCuratedEvmChainLogoUri,
 } from '../../../web3/curatedEvmChains.js'
+import './TokenIconLoading.css'
 
 function NetworkFallbackIcon({
-                                 token,
-                             }) {
+                                  token,
+                              }) {
     const label = String(
         token?.chainSymbol ??
         token?.networkSymbol ??
@@ -54,25 +57,79 @@ function TokenLogoImage({
             return firstUsable >= 0 ? firstUsable : candidates.length
         })
     const candidate = candidates[candidateIndex] ?? null
+    const [loadedCandidate, setLoadedCandidate] = useState(null)
+    const imageRef = useRef(null)
+    const loaded = candidate !== null && loadedCandidate === candidate
+
+    /*
+     * Cached images can finish before React's synthetic onLoad callback runs.
+     * Do not reset a boolean from a passive effect, because that can race after
+     * onLoad and leave a fully decoded image permanently transparent.
+     */
+    useEffect(() => {
+        const image = imageRef.current
+        if (!candidate || !image) return undefined
+
+        let cancelled = false
+        const revealDecodedImage = () => {
+            if (
+                cancelled ||
+                !image.complete ||
+                image.naturalWidth <= 0
+            ) {
+                return
+            }
+            setLoadedCandidate(candidate)
+            markTokenLogoSuccessful(canonicalIdentity, candidate)
+        }
+
+        revealDecodedImage()
+        const timeout = globalThis.setTimeout(revealDecodedImage, 0)
+        image.decode?.().then(revealDecodedImage).catch(() => {
+            // onError handles broken candidates; decode can reject transiently.
+        })
+
+        return () => {
+            cancelled = true
+            globalThis.clearTimeout(timeout)
+        }
+    }, [candidate, canonicalIdentity])
 
     return candidate ? (
-        <img
-            src={candidate}
-            alt=""
-            className="ps-token-main-logo"
-            draggable="false"
-            onLoad={() => markTokenLogoSuccessful(canonicalIdentity, candidate)}
-            onError={() => {
-                markTokenLogoFailed(canonicalIdentity, candidate)
-                const failedUrls = getFailedTokenLogoUrls(canonicalIdentity)
-                setCandidateIndex((current) => {
-                    const next = candidates.findIndex(
-                        (url, index) => index > current && !failedUrls.has(url),
-                    )
-                    return next >= 0 ? next : candidates.length
-                })
-            }}
-        />
+        <span className="ps-token-logo-frame">
+            {!loaded && (
+                <span
+                    aria-hidden="true"
+                    className="ps-token-logo-skeleton"
+                />
+            )}
+            <img
+                ref={imageRef}
+                src={candidate}
+                alt=""
+                className={[
+                    'ps-token-main-logo',
+                    loaded ? 'ps-token-main-logo-loaded' : 'ps-token-main-logo-loading',
+                ].join(' ')}
+                draggable="false"
+                onLoad={(event) => {
+                    if (event.currentTarget.naturalWidth <= 0) return
+                    setLoadedCandidate(candidate)
+                    markTokenLogoSuccessful(canonicalIdentity, candidate)
+                }}
+                onError={() => {
+                    setLoadedCandidate(null)
+                    markTokenLogoFailed(canonicalIdentity, candidate)
+                    const failedUrls = getFailedTokenLogoUrls(canonicalIdentity)
+                    setCandidateIndex((current) => {
+                        const next = candidates.findIndex(
+                            (url, index) => index > current && !failedUrls.has(url),
+                        )
+                        return next >= 0 ? next : candidates.length
+                    })
+                }}
+            />
+        </span>
     ) : (
         <span className="ps-token-logo-fallback">
           {fallbackLetter}
@@ -161,7 +218,7 @@ export default function TokenIcon({
             ].join(' ')}
         >
       <TokenLogoImage
-          key={tokenLogoKey}
+          key={`${canonicalIdentity}|${tokenLogoKey}`}
           candidates={tokenLogos}
           fallbackLetter={fallbackLetter}
           canonicalIdentity={canonicalIdentity}

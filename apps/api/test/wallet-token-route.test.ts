@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../src/providers/alchemy/wallet-tokens.js', () => ({
     getWalletTokens: mocks.getWalletTokens,
-    WALLET_TOKEN_CLASSIFICATION_VERSION: 5,
+    WALLET_TOKEN_CLASSIFICATION_VERSION: 6,
 }))
 
 vi.mock('../src/providers/alchemy/portfolio-wallet-tokens.js', () => ({
@@ -120,14 +120,18 @@ describe('wallet-token route', () => {
             stale: false,
             partial: false,
         })
-        expect(response.json().unsupportedChainIds)
-            .toEqual(expect.arrayContaining([25, 1284, 34443, 167000]))
+        expect(response.json().unsupportedChainIds).toEqual([])
         expect(response.json().queriedChainIds).toEqual(expect.arrayContaining([
             1,
             56,
+            25,
+            1284,
+            34443,
+            167000,
         ]))
-        expect(response.json().queriedChainIds).not.toContain(25)
         expect(response.json().failedChainIds).toEqual([])
+        expect(response.json().diagnostics.attemptedProviders)
+            .toEqual(expect.arrayContaining(['alchemy-portfolio', 'legacy']))
     })
 
     it('returns HTTP 200 and balances when one Portfolio batch is partial', async () => {
@@ -166,14 +170,14 @@ describe('wallet-token route', () => {
         expect(response.json()).toMatchObject({
             partial: true,
             stale: false,
-            successfulChainIds: [56],
-            failedChainIds: [1],
+            successfulChainIds: expect.arrayContaining([1, 56]),
+            failedChainIds: [],
             tokens: [{ chainId: 56, address: token }],
         })
         expect(response.body).not.toContain('Wallet balances could not be loaded.')
     })
 
-    it('returns a safe error after a total uncached Portfolio failure', async () => {
+    it('falls back safely after a total uncached Portfolio failure', async () => {
         process.env.ALCHEMY_PORTFOLIO_ENABLED = 'true'
         process.env.ALCHEMY_API_KEY = 'test-key'
         const { ProviderError } = await import('../src/lib/errors.js')
@@ -190,11 +194,13 @@ describe('wallet-token route', () => {
         })
         await app.close()
 
-        expect(response.statusCode).toBe(503)
-        expect(response.json()).toEqual({
-            error: {
-                code: 'ALCHEMY_PORTFOLIO_UNAVAILABLE',
-                message: 'Wallet balances are temporarily unavailable.',
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toMatchObject({
+            source: 'legacy',
+            provider: 'legacy',
+            diagnostics: {
+                provider: 'legacy',
+                attemptedProviders: expect.arrayContaining(['alchemy-portfolio', 'legacy']),
             },
         })
         expect(response.body).not.toMatch(/test-key|api\.g\.alchemy/i)

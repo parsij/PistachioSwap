@@ -1,0 +1,67 @@
+.ps-token-logo-frame {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    background: #292929;
+}
+
+.ps-token-logo-skeleton {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background:
+        linear-gradient(
+            90deg,
+            #292929 20%,
+            #3a3a3a 50%,
+            #292929 80%
+        );
+    background-size: 220% 100%;
+    animation: ps-token-logo-shimmer 1.35s linear infinite;
+}
+
+.ps-token-logo-frame .ps-token-main-logo {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
+    transition: opacity 160ms ease;
+}
+
+.ps-token-main-logo-loading {
+    opacity: 0;
+}
+
+.ps-token-main-logo-loaded {
+    opacity: 1;
+}
+
+@keyframes ps-token-logo-shimmer {
+    from {
+        background-position: 120% 0;
+    }
+
+    to {
+        background-position: -120% 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ps-token-logo-frame .ps-token-main-logo {
+        transition: none;
+    }
+
+    .ps-token-logo-skeleton {
+        animation: none;
+    }
+}

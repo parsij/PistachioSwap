@@ -43,6 +43,17 @@ export type TokenDiscoveryChain = Readonly<{
     capabilities: TokenDiscoveryCapabilities
 }>
 
+export type TokenDiscoveryWalletCapability = Readonly<{
+    chainId: number
+    name: string
+    active: boolean
+    unchainedSupported: boolean
+    unchainedCoinstack: string | null
+    localUnchainedPort: number | null
+    walletFallbackProviders: readonly string[]
+    fallbackCatalogAvailable: boolean
+}>
+
 type Entry = Omit<TokenDiscoveryChain, 'native' | 'wrappedNative' | 'chainLogoURI' | 'capabilities'> & {
     native: Omit<TokenDiscoveryChain['native'], 'address' | 'decimals' | 'erc20Aliases'> & {
         erc20Aliases?: readonly `0x${string}`[]
@@ -122,6 +133,20 @@ const defaultCapabilities: TokenDiscoveryCapabilities = {
     curatedLists: false,
 }
 
+export const UNCHAINED_EVM_COINSTACKS_BY_CHAIN_ID: Readonly<Record<number, {
+    coinstack: string
+    localPort: number
+}>> = Object.freeze({
+    1: { coinstack: 'ethereum', localPort: 3101 },
+    10: { coinstack: 'optimism', localPort: 3110 },
+    56: { coinstack: 'bnbsmartchain', localPort: 3156 },
+    100: { coinstack: 'gnosis', localPort: 3100 },
+    137: { coinstack: 'polygon', localPort: 3137 },
+    8453: { coinstack: 'base', localPort: 3453 },
+    42161: { coinstack: 'arbitrum', localPort: 3161 },
+    43114: { coinstack: 'avalanche', localPort: 3114 },
+})
+
 export const TOKEN_DISCOVERY_CHAINS: readonly TokenDiscoveryChain[] = Object.freeze(
     entries.map((entry) => Object.freeze({
         ...entry,
@@ -150,6 +175,32 @@ export const TOKEN_DISCOVERY_CHAINS: readonly TokenDiscoveryChain[] = Object.fre
 
 export const ACTIVE_TOKEN_DISCOVERY_CHAINS = Object.freeze(
     TOKEN_DISCOVERY_CHAINS.filter((chain) => chain.active),
+)
+
+export function getWalletFallbackProviders(chain: TokenDiscoveryChain) {
+    return [
+        chain.capabilities.alchemy ? 'alchemy' : null,
+        chain.capabilities.moralis ? 'moralis' : null,
+        chain.capabilities.rpcFallback ? 'rpc' : null,
+        'fallback-catalog',
+    ].filter((value): value is string => value !== null)
+}
+
+export const ACTIVE_TOKEN_DISCOVERY_WALLET_CAPABILITIES:
+readonly TokenDiscoveryWalletCapability[] = Object.freeze(
+    ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => {
+        const unchained = UNCHAINED_EVM_COINSTACKS_BY_CHAIN_ID[chain.chainId] ?? null
+        return Object.freeze({
+            chainId: chain.chainId,
+            name: chain.name,
+            active: true,
+            unchainedSupported: unchained !== null,
+            unchainedCoinstack: unchained?.coinstack ?? null,
+            localUnchainedPort: unchained?.localPort ?? null,
+            walletFallbackProviders: Object.freeze(getWalletFallbackProviders(chain)),
+            fallbackCatalogAvailable: true,
+        })
+    }),
 )
 
 const byId = new Map(TOKEN_DISCOVERY_CHAINS.map((chain) => [chain.chainId, chain]))

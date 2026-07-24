@@ -16,6 +16,7 @@ import {
 import { getTokenLogoEntries } from '../providers/token-logos.js'
 import {
     ACTIVE_TOKEN_DISCOVERY_CHAINS,
+    UNCHAINED_EVM_COINSTACKS_BY_CHAIN_ID,
     getTokenDiscoveryChain,
 } from './registry.js'
 import {
@@ -32,6 +33,9 @@ import { getServerRpcUrl } from './context.js'
 
 export const FALLBACK_TOKEN_ICON_DIRECTORY = fileURLToPath(
     new URL('../../../../public/token-icons/fallback', import.meta.url),
+)
+const PUBLIC_ASSET_DIRECTORY = fileURLToPath(
+    new URL('../../../../public', import.meta.url),
 )
 
 const FALLBACK_LOGO_URI = '/icons/token-fallback.svg'
@@ -176,6 +180,24 @@ async function iconExists(path: string) {
     }
 }
 
+function localFallbackIconPath({
+    iconDirectory,
+    chainId,
+    logoURI,
+}: {
+    iconDirectory: string
+    chainId: number
+    logoURI: string
+}) {
+    if (logoURI.startsWith('/icons/')) {
+        const fileName = logoURI.split('/').at(-1)
+        return fileName ? join(PUBLIC_ASSET_DIRECTORY, 'icons', fileName) : null
+    }
+    if (!logoURI.startsWith(`/token-icons/fallback/${chainId}/`)) return null
+    const fileName = logoURI.split('/').at(-1)
+    return fileName ? join(iconDirectory, String(chainId), fileName) : null
+}
+
 async function storeApprovedIcon({
     chainId,
     address,
@@ -194,6 +216,12 @@ async function storeApprovedIcon({
     for (const candidate of candidates) {
         if (!candidate.url || candidate.url === FALLBACK_LOGO_URI) continue
         if (candidate.url.startsWith('/')) {
+            const path = localFallbackIconPath({
+                iconDirectory,
+                chainId,
+                logoURI: candidate.url,
+            })
+            if (path && !await iconExists(path)) continue
             return {
                 logoURI: candidate.url,
                 logoCandidates: [candidate.url, FALLBACK_LOGO_URI],
@@ -348,6 +376,22 @@ export async function buildFallbackTokenCatalog(options: BuildOptions = {}) {
         }
     }
 
+    if (records.length === 0) {
+        throw new Error('Refusing to write an empty fallback token catalog.')
+    }
+    for (const record of records) {
+        if (record.logoURI === FALLBACK_LOGO_URI || record.iconSource === null) {
+            throw new Error(`${record.chainId}:${record.address} has no trusted local icon.`)
+        }
+        const iconPath = localFallbackIconPath({
+            iconDirectory,
+            chainId: record.chainId,
+            logoURI: record.logoURI,
+        })
+        if (!iconPath || !await iconExists(iconPath)) {
+            throw new Error(`${record.chainId}:${record.address} local icon is missing or invalid.`)
+        }
+    }
     validateFallbackTokenCatalogRecords(records)
     await writeFileAtomic(catalogPath, `${JSON.stringify(records, null, 2)}\n`)
     return {
@@ -382,10 +426,44 @@ export async function auditFallbackTokenCatalog(options: {
     const byChain = new Map<number, FallbackTokenCatalogRecord[]>()
     for (const record of records) {
         byChain.set(record.chainId, [...(byChain.get(record.chainId) ?? []), record])
+        if (record.logoURI === FALLBACK_LOGO_URI || record.iconSource === null) {
+            errors.push(`${record.chainId}:${record.address} has no trusted local icon.`)
+            continue
+        }
+        const iconPath = localFallbackIconPath({
+            iconDirectory,
+            chainId: record.chainId,
+            logoURI: record.logoURI,
+        })
+        if (!iconPath || !await iconExists(iconPath)) {
+            errors.push(`${record.chainId}:${record.address} local icon is missing or invalid.`)
+        }
     }
-    const chains = ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => {
+    const chains = []
+    for (const chain of ACTIVE_TOKEN_DISCOVERY_CHAINS) {
         const input = addressData.parsed.get(chain.chainId)?.addresses ?? []
         const generated = byChain.get(chain.chainId) ?? []
+        if (!chain.native.symbol || !chain.native.coinGeckoId) {
+            errors.push(`${chain.chainId} is missing native token metadata.`)
+        }
+        if (generated.length === 0) {
+            errors.push(`${chain.chainId} has no generated fallback tokens.`)
+        }
+        const unchained = UNCHAINED_EVM_COINSTACKS_BY_CHAIN_ID[chain.chainId] ?? null
+        if (unchained) {
+            const expected = `http://127.0.0.1:${unchained.localPort}`
+            const raw = process.env.UNCHAINED_HTTP_URLS_JSON?.trim()
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw) as Record<string, unknown>
+                    if (parsed[String(chain.chainId)] !== expected) {
+                        errors.push(`${chain.chainId} Unchained endpoint example should be ${expected}.`)
+                    }
+                } catch {
+                    errors.push('UNCHAINED_HTTP_URLS_JSON is not valid JSON.')
+                }
+            }
+        }
         if (input.length > FALLBACK_TOKEN_MAX_ADDRESSES_PER_CHAIN) {
             errors.push(`${chain.chainId} exceeds 100 fallback input addresses.`)
         }
@@ -394,7 +472,7 @@ export async function auditFallbackTokenCatalog(options: {
                 errors.push(`${chain.chainId}:${address} is missing from generated catalog.`)
             }
         }
-        return {
+        chains.push({
             chainId: chain.chainId,
             name: chain.name,
             inputCount: input.length,
@@ -416,8 +494,8 @@ export async function auditFallbackTokenCatalog(options: {
                 )
                 return { address: record.address, status: localPath }
             }),
-        }
-    })
+        })
+    }
     return { chains, errors }
 }
 

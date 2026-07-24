@@ -251,7 +251,7 @@ export const swapUiConfig = {
         clear: 'Clear',
 
         tokensByVolume:
-            'Tokens by 24H volume',
+            'Tokens',
 
         noMatchingTokens:
             'No matching tokens',

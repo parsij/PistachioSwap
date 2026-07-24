@@ -8,6 +8,10 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "local-env:report": "bash scripts/collect-local-dev-info.sh",
+    "unchained:config:check": "node scripts/unchained-local/config-check.mjs",
+    "unchained:status": "node scripts/unchained-local/status.mjs",
+    "unchained:print-start-commands": "node scripts/unchained-local/print-start-commands.mjs",
     "test": "vitest run",
     "test:passkey-prf": "node tests/playwright/passkey-prf.integration.mjs",
     "test:wallet-worker": "node tests/playwright/wallet-worker.integration.mjs"

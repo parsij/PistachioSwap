@@ -16,8 +16,14 @@ import {
     marketCatalogService,
     marketTokenRoutes,
 } from './modules/market-tokens.js'
+import {
+    getUniswapVolumeCatalog,
+    loadPersistedUniswapVolumeCatalog,
+    uniswapVolumeTokenRoutes,
+} from './modules/uniswap-volume-tokens.js'
 import { sameChainQuoteRoutes } from './features/quotes/routes/quote-routes.js'
 import { tokenDetailsRoutes } from './modules/token-details.js'
+import { tokenCatalogRoutes } from './modules/token-catalog.js'
 import { walletTokenKnownBalanceRoutes } from './modules/wallet-token-known-balances.js'
 import { walletTokenRoutes } from './modules/wallet-tokens.js'
 import { walletActivityRoutes } from './modules/wallet-activity.js'
@@ -25,6 +31,7 @@ import { sponsorshipRoutes } from './modules/sponsorship.js'
 import { sponsorshipAdminRoutes } from './modules/sponsorship-admin.js'
 import { sponsorshipRefundAdminRoutes } from './modules/sponsorship-refunds-admin.js'
 import { ACTIVE_TOKEN_DISCOVERY_CHAINS } from './token-discovery/registry.js'
+import { loadShapeShiftAssetCatalog } from './token-discovery/shapeshift-asset-catalog.js'
 
 const consoleTimeFormatter = new Intl.DateTimeFormat('en-US', {
     dateStyle: 'full',
@@ -137,6 +144,8 @@ export function createApp() {
     })
 
     app.register(marketTokenRoutes)
+    app.register(uniswapVolumeTokenRoutes)
+    app.register(tokenCatalogRoutes)
     app.register(walletTokenRoutes)
     app.register(walletActivityRoutes)
     app.register(walletTokenKnownBalanceRoutes)
@@ -214,11 +223,19 @@ export function createApp() {
                 }, 'Market catalog persistence is degraded')
             })
             const hydration = await marketCatalogService.hydratePersistentCatalogs()
+            const uniswapHydration = await loadPersistedUniswapVolumeCatalog()
+            const shapeShiftHydration = await loadShapeShiftAssetCatalog()
+            void getUniswapVolumeCatalog({ refreshIfStale: true })
             app.log.info({
                 subsystem: 'market-catalog-persistence',
                 loadedCatalogs: hydration.loaded,
                 ignoredCatalogs: hydration.ignored,
                 degraded: hydration.degraded,
+                uniswapVolumeCatalogLoaded:
+                    uniswapHydration ? uniswapHydration.tokens.length : 0,
+                shapeShiftAssetCatalogSource: shapeShiftHydration.source,
+                shapeShiftAssetCatalogLoaded:
+                    shapeShiftHydration.catalog ? shapeShiftHydration.catalog.ids.length : 0,
             }, 'Market catalog cache hydration completed')
             if (ACTIVE_TOKEN_DISCOVERY_CHAINS.length > 30) {
                 app.log.warn({
