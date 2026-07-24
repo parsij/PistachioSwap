@@ -30,16 +30,18 @@ describe('token catalog ranking', () => {
             .toHaveLength(10)
     })
 
-    it('ranks canonical BNB USDT before pool and vault matches', async () => {
+    it('ranks canonical BNB USDT before pool and vault matches and caps search at 20', async () => {
         const app = createApp()
         const response = await app.inject({
             method: 'GET',
-            url: '/v1/token-catalog?chainId=56&mode=all&search=USDT&limit=20',
+            url: '/v1/token-catalog?chainId=56&mode=all&search=USDT&limit=250',
         })
         await app.close()
 
         expect(response.statusCode).toBe(200)
         const body = response.json()
+        expect(body.tokens).toHaveLength(14)
+        expect(body.tokens.length).toBeLessThanOrEqual(20)
         expect(body.tokens[0]).toMatchObject({
             address: bnbUsdt,
             symbol: 'USDT',
@@ -64,19 +66,49 @@ describe('token catalog ranking', () => {
         })
     })
 
-    it('serves the full selected-chain catalog without price-provider calls', async () => {
+    it('serves stable 30-token pages without price-provider calls', async () => {
         const fetchMock = vi.fn()
         vi.stubGlobal('fetch', fetchMock)
         const app = createApp()
-        const response = await app.inject({
+        const first = await app.inject({
             method: 'GET',
-            url: '/v1/token-catalog?chainId=56&mode=all&limit=6000',
+            url: '/v1/token-catalog?chainId=56&mode=all&pageSize=30',
+        })
+        const firstBody = first.json()
+        const second = await app.inject({
+            method: 'GET',
+            url: `/v1/token-catalog?chainId=56&mode=all&pageSize=30&cursor=${encodeURIComponent(firstBody.nextCursor)}`,
         })
         await app.close()
 
-        expect(response.statusCode).toBe(200)
-        expect(response.json().tokens.length).toBeGreaterThan(3_000)
+        expect(first.statusCode).toBe(200)
+        expect(firstBody.tokens).toHaveLength(30)
+        expect(firstBody.hasMore).toBe(true)
+        expect(typeof firstBody.nextCursor).toBe('string')
+        expect(firstBody.diagnostics.totalForChain).toBeGreaterThan(3_000)
+        expect(second.statusCode).toBe(200)
+        expect(second.json().tokens).toHaveLength(30)
+        const firstIds = new Set(firstBody.tokens.map((token: { canonicalId: string }) => token.canonicalId))
+        expect(second.json().tokens.every((token: { canonicalId: string }) => !firstIds.has(token.canonicalId)))
+            .toBe(true)
         expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('rejects a cursor from a different chain', async () => {
+        const app = createApp()
+        const first = await app.inject({
+            method: 'GET',
+            url: '/v1/token-catalog?chainId=56&mode=all&pageSize=30',
+        })
+        const cursor = first.json().nextCursor
+        const response = await app.inject({
+            method: 'GET',
+            url: `/v1/token-catalog?chainId=8453&mode=all&pageSize=30&cursor=${encodeURIComponent(cursor)}`,
+        })
+        await app.close()
+
+        expect(response.statusCode).toBe(400)
+        expect(response.json()).toMatchObject({ error: { code: 'INVALID_CURSOR' } })
     })
 
     it('reports deterministic featured-token counts per active chain', () => {
