@@ -64,6 +64,13 @@ export function getCanonicalTokenIdentity(token) {
 export function getMarketTokenExclusionReason(token) {
     const identity = getCanonicalTokenIdentity(token)
     if (!identity) return 'invalidIdentity'
+    if (token?.source === 'shapeshift-local' &&
+        ['established', 'recognized'].includes(token?.verificationStatus ?? token?.recognitionStatus) &&
+        token?.possibleSpam !== true &&
+        token?.visibility !== 'hidden' &&
+        Boolean(String(token?.name ?? '').trim()) &&
+        Boolean(String(token?.symbol ?? '').trim()) &&
+        Number.isInteger(Number(token?.decimals))) return null
     if (!['established', 'recognized'].includes(
         token?.verificationStatus ?? token?.recognitionStatus,
     )) return 'unverified'

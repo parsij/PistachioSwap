@@ -2193,13 +2193,14 @@ describe('App wallet integration', () => {
         const { container } = render(<App />)
         fireEvent.click(container.querySelector('.sell-token-position button'))
 
-        const volumeSection = [...document.querySelectorAll('.ps-token-section')]
+        const catalogSection = [...document.querySelectorAll('.ps-token-section')]
             .find((section) =>
-                section.textContent.includes('Tokens by 24H volume'),
+                section.textContent.includes('Tokens') &&
+                section.textContent.includes('Catalog token'),
             )
 
-        expect(volumeSection.textContent).toContain('Catalog token')
-        expect(volumeSection.textContent).not.toContain('claim-reward.example.com')
-        expect(volumeSection.textContent).not.toContain('BONUS')
+        expect(catalogSection.textContent).toContain('Catalog token')
+        expect(catalogSection.textContent).not.toContain('claim-reward.example.com')
+        expect(catalogSection.textContent).not.toContain('BONUS')
     })
 })

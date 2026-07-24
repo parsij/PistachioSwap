@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
 
 import { getApiConfig } from '../config.js'
-import { normalizeAddress } from '../lib/address.js'
+import {
+    NATIVE_TOKEN_ADDRESS,
+    createTokenId,
+    normalizeAddress,
+} from '../lib/address.js'
 import { getSafeError } from '../lib/errors.js'
 import {
     getAlchemyPortfolioWalletTokens,
@@ -24,11 +28,204 @@ import {
     ACTIVE_TOKEN_DISCOVERY_CHAINS,
     getTokenDiscoveryChain,
 } from '../token-discovery/registry.js'
+import {
+    getFallbackTokensForChain,
+    type PublicFallbackToken,
+} from '../token-discovery/fallback-token-catalog.js'
 
 type WalletTokenQuery = {
     chainId?: string
     address?: string
     includeZero?: string
+}
+
+type WalletProviderName = 'unchained' | 'alchemy-portfolio' | 'legacy' | 'fallback'
+
+type WalletProviderDiagnostics = {
+    provider: WalletProviderName
+    attemptedProviders: WalletProviderName[]
+    partial: boolean
+    warnings: string[]
+}
+
+function zeroFallbackWalletToken(token: PublicFallbackToken): WalletToken {
+    const native = token.address === NATIVE_TOKEN_ADDRESS || token.isNative === true
+    return {
+        classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+        id: createTokenId(token.chainId, token.address),
+        chainId: token.chainId,
+        address: token.address,
+        name: token.name,
+        symbol: token.symbol,
+        decimals: token.decimals,
+        logoURI: token.logoURI,
+        logoCandidates: token.logoCandidates,
+        logoSource: native ? 'curated' : 'local',
+        rawBalance: '0',
+        formattedBalance: '0',
+        balance: '0',
+        priceUSD: null,
+        trustedPriceUSD: null,
+        marketPriceUSD: null,
+        valueUSD: null,
+        priceConfidence: 'unknown',
+        coinGeckoId: token.coinGeckoId,
+        liquidityUsd: 0,
+        trustedLiquidityUsd: null,
+        largestTrustedPoolLiquidityUsd: null,
+        volume24hUsd: null,
+        transactionCount24h: null,
+        uniqueTraders24h: null,
+        trustedPairCount: null,
+        oldestTrustedPoolCreatedAt: null,
+        establishedAgeDays: null,
+        estimatedSellValueUsd: null,
+        classificationTier: native ? 'core' : 'established',
+        classificationReasons: native
+            ? ['native-token', 'fallback-token-catalog']
+            : ['fallback-token-catalog'],
+        isNative: native,
+        recognitionStatus: 'established',
+        recognitionReasons: native
+            ? ['native-token', 'fallback-token-catalog']
+            : ['fallback-token-catalog'],
+        verificationStatus: 'established',
+        verificationReasons: native
+            ? ['native-token', 'fallback-token-catalog']
+            : ['fallback-token-catalog'],
+        spamStatus: 'clean',
+        possibleSpam: false,
+        verifiedContract: native ? null : true,
+        officialAsset: native,
+        issuer: null,
+        officialWebsite: null,
+        spamReasons: native ? ['native-token'] : ['fallback-token-catalog'],
+        securityStatus: 'trusted',
+        securityScore: null,
+        securityReasons: native ? ['native-token'] : ['fallback-token-catalog'],
+        securityProviders: {
+            honeypot: { available: false, checkedAt: null, risk: null, riskLevel: null, isHoneypot: null },
+            goPlus: { available: false, checkedAt: null, isHoneypot: null },
+        },
+        visibility: 'primary',
+        visibilityReasons: native
+            ? ['native-token', 'fallback-token-catalog']
+            : ['fallback-token-catalog'],
+        includeInPortfolioValue: false,
+    }
+}
+
+async function fallbackCatalogWalletTokens({
+    chainIds,
+    address,
+}: {
+    chainIds: readonly number[]
+    address: string
+}) {
+    const tokens = (await Promise.all(
+        chainIds.map(async (chainId) =>
+            (await getFallbackTokensForChain(chainId)).map(zeroFallbackWalletToken)),
+    )).flat()
+    return {
+        classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+        address,
+        source: 'fallback' as const,
+        tokens,
+        queriedChainIds: [...chainIds],
+        successfulChainIds: [...chainIds].sort((left, right) => left - right),
+        failedChainIds: [],
+        providerRejectedChainIds: [],
+        chainErrors: {},
+        batchErrors: [],
+        partial: false,
+        stale: false,
+        diagnostics: {
+            pageCount: 0,
+            cacheStatus: 'miss' as const,
+            failureCode: null,
+        },
+    }
+}
+
+type WalletTokenResult = {
+    classificationVersion: typeof WALLET_TOKEN_CLASSIFICATION_VERSION
+    address: string
+    source: WalletProviderName
+    tokens: WalletToken[]
+    queriedChainIds: number[]
+    successfulChainIds: number[]
+    failedChainIds: number[]
+    providerRejectedChainIds: number[]
+    chainErrors: Record<string, string>
+    batchErrors: unknown[]
+    partial: boolean
+    stale: boolean
+    diagnostics: {
+        pageCount: number
+        cacheStatus: 'hit' | 'miss' | 'stale'
+        failureCode: string | null
+    }
+}
+
+function sortedUnique(values: readonly number[]) {
+    return [...new Set(values)].sort((left, right) => left - right)
+}
+
+function mergeWalletTokenResults(
+    address: string,
+    first: WalletTokenResult | null,
+    second: WalletTokenResult,
+): WalletTokenResult {
+    if (!first) return second
+    const tokens = new Map<string, WalletToken>()
+    for (const token of [...first.tokens, ...second.tokens]) {
+        tokens.set(createTokenId(token.chainId, token.address), token)
+    }
+    const successful = sortedUnique([
+        ...first.successfulChainIds,
+        ...second.successfulChainIds,
+    ])
+    const failed = sortedUnique([
+        ...first.failedChainIds,
+        ...second.failedChainIds,
+    ].filter((chainId) => !successful.includes(chainId)))
+    return {
+        classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+        address,
+        source: first.source,
+        tokens: [...tokens.values()],
+        queriedChainIds: sortedUnique([
+            ...first.queriedChainIds,
+            ...second.queriedChainIds,
+        ]),
+        successfulChainIds: successful,
+        failedChainIds: failed,
+        providerRejectedChainIds: sortedUnique([
+            ...(first.providerRejectedChainIds ?? []),
+            ...(second.providerRejectedChainIds ?? []),
+        ]),
+        chainErrors: {
+            ...first.chainErrors,
+            ...second.chainErrors,
+        },
+        batchErrors: [],
+        partial: first.partial || second.partial || failed.length > 0,
+        stale: first.stale || second.stale,
+        diagnostics: {
+            pageCount:
+                (first.diagnostics?.pageCount ?? 0) +
+                (second.diagnostics?.pageCount ?? 0),
+            cacheStatus:
+                first.diagnostics?.cacheStatus === 'hit' ||
+                second.diagnostics?.cacheStatus === 'hit'
+                    ? 'hit'
+                    : 'miss',
+            failureCode:
+                first.diagnostics?.failureCode ??
+                second.diagnostics?.failureCode ??
+                null,
+        },
+    }
 }
 
 async function legacyAllChainWalletTokens({
@@ -197,13 +394,13 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
             request.raw.once('aborted', abort)
 
             try {
-                let result: Awaited<ReturnType<typeof legacyAllChainWalletTokens>> |
-                    Awaited<ReturnType<typeof getAlchemyPortfolioWalletTokens>> |
-                    Awaited<ReturnType<typeof getUnchainedWalletTokens>> |
-                    null = null
+                let result: WalletTokenResult | null = null
                 let responseUnsupportedChainIds = alchemyUnsupportedChainIds
+                const attemptedProviders: WalletProviderName[] = []
+                const warnings: string[] = []
 
                 if (unchainedChainIds.length > 0) {
+                    attemptedProviders.push('unchained')
                     try {
                         result = await getUnchainedWalletTokens({
                             walletAddress: address,
@@ -215,6 +412,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                             (value) => !configuredUnchained.has(value),
                         )
                     } catch (error) {
+                        warnings.push('Unchained wallet balances were unavailable; provider fallback was used.')
                         request.log.warn({
                             provider: 'unchained',
                             requestedChainIds: unchainedChainIds,
@@ -223,61 +421,121 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                     }
                 }
 
-                if (!result &&
+                if (
                     config.alchemy.portfolio.enabled &&
                     alchemySupportedChainIds.length > 0) {
-                    result = await getAlchemyPortfolioWalletTokens({
-                        walletAddress: address,
-                        chainIds: alchemySupportedChainIds,
-                        includeZero,
-                        signal: controller.signal,
-                    })
-                    responseUnsupportedChainIds = alchemyUnsupportedChainIds
-                } else if (!result && allChains) {
-                    result = await legacyAllChainWalletTokens({
-                        chainIds: requestedChainIds,
-                        address,
-                        includeZero,
-                        signal: controller.signal,
-                    })
-                    responseUnsupportedChainIds = []
-                } else if (!result) {
-                    const tokens = await getWalletTokens({
-                        chainId: chainId!,
-                        walletAddress: address,
-                        includeZero,
-                        signal: controller.signal,
-                    })
-                    result = {
-                        classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
-                        address,
-                        source: 'legacy' as const,
-                        tokens,
-                        queriedChainIds: [chainId!],
-                        successfulChainIds: [chainId!],
-                        failedChainIds: [],
-                        providerRejectedChainIds: [],
-                        chainErrors: {},
-                        batchErrors: [],
-                        partial: false,
-                        stale: false,
-                        diagnostics: {
-                            pageCount: 0,
-                            cacheStatus: 'miss' as const,
-                            failureCode: null,
-                        },
+                    const remainingForAlchemy = result
+                        ? requestedChainIds.filter((value) =>
+                              !result!.successfulChainIds.includes(value) &&
+                              getAlchemyPortfolioNetwork(value) !== null)
+                        : alchemySupportedChainIds
+                    if (remainingForAlchemy.length > 0) {
+                        attemptedProviders.push('alchemy-portfolio')
+                        try {
+                            const alchemy = await getAlchemyPortfolioWalletTokens({
+                                walletAddress: address,
+                                chainIds: remainingForAlchemy,
+                                includeZero,
+                                signal: controller.signal,
+                            })
+                            result = mergeWalletTokenResults(address, result, alchemy)
+                            responseUnsupportedChainIds = requestedChainIds.filter(
+                                (value) => !result!.queriedChainIds.includes(value),
+                            )
+                        } catch {
+                            warnings.push('Alchemy portfolio balances were unavailable; legacy fallback was used.')
+                        }
                     }
-                    responseUnsupportedChainIds = []
                 }
 
+                if (allChains) {
+                    const remainingForLegacy = result
+                        ? requestedChainIds.filter((value) =>
+                              !result!.successfulChainIds.includes(value))
+                        : requestedChainIds
+                    if (remainingForLegacy.length > 0) {
+                        attemptedProviders.push('legacy')
+                        try {
+                            const legacy = await legacyAllChainWalletTokens({
+                                chainIds: remainingForLegacy,
+                                address,
+                                includeZero,
+                                signal: controller.signal,
+                            })
+                            result = mergeWalletTokenResults(address, result, legacy)
+                            responseUnsupportedChainIds = []
+                        } catch {
+                            warnings.push('Legacy wallet providers were unavailable; fallback catalog was used.')
+                        }
+                    }
+                } else if (!result) {
+                    attemptedProviders.push('legacy')
+                    try {
+                        const tokens = await getWalletTokens({
+                            chainId: chainId!,
+                            walletAddress: address,
+                            includeZero,
+                            signal: controller.signal,
+                        })
+                        result = {
+                            classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
+                            address,
+                            source: 'legacy' as const,
+                            tokens,
+                            queriedChainIds: [chainId!],
+                            successfulChainIds: [chainId!],
+                            failedChainIds: [],
+                            providerRejectedChainIds: [],
+                            chainErrors: {},
+                            batchErrors: [],
+                            partial: false,
+                            stale: false,
+                            diagnostics: {
+                                pageCount: 0,
+                                cacheStatus: 'miss' as const,
+                                failureCode: null,
+                            },
+                        }
+                        responseUnsupportedChainIds = []
+                    } catch {
+                        warnings.push('Legacy wallet provider was unavailable; fallback catalog was used.')
+                    }
+                }
+
+                const remainingForFallback = result
+                    ? requestedChainIds.filter((value) =>
+                          !result!.successfulChainIds.includes(value))
+                    : requestedChainIds
+                if (remainingForFallback.length > 0) {
+                    attemptedProviders.push('fallback')
+                    const fallback = await fallbackCatalogWalletTokens({
+                        chainIds: remainingForFallback,
+                        address,
+                    })
+                    result = mergeWalletTokenResults(address, result, fallback)
+                    responseUnsupportedChainIds = []
+                }
+                if (!result) {
+                    throw new Error('Wallet-token fallback catalog did not return a result.')
+                }
+
+                const providerDiagnostics: WalletProviderDiagnostics = {
+                    provider: result.source,
+                    attemptedProviders: [...new Set(attemptedProviders)],
+                    partial: result.partial || responseUnsupportedChainIds.length > 0,
+                    warnings,
+                }
                 const response = {
                     classificationVersion: WALLET_TOKEN_CLASSIFICATION_VERSION,
                     ...(allChains ? {} : { chainId }),
                     address,
                     // Existing clients validate this legacy source enum. The real
                     // provider remains explicit in the provider field below.
-                    source: result.source === 'unchained' ? 'legacy' : result.source,
+                    source: result.source === 'alchemy-portfolio'
+                        ? 'alchemy-portfolio'
+                        : 'legacy',
                     provider: result.source,
+                    diagnostics: providerDiagnostics,
                     tokens: result.tokens,
                     queriedChainIds: result.queriedChainIds,
                     successfulChainIds: result.successfulChainIds,

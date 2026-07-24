@@ -139,43 +139,19 @@ describe('fallback token catalog build', () => {
         })).rejects.toThrow(/conflict/)
     })
 
-    it('accepts RPC decimals when Alchemy decimals are missing', async () => {
+    it('rejects RPC-only metadata when the trusted icon is missing', async () => {
         await expect(buildMyx({ alchemyDecimals: null, rpcDecimals: 18 }))
-            .resolves.toMatchObject({
-                records: [
-                    expect.objectContaining({
-                        address: MYX_ADDRESS,
-                        name: 'MYX',
-                        symbol: 'MYX',
-                        decimals: 18,
-                        logoURI: '/icons/token-fallback.svg',
-                    }),
-                ],
-            })
+            .rejects.toThrow(/no trusted local icon/)
     })
 
-    it('accepts Alchemy decimals when RPC decimals are missing', async () => {
+    it('rejects Alchemy-only metadata when the trusted icon is missing', async () => {
         await expect(buildMyx({ alchemyDecimals: 18, rpcDecimals: null }))
-            .resolves.toMatchObject({
-                records: [
-                    expect.objectContaining({
-                        address: MYX_ADDRESS,
-                        decimals: 18,
-                    }),
-                ],
-            })
+            .rejects.toThrow(/no trusted local icon/)
     })
 
-    it('accepts matching Alchemy and RPC decimals', async () => {
+    it('rejects matching metadata when the trusted icon is missing', async () => {
         await expect(buildMyx({ alchemyDecimals: 18, rpcDecimals: 18 }))
-            .resolves.toMatchObject({
-                records: [
-                    expect.objectContaining({
-                        address: MYX_ADDRESS,
-                        decimals: 18,
-                    }),
-                ],
-            })
+            .rejects.toThrow(/no trusted local icon/)
     })
 
     it('rejects genuinely conflicting Alchemy and RPC decimals', async () => {
@@ -188,13 +164,9 @@ describe('fallback token catalog build', () => {
             .rejects.toThrow(/missing valid decimals/)
     })
 
-    it('uses the fallback icon when Alchemy logo is missing', async () => {
-        const result = await buildMyx({ alchemyDecimals: null, rpcDecimals: 18 })
-        expect(result.records[0]).toMatchObject({
-            logoURI: '/icons/token-fallback.svg',
-            logoCandidates: ['/icons/token-fallback.svg'],
-            iconSource: null,
-        })
+    it('rejects the generic fallback icon for trusted fallback tokens', async () => {
+        await expect(buildMyx({ alchemyDecimals: null, rpcDecimals: 18 }))
+            .rejects.toThrow(/no trusted local icon/)
     })
 
     it('stores approved icons locally and rejects oversized or HTML responses', async () => {

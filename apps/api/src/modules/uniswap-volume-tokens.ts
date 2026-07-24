@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import type { FastifyPluginAsync } from 'fastify'
 
@@ -7,10 +9,7 @@ import {
     normalizeAddress,
 } from '../lib/address.js'
 import { fetchJson, isRecord } from '../lib/http.js'
-import {
-    ACTIVE_TOKEN_DISCOVERY_CHAINS,
-    getTokenDiscoveryChain,
-} from '../token-discovery/registry.js'
+import { getTokenDiscoveryChain } from '../token-discovery/registry.js'
 
 type ListedToken = {
     chainId: number
@@ -25,13 +24,36 @@ type VolumeToken = ListedToken & {
     priceUSD: string | null
     volume24hUsd: number
     liquidityUsd: number
+    source: string
+    protocols: string[]
 }
 
-type CacheEntry = {
-    expiresAt: number
-    generatedAt: number
+type SourceDiagnostic = {
+    chainId: number
+    protocol: 'v3' | 'v4' | 'override'
+    subgraphId: string | null
+    status: 'success' | 'failed' | 'not-configured' | 'missing-api-key'
+    tokenRows: number
+    error: string | null
+}
+
+export type UniswapVolumeCatalog = {
+    schemaVersion: 1
+    generatedAt: string
+    source: 'uniswap-volume-token-catalog'
+    configuredChainIds: number[]
+    successfulChainIds: number[]
+    failedChainIds: number[]
+    stale: boolean
+    partial: boolean
     tokens: VolumeToken[]
-    failedEndpoints: string[]
+    diagnostics: {
+        tokenListUrl: string
+        registryVersion: string
+        sources: SourceDiagnostic[]
+        missingApiKey: boolean
+        persisted: boolean
+    }
 }
 
 type Query = {
@@ -40,21 +62,64 @@ type Query = {
     q?: string
 }
 
+const DATA_PATH = path.resolve(
+    process.cwd(),
+    'data/uniswap-volume-token-catalog.v1.json',
+)
+const ROOT_DATA_PATH = path.resolve(
+    process.cwd(),
+    'apps/api/data/uniswap-volume-token-catalog.v1.json',
+)
 const TOKEN_LIST_TTL_MS = 6 * 60 * 60 * 1000
-const VOLUME_CACHE_TTL_MS = 2 * 60 * 1000
+const REFRESH_STALE_MS = 30 * 60 * 1000
 const MAX_ROWS_PER_ENDPOINT = 1_000
 const MAX_QUERY_LENGTH = 80
+const REGISTRY_VERSION = '2026-07-24'
+
+const VERIFIED_SUBGRAPHS: Record<number, Array<{
+    protocol: 'v3' | 'v4'
+    network: string
+    subgraphId: string
+    evidence: string
+}>> = {
+    56: [{
+        protocol: 'v3',
+        network: 'bsc',
+        subgraphId: 'F85MNzUGYqgSHSHRGgeVMNsdnW1KtZSVgFULumXRZTw2',
+        evidence: 'The Graph Explorer lists Uniswap V3 BSC on network bsc with 100% indexing.',
+    }],
+}
 
 let tokenListCache: {
     expiresAt: number
     values: Map<string, ListedToken>
 } | null = null
-const volumeCache = new Map<string, CacheEntry>()
-const pending = new Map<string, Promise<CacheEntry>>()
+let persistedCatalog: UniswapVolumeCatalog | null = null
+let refreshPromise: Promise<UniswapVolumeCatalog> | null = null
 
-function endpointMap() {
+function catalogPath() {
+    const configured = process.env.UNISWAP_VOLUME_CATALOG_PATH?.trim()
+    if (configured) return path.resolve(configured)
+    return process.cwd().endsWith('/apps/api') ? DATA_PATH : ROOT_DATA_PATH
+}
+
+function readBoolean(name: string, fallback: boolean) {
+    const value = process.env[name]?.trim().toLowerCase()
+    if (!value) return fallback
+    if (value === 'true') return true
+    if (value === 'false') return false
+    throw new Error(`${name} must be true or false.`)
+}
+
+function graphGatewayUrl(subgraphId: string) {
+    const apiKey = process.env.THE_GRAPH_API_KEY?.trim()
+    if (!apiKey) return null
+    return `https://gateway.thegraph.com/api/${apiKey}/subgraphs/id/${subgraphId}`
+}
+
+function parseOverrideEndpoints() {
     const raw = process.env.UNISWAP_SUBGRAPH_URLS_JSON?.trim()
-    if (!raw) return new Map<number, string[]>()
+    if (!raw || raw === '{}') return new Map<number, string[]>()
     const parsed = JSON.parse(raw) as unknown
     if (!isRecord(parsed)) {
         throw new Error('UNISWAP_SUBGRAPH_URLS_JSON must be a JSON object.')
@@ -65,16 +130,39 @@ function endpointMap() {
         if (!Number.isSafeInteger(chainId) || !getTokenDiscoveryChain(chainId)?.active) {
             continue
         }
-        const candidates = Array.isArray(configured) ? configured : [configured]
-        const urls = candidates.flatMap((candidate) => {
-            if (typeof candidate !== 'string' || !candidate.trim()) return []
-            const url = new URL(candidate.trim())
+        const values = Array.isArray(configured) ? configured : [configured]
+        const urls = values.flatMap((value) => {
+            if (typeof value !== 'string' || !value.trim()) return []
+            const url = new URL(value.trim())
             if (url.protocol !== 'https:' || url.username || url.password) return []
             return [url.toString()]
         })
         if (urls.length > 0) result.set(chainId, [...new Set(urls)])
     }
     return result
+}
+
+function configuredSources() {
+    const override = parseOverrideEndpoints()
+    if (override.size > 0) {
+        return [...override.entries()].flatMap(([chainId, urls]) =>
+            urls.map((url) => ({
+                chainId,
+                protocol: 'override' as const,
+                subgraphId: null,
+                url,
+            })))
+    }
+    return Object.entries(VERIFIED_SUBGRAPHS).flatMap(([chainIdText, entries]) =>
+        entries.flatMap((entry) => {
+            const url = graphGatewayUrl(entry.subgraphId)
+            return [{
+                chainId: Number(chainIdText),
+                protocol: entry.protocol,
+                subgraphId: entry.subgraphId,
+                url,
+            }]
+        }))
 }
 
 function validDecimals(value: unknown) {
@@ -174,20 +262,24 @@ query PistachioTopTokens($since: Int!, $first: Int!) {
   }
 }`
 
-async function fetchEndpointVolume({
+async function fetchSourceVolume({
     chainId,
-    endpoint,
+    protocol,
+    subgraphId,
+    url,
     listed,
     since,
     signal,
 }: {
     chainId: number
-    endpoint: string
+    protocol: 'v3' | 'v4' | 'override'
+    subgraphId: string | null
+    url: string
     listed: Map<string, ListedToken>
     since: number
     signal?: AbortSignal
 }) {
-    const payload = await fetchJson(new URL(endpoint), {
+    const payload = await fetchJson(new URL(url), {
         method: 'POST',
         body: {
             query: TOKEN_HOUR_QUERY,
@@ -199,7 +291,7 @@ async function fetchEndpointVolume({
         signal,
         timeoutMs: Number(process.env.UNISWAP_SUBGRAPH_TIMEOUT_MS ?? 12_000),
         retries: 1,
-        dedupeKey: `uniswap-volume:${chainId}:${endpoint}:${Math.floor(since / 300)}`,
+        dedupeKey: `uniswap-volume:${chainId}:${protocol}:${subgraphId ?? url}:${Math.floor(since / 300)}`,
     })
     if (
         !isRecord(payload) ||
@@ -242,83 +334,325 @@ async function fetchEndpointVolume({
     return values
 }
 
-async function buildChainCatalog(
-    chainId: number,
-    signal?: AbortSignal,
-): Promise<CacheEntry> {
-    const endpoints = endpointMap().get(chainId) ?? []
-    if (endpoints.length === 0) {
-        return {
-            expiresAt: Date.now() + VOLUME_CACHE_TTL_MS,
-            generatedAt: Date.now(),
-            tokens: [],
-            failedEndpoints: [],
-        }
+function emptyCatalog(sources: ReturnType<typeof configuredSources>): UniswapVolumeCatalog {
+    const configuredChainIds = [...new Set(sources.map((source) => source.chainId))]
+        .sort((left, right) => left - right)
+    const missingApiKey = sources.some((source) => source.url === null)
+    return {
+        schemaVersion: 1,
+        generatedAt: new Date(0).toISOString(),
+        source: 'uniswap-volume-token-catalog',
+        configuredChainIds,
+        successfulChainIds: [],
+        failedChainIds: missingApiKey ? configuredChainIds : [],
+        stale: true,
+        partial: true,
+        tokens: [],
+        diagnostics: {
+            tokenListUrl: process.env.UNISWAP_TOKEN_LIST_URL?.trim() ||
+                'https://tokens.uniswap.org',
+            registryVersion: REGISTRY_VERSION,
+            sources: sources.map((source) => ({
+                chainId: source.chainId,
+                protocol: source.protocol,
+                subgraphId: source.subgraphId,
+                status: source.url ? 'not-configured' : 'missing-api-key',
+                tokenRows: 0,
+                error: source.url ? null : 'THE_GRAPH_API_KEY is required for built-in subgraphs.',
+            })),
+            missingApiKey,
+            persisted: false,
+        },
     }
+}
+
+function validateCatalog(value: unknown): UniswapVolumeCatalog | null {
+    if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.tokens)) {
+        return null
+    }
+    const deduped = new Map<string, VolumeToken>()
+    for (const candidate of value.tokens) {
+        if (!isRecord(candidate)) return null
+        const chainId = Number(candidate.chainId)
+        const address = normalizeAddress(candidate.address)
+        const decimals = validDecimals(candidate.decimals)
+        const name = cleanText(candidate.name, 120)
+        const symbol = cleanText(candidate.symbol, 32)
+        const logoURI = cleanText(candidate.logoURI, 2_048)
+        const volume24hUsd = decimalNumber(candidate.volume24hUsd)
+        const liquidityUsd = decimalNumber(candidate.liquidityUsd)
+        if (!Number.isSafeInteger(chainId) || !address || decimals === null ||
+            !name || !symbol || !logoURI || volume24hUsd === null ||
+            liquidityUsd === null) return null
+        if (deduped.has(tokenKey(chainId, address))) continue
+        deduped.set(tokenKey(chainId, address), {
+            chainId,
+            address,
+            name,
+            symbol,
+            decimals,
+            logoURI,
+            priceUSD: decimalText(candidate.priceUSD) ?? null,
+            volume24hUsd,
+            liquidityUsd,
+            source: cleanText(candidate.source, 120) ?? 'uniswap-volume',
+            protocols: Array.isArray(candidate.protocols)
+                ? candidate.protocols.filter((protocol) => typeof protocol === 'string')
+                : ['v3'],
+        })
+    }
+    return {
+        schemaVersion: 1,
+        generatedAt: typeof value.generatedAt === 'string'
+            ? value.generatedAt
+            : new Date(0).toISOString(),
+        source: 'uniswap-volume-token-catalog',
+        configuredChainIds: Array.isArray(value.configuredChainIds)
+            ? value.configuredChainIds.map(Number).filter(Number.isSafeInteger)
+            : [],
+        successfulChainIds: Array.isArray(value.successfulChainIds)
+            ? value.successfulChainIds.map(Number).filter(Number.isSafeInteger)
+            : [],
+        failedChainIds: Array.isArray(value.failedChainIds)
+            ? value.failedChainIds.map(Number).filter(Number.isSafeInteger)
+            : [],
+        stale: value.stale === true,
+        partial: value.partial === true,
+        tokens: [...deduped.values()].sort((left, right) =>
+            right.volume24hUsd - left.volume24hUsd ||
+            right.liquidityUsd - left.liquidityUsd ||
+            left.symbol.localeCompare(right.symbol)),
+        diagnostics: isRecord(value.diagnostics)
+            ? value.diagnostics as UniswapVolumeCatalog['diagnostics']
+            : emptyCatalog([]).diagnostics,
+    }
+}
+
+export async function loadPersistedUniswapVolumeCatalog() {
+    try {
+        const parsed = JSON.parse(await readFile(catalogPath(), 'utf8')) as unknown
+        const validated = validateCatalog(parsed)
+        if (!validated) return null
+        persistedCatalog = {
+            ...validated,
+            diagnostics: {
+                ...validated.diagnostics,
+                persisted: true,
+            },
+        }
+        return persistedCatalog
+    } catch {
+        return null
+    }
+}
+
+export async function buildUniswapVolumeCatalog({
+    signal,
+} : {
+    signal?: AbortSignal
+} = {}) {
+    const sources = configuredSources()
+    const enabled = readBoolean('UNISWAP_VOLUME_ENABLED', true)
+    if (!enabled) return emptyCatalog([])
+    const missingApiKey = sources.some((source) => source.url === null)
+    const runnableSources = sources.filter((source): source is typeof source & { url: string } =>
+        typeof source.url === 'string' && source.url.length > 0)
+    if (runnableSources.length === 0) return emptyCatalog(sources)
+
     const listed = await loadTokenList(signal)
     const since = Math.floor(Date.now() / 1_000) - 24 * 60 * 60
-    const outcomes = await Promise.allSettled(endpoints.map((endpoint) =>
-        fetchEndpointVolume({
-            chainId,
-            endpoint,
-            listed,
-            since,
-            signal,
-        })))
+    const seenSource = new Set<string>()
+    const sourceDiagnostics: SourceDiagnostic[] = []
     const aggregated = new Map<string, VolumeToken>()
-    const failedEndpoints: string[] = []
-    outcomes.forEach((outcome, index) => {
-        if (outcome.status === 'rejected') {
-            failedEndpoints.push(endpoints[index])
-            return
-        }
-        for (const [address, metrics] of outcome.value) {
-            const metadata = listed.get(tokenKey(chainId, address))
-            if (!metadata) continue
-            const current = aggregated.get(address)
-            if (!current) {
-                aggregated.set(address, {
-                    ...metadata,
-                    priceUSD: metrics.priceUSD,
-                    volume24hUsd: metrics.volume24hUsd,
-                    liquidityUsd: metrics.liquidityUsd,
-                })
-                continue
+    await Promise.all(runnableSources.map(async (source) => {
+        const sourceKey = `${source.chainId}:${source.protocol}:${source.subgraphId ?? source.url}`
+        if (seenSource.has(sourceKey)) return
+        seenSource.add(sourceKey)
+        try {
+            const rows = await fetchSourceVolume({
+                ...source,
+                url: source.url,
+                listed,
+                since,
+                signal,
+            })
+            sourceDiagnostics.push({
+                chainId: source.chainId,
+                protocol: source.protocol,
+                subgraphId: source.subgraphId,
+                status: 'success',
+                tokenRows: rows.size,
+                error: null,
+            })
+            for (const [address, metrics] of rows) {
+                const metadata = listed.get(tokenKey(source.chainId, address))
+                if (!metadata) continue
+                const key = tokenKey(source.chainId, address)
+                const current = aggregated.get(key)
+                if (!current) {
+                    aggregated.set(key, {
+                        ...metadata,
+                        priceUSD: metrics.priceUSD,
+                        volume24hUsd: metrics.volume24hUsd,
+                        liquidityUsd: metrics.liquidityUsd,
+                        source: `uniswap-${source.protocol}`,
+                        protocols: [source.protocol],
+                    })
+                    continue
+                }
+                current.volume24hUsd += metrics.volume24hUsd
+                current.liquidityUsd = Math.max(current.liquidityUsd, metrics.liquidityUsd)
+                current.priceUSD ??= metrics.priceUSD
+                if (!current.protocols.includes(source.protocol)) {
+                    current.protocols.push(source.protocol)
+                }
             }
-            current.volume24hUsd += metrics.volume24hUsd
-            current.liquidityUsd = Math.max(
-                current.liquidityUsd,
-                metrics.liquidityUsd,
-            )
-            current.priceUSD ??= metrics.priceUSD
+        } catch (error) {
+            sourceDiagnostics.push({
+                chainId: source.chainId,
+                protocol: source.protocol,
+                subgraphId: source.subgraphId,
+                status: 'failed',
+                tokenRows: 0,
+                error: error instanceof Error ? error.message : 'Unknown provider failure.',
+            })
         }
-    })
+    }))
+    if (missingApiKey) {
+        sourceDiagnostics.push(...sources
+            .filter((source) => source.url === null)
+            .map((source) => ({
+                chainId: source.chainId,
+                protocol: source.protocol,
+                subgraphId: source.subgraphId,
+                status: 'missing-api-key' as const,
+                tokenRows: 0,
+                error: 'THE_GRAPH_API_KEY is required for built-in subgraphs.',
+            })))
+    }
+    const successfulChainIds = [...new Set(sourceDiagnostics
+        .filter((source) => source.status === 'success')
+        .map((source) => source.chainId))]
+        .sort((left, right) => left - right)
+    const configuredChainIds = [...new Set(sources.map((source) => source.chainId))]
+        .sort((left, right) => left - right)
+    const failedChainIds = configuredChainIds
+        .filter((chainId) => !successfulChainIds.includes(chainId))
     const tokens = [...aggregated.values()].sort((left, right) =>
         right.volume24hUsd - left.volume24hUsd ||
         right.liquidityUsd - left.liquidityUsd ||
         left.symbol.localeCompare(right.symbol))
     return {
-        generatedAt: Date.now(),
-        expiresAt: Date.now() + VOLUME_CACHE_TTL_MS,
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        source: 'uniswap-volume-token-catalog',
+        configuredChainIds,
+        successfulChainIds,
+        failedChainIds,
+        stale: false,
+        partial: failedChainIds.length > 0,
         tokens,
-        failedEndpoints,
-    }
+        diagnostics: {
+            tokenListUrl: process.env.UNISWAP_TOKEN_LIST_URL?.trim() ||
+                'https://tokens.uniswap.org',
+            registryVersion: REGISTRY_VERSION,
+            sources: sourceDiagnostics.sort((left, right) =>
+                left.chainId - right.chainId ||
+                left.protocol.localeCompare(right.protocol)),
+            missingApiKey,
+            persisted: false,
+        },
+    } satisfies UniswapVolumeCatalog
 }
 
-async function getChainCatalog(chainId: number, signal?: AbortSignal) {
-    const key = String(chainId)
-    const cached = volumeCache.get(key)
-    if (cached && cached.expiresAt > Date.now()) return cached
-    let request = pending.get(key)
-    if (!request) {
-        request = buildChainCatalog(chainId, signal).finally(() => {
-            pending.delete(key)
-        })
-        pending.set(key, request)
+export async function writeUniswapVolumeCatalogAtomic(
+    catalog: UniswapVolumeCatalog,
+) {
+    const validated = validateCatalog(catalog)
+    if (!validated || validated.tokens.length === 0) {
+        throw new Error('Refusing to persist an invalid or empty Uniswap volume catalog.')
     }
-    const value = await request
-    volumeCache.set(key, value)
-    return value
+    const target = catalogPath()
+    await mkdir(path.dirname(target), { recursive: true })
+    const temp = `${target}.${process.pid}.${Date.now()}.tmp`
+    await writeFile(temp, `${JSON.stringify(validated, null, 2)}\n`, 'utf8')
+    await rename(temp, target)
+    persistedCatalog = {
+        ...validated,
+        diagnostics: { ...validated.diagnostics, persisted: true },
+    }
+    return target
+}
+
+export async function refreshUniswapVolumeCatalog({
+    persist = false,
+    signal,
+}: {
+    persist?: boolean
+    signal?: AbortSignal
+} = {}) {
+    const previous = persistedCatalog ?? await loadPersistedUniswapVolumeCatalog()
+    let fresh: UniswapVolumeCatalog
+    try {
+        fresh = await buildUniswapVolumeCatalog({ signal })
+    } catch (error) {
+        if (!previous) throw error
+        return {
+            ...previous,
+            stale: true,
+            partial: true,
+            diagnostics: {
+                ...previous.diagnostics,
+                sources: [{
+                    chainId: 56,
+                    protocol: 'v3' as const,
+                    subgraphId: VERIFIED_SUBGRAPHS[56]?.[0]?.subgraphId ?? null,
+                    status: 'failed' as const,
+                    tokenRows: 0,
+                    error: error instanceof Error ? error.message : 'Unknown refresh failure.',
+                }],
+                persisted: true,
+            },
+        }
+    }
+    if (fresh.tokens.length === 0 && previous && previous.tokens.length > 0) {
+        return {
+            ...previous,
+            stale: true,
+            partial: true,
+            diagnostics: {
+                ...previous.diagnostics,
+                sources: fresh.diagnostics.sources,
+                missingApiKey: fresh.diagnostics.missingApiKey,
+                persisted: true,
+            },
+        }
+    }
+    if (persist && fresh.tokens.length > 0) {
+        await writeUniswapVolumeCatalogAtomic(fresh)
+    }
+    persistedCatalog = fresh
+    return fresh
+}
+
+export async function getUniswapVolumeCatalog({
+    refreshIfStale = true,
+} = {}) {
+    const loaded = persistedCatalog ?? await loadPersistedUniswapVolumeCatalog()
+    const fallback = loaded ?? emptyCatalog(configuredSources())
+    const generated = Date.parse(fallback.generatedAt)
+    const stale = !Number.isFinite(generated) ||
+        Date.now() - generated > REFRESH_STALE_MS ||
+        fallback.stale
+    if (refreshIfStale && stale && !refreshPromise &&
+        process.env.THE_GRAPH_API_KEY?.trim()) {
+        refreshPromise = refreshUniswapVolumeCatalog({ persist: true })
+            .catch(() => fallback)
+            .finally(() => {
+                refreshPromise = null
+            })
+    }
+    return { ...fallback, stale }
 }
 
 function publicToken(token: VolumeToken, rank: number) {
@@ -388,14 +722,23 @@ function publicToken(token: VolumeToken, rank: number) {
         verifiedContract: true,
         officialAsset: false,
         spamStatus: 'clean',
-        marketSource: 'curated',
-        source: 'curated',
+        marketSource: token.source,
+        source: token.source,
         catalogSection: 'volume',
     }
 }
 
 function normalizedQuery(value: unknown) {
     return String(value ?? '').trim().toLowerCase()
+}
+
+function rankScore(token: VolumeToken, query: string) {
+    if (!query) return 0
+    if (token.address === query) return 4
+    if (token.symbol.toLowerCase() === query) return 3
+    if (token.name.toLowerCase() === query) return 2
+    if (token.symbol.toLowerCase().startsWith(query)) return 1
+    return 0
 }
 
 export const uniswapVolumeTokenRoutes: FastifyPluginAsync = async (app) => {
@@ -437,96 +780,74 @@ export const uniswapVolumeTokenRoutes: FastifyPluginAsync = async (app) => {
                     },
                 })
             }
-            const configured = endpointMap()
+            const catalog = await getUniswapVolumeCatalog()
+            const configuredChainIds = catalog.configuredChainIds
             const requestedChainIds = chainId === null
-                ? ACTIVE_TOKEN_DISCOVERY_CHAINS
-                      .map((chain) => chain.chainId)
-                      .filter((value) => configured.has(value))
-                : configured.has(chainId) ? [chainId] : []
-            if (requestedChainIds.length === 0) {
-                return reply.code(503).send({
-                    error: {
-                        code: 'UNISWAP_VOLUME_NOT_CONFIGURED',
-                        message: 'No Uniswap subgraph is configured for this chain scope.',
-                    },
-                })
+                ? configuredChainIds
+                : configuredChainIds.includes(chainId) ? [chainId] : []
+            const query = normalizedQuery(request.query.q)
+            const limit = Math.min(
+                Number(request.query.limit ?? (chainId === null ? 2_400 : 100)),
+                2_400,
+            )
+            const tokens = catalog.tokens
+                .filter((token) => requestedChainIds.includes(token.chainId))
+                .filter((token) => !query ||
+                    token.name.toLowerCase().includes(query) ||
+                    token.symbol.toLowerCase().includes(query) ||
+                    token.address.includes(query))
+                .sort((left, right) =>
+                    rankScore(right, query) - rankScore(left, query) ||
+                    right.volume24hUsd - left.volume24hUsd ||
+                    right.liquidityUsd - left.liquidityUsd ||
+                    left.symbol.localeCompare(right.symbol))
+                .slice(0, limit)
+                .map((token, index) => publicToken(token, index + 1))
+            const response = {
+                schemaVersion: 7,
+                generatedAt: catalog.generatedAt,
+                stale: catalog.stale,
+                partial: catalog.partial,
+                configuredChainIds,
+                successfulChainIds: catalog.successfulChainIds,
+                failedChainIds: catalog.failedChainIds,
+                tokens,
+                count: tokens.length,
+                commonTokens: [],
+                commonCount: 0,
+                fallbackTokens: [],
+                fallbackCount: 0,
+                hardStale: catalog.stale,
+                catalogUnavailable: tokens.length === 0,
+                chainErrors: Object.fromEntries(catalog.failedChainIds.map((id) => [
+                    String(id),
+                    'Uniswap volume data is unavailable for this chain.',
+                ])),
+                metadata: {
+                    source: catalog.source,
+                    diagnostics: catalog.diagnostics,
+                    providerPartial: catalog.partial,
+                },
+                query,
             }
-
-            const controller = new AbortController()
-            const abort = () => controller.abort()
-            request.raw.once('aborted', abort)
-            try {
-                const results = await Promise.all(requestedChainIds.map((value) =>
-                    getChainCatalog(value, controller.signal)))
-                const query = normalizedQuery(request.query.q)
-                const defaultLimit = chainId === null ? 2_400 : 100
-                const limit = Math.min(
-                    Number(request.query.limit ?? defaultLimit),
-                    2_400,
-                )
-                const flattened = results.flatMap((result) => result.tokens)
-                    .filter((token) => !query ||
-                        token.name.toLowerCase().includes(query) ||
-                        token.symbol.toLowerCase().includes(query) ||
-                        token.address.includes(query))
-                    .sort((left, right) =>
-                        right.volume24hUsd - left.volume24hUsd ||
-                        right.liquidityUsd - left.liquidityUsd ||
-                        left.symbol.localeCompare(right.symbol))
-                    .slice(0, limit)
-                    .map((token, index) => publicToken(token, index + 1))
-                const generatedAt = Math.min(
-                    ...results.map((result) => result.generatedAt),
-                )
-                const partial = results.some(
-                    (result) => result.failedEndpoints.length > 0,
-                )
-                const response = {
-                    schemaVersion: 7,
-                    generatedAt,
-                    tokens: flattened,
-                    count: flattened.length,
-                    commonTokens: [],
-                    commonCount: 0,
-                    fallbackTokens: [],
-                    fallbackCount: 0,
-                    stale: false,
-                    partial,
-                    hardStale: false,
-                    catalogUnavailable: flattened.length === 0,
-                    chainErrors: {},
-                    metadata: {
-                        source: 'uniswap-public-subgraphs',
-                        configuredChainIds: requestedChainIds,
-                        failedEndpointCount: results.reduce(
-                            (sum, result) => sum + result.failedEndpoints.length,
-                            0,
-                        ),
-                        providerPartial: partial,
-                    },
-                    query,
-                }
-                const etag = `"${createHash('sha256')
-                    .update(JSON.stringify(response))
-                    .digest('hex')}"`
-                if (request.headers['if-none-match'] === etag) {
-                    return reply.code(304).send()
-                }
-                reply.header('etag', etag)
-                reply.header(
-                    'cache-control',
-                    'public, max-age=30, stale-while-revalidate=120',
-                )
-                return response
-            } finally {
-                request.raw.off('aborted', abort)
+            const etag = `"${createHash('sha256')
+                .update(JSON.stringify(response))
+                .digest('hex')}"`
+            if (request.headers['if-none-match'] === etag) {
+                return reply.code(304).send()
             }
+            reply.header('etag', etag)
+            reply.header(
+                'cache-control',
+                'public, max-age=30, stale-while-revalidate=300',
+            )
+            return response
         },
     )
 }
 
 export function clearUniswapVolumeCachesForTest() {
     tokenListCache = null
-    volumeCache.clear()
-    pending.clear()
+    persistedCatalog = null
+    refreshPromise = null
 }

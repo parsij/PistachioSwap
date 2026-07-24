@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { zeroAddress } from 'viem'
 import { useMarketTokens } from './useMarketTokens.js'
-import { useUniswapVolumeTokens } from './useUniswapVolumeTokens.js'
+import { useTokenCatalog } from './useTokenCatalog.js'
 import { useWalletTokens } from './useWalletTokens.js'
 import { useNativeBalance } from './useNativeBalance.js'
 import { mergeWalletBalances, WALLET_TOKEN_CLASSIFICATION_VERSION } from '../../tokens/services/walletTokens.js'
@@ -56,7 +56,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     const discoveryChainId = tokenSelectorSide ? selectorChainId : swapChainId
     const walletAddress = walletState.address
     const normalizedTokenSearch = tokenSearch.trim().toLowerCase()
-    const useUniswapVolumeCatalog =
+    const useShapeShiftTokenCatalog =
         import.meta.env.VITE_USE_UNISWAP_VOLUME_TOKENS !== 'false'
 
     const preloadedMarketCatalog = useMarketTokens({ chainId: 'all' })
@@ -69,10 +69,10 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         search: tokenSearch,
         enabled: shouldFetchSelectedCatalog,
     })
-    const uniswapVolumeCatalog = useUniswapVolumeTokens({
+    const tokenCatalog = useTokenCatalog({
         chainId: discoveryChainId,
         search: tokenSearch,
-        enabled: useUniswapVolumeCatalog,
+        enabled: useShapeShiftTokenCatalog && discoveryChainId !== 'all',
     })
     const filteredPreloadedMarketCatalog = useMemo(() => ({
         ...preloadedMarketCatalog,
@@ -120,11 +120,11 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         }
     }, [discoveryChainId, filteredPreloadedMarketCatalog, normalizedTokenSearch, selectedMarketCatalog, shouldFetchSelectedCatalog])
     const preferredMarketCatalog = useMemo(() => {
-        if (!useUniswapVolumeCatalog || uniswapVolumeCatalog.tokens.length === 0) {
+        if (!useShapeShiftTokenCatalog || tokenCatalog.tokens.length === 0) {
             return activeMarketCatalog
         }
         const tokens = mergeSearchCatalogTokens(
-            uniswapVolumeCatalog.tokens,
+            tokenCatalog.tokens,
             activeMarketCatalog.tokens ?? [],
             discoveryChainId,
         )
@@ -133,21 +133,19 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
             tokens,
             loading: tokens.length === 0 &&
                 activeMarketCatalog.loading &&
-                uniswapVolumeCatalog.loading,
+                tokenCatalog.loading,
             error: tokens.length > 0
                 ? null
-                : activeMarketCatalog.error ?? uniswapVolumeCatalog.error,
+                : activeMarketCatalog.error ?? tokenCatalog.error,
             partial: activeMarketCatalog.partial === true ||
-                uniswapVolumeCatalog.partial === true,
+                tokenCatalog.partial === true,
             stale: activeMarketCatalog.stale === true ||
-                uniswapVolumeCatalog.stale === true,
-            schemaVersion: uniswapVolumeCatalog.schemaVersion ??
+                tokenCatalog.stale === true,
+            schemaVersion: tokenCatalog.schemaVersion ??
                 activeMarketCatalog.schemaVersion,
-            notice: uniswapVolumeCatalog.partial
-                ? 'Some Uniswap volume data could not be refreshed.'
-                : activeMarketCatalog.notice,
+            notice: activeMarketCatalog.notice,
         }
-    }, [activeMarketCatalog, discoveryChainId, uniswapVolumeCatalog, useUniswapVolumeCatalog])
+    }, [activeMarketCatalog, discoveryChainId, tokenCatalog, useShapeShiftTokenCatalog])
     const {
         tokens: marketTokens,
         commonTokens: commonMarketTokens = [],
@@ -315,7 +313,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
             diagnostics: {
                 scope: discoveryChainId,
                 apiRankedCount: marketTokens.length,
-                uniswapVolumeCount: uniswapVolumeCatalog.tokens.length,
+                tokenCatalogCount: tokenCatalog.tokens.length,
                 apiCommonCount: commonMarketTokens.length,
                 apiFallbackCount: fallbackMarketTokens.length,
                 partial: marketTokensPartial === true,
