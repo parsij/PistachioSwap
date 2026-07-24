@@ -9,6 +9,7 @@ import { useTokenSelectorState } from '../hooks/useTokenSelectorState.js'
 import { requestMoreTokenCatalog } from '../hooks/useTokenCatalog.js'
 import { swapUiConfig } from '../../../swapConfig.js'
 import './TokenSelector.css'
+import './TokenIconLoading.css'
 
 /**
  * Renders the animated token-selection dialog and delegates catalog/search state
