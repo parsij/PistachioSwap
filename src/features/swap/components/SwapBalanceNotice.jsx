@@ -5,11 +5,11 @@ import { TriangleAlert } from 'lucide-react'
  * Renders the wallet-balance freshness notice under the swap panels.
  * @param {{notice: string|null, onRetry: (() => void)|null}} props Notice text and optional retry callback.
  * @returns {import('react').ReactElement|null} Notice row, or nothing when balances are current.
- * @sideEffects Logs the notice for diagnostics and invokes `onRetry` on click only.
+ * @sideEffects Logs the notice in development and invokes `onRetry` on click only.
  */
 export default function SwapBalanceNotice({ notice, onRetry }) {
     useEffect(() => {
-        if (!notice) return
+        if (!notice || !import.meta.env.DEV) return
         console.warn('[wallet-balance-refresh]', notice)
     }, [notice])
 
