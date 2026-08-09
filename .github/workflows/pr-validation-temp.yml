@@ -34,5 +34,14 @@ jobs:
         run: pnpm lint
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
-      - name: Tests
+      - name: App wallet tests
+        continue-on-error: true
+        run: pnpm exec vitest run src/App.wallet.test.jsx
+      - name: Quote service tests
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/swap/services/quotes.test.js
+      - name: Refreshed quote tests
+        continue-on-error: true
+        run: pnpm exec vitest run src/features/swap/services/refreshedQuoteValidation.test.js
+      - name: Full tests
         run: pnpm test
