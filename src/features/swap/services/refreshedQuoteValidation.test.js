@@ -25,7 +25,7 @@ describe('refreshed quote validation', () => {
         ['chain', { chainId: 1 }, 'approved swap'],
         ['sell token', { sellToken: ROUTER }, 'approved swap'],
         ['amount', { refreshedQuote: quote({ sellAmount: '101' }) }, 'approved swap'],
-        ['spender', { refreshedQuote: quote({ approval: { ...quote().selectedQuote.approval, spender: ACCOUNT } }) }, 'Permit2 authorization'],
+        ['spender', { refreshedQuote: quote({ approval: { ...quote().selectedQuote.approval, spender: ACCOUNT } }) }, 'token authorization'],
     ])('rejects a refreshed %s mismatch', (_label, override, message) => {
         expect(() => validateRefreshedQuote({ refreshedQuote: quote(), previousQuote: quote(), snapshot, account: ACCOUNT, chainId: 56, sellToken: SELL, buyToken: BUY, ...override })).toThrow(message)
     })
