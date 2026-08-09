@@ -33,6 +33,17 @@ export function deriveSameChainReviewEligibility({
     if (activeAmountSide === 'buy' && quote.selectedQuote.buyAmount && activeBuyAmountIn && String(quote.selectedQuote.buyAmount) !== String(activeBuyAmountIn)) return blocked('stale-quote', 'Quote no longer matches the selected amount.')
     if (insufficientFunds) return blocked('insufficient-balance', `Not enough ${sellToken?.symbol ?? 'funds'} for this swap.`)
     const selected = quote.selectedQuote
+    const provider = String(selected.provider ?? '').trim().toLowerCase()
+
+    // Normal same-chain Pancake routing was removed. Keep a fail-closed guard for
+    // stale/legacy Pancake payloads that omit their old Permit2 approval metadata
+    // so an unexpected response can never advance to wallet review.
+    if (provider === 'pancakeswap' && !sellToken?.isNative && !selected.approval) {
+        return blocked(
+            'missing-permit2-approval-metadata',
+            'PancakeSwap approval information is incomplete. Refresh the quote.',
+        )
+    }
     if (selected.approval && !['permit2-allowance', 'erc20'].includes(selected.approval.mode)) {
         return blocked('unsupported-approval-mode', 'This quote uses an unsupported approval mode.')
     }
