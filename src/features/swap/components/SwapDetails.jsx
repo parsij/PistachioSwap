@@ -28,7 +28,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
             <dl>
                 {!isCrossChain && (
                     <>
-                        <DetailRow label="Fee" ariaLabel="Explain fee" help="PistachioSwap and execution fees included in this quote." value={sameChain.serviceFee} />
+                        <DetailRow label="Fee" ariaLabel="Explain fee" help="Provider and PistachioSwap fees included in this quote." value={sameChain.serviceFee} />
                         <DetailRow label="Network cost" ariaLabel="Explain network cost" help="Estimated source-network transaction cost." value={sameChain.networkCost ?? 'Unavailable'} />
                     </>
                 )}
