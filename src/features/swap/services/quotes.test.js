@@ -133,7 +133,7 @@ describe('frontend quote requests', () => {
         await expect(fetchSwapQuote({
             endpoint: '/v1/quote',
             request: { takerAddress: ADDRESS, sellAmount: '100' },
-        })).rejects.toThrow('PancakeSwap approval information is incomplete')
+        })).rejects.toThrow('Quote approval information is incompatible. Refresh the quote.')
         expect(quoteCacheSizeForTest()).toBe(0)
     })
 
@@ -219,6 +219,7 @@ describe('frontend quote requests', () => {
 
     it('bounds the per-tab quote cache across changing amount keys', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            approvalSchemaVersion: 1,
             selectedQuote: { expiresAt: '2999-01-01T00:00:00.000Z' },
         }), { status: 200, headers: { 'content-type': 'application/json' } })))
 
