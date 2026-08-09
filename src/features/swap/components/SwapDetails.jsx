@@ -30,6 +30,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                     <>
                         <DetailRow label="Fee" ariaLabel="Explain fee" help="Provider and PistachioSwap fees included in this quote." value={sameChain.serviceFee} />
                         <DetailRow label="Network cost" ariaLabel="Explain network cost" help="Estimated source-network transaction cost." value={sameChain.networkCost ?? 'Unavailable'} />
+                        <DetailRow label="Route" ariaLabel="Explain route" help="Provider selected for the best executable outcome." value="Best available" />
                     </>
                 )}
                 {isCrossChain && crossChain?.route && (
