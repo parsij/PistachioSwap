@@ -25,6 +25,7 @@ function createManager({ withVault = true } = {}) {
             this.address = null
             this.phase = this.vault ? 'locked' : 'empty'
             this.resumeReauthPending = false
+            if (this.sessionActive) this.view = null
         }),
         notify: vi.fn(),
         phase: withVault ? 'locked' : 'empty',
@@ -38,6 +39,11 @@ function createManager({ withVault = true } = {}) {
             }
         }),
         resumeReauthPending: false,
+        revealRecoveryPhrase: vi.fn(async function revealRecoveryPhrase() {
+            this.requireUnlocked()
+            await this.reauthenticate()
+            return 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu'
+        }),
         reviewQueue: {},
         rpcUrlForChain: vi.fn(() => 'https://rpc.example'),
         selectVault: vi.fn(async function selectVault() {}),
@@ -56,6 +62,7 @@ function createManager({ withVault = true } = {}) {
                 resumeReauthPending: this.resumeReauthPending,
                 sessionActive: this.sessionActive,
                 vault: this.vault,
+                view: this.view,
             })
         }),
         storage: {
@@ -68,6 +75,8 @@ function createManager({ withVault = true } = {}) {
             this.client = {}
             this.address = this.vault.address
             this.phase = 'unlocked'
+            this.sessionActive = true
+            this.activeSessionVaultId = this.vault.vaultId
             return this.address
         }),
         vault: withVault
@@ -88,11 +97,12 @@ describe('production Pistachio Wallet hardening', () => {
     it('connects a saved wallet in read-only mode without requesting a passkey', async () => {
         const manager = createManager()
         const originalConnection = manager.requestConnection
+        const originalUnlock = manager.unlock
         hardenPistachioWalletManager(manager)
 
         await expect(manager.requestConnection()).resolves.toBe(address)
         expect(originalConnection).not.toHaveBeenCalled()
-        expect(manager.unlock).not.toHaveBeenCalled()
+        expect(originalUnlock).not.toHaveBeenCalled()
         expect(manager).toMatchObject({
             activeSessionVaultId: 'vault-1',
             address: null,
@@ -105,15 +115,35 @@ describe('production Pistachio Wallet hardening', () => {
         expect(manager.snapshot().signingPasskeyOnly).toBe(true)
     })
 
+    it('opens the wallet page with one passkey check and reuses that view authorization until the page reloads', async () => {
+        const manager = createManager()
+        const originalUnlock = manager.unlock
+        hardenPistachioWalletManager(manager)
+
+        await manager.openWalletView()
+        expect(originalUnlock).toHaveBeenCalledOnce()
+        expect(manager.snapshot()).toMatchObject({
+            phase: 'unlocked',
+            view: 'wallet',
+            walletViewAuthorized: true,
+        })
+
+        manager.view = null
+        await manager.openWalletView()
+        expect(originalUnlock).toHaveBeenCalledOnce()
+        expect(manager.view).toBe('wallet')
+    })
+
     it('requests the passkey for a sensitive action and wipes the worker afterward', async () => {
         const manager = createManager()
         const originalLock = manager.lock
+        const originalUnlock = manager.unlock
         manager.sessionActive = true
         hardenPistachioWalletManager(manager)
 
         await expect(manager.signMessage({ message: 'Confirm' }))
             .resolves.toBe('0xsignature')
-        expect(manager.unlock).toHaveBeenCalledOnce()
+        expect(originalUnlock).toHaveBeenCalledOnce()
         expect(originalLock).toHaveBeenCalledOnce()
         expect(manager).toMatchObject({
             address: null,
@@ -126,6 +156,8 @@ describe('production Pistachio Wallet hardening', () => {
 
     it('requires fresh user verification when key material is already loaded', async () => {
         const manager = createManager()
+        const originalReauthenticate = manager.reauthenticate
+        const originalUnlock = manager.unlock
         manager.sessionActive = true
         manager.phase = 'unlocked'
         manager.address = address
@@ -133,12 +165,34 @@ describe('production Pistachio Wallet hardening', () => {
         hardenPistachioWalletManager(manager)
 
         await manager.ensureUnlockedForSigning()
-        expect(manager.reauthenticate).toHaveBeenCalledOnce()
-        expect(manager.unlock).not.toHaveBeenCalled()
+        expect(originalReauthenticate).toHaveBeenCalledOnce()
+        expect(originalUnlock).not.toHaveBeenCalled()
+    })
+
+    it('keeps the wallet page open after passkey-protected recovery phrase reveal', async () => {
+        const manager = createManager()
+        const originalUnlock = manager.unlock
+        const originalReauthenticate = manager.reauthenticate
+        hardenPistachioWalletManager(manager)
+
+        await manager.openWalletView()
+        expect(originalUnlock).toHaveBeenCalledOnce()
+
+        await expect(manager.revealRecoveryPhrase()).resolves.toContain('alpha beta gamma')
+        expect(originalReauthenticate).toHaveBeenCalledOnce()
+        expect(manager).toMatchObject({
+            address: null,
+            client: null,
+            phase: 'locked',
+            sessionActive: true,
+            view: 'wallet',
+        })
+        expect(manager.snapshot().walletViewAuthorized).toBe(true)
     })
 
     it('rejects unsupported and oversized provider requests before passkey UI', async () => {
         const manager = createManager()
+        const originalUnlock = manager.unlock
         manager.sessionActive = true
         hardenPistachioWalletManager(manager)
 
@@ -158,7 +212,7 @@ describe('production Pistachio Wallet hardening', () => {
         })).rejects.toMatchObject({
             code: 'PISTACHIO_REQUEST_TOO_LARGE',
         })
-        expect(manager.unlock).not.toHaveBeenCalled()
+        expect(originalUnlock).not.toHaveBeenCalled()
     })
 
     it('limits repeated sensitive requests in one browser tab', async () => {
