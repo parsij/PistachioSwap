@@ -200,7 +200,7 @@ describe('production Pistachio Wallet hardening', () => {
         await expect(manager.revealRecoveryPhrase()).resolves.toContain('alpha beta gamma')
 
         expect(originalUnlock).toHaveBeenCalledTimes(2)
-        expect(originalReauthenticate).toHaveBeenCalledTimes(2)
+        expect(originalReauthenticate).toHaveBeenCalledOnce()
         expect(manager).toMatchObject({
             phase: 'locked',
             sessionActive: true,
