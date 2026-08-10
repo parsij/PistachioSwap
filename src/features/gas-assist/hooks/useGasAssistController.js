@@ -97,7 +97,7 @@ export function useGasAssistController({
 
     const previewQuote = useMemo(() => {
         const preview = previewState.preview
-        if (!preview || !sellToken?.address || !buyToken) return null
+        if (!prepaidEnabled || !preview || !sellToken?.address || !buyToken) return null
         const commercialRaw = commercialFeeRaw(preview)
         return {
             prepaidSponsorshipRequired: true,
@@ -120,7 +120,7 @@ export function useGasAssistController({
                 },
             },
         }
-    }, [buyToken, previewState.preview, sellToken?.address])
+    }, [buyToken, prepaidEnabled, previewState.preview, sellToken?.address])
 
     const executionMode = gasAssistRequested ? gaslessMode : normalMode
     const activeQuote = gasAssistRequested ? previewQuote : normalQuote
@@ -194,9 +194,9 @@ export function useGasAssistController({
         gasAssist,
         prepaidSponsorship,
         prepaidRequired,
-        preview: previewState.preview,
-        previewStatus: previewState.status,
-        previewError: previewState.error,
+        preview: prepaidEnabled ? previewState.preview : null,
+        previewStatus: prepaidEnabled ? previewState.status : 'idle',
+        previewError: prepaidEnabled ? previewState.error : null,
         executionMode,
         activeQuote,
         activeQuoteStatus,
