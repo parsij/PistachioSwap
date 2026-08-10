@@ -93,9 +93,13 @@ export function useGasAssistController({
                 buyAmount: preview.expectedOutputRaw,
                 minimumBuyAmount: preview.minimumOutputRaw,
                 expiresAt: preview.expiresAt,
-                estimatedGasUsd: preview.amountsUsd?.estimatedSwapGas ?? null,
+                // Display the sponsored reserve, not a provider-paid network fee.
+                estimatedGasUsd: preview.amountsUsd?.gasReserve ?? null,
+                // This object is display-only in Gas Assist mode. It represents
+                // the exact total input-token prepayment deducted before routing.
+                // Provider-integrator fee remains zero in the backend quote.
                 platformFee: {
-                    amount: '0',
+                    amount: preview.paymentAmountRaw,
                     bps: 0,
                     effectiveBps: 0,
                     token: sellToken.address,
