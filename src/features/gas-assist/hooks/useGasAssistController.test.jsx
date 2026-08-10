@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 
-import { renderHook } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
     gasAssist: null,
     prepaid: null,
+    preview: null,
     gasAssistArgs: null,
     prepaidArgs: null,
+    previewArgs: null,
 }))
 
 vi.mock('./useZeroXGaslessSwap.js', () => ({
@@ -20,6 +22,12 @@ vi.mock('./usePrepaidSponsorship.js', () => ({
     usePrepaidSponsorship: (args) => {
         mocks.prepaidArgs = args
         return mocks.prepaid
+    },
+}))
+vi.mock('./useSponsorshipPreview.js', () => ({
+    useSponsorshipPreview: (args) => {
+        mocks.previewArgs = args
+        return mocks.preview
     },
 }))
 
@@ -36,7 +44,7 @@ const baseProps = {
     buyToken: { address: '0x0000000000000000000000000000000000000003', decimals: 18 },
     sellChainId: 56,
     buyChainId: 56,
-    activeAmountIn: '51',
+    activeAmountIn: '51000000',
     activeAmountSide: 'sell',
     configuredSlippageBps: 50,
     gasAssistConfig: { config: { enabled: true, mode: 'zero-x-gasless' } },
@@ -49,6 +57,19 @@ const baseProps = {
     onConfirmed: vi.fn(),
 }
 
+const preview = {
+    netSwapAmountRaw: '50000000',
+    paymentAmountRaw: '1000000',
+    expectedOutputRaw: '2000000000000000000',
+    minimumOutputRaw: '1900000000000000000',
+    expiresAt: '2999-01-01T00:00:00.000Z',
+    amountsUsd: {
+        commercialFee: '0.7',
+        gasReserve: '0.3',
+        totalPrepayment: '1',
+    },
+}
+
 describe('exact prepaid Gas Assist route ownership', () => {
     beforeEach(() => {
         mocks.gasAssist = { quote: null, quoteStatus: 'idle', quoteError: null }
@@ -57,18 +78,46 @@ describe('exact prepaid Gas Assist route ownership', () => {
             configStatus: 'success',
             configError: null,
         }
+        mocks.preview = {
+            preview,
+            status: 'success',
+            error: null,
+        }
         mocks.gasAssistArgs = null
         mocks.prepaidArgs = null
+        mocks.previewArgs = null
+        baseProps.setBuyAmount.mockReset()
+        baseProps.setVisibleStatus.mockReset()
     })
 
-    it('uses prepaid sponsorship immediately and never calls the provider-integrator quote path', () => {
+    it('uses the exact prepaid preview and never calls the provider-integrator quote path', async () => {
         const { result } = renderHook(() => useGasAssistController(baseProps))
         expect(mocks.prepaidArgs.required).toBe(true)
+        expect(mocks.previewArgs).toMatchObject({
+            required: true,
+            enabled: true,
+            grossInputAmount: '51000000',
+        })
         expect(mocks.gasAssistArgs.quoteEnabled).toBe(false)
         expect(result.current.executionMode).toBe('zero-x-gasless')
         expect(result.current.prepaidRequired).toBe(true)
-        expect(result.current.activeQuote).toEqual({ prepaidSponsorshipRequired: true })
+        expect(result.current.activeQuote).toMatchObject({
+            prepaidSponsorshipRequired: true,
+            selectedQuote: {
+                sellAmount: '50000000',
+                buyAmount: '2000000000000000000',
+                minimumBuyAmount: '1900000000000000000',
+                estimatedGasUsd: '0.3',
+                platformFee: {
+                    amount: '700000',
+                    bps: 0,
+                },
+            },
+        })
         expect(result.current.activeQuoteStatus).toBe('success')
+        await waitFor(() => {
+            expect(baseProps.setBuyAmount).toHaveBeenCalledWith('2')
+        })
     })
 
     it('fails closed when prepaid sponsorship is disabled instead of exposing a normal SwapProxy quote', () => {
