@@ -47,7 +47,10 @@ export default function PistachioWalletController() {
 
     useEffect(() => {
         if (!import.meta.env.DEV) return undefined
-        const openWallet = () => manager.open('wallet')
+        const openWallet = () => {
+            if (typeof manager.openWalletView === 'function') void manager.openWalletView()
+            else manager.open('wallet')
+        }
         const closeWallet = () => manager.close()
         window.openPistachioWallet = openWallet
         window.closePistachioWallet = closeWallet
@@ -79,6 +82,13 @@ export default function PistachioWalletController() {
     if (!snapshot.enabled) return null
     const setupPhase = ['empty', 'setup-failed', 'registering-passkey', 'passkey-ready', 'confirm-recovery', 'confirm-import', 'persisting', 'onboarding-ready'].includes(snapshot.phase)
     const lockedPhase = ['locked', 'unlocking'].includes(snapshot.phase)
+    const walletPageVisible = snapshot.phase === 'unlocked' || Boolean(
+        snapshot.signingPasskeyOnly === true &&
+        snapshot.phase === 'locked' &&
+        snapshot.sessionActive &&
+        snapshot.walletViewAuthorized === true &&
+        snapshot.view === 'wallet',
+    )
 
     function requestClose() {
         setCloseNotice('')
@@ -164,11 +174,11 @@ export default function PistachioWalletController() {
                                 {snapshot.phase === 'storage-error' && <StorageErrorContent snapshot={snapshot} />}
                                 {setupPhase && <SetupContent entryScreen={entryScreen} initialImportMode={initialImportMode} onBackupRestored={resumeRestoredVault} onEntryScreenChange={setEntryScreen} onSensitiveChange={setSensitive} snapshot={snapshot} />}
                                 {lockedPhase && snapshot.phase === 'unlocking' && <LoadingState title="Confirming wallet action">Complete the passkey prompt in your browser.</LoadingState>}
-                                {lockedPhase && snapshot.phase === 'locked' && entryScreen === 'menu' && <SavedWalletEntry snapshot={snapshot} onAnother={() => setEntryScreen('another')} onChoose={() => setEntryScreen('chooser')} onRestore={() => setEntryScreen('restore')} onSensitiveChange={setSensitive} onStart={startAnotherWallet} />}
-                                {lockedPhase && snapshot.phase === 'locked' && entryScreen === 'chooser' && <SavedWalletChooser snapshot={snapshot} onBack={() => setEntryScreen('menu')} onRestore={() => setEntryScreen('restore')} onSensitiveChange={setSensitive} onStart={startAnotherWallet} />}
-                                {lockedPhase && snapshot.phase === 'locked' && entryScreen === 'another' && <AnotherWalletMenu flags={snapshot.flags} onBack={() => setEntryScreen('menu')} onRestore={() => setEntryScreen('restore')} onStart={startAnotherWallet} />}
-                                {lockedPhase && snapshot.phase === 'locked' && entryScreen === 'restore' && <RestoreBackupContent onBack={() => setEntryScreen('menu')} onRestored={resumeRestoredVault} />}
-                                {snapshot.phase === 'unlocked' && <UnlockedContent onSensitiveChange={setSensitive} snapshot={snapshot} />}
+                                {lockedPhase && snapshot.phase === 'locked' && !walletPageVisible && entryScreen === 'menu' && <SavedWalletEntry snapshot={snapshot} onAnother={() => setEntryScreen('another')} onChoose={() => setEntryScreen('chooser')} onRestore={() => setEntryScreen('restore')} onSensitiveChange={setSensitive} onStart={startAnotherWallet} />}
+                                {lockedPhase && snapshot.phase === 'locked' && !walletPageVisible && entryScreen === 'chooser' && <SavedWalletChooser snapshot={snapshot} onBack={() => setEntryScreen('menu')} onRestore={() => setEntryScreen('restore')} onSensitiveChange={setSensitive} onStart={startAnotherWallet} />}
+                                {lockedPhase && snapshot.phase === 'locked' && !walletPageVisible && entryScreen === 'another' && <AnotherWalletMenu flags={snapshot.flags} onBack={() => setEntryScreen('menu')} onRestore={() => setEntryScreen('restore')} onStart={startAnotherWallet} />}
+                                {lockedPhase && snapshot.phase === 'locked' && !walletPageVisible && entryScreen === 'restore' && <RestoreBackupContent onBack={() => setEntryScreen('menu')} onRestored={resumeRestoredVault} />}
+                                {walletPageVisible && <UnlockedContent onSensitiveChange={setSensitive} snapshot={snapshot} />}
                             </>
                         )}
                         {closeNotice && <p className="pistachio-wallet-close-notice" role="status" aria-live="polite">{closeNotice}</p>}
@@ -194,7 +204,8 @@ export function PistachioWalletButton() {
     return (
         <button type="button" className="header-icon-button" aria-label="Open Pistachio Wallet" title="Pistachio Wallet" onClick={() => {
             void manager.recordActivity()
-            manager.open('wallet')
+            if (typeof manager.openWalletView === 'function') void manager.openWalletView()
+            else manager.open('wallet')
         }}>
             {snapshot.signingPasskeyOnly === true
                 ? <WalletCards aria-hidden="true" />
