@@ -102,8 +102,9 @@ function readOnlyAccount(manager) {
 
 /**
  * Applies production session and input hardening to the browser singleton.
- * The saved address remains connected for read-only UI, while decrypted key
- * material is loaded only for an explicitly approved sensitive operation.
+ * A passkey authorizes the wallet-management view once per page lifetime. The
+ * decrypted key still remains loaded only while an operation actually needs it,
+ * and sensitive actions continue to require their own passkey confirmation.
  */
 export function hardenPistachioWalletManager(manager) {
     if (!manager || manager[HARDENED_MANAGER]) return manager
@@ -118,12 +119,17 @@ export function hardenPistachioWalletManager(manager) {
     const originalSnapshot = manager.snapshot.bind(manager)
     const originalNotify = manager.notify.bind(manager)
     const originalRequestConnection = manager.requestConnection.bind(manager)
+    const originalUnlock = manager.unlock.bind(manager)
+    const originalReauthenticate = manager.reauthenticate.bind(manager)
     const originalLock = manager.lock.bind(manager)
     const originalSignMessage = manager.signMessage.bind(manager)
     const originalSignTypedData = manager.signTypedData.bind(manager)
     const originalSignMegaFuelTransaction =
         manager.signMegaFuelTransaction.bind(manager)
     const originalSendTransaction = manager.sendTransaction.bind(manager)
+    const originalRenamePasskey = typeof manager.renamePasskey === 'function'
+        ? manager.renamePasskey.bind(manager)
+        : null
     const originalSensitiveMethods = new Map(
         [
             'addBackupPasskey',
@@ -138,11 +144,15 @@ export function hardenPistachioWalletManager(manager) {
     )
     let sensitiveActionActive = false
     let sensitiveActionTimestamps = []
+    let walletViewAuthorizedVaultId = null
 
     manager.snapshot = function snapshot() {
         return Object.freeze({
             ...originalSnapshot(),
             signingPasskeyOnly: true,
+            walletViewAuthorized: Boolean(
+                this.vault && walletViewAuthorizedVaultId === this.vault.vaultId,
+            ),
         })
     }
 
@@ -155,6 +165,62 @@ export function hardenPistachioWalletManager(manager) {
             this.resumeReauthPending = true
         }
         return originalNotify()
+    }
+
+    manager.unlock = async function unlock(...args) {
+        const address = await originalUnlock(...args)
+        walletViewAuthorizedVaultId = this.vault?.vaultId ?? null
+        this.notify()
+        return address
+    }
+
+    manager.reauthenticate = async function reauthenticate(...args) {
+        if (this.phase !== 'unlocked' || !this.address || !this.client) {
+            if (!this.sessionActive || !this.vault) {
+                throw walletError(
+                    'PISTACHIO_WALLET_LOCKED',
+                    'Open Pistachio Wallet before this protected action.',
+                )
+            }
+            await this.unlock(...args)
+            return true
+        }
+        return originalReauthenticate(...args)
+    }
+
+    manager.openWalletView = async function openWalletView() {
+        await this.initialize()
+        if (!this.vault) {
+            this.open('wallet')
+            return
+        }
+
+        if (this.phase === 'unlocked' && this.address && this.client) {
+            walletViewAuthorizedVaultId = this.vault.vaultId
+            this.view = 'wallet'
+            this.notify()
+            return
+        }
+
+        if (walletViewAuthorizedVaultId === this.vault.vaultId) {
+            if (!this.sessionActive) await persistReadOnlySession(this)
+            this.view = 'wallet'
+            this.notify()
+            return
+        }
+
+        // Show the browser passkey state immediately instead of briefly rendering
+        // the saved-wallet chooser before unlock() reaches its first state update.
+        this.view = 'wallet'
+        this.phase = 'unlocking'
+        this.error = null
+        this.notify()
+        try {
+            await this.unlock()
+        } catch {
+            // unlock() publishes the safe locked/error state. Keep the wallet
+            // dialog open so the user can retry instead of losing their context.
+        }
     }
 
     manager.activateReadOnlySession = async function activateReadOnlySession(
@@ -209,6 +275,9 @@ export function hardenPistachioWalletManager(manager) {
     }
 
     manager.lock = async function lock(reason = 'manual', options = {}) {
+        if (reason === 'manual' || SESSION_CLEAR_LOCK_REASONS.has(reason)) {
+            walletViewAuthorizedVaultId = null
+        }
         if (SESSION_CLEAR_LOCK_REASONS.has(reason) && this.sessionActive) {
             await this.clearActiveSession()
         }
@@ -218,8 +287,20 @@ export function hardenPistachioWalletManager(manager) {
     const finishSensitiveAction = async () => {
         sensitiveActionActive = false
         if (!manager.sessionActive || !manager.vault) return
-        await originalLock('sensitive-action-complete', { broadcast: false })
-            .catch(() => undefined)
+
+        const preservedView = manager.view
+        const notify = manager.notify
+        // originalLock normally clears an open wallet view for an active session.
+        // Suppress its intermediate snapshot so the same wallet screen stays
+        // mounted while decrypted key material is discarded.
+        manager.notify = () => undefined
+        try {
+            await originalLock('sensitive-action-complete', { broadcast: false })
+                .catch(() => undefined)
+        } finally {
+            manager.notify = notify
+        }
+        manager.view = preservedView
         await persistReadOnlySession(manager)
         manager.notify()
     }
@@ -258,6 +339,12 @@ export function hardenPistachioWalletManager(manager) {
     manager.sendTransaction = wrapSensitiveAction(originalSendTransaction)
     for (const [name, operation] of originalSensitiveMethods) {
         manager[name] = wrapSensitiveAction(operation)
+    }
+    if (originalRenamePasskey) {
+        manager.renamePasskey = wrapSensitiveAction(async (...args) => {
+            await manager.reauthenticate()
+            return originalRenamePasskey(...args)
+        })
     }
 
     manager.providerRequest = async function providerRequest({
