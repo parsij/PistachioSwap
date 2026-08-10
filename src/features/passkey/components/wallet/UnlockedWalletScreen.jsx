@@ -99,6 +99,8 @@ function UnlockedContent({ onSensitiveChange, snapshot }) {
     const [keystoreBackupPassword, setKeystoreBackupPassword] = useState('')
     const [keystoreBackupConfirmation, setKeystoreBackupConfirmation] = useState('')
     const clearTimer = useRef(null)
+    const readOnlyView = snapshot.phase !== 'unlocked'
+    const displayAddress = snapshot.address ?? snapshot.vault?.address ?? ''
 
     useEffect(() => {
         onSensitiveChange(Boolean(busyAction || secretKind))
@@ -152,8 +154,11 @@ function UnlockedContent({ onSensitiveChange, snapshot }) {
     return (
         <div className="pistachio-wallet-stack">
             <div className="pistachio-wallet-unlocked-heading">
-                <div className="pistachio-wallet-success" role="status"><Check aria-hidden="true" /> Wallet unlocked</div>
-                <code>{shortenAddress(snapshot.address)}</code>
+                <div className="pistachio-wallet-success" role="status">
+                    {readOnlyView ? <WalletCards aria-hidden="true" /> : <Check aria-hidden="true" />}
+                    {readOnlyView ? ' Wallet ready' : ' Wallet unlocked'}
+                </div>
+                <code>{shortenAddress(displayAddress)}</code>
             </div>
             <section className="pistachio-wallet-section">
                 <ScreenIntro title="Passkeys">Manage passkeys that can unlock this encrypted wallet.</ScreenIntro>
