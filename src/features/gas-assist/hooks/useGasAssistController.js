@@ -4,6 +4,26 @@ import { useZeroXGaslessSwap } from './useZeroXGaslessSwap.js'
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
 import { useSponsorshipPreview } from './useSponsorshipPreview.js'
 
+function usdMicros(value) {
+    const normalized = String(value ?? '').trim()
+    if (!/^\d+(?:\.\d+)?$/u.test(normalized)) return null
+    const [whole, fraction = ''] = normalized.split('.')
+    if (fraction.length > 6) return null
+    return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0') || '0')
+}
+
+function commercialFeeRaw(preview) {
+    try {
+        const totalRaw = BigInt(preview.paymentAmountRaw)
+        const commercialUsd = usdMicros(preview.amountsUsd?.commercialFee)
+        const totalUsd = usdMicros(preview.amountsUsd?.totalPrepayment)
+        if (commercialUsd === null || totalUsd === null || totalUsd <= 0n) return 0n
+        return (totalRaw * commercialUsd + totalUsd - 1n) / totalUsd
+    } catch {
+        return 0n
+    }
+}
+
 /**
  * Owns Gas Assist quote/dialog/prepayment orchestration while keeping normal swap approval separate.
  * @param {object} config Gas Assist intent, feature configuration, and semantic callbacks.
@@ -60,9 +80,6 @@ export function useGasAssistController({
         enabled: prepaidEnabled && activeAmountSide === 'sell',
     })
 
-    // Keep the old 0x Gasless dialog hook mounted for API compatibility, but never
-    // ask the provider-integrator endpoint to price a low-BNB wallet. The exact
-    // prepaid order service owns payment, approval, and swap sponsorship.
     const gasAssist = useZeroXGaslessSwap({
         quoteEndpoint,
         walletAddress: account,
@@ -81,6 +98,7 @@ export function useGasAssistController({
     const previewQuote = useMemo(() => {
         const preview = previewState.preview
         if (!preview || !sellToken?.address || !buyToken) return null
+        const commercialRaw = commercialFeeRaw(preview)
         return {
             prepaidSponsorshipRequired: true,
             selectedQuote: {
@@ -93,13 +111,9 @@ export function useGasAssistController({
                 buyAmount: preview.expectedOutputRaw,
                 minimumBuyAmount: preview.minimumOutputRaw,
                 expiresAt: preview.expiresAt,
-                // Display the sponsored reserve, not a provider-paid network fee.
                 estimatedGasUsd: preview.amountsUsd?.gasReserve ?? null,
-                // This object is display-only in Gas Assist mode. It represents
-                // the exact total input-token prepayment deducted before routing.
-                // Provider-integrator fee remains zero in the backend quote.
                 platformFee: {
-                    amount: preview.paymentAmountRaw,
+                    amount: commercialRaw.toString(),
                     bps: 0,
                     effectiveBps: 0,
                     token: sellToken.address,
@@ -188,4 +202,9 @@ export function useGasAssistController({
         activeQuoteStatus,
         isGasless: executionMode === gaslessMode,
     }
+}
+
+export const gasAssistControllerInternals = {
+    commercialFeeRaw,
+    usdMicros,
 }
