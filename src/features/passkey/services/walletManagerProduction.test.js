@@ -40,7 +40,6 @@ function createManager({ withVault = true } = {}) {
         }),
         resumeReauthPending: false,
         revealRecoveryPhrase: vi.fn(async function revealRecoveryPhrase() {
-            this.requireUnlocked()
             await this.reauthenticate()
             return 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu'
         }),
@@ -188,6 +187,25 @@ describe('production Pistachio Wallet hardening', () => {
             view: 'wallet',
         })
         expect(manager.snapshot().walletViewAuthorized).toBe(true)
+    })
+
+    it('allows another sensitive reveal from the cached read-only wallet page', async () => {
+        const manager = createManager()
+        const originalUnlock = manager.unlock
+        const originalReauthenticate = manager.reauthenticate
+        hardenPistachioWalletManager(manager)
+
+        await manager.openWalletView()
+        await manager.revealRecoveryPhrase()
+        await expect(manager.revealRecoveryPhrase()).resolves.toContain('alpha beta gamma')
+
+        expect(originalUnlock).toHaveBeenCalledTimes(2)
+        expect(originalReauthenticate).toHaveBeenCalledTimes(2)
+        expect(manager).toMatchObject({
+            phase: 'locked',
+            sessionActive: true,
+            view: 'wallet',
+        })
     })
 
     it('rejects unsupported and oversized provider requests before passkey UI', async () => {
