@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { formatUnits } from 'viem'
 import { useZeroXGaslessSwap } from './useZeroXGaslessSwap.js'
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
+import { useSponsorshipPreview } from './useSponsorshipPreview.js'
 
 /**
  * Owns Gas Assist quote/dialog/prepayment orchestration while keeping normal swap approval separate.
@@ -44,6 +46,20 @@ export function useGasAssistController({
         onConfirmed,
     })
 
+    const prepaidRequired = gasAssistRequested
+    const prepaidEnabled = prepaidSponsorship.configStatus === 'success' &&
+        prepaidSponsorship.config?.enabled === true
+    const previewState = useSponsorshipPreview({
+        quoteEndpoint,
+        walletAddress: account,
+        sellToken,
+        buyToken,
+        grossInputAmount: activeAmountIn,
+        slippageBps: Math.max(30, configuredSlippageBps),
+        required: gasAssistRequested,
+        enabled: prepaidEnabled && activeAmountSide === 'sell',
+    })
+
     // Keep the old 0x Gasless dialog hook mounted for API compatibility, but never
     // ask the provider-integrator endpoint to price a low-BNB wallet. The exact
     // prepaid order service owns payment, approval, and swap sponsorship.
@@ -62,18 +78,67 @@ export function useGasAssistController({
         onConfirmed,
     })
 
-    const prepaidRequired = gasAssistRequested
-    const prepaidEnabled = prepaidSponsorship.configStatus === 'success' &&
-        prepaidSponsorship.config?.enabled === true
+    const previewQuote = useMemo(() => {
+        const preview = previewState.preview
+        if (!preview || !sellToken?.address || !buyToken) return null
+        return {
+            prepaidSponsorshipRequired: true,
+            selectedQuote: {
+                chainId: 56,
+                mode: 'EXACT_INPUT',
+                sellToken: sellToken.address,
+                buyToken: buyToken.isNative ? 'native' : buyToken.address,
+                sellAmount: preview.netSwapAmountRaw,
+                maximumSellAmount: preview.netSwapAmountRaw,
+                buyAmount: preview.expectedOutputRaw,
+                minimumBuyAmount: preview.minimumOutputRaw,
+                expiresAt: preview.expiresAt,
+                estimatedGasUsd: preview.amountsUsd?.estimatedSwapGas ?? null,
+                platformFee: {
+                    amount: '0',
+                    bps: 0,
+                    effectiveBps: 0,
+                    token: sellToken.address,
+                },
+            },
+        }
+    }, [buyToken, previewState.preview, sellToken?.address])
+
     const executionMode = gasAssistRequested ? gaslessMode : normalMode
-    const activeQuote = gasAssistRequested
-        ? prepaidEnabled ? { prepaidSponsorshipRequired: true } : null
-        : normalQuote
+    const activeQuote = gasAssistRequested ? previewQuote : normalQuote
     const activeQuoteStatus = gasAssistRequested
         ? prepaidSponsorship.configStatus === 'idle' || prepaidSponsorship.configStatus === 'loading'
             ? 'loading'
-            : prepaidEnabled ? 'success' : 'error'
+            : !prepaidEnabled
+                ? 'error'
+                : activeAmountSide !== 'sell'
+                    ? 'error'
+                    : previewState.status
         : normalQuoteStatus
+
+    useEffect(() => {
+        if (!gasAssistRequested || activeAmountSide !== 'sell' || buyInputDenomination !== 'TOKEN') return
+        if (previewState.status !== 'success' || !previewState.preview || !buyToken) {
+            if (previewState.status === 'loading' || previewState.status === 'error') setBuyAmount('0')
+            return
+        }
+        try {
+            setBuyAmount(formatUnits(
+                BigInt(previewState.preview.expectedOutputRaw),
+                Number(buyToken.decimals),
+            ))
+        } catch {
+            setBuyAmount('0')
+        }
+    }, [
+        activeAmountSide,
+        buyInputDenomination,
+        buyToken,
+        gasAssistRequested,
+        previewState.preview,
+        previewState.status,
+        setBuyAmount,
+    ])
 
     useEffect(() => {
         if (!gasAssistRequested) return
@@ -91,10 +156,29 @@ export function useGasAssistController({
         setVisibleStatus,
     ])
 
+    useEffect(() => {
+        if (!gasAssistRequested || !prepaidEnabled || activeAmountSide !== 'sell') return
+        if (previewState.status !== 'error') return
+        const code = previewState.error?.code ?? 'SPONSORSHIP_PREVIEW_UNAVAILABLE'
+        const message = previewState.error?.message ??
+            'Gas Assist could not preview this swap.'
+        setVisibleStatus(`${code}: ${message}`)
+    }, [
+        activeAmountSide,
+        gasAssistRequested,
+        prepaidEnabled,
+        previewState.error,
+        previewState.status,
+        setVisibleStatus,
+    ])
+
     return {
         gasAssist,
         prepaidSponsorship,
         prepaidRequired,
+        preview: previewState.preview,
+        previewStatus: previewState.status,
+        previewError: previewState.error,
         executionMode,
         activeQuote,
         activeQuoteStatus,
