@@ -34,7 +34,39 @@ jobs:
         run: pnpm lint
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
-      - name: Test
-        run: pnpm test
+      - name: Test with concise failure report
+        shell: bash
+        run: |
+          set +e
+          pnpm exec vitest run --reporter=json --outputFile=/tmp/vitest.json >/tmp/vitest-console.log 2>&1
+          status=$?
+          set -e
+
+          if [[ -s /tmp/vitest.json ]]; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('/tmp/vitest.json').read_text())
+          print(f"Test files: {data.get('numTotalTestSuites', '?')} total, {data.get('numFailedTestSuites', '?')} failed")
+          print(f"Tests: {data.get('numTotalTests', '?')} total, {data.get('numFailedTests', '?')} failed")
+          for result in data.get('testResults', []):
+              if result.get('status') != 'failed':
+                  continue
+              print(f"FAILED FILE: {result.get('name')}")
+              for assertion in result.get('assertionResults', []):
+                  if assertion.get('status') != 'failed':
+                      continue
+                  title = ' > '.join(assertion.get('ancestorTitles', []) + [assertion.get('title', '')])
+                  print(f"  FAILED TEST: {title}")
+                  for message in assertion.get('failureMessages', [])[:2]:
+                      print('  ' + str(message).replace('\n', '\n  ')[:5000])
+          PY
+          else
+            echo "Vitest JSON report was not created. Console tail:"
+            tail -160 /tmp/vitest-console.log
+          fi
+
+          exit "$status"
       - name: Build
         run: pnpm build
