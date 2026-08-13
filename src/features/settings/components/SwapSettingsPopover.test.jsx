@@ -67,4 +67,26 @@ describe('SwapSettingsPopover', () => {
             name: 'Swap settings, custom slippage 60%',
         })).toBeTruthy()
     })
+
+    it('pins an info explanation until the user interacts elsewhere in settings', () => {
+        render(<Harness />)
+        fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
+
+        const info = screen.getByRole('button', {
+            name: 'The maximum price movement allowed before the transaction is cancelled.',
+        })
+        fireEvent.click(info)
+        const tooltip = screen.getByRole('tooltip')
+        expect(tooltip.textContent).toContain('maximum price movement')
+
+        fireEvent.click(tooltip)
+        expect(screen.getByRole('tooltip')).toBeTruthy()
+
+        fireEvent.click(info)
+        expect(screen.getByRole('tooltip')).toBeTruthy()
+
+        fireEvent.pointerDown(screen.getByText('Hide unknown tokens'))
+        expect(screen.queryByRole('tooltip')).toBeNull()
+        expect(screen.getByRole('dialog')).toBeTruthy()
+    })
 })
