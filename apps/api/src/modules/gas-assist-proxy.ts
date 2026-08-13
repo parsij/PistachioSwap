@@ -39,6 +39,18 @@ type ProxyConfig = {
     maximumResponseBytes: number
 }
 
+export class PrivateGasAssistError extends Error {
+    constructor(
+        readonly code: string,
+        message: string,
+        readonly statusCode: number,
+        readonly details?: Record<string, unknown>,
+    ) {
+        super(message)
+        this.name = 'PrivateGasAssistError'
+    }
+}
+
 function readBoolean(name: string, fallback: boolean) {
     const value = process.env[name]?.trim().toLowerCase()
     if (!value) return fallback
@@ -203,6 +215,93 @@ async function readBoundedResponse(response: Response, maximumBytes: number) {
     }
 
     return Buffer.concat(chunks, totalBytes)
+}
+
+export async function requestPrivateGasAssist({
+    pathname,
+    body,
+    clientIp,
+    idempotencyKey,
+}: {
+    pathname: string
+    body: unknown
+    clientIp: string
+    idempotencyKey: string
+}) {
+    if (!/^\/internal\/v1\/[a-z0-9_\-/]+$/u.test(pathname)) {
+        throw new Error('Invalid private Gas Assist path.')
+    }
+    const config = readGasAssistProxyConfig()
+    if (!config) {
+        throw new PrivateGasAssistError(
+            'GAS_ASSIST_DISABLED',
+            'Gas Assist is unavailable.',
+            503,
+        )
+    }
+    const target = new URL(config.baseUrl)
+    const basePath = target.pathname.replace(/\/+$/, '')
+    target.pathname = `${basePath}${pathname}`.replace(/\/{2,}/g, '/')
+    target.search = ''
+    target.hash = ''
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), config.timeoutMs)
+    timeout.unref()
+    try {
+        const response = await fetch(target, {
+            method: 'POST',
+            headers: {
+                accept: 'application/json',
+                'content-type': 'application/json',
+                [INTERNAL_TOKEN_HEADER]: config.internalToken,
+                'x-pistachio-client-ip': clientIp,
+                'idempotency-key': idempotencyKey,
+            },
+            body: JSON.stringify(body),
+            redirect: 'error',
+            signal: controller.signal,
+        })
+        const bytes = await readBoundedResponse(
+            response,
+            config.maximumResponseBytes,
+        )
+        let payload: unknown = {}
+        try {
+            payload = bytes.length ? JSON.parse(bytes.toString('utf8')) : {}
+        } catch {
+            throw new PrivateGasAssistError(
+                'GAS_ASSIST_INVALID_RESPONSE',
+                'Gas Assist returned an invalid response.',
+                502,
+            )
+        }
+        if (!response.ok) {
+            const error = payload && typeof payload === 'object' && 'error' in payload
+                ? (payload as { error?: unknown }).error
+                : null
+            const record = error && typeof error === 'object'
+                ? error as Record<string, unknown>
+                : {}
+            throw new PrivateGasAssistError(
+                String(record.code ?? 'GAS_ASSIST_FAILED'),
+                String(record.message ?? 'Gas Assist could not complete the request.'),
+                response.status,
+                record.details && typeof record.details === 'object'
+                    ? record.details as Record<string, unknown>
+                    : undefined,
+            )
+        }
+        return payload
+    } catch (error) {
+        if (error instanceof PrivateGasAssistError) throw error
+        throw new PrivateGasAssistError(
+            'GAS_ASSIST_UNAVAILABLE',
+            'Gas Assist is temporarily unavailable.',
+            503,
+        )
+    } finally {
+        clearTimeout(timeout)
+    }
 }
 
 function applyResponseHeaders(response: Response, reply: FastifyReply) {
