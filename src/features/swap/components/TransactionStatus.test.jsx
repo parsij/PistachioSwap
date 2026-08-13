@@ -1,10 +1,18 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE } from '../../../services/swapExecutionMode.js'
 import TransactionStatus from './TransactionStatus.jsx'
+
+beforeAll(() => {
+    globalThis.ResizeObserver = class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    }
+})
 
 afterEach(cleanup)
 
