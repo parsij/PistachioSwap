@@ -6,18 +6,27 @@ import {
     routeError,
 } from './repository.js'
 import type {
+    CrossChainQuote,
     CrossChainProviderName,
     CrossChainRequest,
     CrossChainStatus,
     PublicCrossChainRoute,
     PublicRouteState,
 } from './types.js'
+import {
+    PrivateGasAssistError,
+    requestPrivateGasAssist,
+} from '../modules/gas-assist-proxy.js'
+
+type PrivateGasAssistRequest = typeof requestPrivateGasAssist
 
 export class CrossChainRouteService {
     constructor(
         private readonly registry = new CrossChainRegistry(),
         private readonly repository: CrossChainRouteRepository =
             createCrossChainRouteRepository(),
+        private readonly privateGasAssistRequest: PrivateGasAssistRequest =
+            requestPrivateGasAssist,
     ) {}
 
     providerNames() {
@@ -177,6 +186,141 @@ export class CrossChainRouteService {
         ))
     }
 
+    async prepareSponsorship({
+        routeId,
+        ownerValue,
+        sourceChainId,
+        clientIp,
+        idempotencyKey,
+        signal,
+    }: {
+        routeId: string
+        ownerValue: unknown
+        sourceChainId: number
+        clientIp: string
+        idempotencyKey: string
+        signal?: AbortSignal
+    }) {
+        routeId = requireRouteId(routeId)
+        const ownerAddress = requireOwner(ownerValue)
+        if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+            throw routeError(
+                'IDEMPOTENCY_KEY_REQUIRED',
+                'A valid Idempotency-Key header is required.',
+            )
+        }
+        await this.requireAuthenticationScope(routeId, ownerAddress, sourceChainId)
+        const originalRoute = await this.repository.get(routeId)
+        if (!originalRoute) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
+        if (originalRoute.sourceAsset.chainId !== 56 ||
+            originalRoute.destinationAsset.chainId === 56 ||
+            originalRoute.executionModel !== 'evm-transaction' ||
+            originalRoute.sourceAsset.address ===
+                '0x0000000000000000000000000000000000000000') {
+            throw routeError(
+                'CROSS_CHAIN_GAS_ASSIST_UNSUPPORTED',
+                'Gas Assist only supports exact BEP-20 source transactions from BNB Chain.',
+            )
+        }
+
+        const grossInputAmount = originalRoute.inputAmount
+        let expectedAmount = grossInputAmount
+        let candidateRoute = originalRoute
+        let candidateQuote = await this.registry.prepare(
+            originalRoute.quoteId,
+            signal,
+        )
+
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+            if (attempt > 0) {
+                const quote = await this.registry.requoteProvider(
+                    originalRoute.quoteId,
+                    expectedAmount,
+                    signal,
+                )
+                candidateRoute = await this.repository.create(quote)
+                candidateRoute = await this.repository.markPrepared(
+                    candidateRoute.routeId,
+                    ownerAddress,
+                )
+                candidateQuote = await this.registry.prepare(quote.quoteId, signal)
+                if (candidateQuote.statusId &&
+                    (candidateQuote.statusId !== candidateRoute.providerTrackingId ||
+                        candidateQuote.deposit?.expiresAt !== undefined)) {
+                    candidateRoute = await this.repository.setPreparedProviderReference(
+                        candidateRoute.routeId,
+                        candidateQuote.statusId,
+                        candidateQuote.deposit?.expiresAt ?? candidateQuote.expiresAt,
+                    )
+                }
+            }
+            const exactRoute = exactSponsoredRoute(
+                candidateRoute,
+                candidateQuote,
+                ownerAddress,
+            )
+            try {
+                const order = await this.privateGasAssistRequest({
+                    pathname: '/internal/v1/sponsorship/cross-chain/orders',
+                    clientIp,
+                    idempotencyKey,
+                    body: {
+                        walletAddress: ownerAddress,
+                        grossInputAmount,
+                        slippageBps: candidateQuote.request.slippageBps,
+                        route: exactRoute,
+                    },
+                })
+                const orderRecord = order && typeof order === 'object'
+                    ? order as Record<string, unknown>
+                    : {}
+                const storedRouteId = String(
+                    orderRecord.crossChainRouteId ?? candidateRoute.publicRouteId,
+                )
+                const storedRoute = storedRouteId === candidateRoute.publicRouteId
+                    ? candidateRoute
+                    : await this.repository.get(storedRouteId)
+                if (!storedRoute || storedRoute.ownerAddress !== ownerAddress) {
+                    throw routeError(
+                        'CROSS_CHAIN_SPONSORSHIP_ROUTE_MISSING',
+                        'The stored sponsored route is unavailable.',
+                    )
+                }
+                const preparedRoute = storedRouteId === candidateRoute.publicRouteId
+                    ? {
+                        ...routeResponse(candidateRoute),
+                        steps: candidateQuote.steps,
+                        transaction: candidateQuote.transaction,
+                        deposit: candidateQuote.deposit,
+                    }
+                    : routeResponse(storedRoute)
+                return {
+                    order,
+                    preparedRoute,
+                }
+            } catch (error) {
+                if (!(error instanceof PrivateGasAssistError) ||
+                    error.code !== 'ORDER_REQUOTE_REQUIRED') throw error
+                const nextAmount = String(
+                    error.details?.expectedNetSwapAmountRaw ?? '',
+                )
+                if (!/^[1-9]\d*$/.test(nextAmount) ||
+                    BigInt(nextAmount) >= BigInt(grossInputAmount) ||
+                    nextAmount === expectedAmount || attempt === 3) {
+                    throw routeError(
+                        'CROSS_CHAIN_SPONSORSHIP_UNSTABLE',
+                        'The exact sponsored route could not be stabilized.',
+                    )
+                }
+                expectedAmount = nextAmount
+            }
+        }
+        throw routeError(
+            'CROSS_CHAIN_SPONSORSHIP_UNSTABLE',
+            'The exact sponsored route could not be stabilized.',
+        )
+    }
+
     private async requireAuthenticationScope(
         routeId: string,
         walletAddress: string,
@@ -193,6 +337,45 @@ export class CrossChainRouteService {
                 'Wallet authentication must match the route source chain.',
             )
         }
+    }
+}
+
+function exactSponsoredRoute(
+    route: PublicCrossChainRoute,
+    quote: CrossChainQuote,
+    ownerAddress: string,
+) {
+    const transaction = quote.transaction
+    if (!transaction || transaction.chainId !== 56 ||
+        transaction.value !== '0' || !transaction.allowanceTarget) {
+        throw routeError(
+            'CROSS_CHAIN_TRANSACTION_NOT_SPONSORABLE',
+            'The prepared source transaction cannot use exact MegaFuel sponsorship.',
+        )
+    }
+    if (quote.request.ownerAddress !== ownerAddress ||
+        quote.request.recipient !== route.recipient ||
+        quote.request.amount !== route.inputAmount ||
+        quote.provider !== route.provider ||
+        quote.executionModel !== 'evm-transaction') {
+        throw routeError(
+            'CROSS_CHAIN_ROUTE_MISMATCH',
+            'The prepared sponsored route no longer matches the reviewed route.',
+        )
+    }
+    return {
+        publicRouteId: route.publicRouteId,
+        provider: route.provider,
+        executionModel: route.executionModel,
+        ownerAddress,
+        sourceAsset: route.sourceAsset,
+        destinationAsset: route.destinationAsset,
+        recipient: route.recipient,
+        inputAmount: route.inputAmount,
+        outputAmount: route.outputAmount,
+        minimumOutputAmount: route.minimumOutputAmount,
+        expiresAt: quote.expiresAt,
+        transaction,
     }
 }
 
