@@ -127,7 +127,7 @@ export function getWalletBalanceNotice({
 export function createSwapViewModel(context) {
     const {
         config, reducedMotion, walletState, swapSettings, catalog, inputs, routing, quote,
-        gasAssist, crossChain, receipt, eligibility, review, execution, effectiveSlippageBps,
+        gasAssist, crossChainGasAssist, crossChain, receipt, eligibility, review, execution, effectiveSlippageBps,
         statusMessage, quoteDetailsOpen, setQuoteDetailsOpen, callbacks,
     } = context
     const { brand, navigation, copy, quote: quoteConfig, wallet: walletConfig, tabs, motion: motionConfig } = config
@@ -510,8 +510,16 @@ export function createSwapViewModel(context) {
                     onConfirm: gasAssist.gasAssist.confirm,
                 },
                 prepayment: {
-                    key: gasAssist.prepaidSponsorship.order?.id ?? 'prepaid-sponsorship',
-                    props: { sponsorship: gasAssist.prepaidSponsorship, sellToken, buyToken },
+                    key: crossChainGasAssist?.sponsorship.order?.id ??
+                        gasAssist.prepaidSponsorship.order?.id ?? 'prepaid-sponsorship',
+                    props: crossChainGasAssist?.sponsorship.open
+                        ? {
+                            sponsorship: crossChainGasAssist.sponsorship,
+                            sellToken,
+                            buyToken: nativeToken,
+                            purpose: 'cross-chain-gas',
+                        }
+                        : { sponsorship: gasAssist.prepaidSponsorship, sellToken, buyToken },
                 },
             },
             sameChainReview: {
@@ -534,7 +542,7 @@ export function createSwapViewModel(context) {
                 onConfirm: callbacks.onConfirmSameChainSwap,
             },
             crossChainReview: {
-                open: Boolean(crossChain.review.route),
+                open: Boolean(crossChain.review.route) && !crossChainGasAssist?.sponsorship.open,
                 route: crossChain.review.route,
                 reducedMotion,
                 activeAmountSide: inputs.activeAmountSide,
@@ -552,6 +560,12 @@ export function createSwapViewModel(context) {
                 routeError: crossChain.routes.error,
                 executionError: crossChain.review.executionError,
                 confirmDisabled: crossChain.review.confirmDisabled,
+                gasAssist: {
+                    required: crossChainGasAssist?.required === true,
+                    available: crossChainGasAssist?.available === true,
+                    status: crossChainGasAssist?.status ?? 'idle',
+                    onStart: crossChainGasAssist?.start,
+                },
                 onClose: crossChain.review.close,
                 onConfirm: crossChain.review.confirm,
             },
