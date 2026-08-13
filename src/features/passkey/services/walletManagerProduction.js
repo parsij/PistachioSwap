@@ -124,6 +124,7 @@ function isGasAssistAuthenticationMessage(
     if (
         lines[1] !== '' ||
         lines[8] !== '' ||
+        !lines[3].startsWith('Wallet: ') ||
         !/^Domain: (?:localhost|127\.0\.0\.1|[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::\d{1,5})?$/u.test(lines[2]) ||
         !/^Nonce: [A-Za-z0-9_-]{16,128}$/u.test(lines[5])
     ) return false
@@ -168,8 +169,9 @@ function isGasAssistAuthenticationMessage(
 /**
  * Applies production session and input hardening to the browser singleton.
  * A passkey authorizes the wallet-management view once per page lifetime. The
- * decrypted key still remains loaded only while an operation actually needs it,
- * and sensitive actions continue to require their own passkey confirmation.
+ * decrypted key normally remains loaded only while one operation needs it.
+ * Gas Assist may reuse one passkey for its exact authentication messages and
+ * validated three-transaction MegaFuel package inside a short, wallet-bound scope.
  */
 export function hardenPistachioWalletManager(manager) {
     if (!manager || manager[HARDENED_MANAGER]) return manager
@@ -245,7 +247,6 @@ export function hardenPistachioWalletManager(manager) {
             walletAddress: manager.address.toLowerCase(),
         }
         gasAssistFlowTimer = globalThis.setTimeout(() => {
-            if (!gasAssistFlow || gasAssistFlow.expiresAt > Date.now()) return
             clearGasAssistFlow()
             if (manager.phase === 'unlocked') {
                 void manager.lock('gas-assist-flow-expired', { broadcast: false })
