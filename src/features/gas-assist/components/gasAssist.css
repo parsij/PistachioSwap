@@ -1,14 +1,14 @@
 .gas-assist-overlay {
     position: fixed;
     inset: 0;
-    z-index: 90;
+    z-index: 10010;
     background: rgb(0 0 0 / 68%);
     backdrop-filter: blur(8px);
 }
 
 .gas-assist-dialog {
     position: fixed;
-    z-index: 91;
+    z-index: 10011;
     top: 50%;
     left: 50%;
     width: min(440px, calc(100vw - 24px));
