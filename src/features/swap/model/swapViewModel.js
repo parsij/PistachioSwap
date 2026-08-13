@@ -15,6 +15,7 @@ import {
 } from '../../cross-chain/services/crossChainRoutes.js'
 import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 import { formatCompactRate, formatCostUsd } from './swapDisplay.js'
+import { expectsCrossChainGasAssist } from './swapEligibility.js'
 function positiveBigInt(value) {
     if (
         typeof value !== 'string' &&
@@ -322,6 +323,14 @@ export function createSwapViewModel(context) {
     const reviewSourceGas = formatCostUsd(reviewCosts?.sourceGasUsd, true) ??
         (reviewCosts?.sourceGasNative ? `~${reviewCosts.sourceGasNative} ${reviewNativeSymbol}` : null)
     const reviewAppFee = reviewCosts?.appFeeUsd === '0' ? 'Free' : formatCostUsd(reviewCosts?.appFeeUsd)
+    const crossChainGasAssistExpected = expectsCrossChainGasAssist({
+        prepaidEnabled: gasAssist.prepaidSponsorship.config?.enabled,
+        routingMode: routing.routingMode,
+        crossChainMode: routing.modes.CROSS_CHAIN,
+        nativeBalanceValue: catalog.nativeBalance.value,
+        sellChainId: routing.sellChainId,
+        sellToken,
+    })
     const sameChainConfirmLabel = {
         'checking-approval': 'Checking token approval...',
         'checking-token-approval': 'Checking token approval...',
@@ -562,6 +571,7 @@ export function createSwapViewModel(context) {
                 confirmDisabled: crossChain.review.confirmDisabled,
                 gasAssist: {
                     required: crossChainGasAssist?.required === true,
+                    expected: crossChainGasAssistExpected,
                     available: crossChainGasAssist?.available === true,
                     status: crossChainGasAssist?.status ?? 'idle',
                     onStart: crossChainGasAssist?.start,
