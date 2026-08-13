@@ -18,6 +18,7 @@ import {
     markCrossChainRouteSubmitted,
     persistPublicRouteId,
     prepareCrossChainRoute,
+    prepareCrossChainSponsorship,
     readPersistedPublicRouteId,
     sortCrossChainRoutes,
 } from '../services/crossChainRoutes.js'
@@ -325,6 +326,47 @@ export function useCrossChainRoutes({
         }
     }, [endpoint])
 
+    const prepareSponsorship = useCallback(async (idempotencyKey) => {
+        const route = preparedRouteRef.current
+        const session = sessionRef.current
+        if (!route || !session?.sessionToken) {
+            throw new Error('Prepare and authenticate the cross-chain route first.')
+        }
+        return prepareCrossChainSponsorship({
+            endpoint,
+            routeId: route.publicRouteId,
+            sessionToken: session.sessionToken,
+            idempotencyKey,
+        })
+    }, [endpoint])
+
+    const completeSponsorship = useCallback(async ({
+        preparedRoute: sponsoredRoute,
+        transactionHash,
+    }) => {
+        const sessionToken = sessionRef.current?.sessionToken
+        if (!sponsoredRoute?.publicRouteId || !sessionToken || !transactionHash) {
+            throw new Error('The sponsored cross-chain submission is incomplete.')
+        }
+        await claimCrossChainRoute({
+            endpoint,
+            routeId: sponsoredRoute.publicRouteId,
+            sessionToken,
+        })
+        await markCrossChainRouteSubmitted({
+            endpoint,
+            routeId: sponsoredRoute.publicRouteId,
+            sessionToken,
+            transactionHash,
+        })
+        preparedRouteRef.current = sponsoredRoute
+        setPreparedRoute(sponsoredRoute)
+        persistPublicRouteId(sponsoredRoute.publicRouteId)
+        setPersistedRouteId(sponsoredRoute.publicRouteId)
+        setPhase('submitted')
+        return true
+    }, [endpoint])
+
     const reset = useCallback(() => {
         prepareSequenceRef.current += 1
         setRoutes([])
@@ -437,6 +479,8 @@ export function useCrossChainRoutes({
         prepare,
         claimSource,
         markSubmitted,
+        prepareSponsorship,
+        completeSponsorship,
         reset,
     }
 }
