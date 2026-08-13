@@ -2198,3 +2198,82 @@ describe('App wallet integration', () => {
             .mockResolvedValueOnce({
                 selectedQuote: {
                     buyAmount: '2000000000000000000',
+                    expiresAt: '2999-01-01T00:00:00.000Z',
+                },
+            })
+            .mockRejectedValueOnce(new Error('refresh unavailable'))
+        const { container, getAllByText, getByRole, getByText } = render(<App />)
+        selectBuyToken(container, getAllByText)
+        fireEvent.change(getByRole('textbox', { name: 'Sell amount' }), {
+            target: { value: '1' },
+        })
+        const buyInput = getByRole('textbox', { name: 'Buy amount' })
+        await waitFor(() => expect(buyInput.value).toBe('2'))
+
+        fireEvent.click(getByRole('button', { name: 'Swap settings' }))
+        const customSlippage = getByRole('textbox', {
+            name: 'Custom slippage percentage',
+        })
+        fireEvent.pointerDown(customSlippage)
+        fireEvent.change(customSlippage, { target: { value: '1' } })
+
+        await waitFor(() => expect(mocks.fetchSwapQuote).toHaveBeenCalledTimes(2))
+        await waitFor(() => expect(getByText(
+            'Price refresh failed. Showing the previous quote.',
+        )).toBeTruthy())
+        expect(buyInput.value).toBe('2')
+        expect(container.querySelector('.primary-action').textContent)
+            .not.toBe('Finding the best price')
+    })
+
+    it('keeps wallet-only spam out of the 24H volume catalog', () => {
+        mocks.account.address = ADDRESS
+        mocks.account.isConnected = true
+        mocks.marketTokens = [{
+            chainId: 56,
+            address: '0x0000000000000000000000000000000000000011',
+            name: 'Catalog token',
+            symbol: 'CAT',
+            decimals: 18,
+            volume24hUsd: 1_000_000,
+            verificationStatus: 'established',
+            visibility: 'primary',
+        }]
+        mocks.useWalletTokens.mockReturnValue({
+            tokens: [{
+                classificationVersion: 5,
+                chainId: 56,
+                address: '0x0000000000000000000000000000000000000099',
+                name: 'claim-reward.example.com',
+                symbol: 'BONUS',
+                decimals: 18,
+                rawBalance: '1000000000000000000',
+                balance: '1',
+                priceConfidence: 'unknown',
+                recognitionStatus: 'unverified',
+                recognitionReasons: [],
+                spamStatus: 'possible-spam',
+                possibleSpam: true,
+                verifiedContract: false,
+                spamReasons: ['moralis-possible-spam'],
+                securityStatus: 'unknown',
+                visibility: 'hidden',
+            }],
+            error: null,
+            refetch: mocks.refetchWalletTokens,
+        })
+
+        const { container } = render(<App />)
+        fireEvent.click(container.querySelector('.sell-token-position button'))
+
+        const catalogSection = [...document.querySelectorAll('.ps-token-section')]
+            .find((section) =>
+                section.textContent.includes('Tokens') &&
+                section.textContent.includes('Catalog token'),
+            )
+
+        expect(catalogSection.textContent).toContain('Catalog token')
+        expect(catalogSection.textContent).not.toContain('claim-reward.example.com')
+        expect(catalogSection.textContent).not.toContain('BONUS')
+    })
+})
