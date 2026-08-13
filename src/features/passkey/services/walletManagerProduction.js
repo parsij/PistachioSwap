@@ -8,6 +8,8 @@ const LAST_WALLET_ACTIVITY_PREFERENCE = 'lastWalletActivityAt'
 const SESSION_RESUME_ELIGIBLE_PREFERENCE = 'sessionResumeEligible'
 const SENSITIVE_ACTION_LIMIT = 12
 const SENSITIVE_ACTION_WINDOW_MS = 60_000
+const GAS_ASSIST_FLOW_WINDOW_MS = 3 * 60_000
+const AUTH_CHALLENGE_MAX_TTL_MS = 10 * 60_000
 const RPC_TIMEOUT_MS = 15_000
 const MAX_RPC_RESPONSE_CHARS = 512 * 1024
 const MAX_MESSAGE_CHARS = 128 * 1024
@@ -100,6 +102,69 @@ function readOnlyAccount(manager) {
     return null
 }
 
+function isGasAssistAuthenticationMessage(
+    value,
+    {
+        walletAddress,
+        activeChainId,
+        now = Date.now(),
+    },
+) {
+    const message = value?.message
+    if (typeof message !== 'string' || message.length > MAX_MESSAGE_CHARS) {
+        return false
+    }
+
+    const lines = message.split('\n')
+    const crossChain = lines[0] === 'PistachioSwap Cross-Chain Authentication'
+    const sponsorship = lines[0] === 'PistachioSwap Gas Assist Authentication'
+    if ((!crossChain && !sponsorship) || lines.length !== (crossChain ? 11 : 10)) {
+        return false
+    }
+    if (
+        lines[1] !== '' ||
+        lines[8] !== '' ||
+        !/^Domain: (?:localhost|127\.0\.0\.1|[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::\d{1,5})?$/u.test(lines[2]) ||
+        !/^Nonce: [A-Za-z0-9_-]{16,128}$/u.test(lines[5])
+    ) return false
+
+    try {
+        if (getAddress(lines[3].slice('Wallet: '.length)) !== getAddress(walletAddress)) {
+            return false
+        }
+    } catch {
+        return false
+    }
+
+    const expectedChain = Number(activeChainId)
+    const chainLine = crossChain
+        ? `Source Chain ID: ${expectedChain}`
+        : 'Chain ID: 56'
+    if (
+        lines[4] !== chainLine ||
+        !Number.isSafeInteger(expectedChain) ||
+        (sponsorship && expectedChain !== 56)
+    ) return false
+
+    const issuedAt = Date.parse(lines[6].slice('Issued At: '.length))
+    const expiresAt = Date.parse(lines[7].slice('Expiration Time: '.length))
+    if (
+        !lines[6].startsWith('Issued At: ') ||
+        !lines[7].startsWith('Expiration Time: ') ||
+        !Number.isFinite(issuedAt) ||
+        !Number.isFinite(expiresAt) ||
+        issuedAt > now + 30_000 ||
+        expiresAt <= now ||
+        expiresAt - issuedAt > AUTH_CHALLENGE_MAX_TTL_MS
+    ) return false
+
+    if (crossChain) {
+        return lines[9] === 'This signature authenticates this wallet for cross-chain route mutations on the source chain.' &&
+            lines[10] === 'It does not authorize or submit a transaction.'
+    }
+    return lines[9] === 'This signature authenticates your wallet. It does not authorize a transaction.'
+}
+
 /**
  * Applies production session and input hardening to the browser singleton.
  * A passkey authorizes the wallet-management view once per page lifetime. The
@@ -146,6 +211,48 @@ export function hardenPistachioWalletManager(manager) {
     let sensitiveActionActive = false
     let sensitiveActionTimestamps = []
     let walletViewAuthorizedVaultId = null
+    let currentSensitiveActionKind = 'default'
+    let gasAssistFlow = null
+    let gasAssistFlowTimer = null
+
+    const clearGasAssistFlow = () => {
+        if (gasAssistFlowTimer !== null) {
+            globalThis.clearTimeout(gasAssistFlowTimer)
+            gasAssistFlowTimer = null
+        }
+        gasAssistFlow = null
+    }
+
+    const gasAssistFlowMatches = () => Boolean(
+        gasAssistFlow &&
+        gasAssistFlow.expiresAt > Date.now() &&
+        manager.vault?.vaultId === gasAssistFlow.vaultId &&
+        readOnlyAccount(manager)?.toLowerCase() === gasAssistFlow.walletAddress,
+    )
+
+    const armGasAssistFlow = () => {
+        if (
+            manager.phase !== 'unlocked' ||
+            !manager.address ||
+            !manager.client ||
+            !manager.vault
+        ) return false
+
+        clearGasAssistFlow()
+        gasAssistFlow = {
+            expiresAt: Date.now() + GAS_ASSIST_FLOW_WINDOW_MS,
+            vaultId: manager.vault.vaultId,
+            walletAddress: manager.address.toLowerCase(),
+        }
+        gasAssistFlowTimer = globalThis.setTimeout(() => {
+            if (!gasAssistFlow || gasAssistFlow.expiresAt > Date.now()) return
+            clearGasAssistFlow()
+            if (manager.phase === 'unlocked') {
+                void manager.lock('gas-assist-flow-expired', { broadcast: false })
+            }
+        }, GAS_ASSIST_FLOW_WINDOW_MS)
+        return true
+    }
 
     manager.snapshot = function snapshot() {
         return Object.freeze({
@@ -267,6 +374,20 @@ export function hardenPistachioWalletManager(manager) {
                 'Connect Pistachio Wallet before signing.',
             )
         }
+        const scopedGasAssistAction = (
+            currentSensitiveActionKind === 'gas-assist-auth' ||
+            currentSensitiveActionKind === 'gas-assist-package'
+        )
+        if (
+            scopedGasAssistAction &&
+            gasAssistFlowMatches() &&
+            this.phase === 'unlocked' &&
+            this.address &&
+            this.client
+        ) {
+            this.requireUnlocked()
+            return
+        }
         if (this.phase === 'unlocked' && this.address && this.client) {
             await this.reauthenticate()
         } else {
@@ -276,6 +397,7 @@ export function hardenPistachioWalletManager(manager) {
     }
 
     manager.lock = async function lock(reason = 'manual', options = {}) {
+        clearGasAssistFlow()
         if (reason === 'manual' || SESSION_CLEAR_LOCK_REASONS.has(reason)) {
             walletViewAuthorizedVaultId = null
         }
@@ -285,8 +407,22 @@ export function hardenPistachioWalletManager(manager) {
         return originalLock(reason, options)
     }
 
-    const finishSensitiveAction = async () => {
+    const finishSensitiveAction = async ({
+        preserveGasAssistUnlock = false,
+    } = {}) => {
         sensitiveActionActive = false
+        if (
+            preserveGasAssistUnlock &&
+            gasAssistFlowMatches() &&
+            manager.phase === 'unlocked' &&
+            manager.address &&
+            manager.client
+        ) {
+            manager.notify()
+            return
+        }
+
+        clearGasAssistFlow()
         if (!manager.sessionActive || !manager.vault) return
 
         const preservedView = manager.view
@@ -306,7 +442,10 @@ export function hardenPistachioWalletManager(manager) {
         manager.notify()
     }
 
-    const wrapSensitiveAction = (operation) => async (...args) => {
+    const wrapSensitiveAction = (
+        operation,
+        classify = () => 'default',
+    ) => async (...args) => {
         const now = Date.now()
         sensitiveActionTimestamps = sensitiveActionTimestamps.filter(
             (timestamp) => now - timestamp < SENSITIVE_ACTION_WINDOW_MS,
@@ -323,23 +462,51 @@ export function hardenPistachioWalletManager(manager) {
                 'Too many sensitive wallet requests. Wait one minute and try again.',
             )
         }
+
+        const actionKind = classify(...args)
         sensitiveActionTimestamps.push(now)
         sensitiveActionActive = true
+        currentSensitiveActionKind = actionKind
+        let succeeded = false
         try {
-            return await operation(...args)
+            const result = await operation(...args)
+            succeeded = true
+            return result
         } finally {
-            await finishSensitiveAction()
+            if (succeeded && actionKind === 'gas-assist-auth') {
+                armGasAssistFlow()
+            }
+            const preserveGasAssistUnlock = (
+                succeeded &&
+                actionKind === 'gas-assist-auth' &&
+                gasAssistFlowMatches()
+            )
+            currentSensitiveActionKind = 'default'
+            await finishSensitiveAction({ preserveGasAssistUnlock })
         }
     }
 
-    manager.signMessage = wrapSensitiveAction(originalSignMessage)
+    manager.signMessage = wrapSensitiveAction(
+        originalSignMessage,
+        (value) => isGasAssistAuthenticationMessage(value, {
+            walletAddress: readOnlyAccount(manager),
+            activeChainId: manager.activeChainId,
+        })
+            ? 'gas-assist-auth'
+            : 'default',
+    )
     manager.signTypedData = wrapSensitiveAction(originalSignTypedData)
     manager.signMegaFuelTransaction = wrapSensitiveAction(
         originalSignMegaFuelTransaction,
     )
     manager.sendTransaction = wrapSensitiveAction(originalSendTransaction)
     for (const [name, operation] of originalSensitiveMethods) {
-        manager[name] = wrapSensitiveAction(operation)
+        manager[name] = wrapSensitiveAction(
+            operation,
+            () => name === 'signMegaFuelPackage'
+                ? 'gas-assist-package'
+                : 'default',
+        )
     }
     if (originalRenamePasskey) {
         manager.renamePasskey = wrapSensitiveAction(async (...args) => {
@@ -543,8 +710,11 @@ export const walletManagerProductionInternals = {
     MAX_RPC_RESPONSE_CHARS,
     MAX_TRANSACTION_CHARS,
     MAX_TYPED_DATA_CHARS,
+    AUTH_CHALLENGE_MAX_TTL_MS,
+    GAS_ASSIST_FLOW_WINDOW_MS,
     SENSITIVE_ACTION_LIMIT,
     SENSITIVE_ACTION_WINDOW_MS,
+    isGasAssistAuthenticationMessage,
     readOnlyAccount,
     serializedLength,
 }
