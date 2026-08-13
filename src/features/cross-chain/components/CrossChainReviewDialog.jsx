@@ -4,6 +4,11 @@ import { motion } from 'motion/react'
 import { formatTokenAmount } from '../services/crossChainRoutes.js'
 import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 import { formatCostUsd } from '../../swap/model/swapDisplay.js'
+import {
+    GAS_ASSIST_REVIEW_TITLE,
+    GAS_ASSIST_SWAP_ACTION,
+} from '../../gas-assist/model/gasAssistCopy.js'
+import './crossChain.css'
 
 /**
  * Renders the existing Radix cross-chain review portal from a prepared route view model.
@@ -26,6 +31,7 @@ export default function CrossChainReviewDialog({
     onConfirm,
 }) {
     if (!open || !route) return null
+    const showGasAssistCopy = gasAssist?.required === true || gasAssist?.expected === true
     const portalContainer = typeof document === 'undefined'
         ? undefined
         : document.querySelector('.app-shell') ?? undefined
@@ -55,7 +61,9 @@ export default function CrossChainReviewDialog({
                         aria-busy={['preparing', 'refreshing'].includes(preparation.status)}
                     >
                         <header>
-                            <Dialog.Title>Review cross-chain swap</Dialog.Title>
+                            <Dialog.Title>
+                                {showGasAssistCopy ? GAS_ASSIST_REVIEW_TITLE : 'Review cross-chain swap'}
+                            </Dialog.Title>
                             <Dialog.Close asChild>
                                 <button type="button" aria-label="Close review"><X aria-hidden="true" /></button>
                             </Dialog.Close>
@@ -129,7 +137,7 @@ export default function CrossChainReviewDialog({
                                 >
                                     {gasAssist.status === 'loading'
                                         ? 'Checking Gas Assist…'
-                                        : gasAssist.available ? 'Use Gas Assist' : 'Gas Assist unavailable'}
+                                        : gasAssist.available ? GAS_ASSIST_SWAP_ACTION : 'Gas Assist unavailable'}
                                 </button>
                             ) : (
                                 <button type="button" className="primary" disabled={confirmDisabled} onClick={onConfirm}>
