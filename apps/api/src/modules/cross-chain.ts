@@ -186,6 +186,36 @@ export function createCrossChainRoutes(
             ),
         )
 
+        app.post<{ Params: { routeId: string }; Body: unknown }>(
+            '/v1/cross-chain/routes/:routeId/sponsorship/prepare',
+            { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+            async (request, reply) => {
+                try {
+                    exactBody(request.body, [], [])
+                    const session = await auth.authenticate(
+                        request.headers.authorization,
+                    )
+                    return reply.send(await service.prepareSponsorship({
+                        routeId: request.params.routeId,
+                        ownerValue: session.walletAddress,
+                        sourceChainId: session.chainId,
+                        clientIp: request.ip,
+                        idempotencyKey: String(
+                            request.headers['idempotency-key'] ?? '',
+                        ),
+                        signal: abortSignal(request),
+                    }))
+                } catch (error) {
+                    return sendError(
+                        reply,
+                        error,
+                        400,
+                        'CROSS_CHAIN_GAS_ASSIST_FAILED',
+                    )
+                }
+            },
+        )
+
         const status = async (
             routeId: string,
             request: FastifyRequest,
