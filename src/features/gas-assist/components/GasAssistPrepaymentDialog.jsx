@@ -216,9 +216,7 @@ export default function GasAssistPrepaymentDialog({
     if (!sponsorship.open || walletReviewActive) return null
 
     const walletBusy = sponsorship.phase === 'continuation-loading' ||
-        sponsorship.phase === 'continuation-loading' ||
-        sponsorship.phase.endsWith('-preparing') ||
-        sponsorship.phase.endsWith('-signing')
+        sponsorship.phase.endsWith('-preparing')
     const waitingForChain = ['payment-confirming', 'approval-confirming', 'swap-confirming'].includes(sponsorship.phase) ||
         ['payment-submitting', 'payment-submitted', 'approval-submitted', 'swap-submitted'].includes(order?.status)
     const orderExpired = expired || Boolean(order?.expiresAt && Date.parse(order.expiresAt) <= Date.now())
