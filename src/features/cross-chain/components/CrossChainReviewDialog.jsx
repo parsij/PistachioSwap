@@ -40,6 +40,10 @@ export default function CrossChainReviewDialog({
         : preparation.status === 'refreshing'
             ? 'Refreshing route...'
             : 'Confirm swap'
+    const startGasAssist = () => {
+        onClose()
+        void gasAssist.onStart()
+    }
 
     return (
         <Dialog.Root open onOpenChange={(nextOpen) => !nextOpen && onClose()}>
@@ -133,7 +137,7 @@ export default function CrossChainReviewDialog({
                                     type="button"
                                     className="primary"
                                     disabled={!gasAssist.available}
-                                    onClick={gasAssist.onStart}
+                                    onClick={startGasAssist}
                                 >
                                     {gasAssist.status === 'loading'
                                         ? 'Checking Gas Assist…'
