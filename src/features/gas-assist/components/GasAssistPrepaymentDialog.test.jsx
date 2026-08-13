@@ -100,6 +100,37 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.queryByText(/converts only/i)).toBeNull()
     })
 
+    it('fully hands modal focus to Pistachio Wallet while authentication or signing is active', () => {
+        const value = sponsorship({ phase: 'authenticating', order: null })
+        const { container, rerender } = render(
+            <GasAssistPrepaymentDialog
+                sponsorship={value}
+                sellToken={sellToken}
+                buyToken={buyToken}
+            />,
+        )
+
+        expect(container).toBeEmptyDOMElement()
+
+        rerender(
+            <GasAssistPrepaymentDialog
+                sponsorship={sponsorship({ phase: 'package-signing' })}
+                sellToken={sellToken}
+                buyToken={buyToken}
+            />,
+        )
+        expect(container).toBeEmptyDOMElement()
+
+        rerender(
+            <GasAssistPrepaymentDialog
+                sponsorship={sponsorship({ phase: 'review' })}
+                sellToken={sellToken}
+                buyToken={buyToken}
+            />,
+        )
+        expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
+    })
+
     it('shows compact progress and prevents another primary submission while payment is pending', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
