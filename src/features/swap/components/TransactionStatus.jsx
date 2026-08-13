@@ -47,7 +47,3 @@ export default function TransactionStatus({
         </>
     )
 }
-
-export const transactionStatusInternals = {
-    GAS_ASSIST_GAS_EXPLANATION,
-}
