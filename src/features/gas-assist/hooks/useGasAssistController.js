@@ -24,6 +24,20 @@ function commercialFeeRaw(preview) {
     }
 }
 
+function logGasAssistDiagnostic(scope, error, fallbackCode, fallbackMessage) {
+    const diagnostic = {
+        scope,
+        code: String(error?.code ?? fallbackCode),
+        message: String(error?.message ?? fallbackMessage),
+    }
+    if (error?.stage) diagnostic.stage = String(error.stage)
+    if (error?.requestId) diagnostic.requestId = String(error.requestId)
+
+    // Keep backend/provider codes available for advanced console debugging without
+    // exposing unstable implementation details in the customer-facing status area.
+    console.error('[pistachio-swap] Gas Assist diagnostic', diagnostic)
+}
+
 /**
  * Owns Gas Assist quote/dialog/prepayment orchestration while keeping normal swap approval separate.
  * @param {object} config Gas Assist intent, feature configuration, and semantic callbacks.
@@ -51,7 +65,6 @@ export function useGasAssistController({
     normalQuoteStatus,
     buyInputDenomination,
     setBuyAmount,
-    setVisibleStatus,
     onConfirmed,
 }) {
     const gasAssistRequested = routingMode === gasAssistRoutingMode
@@ -162,32 +175,34 @@ export function useGasAssistController({
         if (!gasAssistRequested) return
         if (prepaidSponsorship.configStatus === 'idle' || prepaidSponsorship.configStatus === 'loading') return
         if (prepaidEnabled) return
-        const code = prepaidSponsorship.configError?.code ?? 'SPONSORSHIP_UNAVAILABLE'
-        const message = prepaidSponsorship.configError?.message ??
-            'Exact prepaid Gas Assist is disabled or unavailable.'
-        setVisibleStatus(`${code}: ${message}`)
+        logGasAssistDiagnostic(
+            'configuration',
+            prepaidSponsorship.configError,
+            'SPONSORSHIP_UNAVAILABLE',
+            'Exact prepaid Gas Assist is disabled or unavailable.',
+        )
     }, [
         gasAssistRequested,
         prepaidEnabled,
         prepaidSponsorship.configError,
         prepaidSponsorship.configStatus,
-        setVisibleStatus,
     ])
 
     useEffect(() => {
         if (!gasAssistRequested || !prepaidEnabled || activeAmountSide !== 'sell') return
         if (previewState.status !== 'error') return
-        const code = previewState.error?.code ?? 'SPONSORSHIP_PREVIEW_UNAVAILABLE'
-        const message = previewState.error?.message ??
-            'Gas Assist could not preview this swap.'
-        setVisibleStatus(`${code}: ${message}`)
+        logGasAssistDiagnostic(
+            'preview',
+            previewState.error,
+            'SPONSORSHIP_PREVIEW_UNAVAILABLE',
+            'Gas Assist could not preview this swap.',
+        )
     }, [
         activeAmountSide,
         gasAssistRequested,
         prepaidEnabled,
         previewState.error,
         previewState.status,
-        setVisibleStatus,
     ])
 
     return {
@@ -206,5 +221,6 @@ export function useGasAssistController({
 
 export const gasAssistControllerInternals = {
     commercialFeeRaw,
+    logGasAssistDiagnostic,
     usdMicros,
 }
