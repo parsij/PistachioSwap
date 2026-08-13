@@ -254,9 +254,9 @@ export default function GasAssistPrepaymentDialog({
                     <div className="gas-assist-heading gas-assist-simple-heading">
                         <div>
                             <div className="gas-assist-kicker"><ShieldCheck aria-hidden="true" /> No BNB needed</div>
-                            <Dialog.Title>{purpose === 'cross-chain-gas' ? 'Add BNB for cross-chain gas' : 'Swap without gas'}</Dialog.Title>
+                            <Dialog.Title>{purpose === 'cross-chain-gas' ? 'Cross-chain swap without BNB' : 'Swap without gas'}</Dialog.Title>
                             <Dialog.Description>{purpose === 'cross-chain-gas'
-                                ? 'PistachioSwap converts only the displayed portion to BNB. The remaining tokens stay available for your cross-chain swap.'
+                                ? 'PistachioSwap sponsors the exact source-chain transaction with MegaFuel and deducts one clear fee from your sell token. No BNB is sent to your wallet.'
                                 : 'PistachioSwap covers the network fee and deducts one clear fee from your sell token.'}</Dialog.Description>
                         </div>
                         <Dialog.Close asChild>
