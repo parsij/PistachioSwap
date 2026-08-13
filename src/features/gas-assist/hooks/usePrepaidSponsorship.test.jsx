@@ -115,6 +115,48 @@ describe('prepaid sponsorship async ownership', () => {
         expect(onConfirmed).toHaveBeenCalledTimes(1)
     })
 
+    it('uses a cross-chain order factory and reports the source hash before completion', async () => {
+        const onSubmitted = vi.fn()
+        const onConfirmed = vi.fn()
+        const createOrder = vi.fn().mockResolvedValue({
+            id: 'cross-order',
+            status: 'quoted',
+        })
+        mocks.fetchOrder
+            .mockResolvedValueOnce({
+                id: 'cross-order',
+                status: 'swap-submitted',
+                swapTransactionHash: `0x${'12'.repeat(32)}`,
+            })
+            .mockResolvedValueOnce({
+                id: 'cross-order',
+                status: 'completed',
+                swapTransactionHash: `0x${'12'.repeat(32)}`,
+            })
+        const { result } = setup(walletA, onConfirmed, {
+            createOrder,
+            onSubmitted,
+        })
+        await waitForConfig(result)
+        vi.useFakeTimers()
+
+        await act(async () => result.current.start())
+        expect(createOrder).toHaveBeenCalledOnce()
+        expect(mocks.createOrder).not.toHaveBeenCalled()
+
+        await act(() => vi.advanceTimersByTimeAsync(3_000))
+        expect(onSubmitted).toHaveBeenCalledWith(expect.objectContaining({
+            status: 'swap-submitted',
+        }))
+        expect(onConfirmed).not.toHaveBeenCalled()
+
+        await act(() => vi.advanceTimersByTimeAsync(3_000))
+        expect(onSubmitted).toHaveBeenCalledTimes(1)
+        expect(onConfirmed).toHaveBeenCalledWith(expect.objectContaining({
+            status: 'completed',
+        }))
+    })
+
     it('does not publish an order authenticated for a disconnected wallet', async () => {
         let resolveAuthentication
         mocks.authenticate.mockImplementation(() => new Promise((resolve) => {
