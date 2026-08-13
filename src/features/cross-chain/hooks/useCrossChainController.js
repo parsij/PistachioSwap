@@ -267,7 +267,7 @@ export function useCrossChainController({
         setReviewPreparation({ ...IDLE_PREPARATION, status: 'preparing' })
         try {
             const prepared = await routes.prepare(route)
-            if (reviewRequestRef.current !== route.publicRouteId) return
+            if (reviewRequestRef.current !== route.publicRouteId) return false
             if (
                 !prepared ||
                 prepared.publicRouteId !== route.publicRouteId ||
@@ -283,24 +283,30 @@ export function useCrossChainController({
             ) {
                 throw new Error('The prepared route has no valid source transaction.')
             }
-            setReviewRoute(nextReviewRoute)
             if (nextReviewRoute.executionModel !== 'evm-transaction') {
+                setReviewRoute(nextReviewRoute)
                 setReviewPreparation({ ...IDLE_PREPARATION, status: 'ready', gasEstimateUnavailable: true })
-                return
+                return true
             }
 
             const estimate = await estimateReviewRoute(nextReviewRoute, route.publicRouteId)
-            if (!estimate) return
+            if (!estimate) return false
             setReviewRoute(estimate.route)
             setReviewPreparation(estimate.preparation)
+            return true
         } catch (error) {
-            if (reviewRequestRef.current !== route.publicRouteId) return
+            if (reviewRequestRef.current !== route.publicRouteId) return false
+            const message = error instanceof Error ? error.message : 'The route could not be prepared.'
+            reviewRequestRef.current = null
             setReviewPreparation({ ...IDLE_PREPARATION, status: 'invalid' })
-            setExecutionError(error instanceof Error ? error.message : 'The route could not be prepared.')
+            setExecutionError(message)
+            setVisibleStatus(message)
+            return false
         }
     }
 
-    function openReview() {
+    async function openReview() {
+        if (reviewRequestRef.current) return false
         const reviewError = getReviewError()
         if (reviewError) {
             setVisibleStatus(reviewError)
@@ -308,9 +314,12 @@ export function useCrossChainController({
         }
         setExecutionError(null)
         reviewRequestRef.current = currentRoute.publicRouteId
-        setReviewRoute(currentRoute)
-        void prepareReview(currentRoute)
-        return true
+        setReviewRoute(null)
+        setVisibleStatus('Preparing cross-chain swap. Confirm the wallet request if prompted.')
+        const prepared = await prepareReview(currentRoute)
+        if (reviewRequestRef.current !== currentRoute.publicRouteId) return false
+        if (prepared) setVisibleStatus(null)
+        return prepared
     }
 
     async function sendStep(step, executionRoute) {
@@ -531,8 +540,8 @@ export function useCrossChainController({
     useEffect(() => {
         if (
             !refreshingAfterApprovalRef.current &&
-            reviewRoute &&
-            reviewRoute.publicRouteId !== currentRoute?.publicRouteId
+            reviewRequestRef.current &&
+            reviewRequestRef.current !== currentRoute?.publicRouteId
         ) closeReview()
     }, [currentRoute, reviewRoute])
 
