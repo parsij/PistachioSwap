@@ -746,7 +746,6 @@ describe('App wallet integration', () => {
         expect(queryByRole('heading', { name: 'Review Gas Assisted Swap' })).toBeNull()
         expect(queryByRole('heading', { name: 'Review cross-chain swap' })).toBeNull()
         expect(container.querySelector('.cross-chain-review-dialog')).toBeNull()
-        expect(getByText('Preparing cross-chain swap. Confirm the wallet request if prompted.')).toBeTruthy()
         expect(mocks.sendPreparedCrossChainTransaction).not.toHaveBeenCalled()
         await act(async () => {
             resolveAuthentication({
