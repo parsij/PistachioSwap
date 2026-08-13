@@ -24,6 +24,7 @@ export default function AppInfoTooltip({
     const [open, setOpen] = useState(false)
     const contentId = useId()
     const triggerRef = useRef(null)
+    const contentRef = useRef(null)
     const closeTimerRef = useRef(null)
     const pinnedRef = useRef(false)
     const triggerHoveredRef = useRef(false)
@@ -35,6 +36,14 @@ export default function AppInfoTooltip({
             closeTimerRef.current = null
         }
     }, [])
+
+    const closeCompletely = useCallback(() => {
+        pinnedRef.current = false
+        triggerHoveredRef.current = false
+        contentHoveredRef.current = false
+        cancelScheduledClose()
+        setOpen(false)
+    }, [cancelScheduledClose])
 
     const scheduleTransientClose = useCallback(() => {
         cancelScheduledClose()
@@ -48,6 +57,19 @@ export default function AppInfoTooltip({
     }, [cancelScheduledClose])
 
     useEffect(() => () => cancelScheduledClose(), [cancelScheduledClose])
+
+    useEffect(() => {
+        if (!open || !pinnedRef.current) return undefined
+
+        function closeOnOutsidePointer(event) {
+            const target = event.target
+            if (triggerRef.current?.contains(target) || contentRef.current?.contains(target)) return
+            closeCompletely()
+        }
+
+        document.addEventListener('pointerdown', closeOnOutsidePointer, true)
+        return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true)
+    }, [closeCompletely, open])
 
     function openFromHover() {
         triggerHoveredRef.current = true
@@ -87,11 +109,7 @@ export default function AppInfoTooltip({
             setOpen(true)
             return
         }
-        pinnedRef.current = false
-        triggerHoveredRef.current = false
-        contentHoveredRef.current = false
-        cancelScheduledClose()
-        setOpen(false)
+        closeCompletely()
     }
 
     return (
@@ -105,6 +123,8 @@ export default function AppInfoTooltip({
                     aria-describedby={open ? contentId : undefined}
                     onPointerEnter={openFromHover}
                     onPointerLeave={leaveTrigger}
+                    onMouseEnter={openFromHover}
+                    onMouseLeave={leaveTrigger}
                     onFocus={openFromHover}
                     onBlur={leaveTrigger}
                     onPointerDown={stopPointerPropagation}
@@ -115,6 +135,7 @@ export default function AppInfoTooltip({
             </Popover.Anchor>
             <Popover.Portal container={document.body}>
                 <Popover.Content
+                    ref={contentRef}
                     id={contentId}
                     role="tooltip"
                     className={contentClassName}
@@ -124,8 +145,13 @@ export default function AppInfoTooltip({
                     collisionPadding={collisionPadding}
                     onOpenAutoFocus={(event) => event.preventDefault()}
                     onCloseAutoFocus={(event) => event.preventDefault()}
+                    onFocusOutside={(event) => {
+                        if (pinnedRef.current) event.preventDefault()
+                    }}
                     onPointerEnter={enterContent}
                     onPointerLeave={leaveContent}
+                    onMouseEnter={enterContent}
+                    onMouseLeave={leaveContent}
                     onPointerDown={stopPointerPropagation}
                     onClick={stopPointerPropagation}
                     onPointerDownOutside={(event) => {
