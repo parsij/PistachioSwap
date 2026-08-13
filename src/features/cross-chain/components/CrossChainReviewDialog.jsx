@@ -21,6 +21,7 @@ export default function CrossChainReviewDialog({
     routeError,
     executionError,
     confirmDisabled,
+    gasAssist,
     onClose,
     onConfirm,
 }) {
@@ -109,16 +110,32 @@ export default function CrossChainReviewDialog({
                                 <p className="cross-chain-cost-note">Source gas estimate unavailable. Final gas will be shown by your wallet.</p>
                             )}
                             {preparation.insufficientNativeGas && (
-                                <p className="cross-chain-error" role="status">Not enough {costs.nativeSymbol} for network gas.</p>
+                                <p className="cross-chain-error" role="status">
+                                    Not enough {costs.nativeSymbol} for network gas.
+                                    {gasAssist?.required && ' Gas Assist can convert a small part of your sell token to BNB first.'}
+                                </p>
                             )}
                             {routeError && <p className="cross-chain-error" role="status">{routeError}</p>}
                             {executionError && !routeError && <p className="cross-chain-error" role="status">{executionError}</p>}
                         </div>
                         <div className="cross-chain-review-actions">
                             <button type="button" onClick={onClose}>Cancel</button>
-                            <button type="button" className="primary" disabled={confirmDisabled} onClick={onConfirm}>
-                                {confirmLabel}
-                            </button>
+                            {gasAssist?.required ? (
+                                <button
+                                    type="button"
+                                    className="primary"
+                                    disabled={!gasAssist.available}
+                                    onClick={gasAssist.onStart}
+                                >
+                                    {gasAssist.status === 'loading'
+                                        ? 'Checking Gas Assist…'
+                                        : gasAssist.available ? 'Use Gas Assist' : 'Gas Assist unavailable'}
+                                </button>
+                            ) : (
+                                <button type="button" className="primary" disabled={confirmDisabled} onClick={onConfirm}>
+                                    {confirmLabel}
+                                </button>
+                            )}
                         </div>
                     </motion.section>
                 </Dialog.Content>
