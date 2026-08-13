@@ -211,9 +211,11 @@ export default function GasAssistPrepaymentDialog({
 
     useEffect(() => setExpired(false), [order?.id])
 
-    if (!sponsorship.open) return null
+    const walletReviewActive = sponsorship.phase === 'authenticating' ||
+        sponsorship.phase.endsWith('-signing')
+    if (!sponsorship.open || walletReviewActive) return null
 
-    const walletBusy = sponsorship.phase === 'authenticating' ||
+    const walletBusy = sponsorship.phase === 'continuation-loading' ||
         sponsorship.phase === 'continuation-loading' ||
         sponsorship.phase.endsWith('-preparing') ||
         sponsorship.phase.endsWith('-signing')
