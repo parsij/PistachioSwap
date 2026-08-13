@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 
 const HOVER_CLOSE_DELAY_MS = 90
+let activePinnedClose = null
 
 /**
  * Small explanatory info control that supports both pointer hover and click/tap.
@@ -38,6 +39,7 @@ export default function AppInfoTooltip({
     }, [])
 
     const closeCompletely = useCallback(() => {
+        if (activePinnedClose === closeCompletely) activePinnedClose = null
         pinnedRef.current = false
         triggerHoveredRef.current = false
         contentHoveredRef.current = false
@@ -56,12 +58,16 @@ export default function AppInfoTooltip({
         }, HOVER_CLOSE_DELAY_MS)
     }, [cancelScheduledClose])
 
-    useEffect(() => () => cancelScheduledClose(), [cancelScheduledClose])
+    useEffect(() => () => {
+        if (activePinnedClose === closeCompletely) activePinnedClose = null
+        cancelScheduledClose()
+    }, [cancelScheduledClose, closeCompletely])
 
     useEffect(() => {
-        if (!open || !pinnedRef.current) return undefined
+        if (!open) return undefined
 
         function closeOnOutsidePointer(event) {
+            if (!pinnedRef.current) return
             const target = event.target
             if (triggerRef.current?.contains(target) || contentRef.current?.contains(target)) return
             closeCompletely()
@@ -95,7 +101,9 @@ export default function AppInfoTooltip({
 
     function pinOpen(event) {
         if (stopPropagation) event.stopPropagation()
+        if (activePinnedClose && activePinnedClose !== closeCompletely) activePinnedClose()
         pinnedRef.current = true
+        activePinnedClose = closeCompletely
         cancelScheduledClose()
         setOpen(true)
     }
