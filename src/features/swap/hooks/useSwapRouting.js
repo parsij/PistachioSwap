@@ -31,9 +31,10 @@ export function useSwapRouting({ quoteEndpoint, walletState, nativeBalance, sell
     const buyChainId = Number(buyToken?.chainId ?? walletState.expectedChainId)
     const hasMixedSwapChains = Boolean(sellToken && buyToken && sellChainId !== buyChainId)
     const isBscSwap = sellChainId === 56 && buyChainId === 56
+    const isBscSource = sellChainId === 56
     const sponsorshipConfig = useSponsorshipConfig({
         quoteEndpoint,
-        enabled: Boolean(isBscSwap && !hasMixedSwapChains && walletState.isConnected &&
+        enabled: Boolean(isBscSource && walletState.isConnected &&
             walletState.address && walletState.chainId === 56),
     })
     const bscExecution = deriveSwapExecution({
