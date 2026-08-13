@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
     gasAssist: null,
@@ -90,6 +90,10 @@ describe('exact prepaid Gas Assist route ownership', () => {
         baseProps.setVisibleStatus.mockReset()
     })
 
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
     it('uses the exact prepaid preview and never calls the provider-integrator quote path', async () => {
         const { result } = renderHook(() => useGasAssistController(baseProps))
         expect(mocks.prepaidArgs.required).toBe(true)
@@ -120,13 +124,55 @@ describe('exact prepaid Gas Assist route ownership', () => {
         })
     })
 
-    it('fails closed when prepaid sponsorship is disabled instead of exposing a normal SwapProxy quote', () => {
+    it('fails closed without putting backend codes in the customer status area', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
         mocks.prepaid = { config: { enabled: false }, configStatus: 'success', configError: null }
+
         const { result } = renderHook(() => useGasAssistController(baseProps))
         expect(mocks.gasAssistArgs.quoteEnabled).toBe(false)
         expect(result.current.executionMode).toBe('zero-x-gasless')
         expect(result.current.activeQuote).toBeNull()
         expect(result.current.activeQuoteStatus).toBe('error')
-        expect(baseProps.setVisibleStatus).toHaveBeenCalledWith(expect.stringContaining('SPONSORSHIP_UNAVAILABLE'))
+
+        await waitFor(() => {
+            expect(consoleError).toHaveBeenCalledWith(
+                '[pistachio-swap] Gas Assist diagnostic',
+                expect.objectContaining({
+                    scope: 'configuration',
+                    code: 'SPONSORSHIP_UNAVAILABLE',
+                }),
+            )
+        })
+        expect(baseProps.setVisibleStatus).not.toHaveBeenCalled()
+    })
+
+    it('logs preview failures for debugging without rendering GAS_ASSIST_FAILED at the bottom', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+        mocks.preview = {
+            preview: null,
+            status: 'error',
+            error: {
+                code: 'GAS_ASSIST_FAILED',
+                message: 'Gas Assist could not complete the request.',
+                stage: 'preview',
+                requestId: 'request-123',
+            },
+        }
+
+        renderHook(() => useGasAssistController(baseProps))
+
+        await waitFor(() => {
+            expect(consoleError).toHaveBeenCalledWith(
+                '[pistachio-swap] Gas Assist diagnostic',
+                {
+                    scope: 'preview',
+                    code: 'GAS_ASSIST_FAILED',
+                    message: 'Gas Assist could not complete the request.',
+                    stage: 'preview',
+                    requestId: 'request-123',
+                },
+            )
+        })
+        expect(baseProps.setVisibleStatus).not.toHaveBeenCalled()
     })
 })
