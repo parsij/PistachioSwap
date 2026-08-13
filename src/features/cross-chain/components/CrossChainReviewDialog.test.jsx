@@ -23,7 +23,9 @@ const route = {
 }
 
 function renderDialog(gasAssist) {
-    const onStart = vi.fn()
+    const calls = []
+    const onStart = vi.fn(() => calls.push('start'))
+    const onClose = vi.fn(() => calls.push('close'))
     const shell = document.createElement('main')
     shell.className = 'app-shell'
     document.body.append(shell)
@@ -40,10 +42,10 @@ function renderDialog(gasAssist) {
         executionError={null}
         confirmDisabled={false}
         gasAssist={gasAssist ? { ...gasAssist, onStart } : null}
-        onClose={vi.fn()}
+        onClose={onClose}
         onConfirm={vi.fn()}
     />)
-    return { onStart, shell }
+    return { calls, onClose, onStart, shell }
 }
 
 describe('CrossChainReviewDialog', () => {
@@ -55,13 +57,24 @@ describe('CrossChainReviewDialog', () => {
         expect(source).toContain("import './crossChain.css'")
     })
 
+    it('keeps the Gas Assist handoff above the cross-chain review layer', () => {
+        const source = readFileSync(
+            'src/features/gas-assist/components/gasAssist.css',
+            'utf8',
+        )
+        expect(source).toContain('z-index: 10010')
+        expect(source).toContain('z-index: 10011')
+    })
+
     it('uses Gas Assist review and execution wording for sponsored cross-chain swaps', () => {
-        const { onStart, shell } = renderDialog({ required: true, available: true, status: 'success' })
+        const { calls, onClose, onStart, shell } = renderDialog({ required: true, available: true, status: 'success' })
 
         expect(screen.getByRole('dialog').classList.contains('cross-chain-review-dialog')).toBe(true)
         expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
         fireEvent.click(screen.getByRole('button', { name: 'Swap using Gas Assist' }))
+        expect(onClose).toHaveBeenCalledOnce()
         expect(onStart).toHaveBeenCalledOnce()
+        expect(calls).toEqual(['close', 'start'])
 
         shell.remove()
     })
