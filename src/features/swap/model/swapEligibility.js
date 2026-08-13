@@ -8,6 +8,40 @@ import {
 import { getSwapActionState } from '../../../services/swapAction.js'
 import { deriveSameChainReviewEligibility } from './sameChainReviewEligibility.js'
 import { compareDecimalStrings, decimalRatioBps, multiplyUnitsByDecimal } from './amountMath.js'
+import { GAS_ASSIST_REVIEW_TITLE } from '../../gas-assist/model/gasAssistCopy.js'
+
+export function expectsCrossChainGasAssist({
+    prepaidEnabled,
+    routingMode,
+    crossChainMode,
+    nativeBalanceValue,
+    sellChainId,
+    sellToken,
+}) {
+    const hasNoNativeGas = (() => {
+        if (nativeBalanceValue === null || nativeBalanceValue === undefined) return false
+        try {
+            return BigInt(nativeBalanceValue) === 0n
+        } catch {
+            return false
+        }
+    })()
+    return routingMode === crossChainMode &&
+        prepaidEnabled === true &&
+        Number(sellChainId) === 56 &&
+        !isNativeEvmToken(sellToken) &&
+        hasNoNativeGas
+}
+
+export function getSwapReviewLabel(input) {
+    const isGasAssistedReview = input.prepaidRequired && input.prepaidEnabled ||
+        input.executionMode === input.gaslessMode ||
+        expectsCrossChainGasAssist(input)
+
+    return isGasAssistedReview
+        ? GAS_ASSIST_REVIEW_TITLE
+        : 'Review swap'
+}
 
 /**
  * Derives funds, economic viability, same-chain review eligibility, and the primary CTA without side effects.
@@ -118,11 +152,17 @@ export function deriveSwapEligibility(input) {
     if (baseAction.type === 'swap') {
         action = {
             ...baseAction,
-            label: prepaidRequired && prepaidEnabled
-                ? 'Review Gas Assist prepayment'
-                : executionMode === gaslessMode
-                    ? 'Review Gas Assist'
-                    : 'Review swap',
+            label: getSwapReviewLabel({
+                prepaidRequired,
+                prepaidEnabled,
+                executionMode,
+                gaslessMode,
+                routingMode,
+                crossChainMode,
+                nativeBalanceValue,
+                sellChainId,
+                sellToken,
+            }),
         }
     }
     if (baseAction.type === 'swap' && routingMode !== crossChainMode && executionMode !== gaslessMode && !reviewEligibility.canReview) {
