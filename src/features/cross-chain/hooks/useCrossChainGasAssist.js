@@ -1,80 +1,69 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
-import { useSponsorshipPreview } from '../../gas-assist/hooks/useSponsorshipPreview.js'
-import { getDisplayTokenPrice } from '../../tokens/services/tokenPrices.js'
-import {
-    estimateCrossChainGasAssistInput,
-    previewCoversNativeGas,
-} from '../services/crossChainGasAssist.js'
 
-/** Uses the existing prepaid whitelist flow to buy only the BNB needed by a prepared BSC source route. */
+/** Sponsors the exact BNB Chain source transaction through the normal MegaFuel package flow. */
 export function useCrossChainGasAssist({
     quoteEndpoint,
     account,
     sellToken,
-    nativeToken,
+    buyToken,
     totalInputRaw,
     slippageBps,
     preparation,
-    nativeBalanceWei,
     sponsorshipConfig,
+    prepareSponsorship,
+    completeSponsorship,
     onConfirmed,
 }) {
-    const confirmedRef = useRef({ grossInputAmount: null, onConfirmed })
+    const preparedResponseRef = useRef(null)
     const required = Boolean(
-        preparation?.status === 'ready' && preparation?.insufficientNativeGas &&
-        preparation?.requiredNativeGasWei && Number(sellToken?.chainId) === 56 &&
-        sellToken?.isNative !== true && nativeToken?.isNative === true,
+        preparation?.status === 'ready' &&
+        preparation?.insufficientNativeGas &&
+        Number(sellToken?.chainId) === 56 &&
+        sellToken?.isNative !== true,
     )
-    const grossInputAmount = useMemo(() => required
-        ? estimateCrossChainGasAssistInput({
-            totalInputRaw,
-            tokenDecimals: sellToken?.decimals,
-            tokenPriceUsd: getDisplayTokenPrice(sellToken),
-            sourceGasUsd: preparation?.sourceGasUsd,
-            requiredNativeGasWei: preparation?.requiredNativeGasWei,
-            nativeBalanceWei,
-            fixedFeeUsd: sponsorshipConfig?.fixedFeeUsd,
-            platformFeeBps: sponsorshipConfig?.platformFeeBps,
+
+    const createOrder = useCallback(async ({ idempotencyKey }) => {
+        const result = await prepareSponsorship(idempotencyKey)
+        preparedResponseRef.current = result
+        return result.order
+    }, [prepareSponsorship])
+
+    const handleSubmitted = useCallback(async (order) => {
+        const prepared = preparedResponseRef.current
+        if (!prepared?.preparedRoute || !order?.swapTransactionHash) {
+            throw new Error('The sponsored cross-chain transaction is incomplete.')
+        }
+        await completeSponsorship({
+            preparedRoute: prepared.preparedRoute,
+            transactionHash: order.swapTransactionHash,
         })
-        : null, [nativeBalanceWei, preparation, required, sellToken, sponsorshipConfig, totalInputRaw])
-    useEffect(() => {
-        confirmedRef.current = { grossInputAmount, onConfirmed }
-    }, [grossInputAmount, onConfirmed])
-    const handleConfirmed = useCallback(() => {
-        const current = confirmedRef.current
-        return current.onConfirmed?.(current.grossInputAmount)
-    }, [])
+    }, [completeSponsorship])
+
+    const handleConfirmed = useCallback(async (order) => {
+        await onConfirmed?.(order, preparedResponseRef.current?.preparedRoute)
+    }, [onConfirmed])
+
     const sponsorship = usePrepaidSponsorship({
         quoteEndpoint,
         walletAddress: account,
         sellToken,
-        buyToken: nativeToken,
-        grossInputAmount,
+        buyToken,
+        grossInputAmount: totalInputRaw,
         slippageBps: Math.max(30, slippageBps),
         required,
+        createOrder,
+        onSubmitted: handleSubmitted,
         onConfirmed: handleConfirmed,
     })
-    const preview = useSponsorshipPreview({
-        quoteEndpoint,
-        walletAddress: account,
-        sellToken,
-        buyToken: nativeToken,
-        grossInputAmount,
-        slippageBps: Math.max(30, slippageBps),
-        required,
-        enabled: sponsorshipConfig?.enabled === true && Boolean(grossInputAmount),
-    })
-    const coversShortfall = previewCoversNativeGas({
-        preview: preview.preview,
-        requiredNativeGasWei: preparation?.requiredNativeGasWei,
-        nativeBalanceWei,
-    })
-    const available = required && Boolean(grossInputAmount) && sponsorshipConfig?.enabled === true &&
-        preview.status === 'success' && coversShortfall
+    const available = required && sponsorshipConfig?.enabled === true &&
+        typeof prepareSponsorship === 'function' &&
+        typeof completeSponsorship === 'function'
+
     async function start() {
         if (!available) return false
+        preparedResponseRef.current = null
         await sponsorship.start()
         return true
     }
@@ -82,10 +71,14 @@ export function useCrossChainGasAssist({
     return {
         required,
         available,
-        grossInputAmount,
-        preview: preview.preview,
-        status: !required ? 'idle' : !grossInputAmount ? 'unavailable' : preview.status,
-        error: preview.error,
+        grossInputAmount: totalInputRaw,
+        preview: null,
+        status: !required
+            ? 'idle'
+            : sponsorship.configStatus === 'loading'
+                ? 'loading'
+                : available ? 'success' : 'unavailable',
+        error: sponsorship.configError ?? sponsorship.error,
         sponsorship,
         start,
     }
