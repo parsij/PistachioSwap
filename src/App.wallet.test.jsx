@@ -68,6 +68,7 @@ const mocks = vi.hoisted(() => ({
     gasAssistConfig: { status: 'success', config: { enabled: false, mode: 'disabled' }, error: null, refetch: vi.fn() },
     gasAssistState: null,
     gasAssistOptions: [],
+    crossChainGasAssistState: null,
 }))
 
 vi.mock('@reown/appkit/react', () => ({
@@ -155,6 +156,10 @@ vi.mock('./features/gas-assist/hooks/useZeroXGaslessSwap.js', () => ({
         mocks.gasAssistOptions.push(options)
         return mocks.gasAssistState
     },
+}))
+
+vi.mock('./features/cross-chain/hooks/useCrossChainGasAssist.js', () => ({
+    useCrossChainGasAssist: () => mocks.crossChainGasAssistState,
 }))
 
 vi.mock('./features/approvals/hooks/useSwapApproval.js', () => ({
@@ -359,6 +364,13 @@ describe('App wallet integration', () => {
             confirm: vi.fn(),
         }
         mocks.gasAssistOptions = []
+        mocks.crossChainGasAssistState = {
+            required: false,
+            available: false,
+            status: 'idle',
+            sponsorship: { open: false, order: null },
+            start: vi.fn(),
+        }
         mocks.authenticateCrossChainWallet.mockResolvedValue({
             sessionToken: 'test-session',
             walletAddress: ADDRESS,
@@ -748,6 +760,13 @@ describe('App wallet integration', () => {
         mocks.account.isConnected = true
         mocks.network.chainId = 56
         mocks.nativeBalance = 1n
+        mocks.crossChainGasAssistState = {
+            required: true,
+            available: true,
+            status: 'success',
+            sponsorship: { open: false, order: null },
+            start: vi.fn(),
+        }
         mocks.marketTokens = [
             {
                 chainId: 56,
@@ -822,8 +841,11 @@ describe('App wallet integration', () => {
         await waitFor(() => expect(mocks.fetchCrossChainRoutes).toHaveBeenCalledOnce())
         fireEvent.click(container.querySelector('.primary-action'))
 
-        await waitFor(() => expect(getByText('Not enough BNB for network gas.')).toBeTruthy())
-        expect(getByRole('button', { name: 'Confirm swap' }).disabled).toBe(true)
+        await waitFor(() => expect(getByText(/Not enough BNB for network gas/)).toBeTruthy())
+        const gasAssistButton = getByRole('button', { name: 'Use Gas Assist' })
+        expect(gasAssistButton.disabled).toBe(false)
+        fireEvent.click(gasAssistButton)
+        expect(mocks.crossChainGasAssistState.start).toHaveBeenCalledOnce()
         expect(mocks.sendPreparedCrossChainTransaction).not.toHaveBeenCalled()
         expect(mocks.claimCrossChainRoute).not.toHaveBeenCalled()
     })
