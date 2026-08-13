@@ -22,6 +22,9 @@ const IDLE_PREPARATION = {
     status: 'idle',
     gasEstimateUnavailable: false,
     insufficientNativeGas: false,
+    requiredNativeGasWei: null,
+    nativeGasShortfallWei: null,
+    sourceGasUsd: null,
 }
 
 /**
@@ -237,6 +240,11 @@ export function useCrossChainController({
                     status: 'ready',
                     gasEstimateUnavailable: false,
                     insufficientNativeGas: estimate.sufficientNativeGas === false,
+                    requiredNativeGasWei: estimate.totalSourceGasWei.toString(),
+                    nativeGasShortfallWei: estimate.sufficientNativeGas === false
+                        ? (estimate.totalSourceGasWei - BigInt(nativeBalance.value ?? 0)).toString()
+                        : '0',
+                    sourceGasUsd: estimate.costs.sourceGasUsd,
                 },
             }
         } catch {
@@ -247,13 +255,16 @@ export function useCrossChainController({
                     status: 'ready',
                     gasEstimateUnavailable: true,
                     insufficientNativeGas: false,
+                    requiredNativeGasWei: null,
+                    nativeGasShortfallWei: null,
+                    sourceGasUsd: null,
                 },
             }
         }
     }
 
     async function prepareReview(route) {
-        setReviewPreparation({ status: 'preparing', gasEstimateUnavailable: false, insufficientNativeGas: false })
+        setReviewPreparation({ ...IDLE_PREPARATION, status: 'preparing' })
         try {
             const prepared = await routes.prepare(route)
             if (reviewRequestRef.current !== route.publicRouteId) return
@@ -274,7 +285,7 @@ export function useCrossChainController({
             }
             setReviewRoute(nextReviewRoute)
             if (nextReviewRoute.executionModel !== 'evm-transaction') {
-                setReviewPreparation({ status: 'ready', gasEstimateUnavailable: true, insufficientNativeGas: false })
+                setReviewPreparation({ ...IDLE_PREPARATION, status: 'ready', gasEstimateUnavailable: true })
                 return
             }
 
@@ -284,7 +295,7 @@ export function useCrossChainController({
             setReviewPreparation(estimate.preparation)
         } catch (error) {
             if (reviewRequestRef.current !== route.publicRouteId) return
-            setReviewPreparation({ status: 'invalid', gasEstimateUnavailable: false, insufficientNativeGas: false })
+            setReviewPreparation({ ...IDLE_PREPARATION, status: 'invalid' })
             setExecutionError(error instanceof Error ? error.message : 'The route could not be prepared.')
         }
     }
@@ -338,11 +349,7 @@ export function useCrossChainController({
         if (!request) throw new Error('Cross-chain request is no longer available.')
 
         refreshingAfterApprovalRef.current = true
-        setReviewPreparation({
-            status: 'refreshing',
-            gasEstimateUnavailable: false,
-            insufficientNativeGas: false,
-        })
+        setReviewPreparation({ ...IDLE_PREPARATION, status: 'refreshing' })
         setExecutionError(null)
         setVisibleStatus('Approval confirmed. Refreshing the route...')
 
@@ -392,11 +399,7 @@ export function useCrossChainController({
                 setReviewPreparation(estimate.preparation)
             } else {
                 setReviewRoute(nextRoute)
-                setReviewPreparation({
-                    status: 'ready',
-                    gasEstimateUnavailable: true,
-                    insufficientNativeGas: false,
-                })
+                setReviewPreparation({ ...IDLE_PREPARATION, status: 'ready', gasEstimateUnavailable: true })
             }
 
             if (minimumOutputWorsened) {
