@@ -842,7 +842,7 @@ describe('App wallet integration', () => {
         fireEvent.click(container.querySelector('.primary-action'))
 
         await waitFor(() => expect(getByText(/Not enough BNB for network gas/)).toBeTruthy())
-        const gasAssistButton = getByRole('button', { name: 'Use Gas Assist' })
+        const gasAssistButton = getByRole('button', { name: 'Swap using Gas Assist' })
         expect(gasAssistButton.disabled).toBe(false)
         fireEvent.click(gasAssistButton)
         expect(mocks.crossChainGasAssistState.start).toHaveBeenCalledOnce()
