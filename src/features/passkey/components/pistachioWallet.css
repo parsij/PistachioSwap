@@ -458,8 +458,8 @@
 .pistachio-wallet-complete-icon { display: grid; width: 48px; height: 48px; align-self: center; place-items: center; border-radius: 50%; background: #183023; color: #7ce1a5; }
 .pistachio-wallet-complete-icon svg { width: 24px; height: 24px; }
 
-.pistachio-signing-overlay { z-index: 1010; }
-.pistachio-signing-review { z-index: 1011; width: min(580px, calc(100vw - 32px)); }
+.pistachio-signing-overlay { z-index: 10020; }
+.pistachio-signing-review { z-index: 10021; width: min(580px, calc(100vw - 32px)); }
 .pistachio-wallet-review-body { gap: 16px; }
 .pistachio-wallet-review-list { display: grid; gap: 0; margin: 0; border-top: 1px solid var(--pw-border); border-bottom: 1px solid var(--pw-border); }
 .pistachio-wallet-review-list > div { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(0, 1.3fr); gap: 18px; padding: 11px 2px; border-bottom: 1px solid var(--pw-border); }
