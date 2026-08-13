@@ -48,7 +48,10 @@ function renderDialog(gasAssist) {
 
 describe('CrossChainReviewDialog', () => {
     it('directly owns the stylesheet required to render as a modal', () => {
-        const source = readFileSync(new URL('./CrossChainReviewDialog.jsx', import.meta.url), 'utf8')
+        const source = readFileSync(
+            'src/features/cross-chain/components/CrossChainReviewDialog.jsx',
+            'utf8',
+        )
         expect(source).toContain("import './crossChain.css'")
     })
 
