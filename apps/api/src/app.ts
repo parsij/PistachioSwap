@@ -39,6 +39,7 @@ const consoleTimeFormatter = new Intl.DateTimeFormat('en-US', {
 const SENSITIVE_API_PREFIXES = [
     '/v1/gas-assist',
     '/v1/sponsorship',
+    '/v1/cross-chain',
     '/v1/wallet-activity',
     '/v1/wallet-token',
 ]
