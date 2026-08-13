@@ -112,7 +112,7 @@ export function useSwapPrimaryAction(config) {
                 await crossChain.refreshExpiredRoute()
                 return
             }
-            crossChain.openReview()
+            await crossChain.openReview()
             return
         }
         if (executionMode === gaslessMode) {
