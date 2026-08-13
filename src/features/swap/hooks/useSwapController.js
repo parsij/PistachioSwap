@@ -15,6 +15,7 @@ import { useSameChainReceiptLifecycle } from './useSameChainReceiptLifecycle.js'
 import { useApprovalExecutionBridge } from './useApprovalExecutionBridge.js'
 import { useGasAssistController } from '../../gas-assist/hooks/useGasAssistController.js'
 import { useCrossChainController } from '../../cross-chain/hooks/useCrossChainController.js'
+import { useCrossChainGasAssist } from '../../cross-chain/hooks/useCrossChainGasAssist.js'
 import { useSwapApproval } from '../../approvals/hooks/useSwapApproval.js'
 import { useSwapPrimaryAction } from './useSwapPrimaryAction.js'
 import { deriveSwapEligibility } from '../model/swapEligibility.js'
@@ -226,6 +227,32 @@ export function useSwapController() {
         nativeBalance: catalog.nativeBalance,
         nativeToken,
     })
+    async function handleCrossChainGasAssistConfirmed(spentRaw) {
+        try {
+            const remainingRaw = BigInt(inputs.activeAmountIn) - BigInt(spentRaw)
+            if (remainingRaw <= 0n) throw new Error('Gas Assist consumed the available input.')
+            crossChain.review.close()
+            crossChain.routes.reset()
+            inputs.setTokenAmountFromUnits('sell', remainingRaw.toString())
+            setStatusMessage('BNB added for gas. Refreshing the cross-chain route with the remaining amount.')
+            await catalog.refreshWalletBalances()
+        } catch (error) {
+            console.error('[pistachio-swap] Cross-chain Gas Assist continuation failed', error)
+            setStatusMessage('BNB was added. Refresh your balances and cross-chain quote to continue.')
+        }
+    }
+    const crossChainGasAssist = useCrossChainGasAssist({
+        quoteEndpoint: quoteConfig.endpoint,
+        account: walletState.address,
+        sellToken: inputs.sellToken,
+        nativeToken,
+        totalInputRaw: inputs.activeAmountIn,
+        slippageBps: configuredSlippageBps,
+        preparation: crossChain.review.preparation,
+        nativeBalanceWei: catalog.nativeBalance.value,
+        sponsorshipConfig: routing.sponsorshipConfig.config,
+        onConfirmed: handleCrossChainGasAssistConfirmed,
+    })
     const activeQuote = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.currentRoute : gasAssist.activeQuote
     const activeQuoteStatus = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.quoteStatus : gasAssist.activeQuoteStatus
     const eligibility = deriveSwapEligibility({
@@ -406,6 +433,7 @@ export function useSwapController() {
         routing,
         quote,
         gasAssist,
+        crossChainGasAssist,
         crossChain,
         receipt,
         eligibility,
