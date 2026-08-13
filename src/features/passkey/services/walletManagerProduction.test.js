@@ -7,6 +7,29 @@ import {
 
 const address = '0x1111111111111111111111111111111111111111'
 
+function authenticationMessage(title) {
+    const issuedAt = new Date(Date.now() - 1_000)
+    const expiresAt = new Date(Date.now() + 5 * 60_000)
+    const crossChain = title === 'PistachioSwap Cross-Chain Authentication'
+    return [
+        title,
+        '',
+        'Domain: swap.example',
+        `Wallet: ${address}`,
+        crossChain ? 'Source Chain ID: 56' : 'Chain ID: 56',
+        'Nonce: abcdefghijklmnopqrstuvwxyz012345',
+        `Issued At: ${issuedAt.toISOString()}`,
+        `Expiration Time: ${expiresAt.toISOString()}`,
+        '',
+        crossChain
+            ? 'This signature authenticates this wallet for cross-chain route mutations on the source chain.'
+            : 'This signature authenticates your wallet. It does not authorize a transaction.',
+        ...(crossChain
+            ? ['It does not authorize or submit a transaction.']
+            : []),
+    ].join('\n')
+}
+
 function createManager({ withVault = true } = {}) {
     const manager = {
         activeChainId: 56,
@@ -177,6 +200,64 @@ describe('production Pistachio Wallet hardening', () => {
             resumeReauthPending: true,
             sessionActive: true,
         })
+    })
+
+    it('uses one passkey for the bounded Gas Assist authentication and package flow', async () => {
+        const manager = createManager()
+        const originalLock = manager.lock
+        const originalUnlock = manager.unlock
+        const originalReauthenticate = manager.reauthenticate
+        manager.sessionActive = true
+        hardenPistachioWalletManager(manager)
+
+        await manager.signMessage({
+            message: authenticationMessage(
+                'PistachioSwap Cross-Chain Authentication',
+            ),
+        })
+        await manager.signMessage({
+            message: authenticationMessage(
+                'PistachioSwap Gas Assist Authentication',
+            ),
+        })
+
+        expect(originalUnlock).toHaveBeenCalledOnce()
+        expect(originalReauthenticate).not.toHaveBeenCalled()
+        expect(originalLock).not.toHaveBeenCalled()
+        expect(manager.phase).toBe('unlocked')
+
+        await expect(manager.signMegaFuelPackage({ orderId: 'order-1' }))
+            .resolves.toEqual({ orderId: 'order-1', signedTransactions: [] })
+        expect(originalUnlock).toHaveBeenCalledOnce()
+        expect(originalReauthenticate).not.toHaveBeenCalled()
+        expect(originalLock).toHaveBeenCalledOnce()
+        expect(manager).toMatchObject({
+            address: null,
+            client: null,
+            phase: 'locked',
+            sessionActive: true,
+        })
+    })
+
+    it('does not reuse a passkey for a malformed lookalike authentication message', async () => {
+        const manager = createManager()
+        const originalLock = manager.lock
+        const originalUnlock = manager.unlock
+        manager.sessionActive = true
+        hardenPistachioWalletManager(manager)
+
+        await manager.signMessage({
+            message: authenticationMessage(
+                'PistachioSwap Gas Assist Authentication',
+            ).replace('Wallet: ', 'Wallet? '),
+        })
+        expect(originalUnlock).toHaveBeenCalledOnce()
+        expect(originalLock).toHaveBeenCalledOnce()
+        expect(manager.phase).toBe('locked')
+
+        await manager.signMegaFuelPackage({ orderId: 'order-1' })
+        expect(originalUnlock).toHaveBeenCalledTimes(2)
+        expect(originalLock).toHaveBeenCalledTimes(2)
     })
 
     it('requires fresh user verification when key material is already loaded', async () => {
