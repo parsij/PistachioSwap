@@ -11,6 +11,10 @@ import { formatUnits } from 'viem'
 
 import GasAssistError from './GasAssistError.jsx'
 import TokenIcon from '../../tokens/components/TokenIcon.jsx'
+import {
+    GAS_ASSIST_REVIEW_TITLE,
+    GAS_ASSIST_SWAP_ACTION,
+} from '../model/gasAssistCopy.js'
 import './gasAssist.css'
 
 function trimDecimal(value, maximumFractionDigits = 6) {
@@ -229,10 +233,10 @@ export default function GasAssistPrepaymentDialog({
     let primaryLabel = null
     if (!orderExpired && showPayment && sponsorship.signPackage) {
         primaryAction = sponsorship.signPackage
-        primaryLabel = 'Swap without BNB'
+        primaryLabel = GAS_ASSIST_SWAP_ACTION
     } else if (!orderExpired && showPayment && sponsorship.signPayment) {
         primaryAction = sponsorship.signPayment
-        primaryLabel = 'Continue without BNB'
+        primaryLabel = GAS_ASSIST_SWAP_ACTION
     } else if (!orderExpired && showApproval) {
         primaryAction = sponsorship.signApproval
         primaryLabel = 'Continue'
@@ -254,7 +258,7 @@ export default function GasAssistPrepaymentDialog({
                     <div className="gas-assist-heading gas-assist-simple-heading">
                         <div>
                             <div className="gas-assist-kicker"><ShieldCheck aria-hidden="true" /> No BNB needed</div>
-                            <Dialog.Title>{purpose === 'cross-chain-gas' ? 'Cross-chain swap without BNB' : 'Swap without gas'}</Dialog.Title>
+                            <Dialog.Title>{GAS_ASSIST_REVIEW_TITLE}</Dialog.Title>
                             <Dialog.Description>{purpose === 'cross-chain-gas'
                                 ? 'PistachioSwap sponsors the exact source-chain transaction with MegaFuel and deducts one clear fee from your sell token. No BNB is sent to your wallet.'
                                 : 'PistachioSwap covers the network fee and deducts one clear fee from your sell token.'}</Dialog.Description>
