@@ -311,6 +311,47 @@ export class CrossChainRegistry {
         return prepared
     }
 
+    async requoteProvider(
+        quoteId: string,
+        amount: string,
+        signal?: AbortSignal,
+    ): Promise<CrossChainQuote> {
+        this.pruneQuotes()
+        const previous = this.quotes.get(quoteId)
+        if (!previous) throw new Error('Quote is unknown or expired.')
+        if (!/^[1-9]\d*$/.test(amount)) throw new Error('Invalid cross-chain amount.')
+        const capabilities = await this.getCapabilities(previous.provider, signal)
+        const request = { ...previous.request, amount }
+        if (!routeSupportsRequest(capabilities, request)) {
+            throw new CrossChainQuoteError(
+                'CROSS_CHAIN_UNSUPPORTED_TOKEN_PAIR',
+                'The selected provider no longer supports this route.',
+            )
+        }
+        const adapter = this.requireAdapter(previous.provider)
+        const quote = await this.run(previous.provider, () =>
+            adapter.getQuote(request, capabilities, signal),
+        )
+        if (
+            quote.provider !== previous.provider ||
+            quote.request.ownerAddress !== request.ownerAddress ||
+            quote.request.recipient !== request.recipient ||
+            quote.request.amount !== amount ||
+            quote.request.sourceAsset.chainId !== request.sourceAsset.chainId ||
+            quote.request.sourceAsset.address !== request.sourceAsset.address ||
+            quote.request.destinationAsset.chainId !== request.destinationAsset.chainId ||
+            quote.request.destinationAsset.address !== request.destinationAsset.address ||
+            quote.executionModel !== 'evm-transaction' ||
+            !quote.transaction ||
+            Date.parse(quote.expiresAt) <= Date.now()
+        ) {
+            throw new Error('Provider returned a mismatched sponsored route.')
+        }
+        this.quotes.set(quote.quoteId, quote)
+        this.pruneQuotes()
+        return quote
+    }
+
     async status(
         provider: CrossChainProviderName,
         statusId: string,
