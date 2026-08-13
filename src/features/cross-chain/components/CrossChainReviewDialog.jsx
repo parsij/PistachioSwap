@@ -112,7 +112,7 @@ export default function CrossChainReviewDialog({
                             {preparation.insufficientNativeGas && (
                                 <p className="cross-chain-error" role="status">
                                     Not enough {costs.nativeSymbol} for network gas.
-                                    {gasAssist?.required && ' Gas Assist can convert a small part of your sell token to BNB first.'}
+                                    {gasAssist?.required && ' Gas Assist can sponsor this exact source transaction without adding BNB to your wallet.'}
                                 </p>
                             )}
                             {routeError && <p className="cross-chain-error" role="status">{routeError}</p>}
