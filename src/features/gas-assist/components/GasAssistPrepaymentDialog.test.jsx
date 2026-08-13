@@ -87,6 +87,19 @@ describe('Gas Assist prepayment review', () => {
         expect(value.signPayment).not.toHaveBeenCalled()
     })
 
+    it('explains that cross-chain MegaFuel sponsorship does not top up the wallet', () => {
+        render(<GasAssistPrepaymentDialog
+            sponsorship={sponsorship()}
+            sellToken={sellToken}
+            buyToken={buyToken}
+            purpose="cross-chain-gas"
+        />)
+
+        expect(screen.getByText('Cross-chain swap without BNB')).toBeTruthy()
+        expect(screen.getByText(/No BNB is sent to your wallet/)).toBeTruthy()
+        expect(screen.queryByText(/converts only/i)).toBeNull()
+    })
+
     it('shows compact progress and prevents another primary submission while payment is pending', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
