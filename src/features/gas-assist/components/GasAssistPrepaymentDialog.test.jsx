@@ -110,7 +110,7 @@ describe('Gas Assist prepayment review', () => {
             />,
         )
 
-        expect(container).toBeEmptyDOMElement()
+        expect(container.firstChild).toBeNull()
 
         rerender(
             <GasAssistPrepaymentDialog
@@ -119,7 +119,7 @@ describe('Gas Assist prepayment review', () => {
                 buyToken={buyToken}
             />,
         )
-        expect(container).toBeEmptyDOMElement()
+        expect(container.firstChild).toBeNull()
 
         rerender(
             <GasAssistPrepaymentDialog
