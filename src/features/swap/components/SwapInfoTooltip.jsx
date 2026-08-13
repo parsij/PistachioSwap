@@ -1,38 +1,19 @@
-import * as Tooltip from '@radix-ui/react-tooltip'
 import { InfoIcon } from '../../../shared/components/AppIcons.jsx'
+import AppInfoTooltip from '../../../shared/components/AppInfoTooltip.jsx'
 
 /**
- * Renders the existing portaled explanatory tooltip used by swap detail labels.
- * @param {{ariaLabel: string, children: import('react').ReactNode}} props Component props.
- * @returns {import('react').ReactElement} Accessible tooltip trigger and portal.
- * @sideEffects Mounts Radix tooltip content under `document.body` and stops trigger click propagation.
+ * Renders the explanatory info control used by swap detail labels.
+ * Hover keeps the explanation open while the pointer is on the icon or card;
+ * click/tap pins it until an outside interaction or Escape.
  */
 export default function SwapInfoTooltip({ ariaLabel, children }) {
-    function stopInfoTriggerPropagation(event) {
-        event.stopPropagation()
-    }
-
     return (
-        <Tooltip.Provider delayDuration={200}>
-            <Tooltip.Root>
-                <Tooltip.Trigger asChild>
-                    <button
-                        type="button"
-                        className="swap-info-trigger"
-                        aria-label={ariaLabel}
-                        onPointerDown={stopInfoTriggerPropagation}
-                        onClick={stopInfoTriggerPropagation}
-                    >
-                        <InfoIcon />
-                    </button>
-                </Tooltip.Trigger>
-                <Tooltip.Portal container={document.body}>
-                    <Tooltip.Content className="swap-info-tooltip" sideOffset={7} collisionPadding={12}>
-                        {children}
-                        <Tooltip.Arrow className="swap-info-tooltip-arrow" />
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
-        </Tooltip.Provider>
+        <AppInfoTooltip
+            ariaLabel={ariaLabel}
+            icon={<InfoIcon />}
+            stopPropagation
+        >
+            {children}
+        </AppInfoTooltip>
     )
 }
