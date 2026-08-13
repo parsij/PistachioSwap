@@ -15,6 +15,8 @@ const FORWARDED_RESPONSE_HEADERS = [
     'x-ratelimit-limit',
     'x-ratelimit-remaining',
     'x-ratelimit-reset',
+    'x-request-id',
+    'x-correlation-id',
 ] as const
 const SAFE_PATH_SEGMENT = '[A-Za-z0-9_-]{1,160}'
 const PUBLIC_PROXY_ROUTES = Object.freeze([
@@ -175,14 +177,32 @@ function proxyHeaders(request: FastifyRequest, config: ProxyConfig) {
 async function readBoundedResponse(response: Response, maximumBytes: number) {
     const declaredLength = Number(response.headers.get('content-length') ?? '0')
     if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+        await response.body?.cancel().catch(() => undefined)
         throw new Error('The private Gas Assist response exceeded the configured limit.')
     }
 
-    const body = Buffer.from(await response.arrayBuffer())
-    if (body.byteLength > maximumBytes) {
-        throw new Error('The private Gas Assist response exceeded the configured limit.')
+    if (!response.body) return Buffer.alloc(0)
+    const reader = response.body.getReader()
+    const chunks: Buffer[] = []
+    let totalBytes = 0
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (!value) continue
+            totalBytes += value.byteLength
+            if (totalBytes > maximumBytes) {
+                await reader.cancel().catch(() => undefined)
+                throw new Error('The private Gas Assist response exceeded the configured limit.')
+            }
+            chunks.push(Buffer.from(value))
+        }
+    } finally {
+        reader.releaseLock()
     }
-    return body
+
+    return Buffer.concat(chunks, totalBytes)
 }
 
 function applyResponseHeaders(response: Response, reply: FastifyReply) {
@@ -276,4 +296,5 @@ export const gasAssistProxyRoutes: FastifyPluginAsync = async (app) => {
 export const gasAssistProxyInternals = {
     PUBLIC_PROXY_ROUTES,
     publicPathname,
+    readBoundedResponse,
 }
