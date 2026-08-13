@@ -190,6 +190,7 @@ export default function GasAssistPrepaymentDialog({
     sponsorship,
     sellToken,
     buyToken,
+    purpose = 'swap',
 }) {
     const [expired, setExpired] = useState(false)
     const order = sponsorship.order
@@ -253,8 +254,10 @@ export default function GasAssistPrepaymentDialog({
                     <div className="gas-assist-heading gas-assist-simple-heading">
                         <div>
                             <div className="gas-assist-kicker"><ShieldCheck aria-hidden="true" /> No BNB needed</div>
-                            <Dialog.Title>Swap without gas</Dialog.Title>
-                            <Dialog.Description>PistachioSwap covers the network fee and deducts one clear fee from your sell token.</Dialog.Description>
+                            <Dialog.Title>{purpose === 'cross-chain-gas' ? 'Add BNB for cross-chain gas' : 'Swap without gas'}</Dialog.Title>
+                            <Dialog.Description>{purpose === 'cross-chain-gas'
+                                ? 'PistachioSwap converts only the displayed portion to BNB. The remaining tokens stay available for your cross-chain swap.'
+                                : 'PistachioSwap covers the network fee and deducts one clear fee from your sell token.'}</Dialog.Description>
                         </div>
                         <Dialog.Close asChild>
                             <button className="gas-assist-close" type="button" disabled={walletBusy} aria-label="Close">
