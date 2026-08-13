@@ -846,6 +846,7 @@ describe('App wallet integration', () => {
         expect(gasAssistButton.disabled).toBe(false)
         fireEvent.click(gasAssistButton)
         expect(mocks.crossChainGasAssistState.start).toHaveBeenCalledOnce()
+        expect(document.querySelector('.cross-chain-review-dialog')).toBeNull()
         expect(mocks.sendPreparedCrossChainTransaction).not.toHaveBeenCalled()
         expect(mocks.claimCrossChainRoute).not.toHaveBeenCalled()
     })
