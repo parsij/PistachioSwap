@@ -26,6 +26,7 @@ import {
     validateProviderTransaction,
 } from '../src/cross-chain/validation.js'
 import { createCrossChainRoutes } from '../src/modules/cross-chain.js'
+import { PrivateGasAssistError } from '../src/modules/gas-assist-proxy.js'
 import {
     destinationToken,
     fixtureAdapter,
@@ -1265,6 +1266,91 @@ describe('cross-chain backend', () => {
         expect(validPrepare.statusCode).toBe(200)
         expect(validPrepare.json().preparedRoute.transaction.to).toBe(target)
         await app.close()
+    })
+
+    it('requotes the selected provider for the net amount and delegates only the exact route internally', async () => {
+        const bscRequest = {
+            ...request,
+            sourceAsset: { ...request.sourceAsset, chainId: 56, decimals: 18 },
+        }
+        const base = fixtureAdapter('across', '900')
+        const adapter = {
+            ...base,
+            getCapabilities: async () => ({
+                provider: 'across' as const,
+                available: true,
+                fetchedAt: new Date().toISOString(),
+                routes: [{
+                    sourceChainId: 56,
+                    destinationChainId: 8453,
+                    transactionTargets: [target],
+                    approvalSpenders: [target],
+                }],
+            }),
+            getQuote: async (quoteRequest: typeof bscRequest) => {
+                const transaction = {
+                    chainId: 56,
+                    to: target,
+                    data: '0x12345678',
+                    value: '0',
+                    allowanceTarget: target,
+                }
+                return {
+                    provider: 'across' as const,
+                    quoteId: `across-${quoteRequest.amount}`,
+                    request: quoteRequest,
+                    buyAmount: quoteRequest.amount,
+                    minimumBuyAmount: quoteRequest.amount,
+                    fees: [],
+                    estimatedDurationSeconds: 30,
+                    executionModel: 'evm-transaction' as const,
+                    steps: [{
+                        id: 'source', index: 0, type: 'source-transaction' as const,
+                        label: 'Submit source', chainId: 56, status: 'ready' as const,
+                        transaction,
+                    }],
+                    transaction,
+                    deposit: null,
+                    statusId: `across-${quoteRequest.amount}`,
+                    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                }
+            },
+        }
+        const privateRequest = vi.fn(async ({ body }: { body: unknown }) => {
+            const payload = body as {
+                grossInputAmount: string
+                route: { inputAmount: string; transaction: { value: string } }
+            }
+            expect(payload.grossInputAmount).toBe('1000')
+            expect(payload.route.transaction.value).toBe('0')
+            if (payload.route.inputAmount === '1000') {
+                throw new PrivateGasAssistError(
+                    'ORDER_REQUOTE_REQUIRED',
+                    'Requote the net amount.',
+                    409,
+                    { expectedNetSwapAmountRaw: '900' },
+                )
+            }
+            expect(payload.route.inputAmount).toBe('900')
+            return { id: 'sponsorship-order', netSwapAmountRaw: '900' }
+        })
+        const service = new CrossChainRouteService(
+            new CrossChainRegistry([adapter]),
+            new MemoryCrossChainRouteRepository(),
+            privateRequest,
+        )
+        const quoted = await service.quote(bscRequest)
+        const result = await service.prepareSponsorship({
+            routeId: quoted.selectedRoute.routeId,
+            ownerValue: sender,
+            sourceChainId: 56,
+            clientIp: '127.0.0.1',
+            idempotencyKey: 'cross-chain-test-order',
+        })
+        expect(privateRequest).toHaveBeenCalledTimes(2)
+        expect(result.order).toMatchObject({ id: 'sponsorship-order' })
+        expect(result.preparedRoute.inputAmount).toBe('900')
+        expect(result.preparedRoute.transaction.value).toBe('0')
     })
 
     it('returns 200 from routes when one eligible provider succeeds', async () => {
