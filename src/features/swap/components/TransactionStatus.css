@@ -1,0 +1,16 @@
+.swap-status-info-inline {
+    display: inline-flex;
+    margin-left: 5px;
+    vertical-align: middle;
+    transform: translateY(-1px);
+}
+
+.swap-status-info-inline .swap-info-trigger {
+    width: 17px;
+    height: 17px;
+}
+
+.swap-status-info-inline .swap-info-trigger svg {
+    width: 13px;
+    height: 13px;
+}
