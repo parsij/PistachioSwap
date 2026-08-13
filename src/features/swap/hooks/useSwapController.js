@@ -227,30 +227,28 @@ export function useSwapController() {
         nativeBalance: catalog.nativeBalance,
         nativeToken,
     })
-    async function handleCrossChainGasAssistConfirmed(spentRaw) {
+    async function handleCrossChainGasAssistConfirmed() {
         try {
-            const remainingRaw = BigInt(inputs.activeAmountIn) - BigInt(spentRaw)
-            if (remainingRaw <= 0n) throw new Error('Gas Assist consumed the available input.')
             crossChain.review.close()
-            crossChain.routes.reset()
-            inputs.setTokenAmountFromUnits('sell', remainingRaw.toString())
-            setStatusMessage('BNB added for gas. Refreshing the cross-chain route with the remaining amount.')
+            receipt.setTransactionStatus('submitted')
+            setStatusMessage('Cross-chain swap submitted with Gas Assist.')
             await catalog.refreshWalletBalances()
         } catch (error) {
-            console.error('[pistachio-swap] Cross-chain Gas Assist continuation failed', error)
-            setStatusMessage('BNB was added. Refresh your balances and cross-chain quote to continue.')
+            console.error('[pistachio-swap] Cross-chain Gas Assist status update failed', error)
+            setStatusMessage('The sponsored cross-chain transaction was sent. Refresh activity to follow its status.')
         }
     }
     const crossChainGasAssist = useCrossChainGasAssist({
         quoteEndpoint: quoteConfig.endpoint,
         account: walletState.address,
         sellToken: inputs.sellToken,
-        nativeToken,
+        buyToken: inputs.buyToken,
         totalInputRaw: inputs.activeAmountIn,
         slippageBps: configuredSlippageBps,
         preparation: crossChain.review.preparation,
-        nativeBalanceWei: catalog.nativeBalance.value,
         sponsorshipConfig: routing.sponsorshipConfig.config,
+        prepareSponsorship: crossChain.routes.prepareSponsorship,
+        completeSponsorship: crossChain.routes.completeSponsorship,
         onConfirmed: handleCrossChainGasAssistConfirmed,
     })
     const activeQuote = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.currentRoute : gasAssist.activeQuote
