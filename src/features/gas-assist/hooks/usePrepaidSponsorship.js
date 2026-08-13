@@ -212,7 +212,9 @@ export function usePrepaidSponsorship({
         if (!beginOperation(operation)) return
         const walletEpoch = walletEpochRef.current
         const flowEpoch = ++flowEpochRef.current
-        setState({ ...initial, open: true, phase: 'authenticating', config })
+        // Do not mount a modal focus trap while Pistachio Wallet is authenticating.
+        // The wallet review must be the only active dialog during this handoff.
+        setState({ ...initial, open: false, phase: 'authenticating', config })
 
         try {
             if (
