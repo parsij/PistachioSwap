@@ -86,6 +86,8 @@ export function usePrepaidSponsorship({
     slippageBps,
     required,
     onConfirmed,
+    onSubmitted,
+    createOrder: createOrderOverride,
 }) {
     const connection = useConnection()
     const { data: walletClient } = useWalletClient({ chainId: 56 })
@@ -99,6 +101,7 @@ export function usePrepaidSponsorship({
     const flowEpochRef = useRef(0)
     const operationRef = useRef(null)
     const confirmedOrderIdsRef = useRef(new Set())
+    const submittedOrderIdsRef = useRef(new Set())
     const localCapability = useMemo(
         () => detectRawTransactionSigning({ connector: connection.connector, walletClient }),
         [connection.connector, walletClient],
@@ -160,6 +163,7 @@ export function usePrepaidSponsorship({
         sessionTokenRef.current = null
         submittedIntentIdsRef.current.clear()
         confirmedOrderIdsRef.current.clear()
+        submittedOrderIdsRef.current.clear()
         setState(initial)
         gasAssistTrace('flow.wallet-context-reset', {
             walletAddress,
@@ -289,12 +293,25 @@ export function usePrepaidSponsorship({
                     grossInputAmount,
                     slippageBps,
                 },
-                () => createSponsorshipOrder(quoteEndpoint, session.sessionToken, {
-                    sellToken: sellToken.address,
-                    buyToken: buyToken.isNative ? 'native' : buyToken.address,
-                    grossInputAmount,
-                    slippageBps,
-                }, createIdempotencyKey()),
+                () => {
+                    const idempotencyKey = createIdempotencyKey()
+                    return typeof createOrderOverride === 'function'
+                        ? createOrderOverride({
+                            sessionToken: session.sessionToken,
+                            idempotencyKey,
+                            walletAddress,
+                            sellToken,
+                            buyToken,
+                            grossInputAmount,
+                            slippageBps,
+                        })
+                        : createSponsorshipOrder(quoteEndpoint, session.sessionToken, {
+                            sellToken: sellToken.address,
+                            buyToken: buyToken.isNative ? 'native' : buyToken.address,
+                            grossInputAmount,
+                            slippageBps,
+                        }, idempotencyKey)
+                },
             )
             if (!isCurrent(walletEpoch, flowEpoch)) return
             setState({ ...initial, open: true, phase: 'review', config, order })
@@ -303,7 +320,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
+    }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
 
     const signIntent = useCallback(async (action) => {
         const operation = `${action}-intent`
@@ -596,6 +613,11 @@ export function usePrepaidSponsorship({
                     controller.signal,
                 )
                 if (controller.signal.aborted || !isCurrent(walletEpoch, flowEpoch)) return
+                if (order.swapTransactionHash &&
+                    !submittedOrderIdsRef.current.has(orderId)) {
+                    await onSubmitted?.(order)
+                    submittedOrderIdsRef.current.add(orderId)
+                }
                 setState((current) => {
                     if (current.order?.id !== orderId) return current
                     return {
@@ -619,8 +641,8 @@ export function usePrepaidSponsorship({
                     requiredAction: order.currentRequiredAction,
                 })
                 if (order.status === 'completed' && !confirmedOrderIdsRef.current.has(orderId)) {
+                    await onConfirmed?.(order)
                     confirmedOrderIdsRef.current.add(orderId)
-                    await onConfirmed?.()
                 }
             } catch (error) {
                 if (!controller.signal.aborted && isCurrent(walletEpoch, flowEpoch)) {
@@ -640,7 +662,7 @@ export function usePrepaidSponsorship({
             controller.abort()
             window.clearTimeout(timer)
         }
-    }, [isCurrent, onConfirmed, quoteEndpoint, state.open, state.order, state.pollRevision])
+    }, [isCurrent, onConfirmed, onSubmitted, quoteEndpoint, state.open, state.order, state.pollRevision])
 
     const close = useCallback(() => {
         if (state.phase.endsWith('-signing') ||
