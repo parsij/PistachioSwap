@@ -5,6 +5,8 @@ export const PREPAID_SPONSORSHIP_MODE = 'prepaid-sponsorship'
 export const SAME_CHAIN_STANDARD = 'SAME_CHAIN_STANDARD'
 export const SAME_CHAIN_GASLESS_OR_ASSISTED = 'SAME_CHAIN_GASLESS_OR_ASSISTED'
 export const CROSS_CHAIN = 'CROSS_CHAIN'
+export const GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE =
+    'Gas Assist will be used because the wallet does not have enough BNB for normal gas.'
 
 export function deriveRoutingMode({
     sellChainId,
@@ -24,7 +26,7 @@ export function getSwapExecutionMessage(reason) {
         'gas-assist-config-loading': 'Not enough BNB for normal gas. Checking Gas Assist availability…',
         'gas-assist-config-error': 'Not enough BNB for normal gas. Gas Assist availability could not be checked.',
         'gas-assist-disabled': 'Not enough BNB for normal gas. Gas Assist is currently unavailable.',
-        'insufficient-native-balance': 'Gas Assist will be used because the wallet does not have enough BNB for normal gas.',
+        'insufficient-native-balance': GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE,
         'native-sell-token': 'Gas Assist cannot sell the native gas token.',
     }[reason] ?? null
 }
