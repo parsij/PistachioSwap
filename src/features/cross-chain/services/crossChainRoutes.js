@@ -638,6 +638,34 @@ export async function prepareCrossChainRoute({
     return normalizePreparedCrossChainRoute(payload)
 }
 
+export async function prepareCrossChainSponsorship({
+    endpoint,
+    routeId,
+    sessionToken,
+    idempotencyKey,
+    signal,
+}) {
+    const payload = await requestJson(
+        `${endpoint.replace(/\/+$/, '')}/routes/${encodeURIComponent(routeId)}/sponsorship/prepare`,
+        {
+            method: 'POST',
+            headers: {
+                ...crossChainAuthorization(sessionToken),
+                'idempotency-key': idempotencyKey,
+            },
+            body: JSON.stringify({}),
+            signal,
+        },
+    )
+    if (!payload?.order?.id || !payload?.preparedRoute) {
+        throw new Error('Gas Assist returned an incomplete sponsored route.')
+    }
+    return {
+        order: payload.order,
+        preparedRoute: normalizePreparedCrossChainRoute(payload.preparedRoute),
+    }
+}
+
 export async function fetchCrossChainRouteStatus({ endpoint, routeId, signal }) {
     const payload = await requestJson(
         `${endpoint.replace(/\/+$/, '')}/routes/${encodeURIComponent(routeId)}`,
