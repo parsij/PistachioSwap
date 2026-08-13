@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import AppInfoTooltip from './AppInfoTooltip.jsx'
+
+beforeAll(() => {
+    globalThis.ResizeObserver = class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    }
+})
 
 afterEach(() => {
     cleanup()
@@ -26,11 +34,11 @@ describe('AppInfoTooltip', () => {
 
         fireEvent.pointerLeave(trigger)
         fireEvent.pointerEnter(tooltip)
-        vi.advanceTimersByTime(100)
+        act(() => vi.advanceTimersByTime(100))
         expect(screen.getByRole('tooltip')).toBeTruthy()
 
         fireEvent.pointerLeave(tooltip)
-        vi.advanceTimersByTime(100)
+        act(() => vi.advanceTimersByTime(100))
         expect(screen.queryByRole('tooltip')).toBeNull()
     })
 
