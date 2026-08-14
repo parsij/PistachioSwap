@@ -88,6 +88,7 @@ export function usePrepaidSponsorship({
     onConfirmed,
     onSubmitted,
     createOrder: createOrderOverride,
+    beforeAuthenticate,
 }) {
     const connection = useConnection()
     const { data: walletClient } = useWalletClient({ chainId: 56 })
@@ -324,6 +325,34 @@ export function usePrepaidSponsorship({
         }
     }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
 
+    const reviewOrder = useCallback((order) => {
+        if (!order?.id || order.isPreview !== true) {
+            throw flowError(
+                'SPONSORSHIP_PREVIEW_INVALID',
+                'Gas Assist returned an invalid preview.',
+                { stage: 'preview.open' },
+            )
+        }
+        if (
+            order.walletAddress &&
+            String(order.walletAddress).toLowerCase() !== String(walletAddress).toLowerCase()
+        ) {
+            throw flowError(
+                'PISTACHIO_ACCOUNT_MISMATCH',
+                'The Gas Assist preview belongs to another wallet.',
+                { stage: 'preview.open' },
+            )
+        }
+        flowEpochRef.current += 1
+        operationRef.current = null
+        sessionTokenRef.current = null
+        setState({ ...initial, open: true, phase: 'review', config, order })
+        gasAssistTrace('flow.preview.opened', {
+            walletAddress,
+            previewId: order.id,
+        })
+    }, [config, walletAddress])
+
     const signIntent = useCallback(async (action) => {
         const operation = `${action}-intent`
         if (!beginOperation(operation)) return
@@ -413,17 +442,64 @@ export function usePrepaidSponsorship({
     const signPackage = useCallback(async () => {
         const operation = 'package'
         if (!beginOperation(operation)) return
-        const order = state.order
-        const sessionToken = sessionTokenRef.current
+        let order = state.order
+        let sessionToken = sessionTokenRef.current
         const walletEpoch = walletEpochRef.current
         const flowEpoch = flowEpochRef.current
         try {
-            if (!order || !sessionToken || !walletClient || !walletAddress) {
+            if (!order || !walletClient || !walletAddress) {
                 throw flowError(
                     'SPONSORSHIP_CONTEXT_MISSING',
                     'The Gas Assist session is no longer available. Start again.',
                     { stage: 'package.prepare' },
                 )
+            }
+            if (!sessionToken) {
+                setState((current) => ({ ...current, phase: 'authenticating', error: null }))
+                await beforeAuthenticate?.()
+                if (!isCurrent(walletEpoch, flowEpoch)) return
+                const session = await gasAssistTraceStep(
+                    'flow.authenticate',
+                    { walletAddress },
+                    () => authenticateSponsorshipWallet({
+                        quoteEndpoint,
+                        walletAddress,
+                        walletClient,
+                    }),
+                )
+                if (!isCurrent(walletEpoch, flowEpoch)) return
+                sessionToken = session.sessionToken
+                sessionTokenRef.current = sessionToken
+            }
+            if (order.isPreview === true) {
+                if (typeof createOrderOverride !== 'function') {
+                    throw flowError(
+                        'SPONSORSHIP_CONTEXT_MISSING',
+                        'The exact Gas Assist order cannot be created.',
+                        { stage: 'package.order-create' },
+                    )
+                }
+                order = await gasAssistTraceStep(
+                    'flow.order-create',
+                    {
+                        walletAddress,
+                        sellToken: sellToken?.address,
+                        buyToken: buyToken?.isNative ? 'native' : buyToken?.address,
+                        grossInputAmount,
+                        slippageBps,
+                    },
+                    () => createOrderOverride({
+                        sessionToken,
+                        idempotencyKey: createIdempotencyKey(),
+                        walletAddress,
+                        sellToken,
+                        buyToken,
+                        grossInputAmount,
+                        slippageBps,
+                    }),
+                )
+                if (!isCurrent(walletEpoch, flowEpoch)) return
+                setState((current) => ({ ...current, order }))
             }
             setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
             const preparedPackage = await gasAssistTraceStep(
@@ -483,7 +559,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, capability, finishOperation, isCurrent, publishFailure, quoteEndpoint, state.order, walletAddress, walletClient])
+    }, [beforeAuthenticate, beginOperation, buyToken, capability, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
 
     const requestContinuation = useCallback(async () => {
         const operation = 'continuation-prepare'
@@ -689,6 +765,7 @@ export function usePrepaidSponsorship({
         retryStart: start,
         available: Boolean(required && config?.enabled),
         start,
+        reviewOrder,
         close,
         signPackage,
         signPayment: () => signIntent('payment'),
