@@ -666,6 +666,29 @@ export async function prepareCrossChainSponsorship({
     }
 }
 
+export async function previewCrossChainSponsorship({
+    endpoint,
+    routeId,
+    signal,
+}) {
+    const payload = await requestJson(
+        `${endpoint.replace(/\/+$/, '')}/routes/${encodeURIComponent(routeId)}/sponsorship/preview`,
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({}),
+            signal,
+        },
+    )
+    if (!payload?.order?.id || payload.order.isPreview !== true || !payload?.preparedRoute) {
+        throw new Error('Gas Assist returned an incomplete cross-chain preview.')
+    }
+    return {
+        order: payload.order,
+        preparedRoute: normalizePreparedCrossChainRoute(payload.preparedRoute),
+    }
+}
+
 export async function fetchCrossChainRouteStatus({ endpoint, routeId, signal }) {
     const payload = await requestJson(
         `${endpoint.replace(/\/+$/, '')}/routes/${encodeURIComponent(routeId)}`,
