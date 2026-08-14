@@ -38,6 +38,7 @@ describe('cross-chain route polling', () => {
         const route = {
             publicRouteId: 'route-1',
             sourceChainId: 1,
+            destinationChainId: 137,
             expiresAt: '2030-01-01T00:00:00.000Z',
         }
         const fetchMock = vi.fn(async (url) => ({
