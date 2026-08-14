@@ -298,6 +298,8 @@ describe('cross-chain route normalization', () => {
         const prepared = normalizePreparedCrossChainRoute({
             id: 'cf-1',
             provider: 'Chainflip',
+            sourceChainId: 56,
+            destinationChainId: 1,
             deposit: {
                 address: '0x0000000000000000000000000000000000000009',
                 asset: {
@@ -318,6 +320,8 @@ describe('cross-chain route normalization', () => {
         const prepared = normalizePreparedCrossChainRoute({
             id: 'ordered',
             provider: 'Relay',
+            sourceChainId: 56,
+            destinationChainId: 1,
             steps: [
                 { id: 'two', chainId: 1, transaction: { to: '0x2' } },
                 { id: 'offchain', type: 'wait' },
@@ -411,6 +415,10 @@ describe('cross-chain route normalization', () => {
         })
 
         expect(result.order).toMatchObject({ id: 'preview:route-id', isPreview: true })
+        expect(result.preparedRoute).toMatchObject({
+            sourceChainId: 56,
+            destinationChainId: 137,
+        })
         expect(fetchMock.mock.calls[0][0]).toContain('/routes/route-id/sponsorship/preview')
         expect(fetchMock.mock.calls[0][1].headers).toEqual({
             'content-type': 'application/json',

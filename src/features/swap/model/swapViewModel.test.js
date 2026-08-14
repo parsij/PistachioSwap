@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { getWalletBalanceNotice } from './swapViewModel.js'
+import {
+    getPrimaryActionPresentation,
+    getWalletBalanceNotice,
+} from './swapViewModel.js'
 
 describe('getWalletBalanceNotice', () => {
     it('does not surface unrelated all-chain refresh failures on the active swap card', () => {
@@ -32,5 +35,34 @@ describe('getWalletBalanceNotice', () => {
             backendWalletTokens: [{ chainId: 56 }],
             walletTokenFailedChainIds: [56],
         })).toBe('Showing previously loaded balances.')
+    })
+})
+
+describe('getPrimaryActionPresentation', () => {
+    const reviewAction = {
+        type: 'swap',
+        label: 'Review Gas Assisted Swap',
+        enabled: true,
+    }
+
+    it('shows a disabled progress action while the Gas Assist review is opening', () => {
+        expect(getPrimaryActionPresentation({
+            action: reviewAction,
+            crossChainGasAssistExpected: true,
+            crossChainGasAssistStatus: 'loading',
+        })).toEqual({
+            type: 'gas-assist-loading',
+            label: 'Preparing Gas Assist…',
+            enabled: false,
+            loading: true,
+        })
+    })
+
+    it('preserves the normal action outside cross-chain Gas Assist loading', () => {
+        expect(getPrimaryActionPresentation({
+            action: reviewAction,
+            crossChainGasAssistExpected: true,
+            crossChainGasAssistStatus: 'success',
+        })).toBe(reviewAction)
     })
 })

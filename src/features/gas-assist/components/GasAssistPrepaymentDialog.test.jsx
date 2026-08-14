@@ -173,6 +173,42 @@ describe('Gas Assist prepayment review', () => {
         expect(value.retryStart).toHaveBeenCalledOnce()
     })
 
+    it('refreshes an expired quote instead of presenting a generic retry', () => {
+        const refreshQuote = vi.fn()
+        const value = sponsorship({
+            refreshQuote,
+            order: {
+                ...sponsorship().order,
+                expiresAt: new Date(Date.now() - 1_000).toISOString(),
+            },
+        })
+        render(<GasAssistPrepaymentDialog
+            sponsorship={value}
+            sellToken={sellToken}
+            buyToken={buyToken}
+        />)
+
+        expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh quote' }))
+        expect(refreshQuote).toHaveBeenCalledOnce()
+        expect(value.retryStart).not.toHaveBeenCalled()
+    })
+
+    it('does not leave the stale swap action enabled after a terminal failure', () => {
+        render(<GasAssistPrepaymentDialog
+            sponsorship={sponsorship({
+                phase: 'failed',
+                error: { code: 'INVALID_CHAIN', message: 'Invalid chain.' },
+            })}
+            sellToken={sellToken}
+            buyToken={buyToken}
+        />)
+
+        expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+    })
+
     it('shows a simple error while preserving its code, stage, and request ID in technical details', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({

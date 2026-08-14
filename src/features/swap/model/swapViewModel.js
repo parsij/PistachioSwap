@@ -119,6 +119,22 @@ export function getWalletBalanceNotice({
         ? unavailableWalletChainNotice([activeChainId])
         : null
 }
+
+export function getPrimaryActionPresentation({
+    action,
+    crossChainGasAssistExpected = false,
+    crossChainGasAssistStatus = 'idle',
+}) {
+    if (crossChainGasAssistExpected && crossChainGasAssistStatus === 'loading') {
+        return {
+            type: 'gas-assist-loading',
+            label: 'Preparing Gas Assist…',
+            enabled: false,
+            loading: true,
+        }
+    }
+    return action
+}
 /**
  * Builds grouped presentation contracts for `AppHeader` and `SwapPage` without owning state.
  * @param {object} context Current controller state, feature APIs, config, and semantic callbacks.
@@ -332,6 +348,11 @@ export function createSwapViewModel(context) {
         sellChainId: routing.sellChainId,
         sellToken,
     })
+    const primaryActionPresentation = getPrimaryActionPresentation({
+        action: eligibility.action,
+        crossChainGasAssistExpected,
+        crossChainGasAssistStatus: crossChainGasAssist?.status,
+    })
     const sameChainConfirmLabel = {
         'checking-approval': 'Checking token approval...',
         'checking-token-approval': 'Checking token approval...',
@@ -445,7 +466,7 @@ export function createSwapViewModel(context) {
                         inputs.activeAmountSide === 'sell',
                 },
                 primaryAction: {
-                    action: eligibility.action,
+                    action: primaryActionPresentation,
                     reducedMotion,
                     triggerRef: review.triggerRef,
                     onAction: callbacks.onPrimaryAction,

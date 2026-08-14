@@ -157,6 +157,8 @@
 .gas-assist-primary:disabled { cursor: not-allowed; opacity: .55; }
 .gas-assist-secondary { border: 1px solid #343434; background: #202020; color: #f2f2f2; }
 .gas-assist-secondary:hover:not(:disabled) { background: #272727; }
+.gas-assist-secondary[aria-busy="true"] { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.gas-assist-secondary[aria-busy="true"] svg { width: 17px; height: 17px; animation: gas-assist-spin 1s linear infinite; }
 .gas-assist-swap-button { margin-top: 16px; }
 .gas-assist-one-tap-note { margin: 9px 10px 0; color: #7f7f7f; font-size: 11px; line-height: 1.45; text-align: center; }
 

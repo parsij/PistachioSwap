@@ -209,7 +209,7 @@ export default function GasAssistPrepaymentDialog({
         }
     }, [buyToken, order, sellToken])
 
-    useEffect(() => setExpired(false), [order?.id])
+    useEffect(() => setExpired(false), [order?.expiresAt, order?.id])
 
     const walletReviewActive = sponsorship.phase === 'authenticating' ||
         sponsorship.phase.endsWith('-signing')
@@ -228,27 +228,34 @@ export default function GasAssistPrepaymentDialog({
     const status = statusContent({ phase: sponsorship.phase, order, orderExpired })
     const visibleError = sponsorship.error
     const technicalError = sponsorship.error ?? sponsorship.lastPollError
+    const terminalFailure = ['failed', 'cancelled', 'unsupported'].includes(sponsorship.phase)
 
     let primaryAction = null
     let primaryLabel = null
-    if (!orderExpired && showPayment && sponsorship.signPackage) {
+    if (!terminalFailure && !orderExpired && showPayment && sponsorship.signPackage) {
         primaryAction = sponsorship.signPackage
         primaryLabel = GAS_ASSIST_SWAP_ACTION
-    } else if (!orderExpired && showPayment && sponsorship.signPayment) {
+    } else if (!terminalFailure && !orderExpired && showPayment && sponsorship.signPayment) {
         primaryAction = sponsorship.signPayment
         primaryLabel = GAS_ASSIST_SWAP_ACTION
-    } else if (!orderExpired && showApproval) {
+    } else if (!terminalFailure && !orderExpired && showApproval) {
         primaryAction = sponsorship.signApproval
         primaryLabel = 'Continue'
-    } else if (!orderExpired && showContinuationRequest) {
+    } else if (!terminalFailure && !orderExpired && showContinuationRequest) {
         primaryAction = sponsorship.requestContinuation
         primaryLabel = 'Continue'
-    } else if (!orderExpired && showContinuationSign) {
+    } else if (!terminalFailure && !orderExpired && showContinuationSign) {
         primaryAction = sponsorship.signContinuation
         primaryLabel = 'Confirm swap'
     }
 
-    const canRetry = ['failed', 'cancelled', 'unsupported'].includes(sponsorship.phase) || orderExpired
+    const canRetry = terminalFailure || orderExpired
+    const retryAction = orderExpired
+        ? sponsorship.refreshQuote ?? sponsorship.retryStart
+        : sponsorship.retryStart
+    const retryLabel = orderExpired
+        ? (sponsorship.refreshing ? 'Refreshing quote…' : 'Refresh quote')
+        : 'Try again'
 
     return (
         <Dialog.Root open onOpenChange={(open) => !open && sponsorship.close()}>
@@ -313,9 +320,16 @@ export default function GasAssistPrepaymentDialog({
                             One tap starts the flow. Pistachio Wallet will ask you to confirm the exact fee, approval, and swap before anything is sent.
                         </p>
                     )}
-                    {canRetry && sponsorship.retryStart && (
-                        <button className="gas-assist-secondary" type="button" onClick={sponsorship.retryStart} disabled={walletBusy}>
-                            Try again
+                    {canRetry && retryAction && (
+                        <button
+                            className="gas-assist-secondary"
+                            type="button"
+                            onClick={retryAction}
+                            disabled={walletBusy || sponsorship.refreshing}
+                            aria-busy={sponsorship.refreshing || undefined}
+                        >
+                            {sponsorship.refreshing && <LoaderCircle aria-hidden="true" />}
+                            {retryLabel}
                         </button>
                     )}
                     {sponsorship.phase === 'completed' && (

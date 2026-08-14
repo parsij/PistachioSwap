@@ -119,6 +119,13 @@ export function useCrossChainGasAssist({
         }
     }
 
+    const reviewSponsorship = {
+        ...sponsorship,
+        error: previewStatus === 'error' ? previewError : sponsorship.error,
+        refreshing: previewStatus === 'loading' && sponsorship.open,
+        refreshQuote: start,
+    }
+
     return {
         required,
         expected: expected === true,
@@ -135,7 +142,7 @@ export function useCrossChainGasAssist({
                         ? 'loading'
                         : available ? 'success' : 'unavailable',
         error: previewError ?? sponsorship.configError ?? sponsorship.error,
-        sponsorship,
+        sponsorship: reviewSponsorship,
         start,
     }
 }

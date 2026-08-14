@@ -494,6 +494,24 @@ export async function fetchCrossChainRoutes({ endpoint, request, signal }) {
 export function normalizePreparedCrossChainRoute(payload) {
     const prepared = payload?.preparedRoute ?? payload?.route ?? payload
     const provider = normalizeProvider(prepared?.provider ?? payload?.provider)
+    const sourceChainId = Number(readFirst(prepared, [
+        'sourceChainId',
+        'fromChainId',
+        'sourceAsset.chainId',
+        'source.chainId',
+        'from.chainId',
+    ]))
+    const destinationChainId = Number(readFirst(prepared, [
+        'destinationChainId',
+        'toChainId',
+        'destinationAsset.chainId',
+        'destination.chainId',
+        'to.chainId',
+    ]))
+    if (
+        !isCuratedEvmChainId(sourceChainId) ||
+        !isCuratedEvmChainId(destinationChainId)
+    ) throw new Error('Prepared route contains an unsupported chain.')
     const deposit = provider.toLowerCase().includes('chainflip')
         ? (() => {
               const value = prepared?.deposit
@@ -510,6 +528,8 @@ export function normalizePreparedCrossChainRoute(payload) {
         publicRouteId: String(readFirst(prepared, ['publicRouteId', 'routeId', 'id'], '')),
         provider,
         executionModel: String(prepared?.executionModel ?? 'unknown'),
+        sourceChainId,
+        destinationChainId,
         sourceAsset: prepared?.sourceAsset ?? null,
         destinationAsset: prepared?.destinationAsset ?? null,
         inputAmount: toAmount(prepared?.inputAmount),
