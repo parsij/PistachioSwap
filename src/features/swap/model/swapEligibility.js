@@ -15,13 +15,20 @@ export function expectsCrossChainGasAssist({
     routingMode,
     crossChainMode,
     nativeBalanceValue,
+    nativeGasReserve,
     sellChainId,
     sellToken,
 }) {
-    const hasNoNativeGas = (() => {
+    const hasInsufficientNativeGas = (() => {
         if (nativeBalanceValue === null || nativeBalanceValue === undefined) return false
         try {
-            return BigInt(nativeBalanceValue) === 0n
+            let reserve = DEFAULT_NATIVE_GAS_RESERVE_WEI
+            try {
+                reserve = parseEther(String(nativeGasReserve))
+            } catch {
+                // Use the audited fallback reserve when configuration is unavailable.
+            }
+            return BigInt(nativeBalanceValue) < reserve
         } catch {
             return false
         }
@@ -30,7 +37,7 @@ export function expectsCrossChainGasAssist({
         prepaidEnabled === true &&
         Number(sellChainId) === 56 &&
         !isNativeEvmToken(sellToken) &&
-        hasNoNativeGas
+        hasInsufficientNativeGas
 }
 
 export function getSwapReviewLabel(input) {
