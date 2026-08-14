@@ -187,6 +187,28 @@ export function createCrossChainRoutes(
         )
 
         app.post<{ Params: { routeId: string }; Body: unknown }>(
+            '/v1/cross-chain/routes/:routeId/sponsorship/preview',
+            { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+            async (request, reply) => {
+                try {
+                    exactBody(request.body, [], [])
+                    return reply.send(await service.previewSponsorship({
+                        routeId: request.params.routeId,
+                        clientIp: request.ip,
+                        signal: abortSignal(request),
+                    }))
+                } catch (error) {
+                    return sendError(
+                        reply,
+                        error,
+                        400,
+                        'CROSS_CHAIN_GAS_ASSIST_PREVIEW_FAILED',
+                    )
+                }
+            },
+        )
+
+        app.post<{ Params: { routeId: string }; Body: unknown }>(
             '/v1/cross-chain/routes/:routeId/sponsorship/prepare',
             { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
             async (request, reply) => {
