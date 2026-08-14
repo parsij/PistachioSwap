@@ -22,6 +22,7 @@ import {
     normalizePreparedCrossChainRoute,
     markCrossChainRouteSubmitted,
     persistPublicRouteId,
+    previewCrossChainSponsorship,
     readPersistedPublicRouteId,
     sortCrossChainRoutes,
     withPreparedSourceGasCosts,
@@ -379,6 +380,40 @@ describe('cross-chain route normalization', () => {
             .toBe(`Bearer ${options.sessionToken}`)
         expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
             sourceTransactionHash: `0x${'a'.repeat(64)}`,
+        })
+        vi.unstubAllGlobals()
+    })
+
+    it('loads an exact cross-chain Gas Assist preview without an authorization header', async () => {
+        const fetchMock = vi.fn().mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                order: { id: 'preview:route-id', isPreview: true },
+                preparedRoute: {
+                    publicRouteId: 'route-id',
+                    provider: 'relay',
+                    state: 'prepared',
+                    executionModel: 'evm-transaction',
+                    sourceChainId: 56,
+                    destinationChainId: 137,
+                    inputAmount: '900',
+                    outputAmount: '850',
+                    minimumOutputAmount: '840',
+                    steps: [],
+                },
+            }),
+        })
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await previewCrossChainSponsorship({
+            endpoint: 'https://api.example/v1/cross-chain',
+            routeId: 'route-id',
+        })
+
+        expect(result.order).toMatchObject({ id: 'preview:route-id', isPreview: true })
+        expect(fetchMock.mock.calls[0][0]).toContain('/routes/route-id/sponsorship/preview')
+        expect(fetchMock.mock.calls[0][1].headers).toEqual({
+            'content-type': 'application/json',
         })
         vi.unstubAllGlobals()
     })
