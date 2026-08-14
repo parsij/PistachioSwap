@@ -21,7 +21,6 @@ export default function SwapPrimaryAction({ action, reducedMotion, triggerRef, o
             onClick={onAction}
             aria-busy={action.loading || undefined}
         >
-            {action.loading && <span className="cross-chain-spinner" aria-hidden="true" />}
             {action.label}
         </motion.button>
     )
