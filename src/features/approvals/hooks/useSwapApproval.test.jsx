@@ -18,9 +18,9 @@ vi.mock('wagmi', () => ({
     useWalletClient: () => ({
         data: {
             chain: { id: 56 },
-            sendTransaction: mocks.sendTransaction,
         },
     }),
+    useSendTransaction: () => ({ mutateAsync: mocks.sendTransaction }),
 }))
 
 import { useSwapApproval } from './useSwapApproval.js'
@@ -103,6 +103,71 @@ describe('normal token approval safety', () => {
             data: transaction.data,
         }).args).toEqual([spender, 125n])
         expect(transaction.to).toBe(token)
+        expect(transaction.chainId).toBe(56)
+    })
+
+    it('does not open the wallet when the review is closed during the allowance read', async () => {
+        let resolveAllowance
+        mocks.readContract.mockImplementationOnce(() => new Promise((resolve) => {
+            resolveAllowance = resolve
+        }))
+        const diagnostic = vi.fn()
+        const controller = new AbortController()
+        const { result } = setup({
+            mode: 'EXACT_INPUT',
+            chainId: 56,
+            sellToken: token,
+            allowanceTarget: spender,
+            approval: {
+                mode: 'erc20',
+                contract: spender,
+                spender,
+                token,
+                requiredAmount: '100',
+            },
+        }, { onDiagnostic: diagnostic })
+
+        let pending
+        await act(async () => {
+            pending = result.current.prepareSwapApproval(null, {
+                signal: controller.signal,
+            })
+            await Promise.resolve()
+        })
+        controller.abort()
+        resolveAllowance(0n)
+
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+        expect(mocks.sendTransaction).not.toHaveBeenCalled()
+        expect(diagnostic).not.toHaveBeenCalledWith(
+            'approval.erc20.wallet-prompt.requested',
+            expect.anything(),
+        )
+    })
+
+    it('announces a direct token approval before opening the external wallet', async () => {
+        const diagnostic = vi.fn()
+        const { result } = setup({
+            mode: 'EXACT_INPUT',
+            chainId: 56,
+            sellToken: token,
+            allowanceTarget: spender,
+            approval: {
+                mode: 'erc20',
+                contract: spender,
+                spender,
+                token,
+                requiredAmount: '100',
+            },
+        }, { onDiagnostic: diagnostic })
+
+        await act(() => result.current.prepareSwapApproval())
+
+        expect(diagnostic).toHaveBeenCalledWith(
+            'approval.erc20.wallet-prompt.requested',
+            { token, spender },
+        )
+        expect(mocks.sendTransaction).toHaveBeenCalledOnce()
     })
 
     it.each([

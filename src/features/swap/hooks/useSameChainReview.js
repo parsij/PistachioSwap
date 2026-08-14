@@ -16,7 +16,6 @@ export function useSameChainReview({ diagnostic, requestKeySuffix, requestKey, s
     const [reviewOperation, setReviewOperation] = useState('idle')
     const requestedOpenRef = useRef(false)
     const capturedIdentityRef = useRef(null)
-    const confirmationPendingRef = useRef(false)
     const contentRef = useRef(null)
     const triggerRef = useRef(null)
 
@@ -26,13 +25,11 @@ export function useSameChainReview({ diagnostic, requestKeySuffix, requestKey, s
         setIsOpen(false)
         setReviewError(null)
         setReviewOperation('idle')
-        confirmationPendingRef.current = false
         window.setTimeout(() => triggerRef.current?.focus(), 0)
     }, [])
 
     const handleOpenChange = useCallback((open) => {
         requestedOpenRef.current = open
-        if (!open && confirmationPendingRef.current) return
         if (!open) capturedIdentityRef.current = null
         setIsOpen(open)
         if (!open) window.setTimeout(() => triggerRef.current?.focus(), 0)
@@ -45,9 +42,6 @@ export function useSameChainReview({ diagnostic, requestKeySuffix, requestKey, s
         capturedIdentityRef.current = requestKey ?? null
         setIsOpen(true)
     }, [requestKey])
-    const setConfirmationPending = useCallback((pending) => {
-        confirmationPendingRef.current = pending
-    }, [])
 
     useEffect(() => {
         if (!isOpen) return
@@ -105,5 +99,5 @@ export function useSameChainReview({ diagnostic, requestKeySuffix, requestKey, s
         return () => { window.cancelAnimationFrame(frameId); if (measurementFrameId !== null) window.cancelAnimationFrame(measurementFrameId) }
     }, [diagnostic, isOpen, requestKey, requestKeySuffix, selectedQuote])
 
-    return { isOpen, reviewError, reviewOperation, contentRef, triggerRef, openReview, closeReview, handleOpenChange, setReviewError, setReviewOperation, setConfirmationPending, clearReviewError: () => setReviewError(null) }
+    return { isOpen, reviewError, reviewOperation, contentRef, triggerRef, openReview, closeReview, handleOpenChange, setReviewError, setReviewOperation, clearReviewError: () => setReviewError(null) }
 }

@@ -1,6 +1,13 @@
 import { useCallback, useRef } from 'react'
 import { encodeFunctionData, isAddress } from 'viem'
-import { usePublicClient, useWalletClient } from 'wagmi'
+import { usePublicClient, useSendTransaction, useWalletClient } from 'wagmi'
+
+function throwIfApprovalCancelled(signal) {
+    if (!signal?.aborted) return
+    const error = new Error('Swap confirmation cancelled.')
+    error.name = 'AbortError'
+    throw error
+}
 
 const approveAbi = [{
     type: 'function', name: 'approve', stateMutability: 'nonpayable',
@@ -197,6 +204,7 @@ export function useSwapApproval({
                                 }) {
     const publicClient = usePublicClient({ chainId })
     const { data: walletClient } = useWalletClient({ chainId })
+    const { mutateAsync: sendTransaction } = useSendTransaction()
 
     const pendingRef = useRef(null)
     const pendingAttemptIdRef = useRef(null)
@@ -206,8 +214,10 @@ export function useSwapApproval({
         approvalTransactionSubmitted: false,
     })
 
-    const prepareSwapApproval = useCallback(async (quoteOverride = null) => {
+    const prepareSwapApproval = useCallback(async (quoteOverride = null, { signal } = {}) => {
         const trace = createApprovalTrace()
+
+        throwIfApprovalCancelled(signal)
 
         trace.emit('prepareSwapApproval.entered', {
             hasQuoteOverride: Boolean(quoteOverride),
@@ -951,6 +961,8 @@ export function useSwapApproval({
                             },
                         )
 
+                        throwIfApprovalCancelled(signal)
+
                         onDiagnostic?.(
                             'approval.erc20.wallet-prompt.requested',
                             {
@@ -1005,17 +1017,13 @@ export function useSwapApproval({
                         let hash
 
                         try {
-                            hash =
-                                await walletClient.sendTransaction({
-                                    account:
-                                    walletAddress,
-                                    chain:
-                                    walletClient.chain,
-                                    to:
-                                    sellTokenAddress,
-                                    data,
-                                    value: 0n,
-                                })
+                            hash = await sendTransaction({
+                                account: walletAddress,
+                                chainId: Number(chainId),
+                                to: sellTokenAddress,
+                                data,
+                                value: 0n,
+                            })
                         } catch (error) {
                             trace.emit(
                                 'permit2.erc20-approval.wallet-send.rejected',
@@ -1438,6 +1446,8 @@ export function useSwapApproval({
                             },
                         )
 
+                        throwIfApprovalCancelled(signal)
+
                         onDiagnostic?.(
                             'approval.permit2.wallet-prompt.requested',
                             {
@@ -1520,18 +1530,13 @@ export function useSwapApproval({
                         let hash
 
                         try {
-                            hash =
-                                await walletClient
-                                    .sendTransaction({
-                                        account:
-                                        walletAddress,
-                                        chain:
-                                        walletClient.chain,
-                                        to:
-                                        permit2Address,
-                                        data,
-                                        value: 0n,
-                                    })
+                            hash = await sendTransaction({
+                                account: walletAddress,
+                                chainId: Number(chainId),
+                                to: permit2Address,
+                                data,
+                                value: 0n,
+                            })
                         } catch (error) {
                             trace.emit(
                                 'permit2.approval.wallet-send.rejected',
@@ -1883,6 +1888,16 @@ export function useSwapApproval({
                     },
                 )
 
+                throwIfApprovalCancelled(signal)
+
+                onDiagnostic?.(
+                    'approval.erc20.wallet-prompt.requested',
+                    {
+                        token: sellTokenAddress,
+                        spender: allowanceTarget,
+                    },
+                )
+
                 trace.emit(
                     'direct-erc20.approval.calldata-encoding.start',
                     {
@@ -1932,14 +1947,13 @@ export function useSwapApproval({
                 let hash
 
                 try {
-                    hash =
-                        await walletClient.sendTransaction({
-                            account: walletAddress,
-                            chain: walletClient.chain,
-                            to: sellTokenAddress,
-                            data,
-                            value: 0n,
-                        })
+                    hash = await sendTransaction({
+                        account: walletAddress,
+                        chainId: Number(chainId),
+                        to: sellTokenAddress,
+                        data,
+                        value: 0n,
+                    })
                 } catch (error) {
                     trace.emit(
                         'direct-erc20.approval.wallet-send.rejected',
@@ -2144,6 +2158,7 @@ export function useSwapApproval({
         onDiagnostic,
         publicClient,
         quote,
+        sendTransaction,
         sellToken,
         walletAddress,
         walletClient,

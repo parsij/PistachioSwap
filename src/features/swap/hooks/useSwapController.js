@@ -325,7 +325,6 @@ export function useSwapController() {
         setVisibleStatus: setStatusMessage,
         setTransactionStatus: receipt.setTransactionStatus,
         setTransactionHash: receipt.setTransactionHash,
-        setReviewConfirmationPending: review.setConfirmationPending,
         diagnostic: logSwapDiagnostic,
         requestKeySuffix,
         quoteDiagnostic,
@@ -400,8 +399,13 @@ export function useSwapController() {
 
     const resetQuoteAndReview = useCallback(() => {
         quote.resetQuote()
+        execution.cancelSameChainExecution()
         review.closeReview()
-    }, [quote, review])
+    }, [execution.cancelSameChainExecution, quote.resetQuote, review.closeReview])
+    const handleSameChainReviewOpenChange = useCallback((open) => {
+        if (!open) execution.cancelSameChainExecution()
+        review.handleOpenChange(open)
+    }, [execution.cancelSameChainExecution, review.handleOpenChange])
     const callbacks = {
         onSettingsChange: setSwapSettings,
         onSellAmountChange: (event) => inputs.updateSellAmount(event.target.value),
@@ -430,6 +434,7 @@ export function useSwapController() {
         },
         onPrimaryAction: primaryAction.performPrimaryAction,
         onConfirmSameChainSwap: primaryAction.confirmSameChainSwap,
+        onSameChainReviewOpenChange: handleSameChainReviewOpenChange,
     }
     const executionMessage = routing.routingMode === routing.modes.SAME_CHAIN_GASLESS_OR_ASSISTED
         ? getSwapExecutionMessage(routing.preferredExecution.reason)

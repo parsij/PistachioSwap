@@ -1961,9 +1961,14 @@ describe('App wallet integration', () => {
         fireEvent.click(getByRole('button', { name: 'Confirm swap' }))
         fireEvent.click(getByRole('button', { name: 'Checking token approval...' }))
         expect(mocks.prepareSwapApproval).toHaveBeenCalledTimes(1)
+        const closeButton = getByRole('button', { name: 'Close review' })
+        expect(closeButton.disabled).toBe(false)
+        fireEvent.click(closeButton)
+        expect(queryAllByRole('heading', { name: 'Review swap' })).toHaveLength(0)
         await act(async () => {
-            resolveApproval(false)
+            resolveApproval(true)
         })
+        expect(mocks.sendTransaction).not.toHaveBeenCalled()
     })
 
     it('queries providers for a small USD input instead of locally rejecting it', async () => {

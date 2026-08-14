@@ -61,9 +61,9 @@ export function useApprovalExecutionBridge({
         approvalTransactionSubmitted: false,
     })
 
-    const prepareExecutionApproval = useCallback(async (quoteOverride = null) => {
+    const prepareExecutionApproval = useCallback(async (quoteOverride = null, options = {}) => {
         const quoteResponse = quoteOverride ?? quote
-        let approvalReady = await prepareSwapApproval(quoteOverride)
+        let approvalReady = await prepareSwapApproval(quoteOverride, options)
         const initial = getLastPreparationResult?.() ?? {
             approvalReady,
             approvalTransactionSubmitted: false,

@@ -18,6 +18,17 @@ import {
     validateRefreshedQuote,
 } from '../services/refreshedQuoteValidation.js'
 
+function throwIfConfirmationCancelled(signal) {
+    if (!signal?.aborted) return
+    const error = new Error('Swap confirmation cancelled.')
+    error.name = 'AbortError'
+    throw error
+}
+
+function isConfirmationCancelled(error) {
+    return error?.name === 'AbortError'
+}
+
 /**
  * Purpose: orchestrates one confirmed same-chain swap from approval through
  * quote refresh, simulation, Permit2 recovery, and wallet submission.
@@ -52,7 +63,6 @@ export function useSameChainExecution({
                                           setVisibleStatus,
                                           setTransactionStatus,
                                           setTransactionHash,
-                                          setReviewConfirmationPending,
                                           diagnostic,
                                           requestKeySuffix,
                                           quoteDiagnostic,
@@ -63,6 +73,9 @@ export function useSameChainExecution({
     const confirmationPendingRef =
         useRef(false)
 
+    const confirmationControllerRef =
+        useRef(null)
+
     const [
         isConfirming,
         setIsConfirming,
@@ -70,16 +83,33 @@ export function useSameChainExecution({
 
     const resetSameChainExecution =
         useCallback(() => {
+            confirmationControllerRef.current?.abort()
+            confirmationControllerRef.current = null
+
             confirmationPendingRef.current =
                 false
 
-            setReviewConfirmationPending?.(
-                false,
-            )
-
             setIsConfirming(false)
+        }, [])
+
+    const cancelSameChainExecution =
+        useCallback(() => {
+            const controller = confirmationControllerRef.current
+            if (!controller) return
+
+            controller.abort()
+            confirmationControllerRef.current = null
+            confirmationPendingRef.current = false
+            setIsConfirming(false)
+
+            diagnostic(
+                'review.confirm.cancelled',
+                { operation: reviewOperation },
+                'info',
+            )
         }, [
-            setReviewConfirmationPending,
+            diagnostic,
+            reviewOperation,
         ])
 
     const confirmSameChainSwap =
@@ -105,9 +135,13 @@ export function useSameChainExecution({
             confirmationPendingRef.current =
                 true
 
-            setReviewConfirmationPending?.(
-                true,
-            )
+            const confirmationController =
+                new AbortController()
+
+            confirmationControllerRef.current =
+                confirmationController
+
+            const { signal } = confirmationController
 
             setIsConfirming(true)
 
@@ -135,7 +169,9 @@ export function useSameChainExecution({
                 )
 
                 const approvalReady =
-                    await prepareSwapApproval()
+                    await prepareSwapApproval(null, { signal })
+
+                throwIfConfirmationCancelled(signal)
 
                 const approvalResult =
                     getLastPreparationResult?.() ??
@@ -475,7 +511,10 @@ export function useSameChainExecution({
                                 const recoveryReady =
                                     await prepareSwapApproval(
                                         refreshedQuote,
+                                        { signal },
                                     )
+
+                                throwIfConfirmationCancelled(signal)
 
                                 const recoveryResult =
                                     getLastPreparationResult?.() ??
@@ -789,6 +828,8 @@ export function useSameChainExecution({
                     'submitting',
                 )
 
+                throwIfConfirmationCancelled(signal)
+
                 confirmationPhase =
                     'submission'
 
@@ -849,6 +890,15 @@ export function useSameChainExecution({
 
                 return hash
             } catch (error) {
+                if (isConfirmationCancelled(error)) {
+                    diagnostic(
+                        'review.confirm.cancelled',
+                        { operation: reviewOperation },
+                        'info',
+                    )
+                    return null
+                }
+
                 if (
                     isUserRejectedError(error)
                 ) {
@@ -922,6 +972,10 @@ export function useSameChainExecution({
 
                 return null
             } finally {
+                if (confirmationControllerRef.current === confirmationController) {
+                    confirmationControllerRef.current = null
+                }
+
                 if (!waitingForReceipt) {
                     setReviewOperation(
                         'idle',
@@ -930,10 +984,6 @@ export function useSameChainExecution({
 
                 confirmationPendingRef.current =
                     false
-
-                setReviewConfirmationPending?.(
-                    false,
-                )
 
                 setIsConfirming(false)
 
@@ -967,7 +1017,6 @@ export function useSameChainExecution({
             reviewOperation,
             sellToken,
             sendTransaction,
-            setReviewConfirmationPending,
             setReviewError,
             setReviewOperation,
             setTransactionHash,
@@ -979,6 +1028,7 @@ export function useSameChainExecution({
         ])
 
     return {
+        cancelSameChainExecution,
         confirmSameChainSwap,
         isConfirming,
         resetSameChainExecution,

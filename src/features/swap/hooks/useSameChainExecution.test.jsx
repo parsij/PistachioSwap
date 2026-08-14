@@ -69,6 +69,29 @@ describe('same-chain execution orchestration with mocked approval, quote, simula
         expect(result.current.isConfirming).toBe(false)
     })
 
+    it('cancels a pending approval check without opening the swap transaction', async () => {
+        let release
+        const prepareSwapApproval = vi.fn(() => new Promise((resolve) => { release = resolve }))
+        const { result, dependencies } = setup({ prepareSwapApproval })
+        let pending
+
+        await act(async () => {
+            pending = result.current.confirmSameChainSwap()
+            await Promise.resolve()
+        })
+        act(() => result.current.cancelSameChainExecution())
+        await act(async () => {
+            release(true)
+            await pending
+        })
+
+        expect(dependencies.sendTransaction).not.toHaveBeenCalled()
+        expect(dependencies.setReviewError).not.toHaveBeenCalledWith(
+            'Swap confirmation cancelled.',
+        )
+        expect(result.current.isConfirming).toBe(false)
+    })
+
     it('force-refreshes after an approval transaction and simulates refreshed calldata', async () => {
         const { result, dependencies } = setup({ getLastPreparationResult: vi.fn(() => ({ approvalReady: true, approvalTransactionSubmitted: true })) })
         await act(() => result.current.confirmSameChainSwap())

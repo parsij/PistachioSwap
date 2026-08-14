@@ -555,7 +555,7 @@ export function createSwapViewModel(context) {
             },
             sameChainReview: {
                 open: review.isOpen,
-                onOpenChange: review.handleOpenChange,
+                onOpenChange: callbacks.onSameChainReviewOpenChange,
                 contentRef: review.contentRef,
                 reducedMotion,
                 activeAmountSide: inputs.activeAmountSide,
