@@ -2,6 +2,7 @@
 
 import React from 'react'
 import {
+    act,
     cleanup,
     render,
     screen,
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('wagmi', () => ({
-    useDisconnect: () => ({ mutate: mocks.disconnect }),
+    useDisconnect: () => ({ mutateAsync: mocks.disconnect }),
     usePublicClient: () => mocks.publicClient,
     useSendTransaction: () => ({ mutateAsync: vi.fn() }),
     useWriteContract: () => ({ mutateAsync: vi.fn() }),
@@ -138,10 +139,11 @@ function activity(type, token, hashSuffix, amount = '1') {
     }
 }
 
-function renderDialog() {
-    return render(<WalletAccountDialog
+function renderDialog(overrides = {}) {
+    const onOpenChange = overrides.onOpenChange ?? vi.fn()
+    const result = render(<WalletAccountDialog
         open
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         address={account}
         chainId={56}
         nativeBalance={{ value: 1000000000000000000n, formatted: '1' }}
@@ -151,7 +153,10 @@ function renderDialog() {
         selectedTokens={[]}
         explorerUrl="https://bscscan.com"
         onRefetch={vi.fn()}
+        {...overrides}
     />)
+
+    return { ...result, onOpenChange }
 }
 
 describe('WalletAccountDialog trust filtering', () => {
@@ -185,5 +190,46 @@ describe('WalletAccountDialog trust filtering', () => {
         expect(screen.getByText('4 confirmed transactions')).toBeTruthy()
         expect(screen.getByText('10 USDT')).toBeTruthy()
         expect(screen.queryByText('RETURN TO MEMES')).toBeNull()
+    })
+})
+
+describe('WalletAccountDialog sign out', () => {
+    afterEach(() => {
+        cleanup()
+        mocks.disconnect.mockReset()
+        vi.restoreAllMocks()
+    })
+
+    it('waits for the connector session to be cleared before closing', async () => {
+        let finishDisconnect
+        mocks.disconnect.mockImplementation(() => new Promise((resolve) => {
+            finishDisconnect = resolve
+        }))
+        const { onOpenChange } = renderDialog()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign out of wallet' }))
+
+        expect(mocks.disconnect).toHaveBeenCalledOnce()
+        expect(onOpenChange).not.toHaveBeenCalled()
+        expect(screen.getByRole('button', {
+            name: 'Signing out of wallet',
+        }).disabled).toBe(true)
+
+        await act(async () => finishDisconnect())
+
+        expect(onOpenChange).toHaveBeenCalledWith(false)
+    })
+
+    it('keeps the account panel open when the connector cannot disconnect', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        mocks.disconnect.mockRejectedValue(new Error('session teardown failed'))
+        const { onOpenChange } = renderDialog()
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Sign out of wallet' }))
+        })
+
+        expect(onOpenChange).not.toHaveBeenCalled()
+        expect(screen.getByRole('alert').textContent).toContain('Could not sign out')
     })
 })

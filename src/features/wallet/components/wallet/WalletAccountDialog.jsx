@@ -295,11 +295,13 @@ export default function WalletAccountDialog({
     explorerUrl,
     onRefetch,
 }) {
-    const { mutate: disconnect } = useDisconnect()
+    const { mutateAsync: disconnect } = useDisconnect()
     const [receiveOpen, setReceiveOpen] = useState(false)
     const [sendOpen, setSendOpen] = useState(false)
     const [copied, setCopied] = useState(false)
     const [refreshing, setRefreshing] = useState(false)
+    const [disconnecting, setDisconnecting] = useState(false)
+    const [disconnectError, setDisconnectError] = useState(null)
     const [view, setView] = useState('overview')
     const activityChainIds = useMemo(() => [...new Set([
         Number(chainId),
@@ -370,6 +372,7 @@ export default function WalletAccountDialog({
         if (!open) {
             setView('overview')
             setCopied(false)
+            setDisconnectError(null)
         }
     }, [open])
 
@@ -397,9 +400,27 @@ export default function WalletAccountDialog({
         }
     }
 
-    function handleDisconnect() {
-        onOpenChange(false)
-        disconnect()
+    async function handleDisconnect() {
+        if (disconnecting) return
+
+        setDisconnecting(true)
+        setDisconnectError(null)
+
+        try {
+            // Wait for the active connector to terminate and clear its persisted
+            // session before hiding the account panel. Closing first can leave a
+            // WalletConnect/AppKit session available for automatic reconnection
+            // when the page is refreshed.
+            await disconnect()
+            setReceiveOpen(false)
+            setSendOpen(false)
+            onOpenChange(false)
+        } catch (error) {
+            console.error('[wallet] Failed to disconnect the active wallet.', error)
+            setDisconnectError('Could not sign out of the wallet. Please try again.')
+        } finally {
+            setDisconnecting(false)
+        }
     }
 
     function renderOverview() {
@@ -427,10 +448,16 @@ export default function WalletAccountDialog({
                             </button>
                             <button
                                 type="button"
-                                aria-label="Disconnect wallet"
+                                aria-label={disconnecting
+                                    ? 'Signing out of wallet'
+                                    : 'Sign out of wallet'}
                                 onClick={handleDisconnect}
+                                disabled={disconnecting}
                             >
-                                <LogOut aria-hidden="true" />
+                                <LogOut
+                                    className={disconnecting ? 'spinning' : ''}
+                                    aria-hidden="true"
+                                />
                             </button>
                             <Dialog.Close
                                 className="uni-wallet-mobile-close"
@@ -451,6 +478,12 @@ export default function WalletAccountDialog({
                             ? <Check aria-hidden="true" />
                             : <Copy aria-hidden="true" />}
                     </button>
+
+                    {disconnectError && (
+                        <p className="uni-wallet-disconnect-error" role="alert">
+                            {disconnectError}
+                        </p>
+                    )}
 
                     <strong className="uni-wallet-value">{totalValue}</strong>
                 </section>

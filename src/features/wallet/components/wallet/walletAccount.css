@@ -579,3 +579,9 @@ button.uni-activity-row:hover {
 .pistachio-wallet-dialog.pistachio-signing-review {
     z-index: 2201;
 }
+.uni-wallet-disconnect-error {
+    margin: 0;
+    color: #ff8fa3;
+    font-size: 12px;
+    line-height: 1.4;
+}
