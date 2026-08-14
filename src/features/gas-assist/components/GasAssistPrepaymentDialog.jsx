@@ -146,8 +146,8 @@ function CompactStatus({ status }) {
     )
 }
 
-function TechnicalDetails({ order, sellToken, buyToken, paymentToken, error }) {
-    if (!order && !error) return null
+function TechnicalDetails({ order, sellToken, buyToken, paymentToken }) {
+    if (!order) return null
     return (
         <details className="gas-assist-technical">
             <summary>
@@ -172,13 +172,6 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, error }) {
                         {order.paymentTransactionHash && <div><span>Fee transaction</span><code>{order.paymentTransactionHash}</code></div>}
                         {order.approvalTransactionHash && <div><span>Approval transaction</span><code>{order.approvalTransactionHash}</code></div>}
                         {order.swapTransactionHash && <div><span>Swap transaction</span><code>{order.swapTransactionHash}</code></div>}
-                    </div>
-                )}
-                {error && (
-                    <div className="gas-assist-debug-error">
-                        <div><span>Error code</span><strong>{error.code ?? 'UNKNOWN_ERROR'}</strong></div>
-                        {error.stage && <div><span>Stage</span><strong>{error.stage}</strong></div>}
-                        {error.requestId && <div><span>Request ID</span><code>{error.requestId}</code></div>}
                     </div>
                 )}
                 <p className="gas-assist-technical-note">
@@ -227,7 +220,6 @@ export default function GasAssistPrepaymentDialog({
     const showContinuationSign = sponsorship.phase === 'continuation-ready'
     const status = statusContent({ phase: sponsorship.phase, order, orderExpired })
     const visibleError = sponsorship.error
-    const technicalError = sponsorship.error ?? sponsorship.lastPollError
     const terminalFailure = ['failed', 'cancelled', 'unsupported'].includes(sponsorship.phase)
 
     let primaryAction = null
@@ -341,7 +333,6 @@ export default function GasAssistPrepaymentDialog({
                         sellToken={sellToken}
                         buyToken={buyToken}
                         paymentToken={paymentToken}
-                        error={technicalError}
                     />
                 </Dialog.Content>
             </Dialog.Portal>

@@ -209,7 +209,7 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
     })
 
-    it('shows a simple error while preserving its code, stage, and request ID in technical details', () => {
+    it('shows a simple error without exposing backend diagnostics in the interface', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
                 phase: 'failed',
@@ -227,9 +227,9 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByText('The sponsor policy service timed out. Try again.')).toBeTruthy()
         const details = screen.getByText('Transaction details').closest('details')
         expect(details?.hasAttribute('open')).toBe(false)
-        expect(screen.getByText('PAYMASTER_POLICY_TIMEOUT')).toBeTruthy()
-        expect(screen.getByText('package.prepare')).toBeTruthy()
-        expect(screen.getByText('request-123')).toBeTruthy()
+        expect(screen.queryByText('PAYMASTER_POLICY_TIMEOUT')).toBeNull()
+        expect(screen.queryByText('package.prepare')).toBeNull()
+        expect(screen.queryByText('request-123')).toBeNull()
         expect(screen.queryByText('The raw sponsor service timed out.')).toBeNull()
     })
 })

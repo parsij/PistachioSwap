@@ -678,7 +678,7 @@ export function usePrepaidSponsorship({
         const orderId = state.order?.id
         const walletEpoch = walletEpochRef.current
         const flowEpoch = flowEpochRef.current
-        if (!state.open || !orderId || !sessionToken ||
+        if (!state.open || !orderId || state.order?.isPreview === true || !sessionToken ||
             ['completed', 'expired', 'rejected', 'failed'].includes(state.order.status)) return undefined
         const controller = new AbortController()
         const timer = window.setTimeout(async () => {

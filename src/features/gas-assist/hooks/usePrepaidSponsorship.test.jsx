@@ -267,6 +267,29 @@ describe('prepaid sponsorship async ownership', () => {
         expect(mocks.signPackage).toHaveBeenCalledOnce()
     })
 
+    it('never polls a temporary cross-chain preview when exact order creation fails', async () => {
+        const createOrder = vi.fn().mockRejectedValue(new Error('prepare failed'))
+        const { result } = setup(walletA, vi.fn(), {
+            createOrder,
+            beforeAuthenticate: vi.fn(),
+        })
+        await waitForConfig(result)
+        vi.useFakeTimers()
+
+        act(() => result.current.reviewOrder({
+            id: 'preview:route-1',
+            isPreview: true,
+            walletAddress: walletA,
+            status: 'preview',
+        }))
+
+        await act(async () => result.current.signPackage())
+        expect(result.current.phase).toBe('failed')
+
+        await act(() => vi.advanceTimersByTimeAsync(10_000))
+        expect(mocks.fetchOrder).not.toHaveBeenCalled()
+    })
+
     it('exposes no external wallet signer state', async () => {
         const { result } = setup()
         await waitForConfig(result)

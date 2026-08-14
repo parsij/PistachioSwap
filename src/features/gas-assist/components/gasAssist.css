@@ -182,12 +182,6 @@
 .gas-assist-technical[open] summary svg { transform: rotate(180deg); }
 .gas-assist-technical-content { padding-top: 10px; }
 .gas-assist-technical-note { margin: 12px 0 0; color: #777; font-size: 11px; line-height: 1.5; }
-.gas-assist-debug-error { display: grid; gap: 8px; margin-top: 10px; padding: 11px; border-radius: 12px; background: #211719; }
-.gas-assist-debug-error div { display: flex; justify-content: space-between; gap: 14px; font-size: 11px; }
-.gas-assist-debug-error span { color: #a8848b; }
-.gas-assist-debug-error strong,
-.gas-assist-debug-error code { overflow-wrap: anywhere; color: #ffc0cb; text-align: right; }
-
 .gas-assist-token-row { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 14px 0; border-block: 1px solid #353535; }
 .gas-assist-token-row .token-icon { width: 36px; height: 36px; }
 .gas-assist-token-row div { display: grid; gap: 3px; min-width: 0; }
