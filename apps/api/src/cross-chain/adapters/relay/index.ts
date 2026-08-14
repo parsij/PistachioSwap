@@ -350,6 +350,23 @@ function validateRelayDeposit(
             candidate.destinationChainId === request.destinationAsset.chainId,
         )
         const authority = route?.relayAuthority
+        const requiredSpender = transaction.to === authority?.legacy.approvalProxy ||
+            transaction.to === authority?.v3.approvalProxy
+            ? transaction.to
+            : transaction.to === authority?.protocolV2.depository
+                ? authority.protocolV2.depository
+                : transaction.to === authority?.v3.router
+                    ? authority.v3.approvalProxy
+                    : authority?.legacy.approvalProxy
+        if (
+            request.sourceAsset.address !== NATIVE_TOKEN_ADDRESS &&
+            !requiredSpender
+        ) {
+            throw new CrossChainValidationError(
+                'RELAY_AUTHORITY_UNAVAILABLE',
+                'Relay approval authority metadata is unavailable for this source transaction.',
+            )
+        }
         if (
             transaction.to === authority?.legacy.approvalProxy ||
             transaction.to === authority?.v3.approvalProxy
@@ -367,11 +384,6 @@ function validateRelayDeposit(
                 )
             }
         } else {
-            const requiredSpender = transaction.to === authority?.protocolV2.depository
-                ? authority.protocolV2.depository
-                : transaction.to === authority?.v3.router
-                  ? authority.v3.approvalProxy
-                  : authority?.legacy.approvalProxy
             if (
                 precedingApprovalSpenders.size > 0 &&
                 requiredSpender &&
@@ -383,7 +395,16 @@ function validateRelayDeposit(
                 )
             }
         }
-        return transaction
+        return {
+            ...transaction,
+            // MegaFuel builds its own exact approval instead of broadcasting the
+            // provider approval step. Keep the authoritative Relay spender on the
+            // executable source transaction so sponsorship validation can bind the
+            // approval and call atomically.
+            allowanceTarget: request.sourceAsset.address === NATIVE_TOKEN_ADDRESS
+                ? null
+                : requiredSpender!,
+        }
     } catch (error) {
         const target = isRecord(value) ? address(value.to) : null
         const route = capabilities.routes.find((candidate) =>
