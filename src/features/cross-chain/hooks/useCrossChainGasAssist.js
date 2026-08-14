@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
 
@@ -10,16 +10,24 @@ export function useCrossChainGasAssist({
     buyToken,
     totalInputRaw,
     slippageBps,
+    route,
+    expected,
     preparation,
     sponsorshipConfig,
+    previewSponsorship,
+    authenticateSponsorship,
     prepareSponsorship,
     completeSponsorship,
     onConfirmed,
 }) {
     const preparedResponseRef = useRef(null)
+    const [previewStatus, setPreviewStatus] = useState('idle')
+    const [previewError, setPreviewError] = useState(null)
     const required = Boolean(
-        preparation?.status === 'ready' &&
-        preparation?.insufficientNativeGas &&
+        (expected === true || (
+            preparation?.status === 'ready' &&
+            preparation?.insufficientNativeGas
+        )) &&
         Number(sellToken?.chainId) === 56 &&
         sellToken?.isNative !== true,
     )
@@ -45,6 +53,14 @@ export function useCrossChainGasAssist({
         await onConfirmed?.(order, preparedResponseRef.current?.preparedRoute)
     }, [onConfirmed])
 
+    const handleBeforeAuthenticate = useCallback(async () => {
+        const preparedRoute = preparedResponseRef.current?.preparedRoute
+        if (!preparedRoute) {
+            throw new Error('The cross-chain Gas Assist preview expired. Start again.')
+        }
+        await authenticateSponsorship(preparedRoute)
+    }, [authenticateSponsorship])
+
     const sponsorship = usePrepaidSponsorship({
         quoteEndpoint,
         walletAddress: account,
@@ -54,31 +70,55 @@ export function useCrossChainGasAssist({
         slippageBps: Math.max(30, slippageBps),
         required,
         createOrder,
+        beforeAuthenticate: handleBeforeAuthenticate,
         onSubmitted: handleSubmitted,
         onConfirmed: handleConfirmed,
     })
     const available = required && sponsorshipConfig?.enabled === true &&
+        typeof previewSponsorship === 'function' &&
+        typeof authenticateSponsorship === 'function' &&
         typeof prepareSponsorship === 'function' &&
         typeof completeSponsorship === 'function'
 
     async function start() {
         if (!available) return false
         preparedResponseRef.current = null
-        await sponsorship.start()
-        return true
+        setPreviewStatus('loading')
+        setPreviewError(null)
+        try {
+            const preview = await previewSponsorship(route)
+            preparedResponseRef.current = preview
+            sponsorship.reviewOrder(preview.order)
+            setPreviewStatus('success')
+            return true
+        } catch (error) {
+            setPreviewStatus('error')
+            setPreviewError(error)
+            console.error('[pistachio-swap] Cross-chain Gas Assist preview failed', {
+                code: error?.code ?? 'CROSS_CHAIN_GAS_ASSIST_PREVIEW_FAILED',
+                message: error?.message ?? 'Gas Assist preview failed.',
+                requestId: error?.requestId ?? null,
+            })
+            throw error
+        }
     }
 
     return {
         required,
+        expected: expected === true,
         available,
         grossInputAmount: totalInputRaw,
         preview: null,
         status: !required
             ? 'idle'
-            : sponsorship.configStatus === 'loading'
+            : previewStatus === 'loading'
                 ? 'loading'
-                : available ? 'success' : 'unavailable',
-        error: sponsorship.configError ?? sponsorship.error,
+                : previewStatus === 'error'
+                    ? 'error'
+                    : sponsorship.configStatus === 'loading'
+                        ? 'loading'
+                        : available ? 'success' : 'unavailable',
+        error: previewError ?? sponsorship.configError ?? sponsorship.error,
         sponsorship,
         start,
     }
