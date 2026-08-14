@@ -785,6 +785,8 @@ describe('cross-chain backend', () => {
             allowanceTarget: depository,
         })
         expect(quote.steps[1]?.transaction?.to).toBe(depository)
+        expect(quote.steps[1]?.transaction?.allowanceTarget).toBe(depository)
+        expect(quote.transaction?.allowanceTarget).toBe(depository)
         expect(quote.request.destinationAsset.address).toBe(celoUsdt)
         expect(quote.statusId).toBe('bnb-celo-relay')
     })
@@ -1268,7 +1270,7 @@ describe('cross-chain backend', () => {
         await app.close()
     })
 
-    it('requotes the selected provider for the net amount and delegates only the exact route internally', async () => {
+    it('previews without wallet authentication, then creates the exact net route through the matching internal endpoint', async () => {
         const bscRequest = {
             ...request,
             sourceAsset: { ...request.sourceAsset, chainId: 56, decimals: 18 },
@@ -1316,7 +1318,7 @@ describe('cross-chain backend', () => {
                 }
             },
         }
-        const privateRequest = vi.fn(async ({ body }: { body: unknown }) => {
+        const privateRequest = vi.fn(async ({ pathname, body }: { pathname: string; body: unknown }) => {
             const payload = body as {
                 grossInputAmount: string
                 route: { inputAmount: string; transaction: { value: string } }
@@ -1332,7 +1334,11 @@ describe('cross-chain backend', () => {
                 )
             }
             expect(payload.route.inputAmount).toBe('900')
-            return { id: 'sponsorship-order', netSwapAmountRaw: '900' }
+            return {
+                id: pathname.endsWith('/preview') ? 'preview:route' : 'sponsorship-order',
+                isPreview: pathname.endsWith('/preview'),
+                netSwapAmountRaw: '900',
+            }
         })
         const service = new CrossChainRouteService(
             new CrossChainRegistry([adapter]),
@@ -1340,6 +1346,19 @@ describe('cross-chain backend', () => {
             privateRequest,
         )
         const quoted = await service.quote(bscRequest)
+        const preview = await service.previewSponsorship({
+            routeId: quoted.selectedRoute.routeId,
+            clientIp: '127.0.0.1',
+        })
+        expect(preview.order).toMatchObject({
+            id: 'preview:route',
+            isPreview: true,
+        })
+        expect(privateRequest).toHaveBeenLastCalledWith(expect.objectContaining({
+            pathname: '/internal/v1/sponsorship/cross-chain/preview',
+        }))
+        privateRequest.mockClear()
+
         const result = await service.prepareSponsorship({
             routeId: quoted.selectedRoute.routeId,
             ownerValue: sender,
@@ -1348,6 +1367,9 @@ describe('cross-chain backend', () => {
             idempotencyKey: 'cross-chain-test-order',
         })
         expect(privateRequest).toHaveBeenCalledTimes(2)
+        expect(privateRequest).toHaveBeenLastCalledWith(expect.objectContaining({
+            pathname: '/internal/v1/sponsorship/cross-chain/orders',
+        }))
         expect(result.order).toMatchObject({ id: 'sponsorship-order' })
         expect(result.preparedRoute.inputAmount).toBe('900')
         expect(result.preparedRoute.transaction.value).toBe('0')
