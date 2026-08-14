@@ -16,7 +16,8 @@ function reviewLabel(overrides = {}) {
         gaslessMode: 'gasless',
         routingMode: 'normal',
         crossChainMode: 'cross-chain',
-        nativeBalanceValue: 1n,
+        nativeBalanceValue: 1_000_000_000_000_000_000n,
+        nativeGasReserve: '0.0005',
         sellChainId: 56,
         sellToken: erc20Token,
         ...overrides,
@@ -28,10 +29,10 @@ describe('getSwapReviewLabel', () => {
         expect(reviewLabel({ prepaidRequired: true })).toBe('Review Gas Assisted Swap')
     })
 
-    it('uses Gas Assist wording for eligible BNB Chain cross-chain swaps with no BNB', () => {
+    it('uses Gas Assist wording for BNB Chain cross-chain swaps below the gas reserve', () => {
         expect(reviewLabel({
             routingMode: 'cross-chain',
-            nativeBalanceValue: 0n,
+            nativeBalanceValue: 1n,
         })).toBe('Review Gas Assisted Swap')
     })
 
@@ -44,4 +45,3 @@ describe('getSwapReviewLabel', () => {
         })).toBe('Review swap')
     })
 })
-
