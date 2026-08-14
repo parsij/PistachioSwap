@@ -328,6 +328,7 @@ export function createSwapViewModel(context) {
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
         nativeBalanceValue: catalog.nativeBalance.value,
+        nativeGasReserve: walletConfig.nativeGasReserve,
         sellChainId: routing.sellChainId,
         sellToken,
     })
@@ -525,7 +526,7 @@ export function createSwapViewModel(context) {
                         ? {
                             sponsorship: crossChainGasAssist.sponsorship,
                             sellToken,
-                            buyToken: nativeToken,
+                            buyToken,
                             purpose: 'cross-chain-gas',
                         }
                         : { sponsorship: gasAssist.prepaidSponsorship, sellToken, buyToken },
