@@ -193,6 +193,8 @@ export class CrossChainRouteService {
         clientIp,
         idempotencyKey,
         signal,
+        preview = false,
+        authenticated = true,
     }: {
         routeId: string
         ownerValue: unknown
@@ -200,6 +202,8 @@ export class CrossChainRouteService {
         clientIp: string
         idempotencyKey: string
         signal?: AbortSignal
+        preview?: boolean
+        authenticated?: boolean
     }) {
         routeId = requireRouteId(routeId)
         const ownerAddress = requireOwner(ownerValue)
@@ -209,7 +213,9 @@ export class CrossChainRouteService {
                 'A valid Idempotency-Key header is required.',
             )
         }
-        await this.requireAuthenticationScope(routeId, ownerAddress, sourceChainId)
+        if (authenticated) {
+            await this.requireAuthenticationScope(routeId, ownerAddress, sourceChainId)
+        }
         const originalRoute = await this.repository.get(routeId)
         if (!originalRoute) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
         if (originalRoute.sourceAsset.chainId !== 56 ||
@@ -261,7 +267,9 @@ export class CrossChainRouteService {
             )
             try {
                 const order = await this.privateGasAssistRequest({
-                    pathname: '/internal/v1/sponsorship/cross-chain/orders',
+                    pathname: preview
+                        ? '/internal/v1/sponsorship/cross-chain/preview'
+                        : '/internal/v1/sponsorship/cross-chain/orders',
                     clientIp,
                     idempotencyKey,
                     body: {
@@ -319,6 +327,30 @@ export class CrossChainRouteService {
             'CROSS_CHAIN_SPONSORSHIP_UNSTABLE',
             'The exact sponsored route could not be stabilized.',
         )
+    }
+
+    async previewSponsorship({
+        routeId,
+        clientIp,
+        signal,
+    }: {
+        routeId: string
+        clientIp: string
+        signal?: AbortSignal
+    }) {
+        routeId = requireRouteId(routeId)
+        const route = await this.repository.get(routeId)
+        if (!route) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
+        return this.prepareSponsorship({
+            routeId,
+            ownerValue: route.ownerAddress,
+            sourceChainId: route.sourceAsset.chainId,
+            clientIp,
+            idempotencyKey: `preview:${routeId}`,
+            signal,
+            preview: true,
+            authenticated: false,
+        })
     }
 
     private async requireAuthenticationScope(
