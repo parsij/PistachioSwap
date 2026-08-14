@@ -19,6 +19,7 @@ import {
     persistPublicRouteId,
     prepareCrossChainRoute,
     prepareCrossChainSponsorship,
+    previewCrossChainSponsorship,
     readPersistedPublicRouteId,
     sortCrossChainRoutes,
 } from '../services/crossChainRoutes.js'
@@ -340,6 +341,55 @@ export function useCrossChainRoutes({
         })
     }, [endpoint])
 
+    const previewSponsorship = useCallback(async (routeOverride = null) => {
+        const route = routeOverride ?? selectedRouteRef.current
+        if (!route?.publicRouteId) {
+            throw new Error('Choose a cross-chain route first.')
+        }
+        return previewCrossChainSponsorship({
+            endpoint,
+            routeId: route.publicRouteId,
+        })
+    }, [endpoint])
+
+    const authenticateSponsorship = useCallback(async (sponsoredRoute) => {
+        const accountAtStart = accountRef.current ?? account
+        if (!accountAtStart || !sponsoredRoute?.publicRouteId) {
+            throw new Error('The sponsored cross-chain route is unavailable.')
+        }
+        let session = sessionRef.current
+        const sessionMatches = (
+            session?.walletAddress?.toLowerCase() === accountAtStart.toLowerCase() &&
+            Number(session?.chainId) === Number(sponsoredRoute.sourceChainId) &&
+            typeof session?.sessionToken === 'string' &&
+            session.sessionToken.length > 0
+        )
+        if (!sessionMatches) {
+            executionPhaseRef.current?.('authenticate', {
+                sourceChainId: sponsoredRoute.sourceChainId,
+                destinationChainId: sponsoredRoute.destinationChainId,
+                routeId: sponsoredRoute.publicRouteId,
+            })
+            session = await authenticateCrossChainWallet({
+                endpoint,
+                walletAddress: accountAtStart,
+                sourceChainId: sponsoredRoute.sourceChainId,
+                signMessage,
+            })
+            if (
+                session.walletAddress?.toLowerCase() !== accountAtStart.toLowerCase() ||
+                Number(session.chainId) !== Number(sponsoredRoute.sourceChainId)
+            ) throw new Error('Wallet authentication does not match this route.')
+            sessionRef.current = session
+        }
+        preparedRouteRef.current = sponsoredRoute
+        setPreparedRoute(sponsoredRoute)
+        persistPublicRouteId(sponsoredRoute.publicRouteId)
+        setPersistedRouteId(sponsoredRoute.publicRouteId)
+        setPhase('prepared')
+        return session
+    }, [account, endpoint, signMessage])
+
     const completeSponsorship = useCallback(async ({
         preparedRoute: sponsoredRoute,
         transactionHash,
@@ -479,6 +529,8 @@ export function useCrossChainRoutes({
         prepare,
         claimSource,
         markSubmitted,
+        previewSponsorship,
+        authenticateSponsorship,
         prepareSponsorship,
         completeSponsorship,
         reset,
