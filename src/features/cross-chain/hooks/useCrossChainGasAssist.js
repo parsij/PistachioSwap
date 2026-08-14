@@ -21,6 +21,13 @@ export function useCrossChainGasAssist({
     onConfirmed,
 }) {
     const preparedResponseRef = useRef(null)
+    const previewOperationRef = useRef(false)
+    const contextRef = useRef(null)
+    contextRef.current = {
+        account: String(account ?? '').toLowerCase(),
+        routeId: route?.publicRouteId ?? null,
+        grossInputAmount: String(totalInputRaw ?? ''),
+    }
     const [previewStatus, setPreviewStatus] = useState('idle')
     const [previewError, setPreviewError] = useState(null)
     const required = Boolean(
@@ -81,12 +88,19 @@ export function useCrossChainGasAssist({
         typeof completeSponsorship === 'function'
 
     async function start() {
-        if (!available) return false
+        if (!available || previewOperationRef.current) return false
+        previewOperationRef.current = true
+        const contextAtStart = { ...contextRef.current }
         preparedResponseRef.current = null
         setPreviewStatus('loading')
         setPreviewError(null)
         try {
             const preview = await previewSponsorship(route)
+            if (
+                contextRef.current.account !== contextAtStart.account ||
+                contextRef.current.routeId !== contextAtStart.routeId ||
+                contextRef.current.grossInputAmount !== contextAtStart.grossInputAmount
+            ) return false
             preparedResponseRef.current = preview
             sponsorship.reviewOrder(preview.order)
             setPreviewStatus('success')
@@ -100,6 +114,8 @@ export function useCrossChainGasAssist({
                 requestId: error?.requestId ?? null,
             })
             throw error
+        } finally {
+            previewOperationRef.current = false
         }
     }
 
