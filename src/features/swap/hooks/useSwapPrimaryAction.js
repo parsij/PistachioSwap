@@ -19,7 +19,7 @@ export function useSwapPrimaryAction(config) {
     const {
         action, activeQuoteStatus, transactionStatus, routingMode, crossChainMode, executionMode, gaslessMode,
         reviewEligibility, insufficientFunds, economicallyInvalid, quoteSnapshot, quoteInputKey, quote,
-        activeChain, activeChainName, openAppKit, switchNetwork, crossChain, gasAssist, prepaid,
+        activeChain, activeChainName, openAppKit, switchNetwork, crossChain, crossChainGasAssist, gasAssist, prepaid,
         refreshSameChainQuote, clearSameChainQuoteForRefresh, openSameChainReview, setReviewError,
         setReviewOperation, setVisibleStatus, confirmExecution, diagnostic,
     } = config
@@ -110,6 +110,18 @@ export function useSwapPrimaryAction(config) {
         if (routingMode === crossChainMode) {
             if (crossChain.routeExpired) {
                 await crossChain.refreshExpiredRoute()
+                return
+            }
+            if (crossChainGasAssist?.expected) {
+                if (!crossChainGasAssist.available) {
+                    setVisibleStatus('Gas Assist is temporarily unavailable for this cross-chain swap.')
+                    return
+                }
+                try {
+                    await crossChainGasAssist.start()
+                } catch {
+                    setVisibleStatus('Gas Assist could not prepare this cross-chain swap. Try again.')
+                }
                 return
             }
             await crossChain.openReview()
