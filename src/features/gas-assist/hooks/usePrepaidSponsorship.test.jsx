@@ -218,6 +218,55 @@ describe('prepaid sponsorship async ownership', () => {
         expect(mocks.signPackage).toHaveBeenCalledTimes(1)
     })
 
+    it('shows a cross-chain preview without authentication and authenticates once on confirmation', async () => {
+        const events = []
+        const beforeAuthenticate = vi.fn(async () => events.push('cross-chain-auth'))
+        mocks.authenticate.mockImplementation(async () => {
+            events.push('sponsorship-auth')
+            return { sessionToken: 'session' }
+        })
+        const createOrder = vi.fn(async () => {
+            events.push('create-order')
+            return { id: 'exact-order', status: 'quoted' }
+        })
+        mocks.preparePackage.mockImplementation(async () => {
+            events.push('prepare-package')
+            return {
+                orderId: 'exact-order',
+                expiresAt: new Date(Date.now() + 900_000).toISOString(),
+                transactions: [],
+            }
+        })
+        const { result } = setup(walletA, vi.fn(), {
+            createOrder,
+            beforeAuthenticate,
+        })
+        await waitForConfig(result)
+
+        act(() => result.current.reviewOrder({
+            id: 'preview:route-1',
+            isPreview: true,
+            walletAddress: walletA,
+            status: 'preview',
+        }))
+
+        expect(result.current.phase).toBe('review')
+        expect(mocks.authenticate).not.toHaveBeenCalled()
+        expect(createOrder).not.toHaveBeenCalled()
+
+        await act(async () => result.current.signPackage())
+
+        expect(events).toEqual([
+            'cross-chain-auth',
+            'sponsorship-auth',
+            'create-order',
+            'prepare-package',
+        ])
+        expect(mocks.authenticate).toHaveBeenCalledOnce()
+        expect(createOrder).toHaveBeenCalledOnce()
+        expect(mocks.signPackage).toHaveBeenCalledOnce()
+    })
+
     it('exposes no external wallet signer state', async () => {
         const { result } = setup()
         await waitForConfig(result)
