@@ -195,6 +195,26 @@ describe('Gas Assist prepayment review', () => {
         expect(value.retryStart).not.toHaveBeenCalled()
     })
 
+    it('does not render generic backend failures beside an expired quote', () => {
+        render(<GasAssistPrepaymentDialog
+            sponsorship={sponsorship({
+                error: {
+                    code: 'GAS_ASSIST_FAILED',
+                    message: 'Gas Assist could not complete the request.',
+                },
+                order: {
+                    ...sponsorship().order,
+                    expiresAt: new Date(Date.now() - 1_000).toISOString(),
+                },
+            })}
+            sellToken={sellToken}
+            buyToken={buyToken}
+        />)
+
+        expect(screen.getByText('Quote expired')).toBeTruthy()
+        expect(screen.queryByText('Gas Assist could not complete the request.')).toBeNull()
+    })
+
     it('does not leave the stale swap action enabled after a terminal failure', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({

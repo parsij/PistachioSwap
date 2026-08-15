@@ -219,7 +219,7 @@ export default function GasAssistPrepaymentDialog({
     const showContinuationRequest = requiredAction === 'prepare-sponsored-swap'
     const showContinuationSign = sponsorship.phase === 'continuation-ready'
     const status = statusContent({ phase: sponsorship.phase, order, orderExpired })
-    const visibleError = sponsorship.error
+    const visibleError = orderExpired ? null : sponsorship.error
     const terminalFailure = ['failed', 'cancelled', 'unsupported'].includes(sponsorship.phase)
 
     let primaryAction = null

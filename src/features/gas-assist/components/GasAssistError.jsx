@@ -53,6 +53,7 @@ const messages = {
 /** Presents a concise user-safe Gas Assist error while diagnostics remain in the technical drawer and console. */
 export default function GasAssistError({ error }) {
     const code = typeof error === 'string' ? error : error?.code
-    const message = messages[code] ?? error?.message ?? 'This trade cannot use Gas Assist right now.'
+    const message = messages[code]
+    if (!message) return null
     return <p className="gas-assist-error" role="alert">{message}</p>
 }
