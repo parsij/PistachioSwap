@@ -8,6 +8,7 @@ import {
     isNativeEvmToken,
 } from '../../../services/balances.js'
 import { formatSlippageBps } from '../../settings/services/swapSettings.js'
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 import {
     addDecimalStrings,
     formatTokenAmount,
@@ -135,6 +136,13 @@ export function getPrimaryActionPresentation({
     }
     return action
 }
+
+export function formatTokenDisplayAmount(amount, token) {
+    const value = String(amount ?? '').trim()
+    if (!value || !token) return null
+    return `${value} ${getTokenDisplaySymbol(token)}`
+}
+
 /**
  * Builds grouped presentation contracts for `AppHeader` and `SwapPage` without owning state.
  * @param {object} context Current controller state, feature APIs, config, and semantic callbacks.
@@ -315,20 +323,31 @@ export function createSwapViewModel(context) {
         : activeQuote?.selectedQuote ? 'Included' : null
     const minimumReceived = routing.routingMode === routing.modes.CROSS_CHAIN
         ? crossChain.currentRoute && buyToken
-            ? `${formatTokenAmount(crossChain.currentRoute.minimumOutputAmount, buyToken.decimals)} ${buyToken.symbol}`
+            ? formatTokenDisplayAmount(
+                formatTokenAmount(crossChain.currentRoute.minimumOutputAmount, buyToken.decimals),
+                buyToken,
+            )
             : null
         : activeQuote?.selectedQuote?.minimumBuyAmount && buyToken
-            ? `${formatTokenAmount(activeQuote.selectedQuote.minimumBuyAmount, buyToken.decimals)} ${buyToken.symbol}`
+            ? formatTokenDisplayAmount(
+                formatTokenAmount(activeQuote.selectedQuote.minimumBuyAmount, buyToken.decimals),
+                buyToken,
+            )
             : null
     const maximumSold = activeQuote?.selectedQuote?.maximumSellAmount && sellToken
-        ? `${formatTokenAmount(activeQuote.selectedQuote.maximumSellAmount, sellToken.decimals)} ${sellToken.symbol}`
-        : sellToken && inputs.sellAmount ? `${inputs.sellAmount} ${sellToken.symbol}` : null
+        ? formatTokenDisplayAmount(
+            formatTokenAmount(activeQuote.selectedQuote.maximumSellAmount, sellToken.decimals),
+            sellToken,
+        )
+        : sellToken && inputs.sellAmount
+            ? formatTokenDisplayAmount(inputs.sellAmount, sellToken)
+            : null
     const platformFee = activeQuote?.selectedQuote?.platformFee
     const serviceFee = platformFee?.amount && platformFee.amount !== '0'
         ? `${formatTokenAmount(
             platformFee.amount,
             platformFee.token === sellToken?.address ? sellToken?.decimals : buyToken?.decimals,
-        )} ${platformFee.token === sellToken?.address ? sellToken?.symbol : buyToken?.symbol}${(platformFee.effectiveBps ?? platformFee.bps) > 0 ? ` (${((platformFee.effectiveBps ?? platformFee.bps) / 100).toFixed(2)}%)` : ''}`
+        )} ${getTokenDisplaySymbol(platformFee.token === sellToken?.address ? sellToken : buyToken)}${(platformFee.effectiveBps ?? platformFee.bps) > 0 ? ` (${((platformFee.effectiveBps ?? platformFee.bps) / 100).toFixed(2)}%)` : ''}`
         : platformFee?.bps > 0 ? `${(platformFee.effectiveBps ?? platformFee.bps) / 100}%` : routing.routingMode !== routing.modes.CROSS_CHAIN ? 'Free' : null
     const crossChainAppFee = crossChainCosts?.appFeeUsd === '0' ? 'Free' : formatCostUsd(crossChainCosts?.appFeeUsd)
     const reviewCosts = crossChain.review.route?.costs ?? null
@@ -368,7 +387,12 @@ export function createSwapViewModel(context) {
     const sameChainConfirmDisabled = execution.isConfirming || review.reviewOperation !== 'idle' ||
         receipt.transactionStatus === 'pending' || receipt.transactionStatus === 'submitted'
     const compactRate = sellToken && buyToken
-        ? formatCompactRate(inputs.sellAmount, sellToken.symbol, inputs.buyAmount, buyToken.symbol)
+        ? formatCompactRate(
+            inputs.sellAmount,
+            getTokenDisplaySymbol(sellToken),
+            inputs.buyAmount,
+            getTokenDisplaySymbol(buyToken),
+        )
         : 'Rate unavailable'
     const balanceNotice = getWalletBalanceNotice({
         activeChainId: context.swapChainId,
