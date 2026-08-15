@@ -66,7 +66,9 @@ function createManager({ withVault = true } = {}) {
             await this.reauthenticate()
             return 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu'
         }),
-        reviewQueue: {},
+        reviewQueue: {
+            request: vi.fn(async () => true),
+        },
         rpcUrlForChain: vi.fn(() => 'https://rpc.example'),
         selectVault: vi.fn(async function selectVault() {}),
         sendTransaction: vi.fn(async () => '0xtransaction'),
@@ -76,8 +78,9 @@ function createManager({ withVault = true } = {}) {
             return { orderId: input.orderId, signedTransactions: [] }
         }),
         signMegaFuelTransaction: vi.fn(async () => '0xmegafuel'),
-        signMessage: vi.fn(async function signMessage() {
+        signMessage: vi.fn(async function signMessage(_value, { skipReview = false } = {}) {
             await this.ensureUnlockedForSigning()
+            if (!skipReview) await this.reviewQueue.request()
             return '0xsignature'
         }),
         signTypedData: vi.fn(async () => '0xtyped'),
@@ -221,6 +224,7 @@ describe('production Pistachio Wallet hardening', () => {
             ),
         })
 
+        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
         expect(originalUnlock).toHaveBeenCalledOnce()
         expect(originalReauthenticate).not.toHaveBeenCalled()
         expect(originalLock).not.toHaveBeenCalled()
@@ -251,6 +255,7 @@ describe('production Pistachio Wallet hardening', () => {
                 'PistachioSwap Gas Assist Authentication',
             ).replace('Wallet: ', 'Wallet? '),
         })
+        expect(manager.reviewQueue.request).toHaveBeenCalledOnce()
         expect(originalUnlock).toHaveBeenCalledOnce()
         expect(originalLock).toHaveBeenCalledOnce()
         expect(manager.phase).toBe('locked')

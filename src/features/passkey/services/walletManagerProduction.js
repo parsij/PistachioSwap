@@ -487,14 +487,20 @@ export function hardenPistachioWalletManager(manager) {
         }
     }
 
+    const classifyMessage = (value) => isGasAssistAuthenticationMessage(value, {
+        walletAddress: readOnlyAccount(manager),
+        activeChainId: manager.activeChainId,
+    })
+        ? 'gas-assist-auth'
+        : 'default'
     manager.signMessage = wrapSensitiveAction(
-        originalSignMessage,
-        (value) => isGasAssistAuthenticationMessage(value, {
-            walletAddress: readOnlyAccount(manager),
-            activeChainId: manager.activeChainId,
-        })
-            ? 'gas-assist-auth'
-            : 'default',
+        (value) => originalSignMessage(
+            value,
+            classifyMessage(value) === 'gas-assist-auth'
+                ? { skipReview: true }
+                : undefined,
+        ),
+        classifyMessage,
     )
     manager.signTypedData = wrapSensitiveAction(originalSignTypedData)
     manager.signMegaFuelTransaction = wrapSensitiveAction(

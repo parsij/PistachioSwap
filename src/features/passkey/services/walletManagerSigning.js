@@ -399,13 +399,24 @@ export const methods = {
         await this.recordActivity()
         return context
     },
-    async signMessage({ message, messageBytes }) {
+    async signMessage({ message, messageBytes }, { skipReview = false } = {}) {
         const display = messageBytes ? messageForReview(getBytes(messageBytes)) : String(message)
-        const context = await this.review('Sign message', { chainId: this.activeChainId, completeMessage: display, purpose: 'Wallet authentication or application request' })
+        let context
+        if (skipReview) {
+            // Production hardening enables this only for an exact, short-lived,
+            // wallet-bound PistachioSwap authentication challenge. The user's
+            // Gas Assist CTA and the final exact package review remain the
+            // transaction authorization boundaries.
+            await this.ensureUnlockedForSigning()
+            context = this.captureSigningContext(this.activeChainId)
+        } else {
+            context = await this.review('Sign message', { chainId: this.activeChainId, completeMessage: display, purpose: 'Wallet authentication or application request' })
+        }
         const result = await this.client.request('signMessage', messageBytes
             ? { messageBytes: bytesToBase64Url(getBytes(messageBytes)) }
             : { message })
         this.assertSigningContext(context)
+        if (skipReview) await this.recordActivity()
         return result.signature
     },
     async signTypedData(typedData) {
