@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    formatTokenDisplayAmount,
     getPrimaryActionPresentation,
     getWalletBalanceNotice,
 } from './swapViewModel.js'
@@ -64,5 +65,22 @@ describe('getPrimaryActionPresentation', () => {
             crossChainGasAssistExpected: true,
             crossChainGasAssistStatus: 'success',
         })).toBe(reviewAction)
+    })
+})
+
+
+describe('formatTokenDisplayAmount', () => {
+    it('replaces a deceptive token symbol with the contract identity', () => {
+        expect(formatTokenDisplayAmount('4900', {
+            address: '0x00000000000000000000000000000000000000ff',
+            symbol: 'USDС',
+        })).toBe('4900 0x0000…00ff')
+    })
+
+    it('keeps a safe token symbol unchanged', () => {
+        expect(formatTokenDisplayAmount('1.25', {
+            address: '0x00000000000000000000000000000000000000ff',
+            symbol: 'USDC',
+        })).toBe('1.25 USDC')
     })
 })
