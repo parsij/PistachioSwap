@@ -1,3 +1,4 @@
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 /**
  * Explains why a low-BNB same-chain swap is routed through prepaid Gas Assist.
  * The exact backend-authoritative fee is shown in the prepayment review before signing.
@@ -7,7 +8,7 @@
  */
 export default function GasAssistBanner({ sellToken, buyToken }) {
     const pair = sellToken?.symbol && buyToken?.symbol
-        ? `${sellToken.symbol} → ${buyToken.symbol}`
+        ? `${getTokenDisplaySymbol(sellToken)} → ${getTokenDisplaySymbol(buyToken)}`
         : 'This swap'
 
     return (

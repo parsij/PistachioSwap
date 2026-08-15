@@ -5,6 +5,7 @@ import type {
 } from 'fastify'
 
 import {
+    CrossChainAuthError,
     getCrossChainAuthService,
     type CrossChainAuthService,
 } from '../cross-chain/auth.js'
@@ -15,6 +16,7 @@ import {
     type CrossChainProviderName,
 } from '../cross-chain/types.js'
 import { validateCrossChainRequest } from '../cross-chain/validation.js'
+import { getApiConfig } from '../config.js'
 import { isRecord } from '../lib/http.js'
 
 function providerName(value: unknown): CrossChainProviderName {
@@ -45,7 +47,7 @@ export function createCrossChainRoutes(
                     return reply.send(await auth.createChallenge({
                         walletAddress: String(body.walletAddress ?? ''),
                         chainId: Number(body.chainId),
-                        domain: requestDomain(request.hostname, request.headers.host),
+                        domain: requestDomain(request.headers.host, getApiConfig().corsOrigins),
                     }))
                 } catch (error) {
                     return sendError(reply, error)
@@ -61,7 +63,7 @@ export function createCrossChainRoutes(
                     return reply.send(await auth.verifyChallenge({
                         challengeId: String(body.challengeId ?? ''),
                         signature: String(body.signature ?? ''),
-                        domain: requestDomain(request.hostname, request.headers.host),
+                        domain: requestDomain(request.headers.host, getApiConfig().corsOrigins),
                     }))
                 } catch (error) {
                     return sendError(reply, error)
@@ -142,8 +144,25 @@ export function createCrossChainRoutes(
                 return sendError(reply, error, 503, 'CROSS_CHAIN_NO_EXECUTABLE_ROUTE')
             }
         }
-        app.post<{ Body: unknown }>('/v1/cross-chain/quote', quoteHandler)
-        app.post<{ Body: unknown }>('/v1/cross-chain/routes', quoteHandler)
+        /*
+         * The only unauthenticated write path on this service, and the most
+         * expensive one: each call fans out to every enabled provider and
+         * stores a route per returned quote. The global per-IP bucket alone
+         * lets a single client fill the route store.
+         */
+        const quoteRouteOptions = {
+            config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+        }
+        app.post<{ Body: unknown }>(
+            '/v1/cross-chain/quote',
+            quoteRouteOptions,
+            quoteHandler,
+        )
+        app.post<{ Body: unknown }>(
+            '/v1/cross-chain/routes',
+            quoteRouteOptions,
+            quoteHandler,
+        )
 
         const prepare = async (
             routeId: unknown,
@@ -308,8 +327,43 @@ function exactBody(
     return value
 }
 
-function requestDomain(hostname: string, host: string | undefined) {
-    return host?.trim().toLowerCase() || hostname.toLowerCase()
+/*
+ * The `Domain:` line names the site the wallet is authenticating to, and it
+ * was taken straight from the caller's Host header. Any client could therefore
+ * make this service mint a challenge naming an unrelated site it wanted to
+ * impersonate — `Domain: some-other-wallet-app.example` — and present that to a
+ * victim for signature. Constraining it to the configured origins means the
+ * signed message can only ever name a domain this deployment actually serves,
+ * so a user or wallet comparing it against the page they are on sees the
+ * mismatch.
+ *
+ * An unrecognised Host falls back to the primary configured origin rather than
+ * failing: the message must still name one of our domains, and a reverse proxy
+ * forwarding an unexpected Host must not take wallet auth down.
+ */
+function authDomains(corsOrigins: string[]) {
+    return corsOrigins.flatMap((origin) => {
+        try {
+            return [new URL(origin).host.toLowerCase()]
+        } catch {
+            return []
+        }
+    })
+}
+
+function requestDomain(host: string | undefined, corsOrigins: string[]) {
+    const allowed = authDomains(corsOrigins)
+    const requested = host?.trim().toLowerCase() ?? ''
+    if (allowed.includes(requested)) return requested
+    const primary = allowed[0]
+    if (!primary) {
+        throw new CrossChainAuthError(
+            'AUTH_DOMAIN_INVALID',
+            'This deployment has no configured authentication domain.',
+            500,
+        )
+    }
+    return primary
 }
 
 function sendError(

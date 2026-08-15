@@ -938,13 +938,23 @@ describe('TokenSelector wallet rows', () => {
     it('resolves stale recent XAUt metadata to the refreshed wallet record', () => {
         const address = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
         window.localStorage.setItem(
-            'pistachioswap:recent-token-searches:v4:56',
+            'pistachioswap:recent-token-searches:v6:56',
             JSON.stringify([{
+                savedAt: Date.now(),
+                classificationVersion: 6,
                 chainId: 56,
                 address,
                 name: 'Old unverified XAUT',
                 symbol: 'XAUT',
+                recognitionStatus: 'unverified',
+                spamStatus: 'unknown',
+                possibleSpam: null,
+                verifiedContract: null,
+                securityStatus: 'unknown',
                 visibility: 'unverified',
+                classificationTier: 'hidden',
+                classificationReasons: ['unlisted-token'],
+                priceConfidence: 'unknown',
                 logoURI: '/icons/token-fallback.svg',
             }]),
         )

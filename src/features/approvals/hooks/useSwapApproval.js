@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { encodeFunctionData, isAddress } from 'viem'
 import { usePublicClient, useSendTransaction, useWalletClient } from 'wagmi'
+import { isCanonicalPermit2Address } from '../../../web3/approvalTargets.js'
 
 function throwIfApprovalCancelled(signal) {
     if (!signal?.aborted) return
@@ -51,8 +52,12 @@ const UINT160_MAX = (1n << 160n) - 1n
 const PERMIT2_APPROVAL_TTL_SECONDS = 30n * 60n
 const PERMIT2_EXPIRATION_SAFETY_SECONDS = 60n
 
-// Temporary exhaustive tracing. Set this to false after the bug is found.
-const SWAP_APPROVAL_TRACE_ENABLED = true
+/*
+ * Exhaustive approval tracing. Development only: the records carry the wallet
+ * address, live balances and allowances, and full error stacks, none of which
+ * belong in a production console.
+ */
+const SWAP_APPROVAL_TRACE_ENABLED = import.meta.env.DEV
 
 let approvalTraceAttemptCounter = 0
 
@@ -567,6 +572,14 @@ export function useSwapApproval({
 
                     contractIsValidAddress:
                         isAddress(approval?.contract ?? ''),
+
+                    /*
+                     * The only check anchored outside the quote response. Every
+                     * other comparison here is response-vs-response, so this is
+                     * what stops a quote from naming its own allowance holder.
+                     */
+                    contractIsCanonicalPermit2:
+                        isCanonicalPermit2Address(approval?.contract),
 
                     spenderIsValidAddress:
                         isAddress(approval?.spender ?? ''),

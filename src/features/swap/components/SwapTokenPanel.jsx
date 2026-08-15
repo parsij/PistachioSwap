@@ -2,6 +2,7 @@ import { motion } from 'motion/react'
 import SwapAmountInput from './SwapAmountInput.jsx'
 import SwapQuickAmounts from './SwapQuickAmounts.jsx'
 import { AnimatedSwapTokenButton } from './SwapTokenButton.jsx'
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 
 /**
  * Renders one sell or buy token panel from a semantic panel view model.
@@ -74,7 +75,7 @@ export default function SwapTokenPanel(props) {
                 onClick={onToggleDenomination}
                 aria-label={amount.denomination === 'TOKEN'
                     ? `Show ${label} amount in USD`
-                    : `Show ${label} amount in ${token?.symbol ?? 'token'}`}
+                    : `Show ${label} amount in ${token ? getTokenDisplaySymbol(token) : 'token'}`}
             >
                 {secondaryValue}
             </button>
@@ -83,9 +84,9 @@ export default function SwapTokenPanel(props) {
                     type="button"
                     className={['sell-balance', invalid ? 'sell-balance-insufficient' : ''].filter(Boolean).join(' ')}
                     onClick={balance.onUseMaximum}
-                    aria-label={`Use maximum ${token.symbol} balance`}
+                    aria-label={`Use maximum ${getTokenDisplaySymbol(token)} balance`}
                 >
-                    {token.balance}{' '}{token.symbol}
+                    {token.balance}{' '}{getTokenDisplaySymbol(token)}
                 </button>
             )}
         </motion.section>

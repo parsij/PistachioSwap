@@ -29,7 +29,9 @@ import { normalizeQuoteResponse } from '../../swap/services/quotes.js'
 const wallet = '0x0000000000000000000000000000000000000001'
 const token = '0x0000000000000000000000000000000000000002'
 const spender = '0x0000000000000000000000000000000000000003'
-const permit2 = '0x0000000000000000000000000000000000000004'
+// The deterministic Permit2 deployment; a quote naming any other allowance
+// holder is refused, so the fixture must use the real address.
+const permit2 = '0x000000000022d473030f116ddee9f6b43ac78ba3'
 const router = '0x0000000000000000000000000000000000000005'
 
 function setup(selectedQuote, options = {}) {

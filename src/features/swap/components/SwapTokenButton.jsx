@@ -4,6 +4,7 @@ import { swapUiConfig } from '../../../swapConfig.js'
 import { ChevronDownIcon } from '../../../shared/components/AppIcons.jsx'
 import { getTokenIdentity } from '../../tokens/model/tokenNormalization.js'
 import './SwapTokenButton.css'
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 
 /**
  * Renders the selected-token or select-token button without owning selection state.
@@ -37,7 +38,7 @@ export function SwapTokenButton({ token, onClick }) {
             whileTap={reducedMotion ? undefined : { scale: motionConfig.tokenButton.pressedScale }}
         >
             <TokenIcon token={token} size="button" />
-            <span>{token.symbol}</span>
+            <span>{getTokenDisplaySymbol(token)}</span>
             <ChevronDownIcon className="token-chevron" />
         </motion.button>
     )

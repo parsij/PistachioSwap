@@ -16,6 +16,7 @@ import {
     GAS_ASSIST_SWAP_ACTION,
 } from '../model/gasAssistCopy.js'
 import './gasAssist.css'
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 
 function trimDecimal(value, maximumFractionDigits = 6) {
     const [whole, fraction = ''] = String(value).split('.')
@@ -157,14 +158,14 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken }) {
             <div className="gas-assist-technical-content">
                 {order && paymentToken && (
                     <div className="gas-assist-details">
-                        <div><span>Gross input</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {sellToken?.symbol}</strong></div>
-                        <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {sellToken?.symbol}</strong></div>
-                        <div><span>Exact Gas Assist fee</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {paymentToken.symbol}</strong></div>
+                        <div><span>Gross input</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
+                        <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
+                        <div><span>Exact Gas Assist fee</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}</strong></div>
                         <div><span>Total fee value</span><strong>{formatUsdMicros(order.totalPrepaymentUsdMicros)}</strong></div>
                         <div><span>Network-fee reserve</span><strong>{formatUsdMicros(order.gasReserveUsdMicros)}</strong></div>
                         <div><span>Service fee</span><strong>{formatUsdMicros(order.fixedServiceFeeUsdMicros)}</strong></div>
                         <div><span>Trade fee</span><strong>{formatUsdMicros(order.platformFeeUsdMicros)}</strong></div>
-                        <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {buyToken?.symbol}</strong></div>
+                        <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong></div>
                         {providerFeeRows(order.providerFees).map(([label, value]) => (
                             <div key={`${label}:${value}`}><span>{label}</span><strong>{value}</strong></div>
                         ))}
@@ -275,19 +276,19 @@ export default function GasAssistPrepaymentDialog({
                                 <TokenIcon token={sellToken} />
                                 <div>
                                     <span>You pay</span>
-                                    <strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {sellToken?.symbol}</strong>
+                                    <strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong>
                                 </div>
                             </div>
                             <div className="gas-assist-summary-token">
                                 <TokenIcon token={buyToken} />
                                 <div>
                                     <span>You receive</span>
-                                    <strong>{formatRaw(order.expectedOutputRaw, buyToken?.decimals)} {buyToken?.symbol}</strong>
+                                    <strong>{formatRaw(order.expectedOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong>
                                 </div>
                             </div>
                             <div className="gas-assist-summary-fee">
                                 <span>Gas Assist fee</span>
-                                <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {paymentToken.symbol}</strong>
+                                <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}</strong>
                                 <small>{formatUsdMicros(order.totalPrepaymentUsdMicros)}</small>
                             </div>
                             <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />

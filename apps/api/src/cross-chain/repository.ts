@@ -44,6 +44,12 @@ export type ProviderStatusUpdate = {
     failureCode?: string | null
 }
 
+/*
+ * A settled route stays queryable for this long so a client polling its own
+ * completed transfer still gets an answer after the quote itself expired.
+ */
+const RETENTION_MS = 15 * 60 * 1000
+
 export class MemoryCrossChainRouteRepository implements CrossChainRouteRepository {
     private readonly routes = new Map<string, PublicCrossChainRoute>()
 
@@ -52,6 +58,7 @@ export class MemoryCrossChainRouteRepository implements CrossChainRouteRepositor
     async create(quote: CrossChainQuote) {
         const existing = [...this.routes.values()].find((route) => route.quoteId === quote.quoteId)
         if (existing) return clone(existing)
+        this.pruneRoutes()
         if (this.routes.size >= this.maximumEntries) {
             throw routeError(
                 'ROUTE_CAPACITY_REACHED',
@@ -148,6 +155,38 @@ export class MemoryCrossChainRouteRepository implements CrossChainRouteRepositor
             route.status = 'expired'
             route.failureCode = 'QUOTE_EXPIRED'
             route.updatedAt = new Date().toISOString()
+        }
+    }
+
+    /*
+     * `expire` only relabels a route, so without this pass nothing is ever
+     * removed and the store fills permanently. Quoting is unauthenticated, so
+     * that would let anyone disable cross-chain routing for every user until
+     * the process restarts. Mirrors `pruneChallenges`/`pruneSessions` in
+     * `auth.ts`.
+     */
+    private pruneRoutes() {
+        const now = Date.now()
+        for (const [routeId, route] of this.routes) {
+            this.expire(route)
+            const retainUntil = Date.parse(route.updatedAt) + RETENTION_MS
+            if (terminal(route.status) && retainUntil <= now) {
+                this.routes.delete(routeId)
+            }
+        }
+
+        if (this.routes.size < this.maximumEntries) return
+
+        // Still full: the oldest terminal routes go first, so a burst of
+        // quoting cannot evict a route a user is actively settling.
+        const evictable = [...this.routes.entries()]
+            .filter(([, route]) => terminal(route.status))
+            .sort(([, left], [, right]) =>
+                Date.parse(left.updatedAt) - Date.parse(right.updatedAt),
+            )
+        for (const [routeId] of evictable) {
+            this.routes.delete(routeId)
+            if (this.routes.size < this.maximumEntries) return
         }
     }
 }

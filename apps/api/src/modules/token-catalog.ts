@@ -591,8 +591,44 @@ function featuredTokensForChain<T extends {
     return native ? [native, ...featured.slice(0, 10)] : featured.slice(0, 10)
 }
 
+const CATALOG_QUERY_PARAMETERS = [
+    'chainId',
+    'search',
+    'limit',
+    'mode',
+    'pageSize',
+    'cursor',
+] as const
+
 export async function tokenCatalogRoutes(app: FastifyInstance) {
-    app.get('/v1/token-catalog', async (request, reply) => {
+    app.get('/v1/token-catalog', {
+        /*
+         * The only route here without the guard its siblings share. Fastify's
+         * parser returns an array for a repeated parameter, and the handler
+         * calls string methods on these values unconditionally, so a repeated
+         * parameter used to throw a TypeError and return 500.
+         */
+        schema: {
+            querystring: {
+                type: 'object',
+                properties: Object.fromEntries(CATALOG_QUERY_PARAMETERS.map(
+                    (name) => [name, { type: 'string', maxLength: 128 }],
+                )),
+            },
+        },
+        config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    }, async (request, reply) => {
+        // Rejected rather than stripped, matching every sibling catalog route.
+        if (Object.keys(request.query as object).some((key) =>
+            !CATALOG_QUERY_PARAMETERS.includes(key as never),
+        )) {
+            return reply.code(400).send({
+                error: {
+                    code: 'UNSUPPORTED_QUERY_PARAMETER',
+                    message: 'Unsupported query parameter.',
+                },
+            })
+        }
         const result = await getTokenCatalog(request.query as CatalogQuery)
         return reply.code(result.statusCode).send(result.body)
     })

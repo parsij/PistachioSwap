@@ -105,6 +105,9 @@ function approvalMetadataDiagnostic(value) {
 }
 
 function logApprovalMetadata(event, value, level = 'debug') {
+    // Approval metadata names the wallet's counterparties; keep it out of
+    // production consoles. Errors still surface through the caller.
+    if (!import.meta.env.DEV) return
     const logger = level === 'error' ? console.error : console.debug
     logger('[pistachio-swap]', {
         event,

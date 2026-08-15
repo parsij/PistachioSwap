@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { motion } from 'motion/react'
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 
 /**
  * Purpose: renders the existing same-chain Radix review portal.
@@ -23,7 +24,7 @@ export default function SameChainReviewDialog({
                     <header className="swap-review-header"><Dialog.Title className="swap-review-title">Review swap</Dialog.Title></header>
                     <Dialog.Close className="swap-review-close" aria-label="Close review"><X aria-hidden="true" /></Dialog.Close>
                     <dl className="swap-review-details">
-                        {activeAmountSide === 'buy' ? <><div className="swap-review-detail-row"><dt>You receive</dt><dd>{buyAmount} {buyToken?.symbol}</dd></div><div className="swap-review-detail-row"><dt>You pay at most</dt><dd>{maximumSold ?? `${sellAmount} ${sellToken?.symbol}`}</dd></div></> : <><div className="swap-review-detail-row"><dt>You pay</dt><dd>{sellAmount} {sellToken?.symbol}</dd></div><div className="swap-review-detail-row"><dt>You receive at least</dt><dd>{minimumReceived ?? `${buyAmount} ${buyToken?.symbol}`}</dd></div></>}
+                        {activeAmountSide === 'buy' ? <><div className="swap-review-detail-row"><dt>You receive</dt><dd>{buyAmount} {getTokenDisplaySymbol(buyToken)}</dd></div><div className="swap-review-detail-row"><dt>You pay at most</dt><dd>{maximumSold ?? `${sellAmount} ${getTokenDisplaySymbol(sellToken)}`}</dd></div></> : <><div className="swap-review-detail-row"><dt>You pay</dt><dd>{sellAmount} {getTokenDisplaySymbol(sellToken)}</dd></div><div className="swap-review-detail-row"><dt>You receive at least</dt><dd>{minimumReceived ?? `${buyAmount} ${getTokenDisplaySymbol(buyToken)}`}</dd></div></>}
                         <div className="swap-review-detail-row"><dt>Routing</dt><dd>Best available route</dd></div>
                         <div className="swap-review-detail-row"><dt>Max slippage</dt><dd>{slippageLabel}</dd></div>
                     </dl>

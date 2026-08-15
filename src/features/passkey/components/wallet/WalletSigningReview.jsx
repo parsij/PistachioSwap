@@ -89,10 +89,29 @@ function safeErrorMessage(error, context = 'wallet') {
 }
 
 
-function ReviewValue({ children }) {
+/*
+ * Bidi overrides and invisible formatting characters can visually reorder or
+ * hide part of a message the user is about to sign. Every value shown here is
+ * attacker-influenced, so they are replaced with a visible marker rather than
+ * silently stripped: the user should see that something was tampered with.
+ */
+// oxlint-disable-next-line no-control-regex -- matching them is the point.
+const INVISIBLE_FORMATTING = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/gu
+
+function neutralizeInvisibleText(value) {
+    return String(value).replace(INVISIBLE_FORMATTING, '\ufffd')
+}
+
+function ReviewValue({ children, multiline = false }) {
     if (children === null || children === undefined || children === '') return <span>Not provided</span>
-    if (typeof children === 'object') return <pre>{JSON.stringify(children, null, 2)}</pre>
-    return <span>{String(children)}</span>
+    if (typeof children === 'object') {
+        return <pre>{neutralizeInvisibleText(JSON.stringify(children, null, 2))}</pre>
+    }
+    const text = neutralizeInvisibleText(children)
+    // Free-text values get the scrolling block so newlines cannot push the
+    // meaningful part of a message out of view.
+    if (multiline) return <pre>{text}</pre>
+    return <span className="pistachio-wallet-review-text">{text}</span>
 }
 
 function SigningReviewDialog() {
@@ -142,7 +161,7 @@ function SigningReviewDialog() {
                                 <div><dt>Network</dt><dd>{request.chainName} ({request.chainId})</dd></div>
                                 <div><dt>Origin</dt><dd>{request.origin}</dd></div>
                                 {payload.actionType && <div><dt>Action</dt><dd><ReviewValue>{payload.actionType}</ReviewValue></dd></div>}
-                                {payload.completeMessage !== undefined && <div className="full"><dt>Complete message</dt><dd><ReviewValue>{payload.completeMessage}</ReviewValue></dd></div>}
+                                {payload.completeMessage !== undefined && <div className="full"><dt>Complete message</dt><dd><ReviewValue multiline>{payload.completeMessage}</ReviewValue></dd></div>}
                                 {payload.purpose && <div><dt>Purpose</dt><dd><ReviewValue>{payload.purpose}</ReviewValue></dd></div>}
                                 {payload.orderId && <div><dt>Gas Assist order</dt><dd><ReviewValue>{payload.orderId}</ReviewValue></dd></div>}
                                 {payload.expiresAt && <div><dt>Package expires</dt><dd><ReviewValue>{payload.expiresAt}</ReviewValue></dd></div>}
@@ -150,7 +169,7 @@ function SigningReviewDialog() {
                                 {payload.domain && <div className="full"><dt>Domain</dt><dd><ReviewValue>{payload.domain}</ReviewValue></dd></div>}
                                 {payload.primaryType && <div><dt>Primary type</dt><dd><ReviewValue>{payload.primaryType}</ReviewValue></dd></div>}
                                 {payload.verifyingContract && <div><dt>Verifying contract</dt><dd><ReviewValue>{payload.verifyingContract}</ReviewValue></dd></div>}
-                                {payload.fields && <div className="full"><dt>Fields</dt><dd><ReviewValue>{payload.fields}</ReviewValue></dd></div>}
+                                {payload.fields && <div className="full"><dt>Fields</dt><dd><ReviewValue multiline>{payload.fields}</ReviewValue></dd></div>}
                                 {payload.destination && <div><dt>Destination</dt><dd><ReviewValue>{payload.destination}</ReviewValue></dd></div>}
                                 {payload.token && <div><dt>Token contract</dt><dd><ReviewValue>{payload.token}</ReviewValue></dd></div>}
                                 {payload.recipient && <div><dt>Recipient</dt><dd><ReviewValue>{payload.recipient}</ReviewValue></dd></div>}
@@ -162,7 +181,7 @@ function SigningReviewDialog() {
                                 {hasCalldata && <div className="full"><dt>Transaction data</dt><dd><ReviewValue>{calldata}</ReviewValue></dd></div>}
                             </dl>
                             {packageTransactions.length > 0 && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>One approval and one passkey check authorize only the exact Gas Assist transactions listed above. Any mismatch, account change, nonce change, chain change, expiry, or rewritten signed transaction aborts the package.</p></div>}
-                            {payload.unlimitedWarning && <div className="pistachio-wallet-danger"><AlertTriangle aria-hidden="true" /><p>This request appears to grant an unlimited token approval.</p></div>}
+                            {payload.unlimitedWarning && <div className="pistachio-wallet-danger"><AlertTriangle aria-hidden="true" /><p>This request grants a spending allowance large enough to be unlimited in practice.</p></div>}
                             {hasUnknownCalldata && <div className="pistachio-wallet-warning"><ShieldAlert aria-hidden="true" /><p>This request contains contract data. Verify the destination and full transaction data before approving.</p></div>}
                             {payload.submission && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>{payload.submission}</p></div>}
                             <p className="pistachio-wallet-review-expiry">Request expires at {new Date(request.expiresAt).toLocaleTimeString()}.</p>

@@ -90,7 +90,12 @@ export function describeTransactionReview(transaction, mode) {
     const approval = tokenCall?.functionName === 'approve'
     const transfer = tokenCall?.functionName === 'transfer'
     const amount = approval || transfer ? BigInt(tokenCall.args[1]) : null
-    const unlimited = (1n << 256n) - 1n
+    /*
+     * Exact `2^256-1` equality missed every approval that is unlimited in
+     * practice — `2^255`, `type(uint128).max` and similar all exceed the total
+     * supply of any real token, so they are permanent spending rights too.
+     */
+    const effectivelyUnlimited = 1n << 128n
     const chain = getCuratedEvmChain(transaction.chainId)
     if (!chain) mismatch('PISTACHIO_CHAIN_NOT_ALLOWED', 'This network is not enabled in PistachioSwap.')
     return {
@@ -107,7 +112,8 @@ export function describeTransactionReview(transaction, mode) {
         spender: approval ? getAddress(tokenCall.args[0]) : null,
         amount: amount?.toString() ?? null,
         approval,
-        unlimitedWarning: approval && amount === unlimited,
+        unlimitedWarning: approval && amount !== null &&
+            amount >= effectivelyUnlimited,
         submission: mode === 'megafuel' ? 'PistachioSwap will submit this signed transaction.' : `A chain-specific public ${chain.name} RPC will broadcast after approval.`,
     }
 }

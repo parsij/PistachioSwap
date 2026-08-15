@@ -6,6 +6,7 @@ import { formatUnits } from 'viem'
 import TokenIcon from '../../tokens/components/TokenIcon.jsx'
 import GasAssistError from './GasAssistError.jsx'
 import './gasAssist.css'
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 
 function feeRows(fees = {}) {
     const rows = []
@@ -42,7 +43,7 @@ export default function GasAssistApprovalDialog({ dialog, token, buyToken, amoun
     const busy = ['quote-loading', 'signing-approval', 'signing-trade', 'submitting'].includes(dialog.state)
     const canConfirm = dialog.state === 'ready' && remaining > 0
     const buyDecimals = Number(buyToken?.decimals ?? 18)
-    const buySymbol = buyToken?.symbol ?? 'selected token'
+    const buySymbol = buyToken ? getTokenDisplaySymbol(buyToken) : 'selected token'
     const output = quote?.buyAmount ? formatUnits(BigInt(quote.buyAmount), buyDecimals) : null
     const minimum = quote?.minBuyAmount ? formatUnits(BigInt(quote.minBuyAmount), buyDecimals) : null
 
@@ -58,7 +59,7 @@ export default function GasAssistApprovalDialog({ dialog, token, buyToken, amoun
                         </div>
                         <Dialog.Close asChild><button className="gas-assist-close" type="button" disabled={busy} aria-label="Close"><X aria-hidden="true" /></button></Dialog.Close>
                     </div>
-                    <div className="gas-assist-token-row"><TokenIcon token={token} /><div><strong>{amount} {token.symbol}</strong><span>Requested sell amount</span></div></div>
+                    <div className="gas-assist-token-row"><TokenIcon token={token} /><div><strong>{amount} {getTokenDisplaySymbol(token)}</strong><span>Requested sell amount</span></div></div>
                     {quote && (
                         <div className="gas-assist-details">
                             <div><span>Quoted sell amount</span><strong>{quote.sellAmount} base units</strong></div>

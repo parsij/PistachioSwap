@@ -6,7 +6,9 @@ import {
     mergeCanonicalTokenRecords,
 } from '../services/marketTokens.js'
 import {
+    isCurrentWalletTokenRecord,
     resolveWalletUsdValue,
+    WALLET_TOKEN_CLASSIFICATION_VERSION,
 } from '../services/walletTokens.js'
 import {
     isWrappedNativeTokenAddress,
@@ -141,6 +143,10 @@ export function sanitizeStoredToken(token) {
     ].filter((value, index, values) =>
         typeof value === 'string' && value.length > 0 && values.indexOf(value) === index)
     return {
+        // Stamped so `readRecentTokens` can age the record out; a record whose
+        // classification is not current is dropped there rather than here, so
+        // this stays a plain normalizer.
+        savedAt: Date.now(),
         classificationVersion: token.classificationVersion ?? null,
         id: token.id ?? null,
         chainId: Number(token.chainId ?? 0),
@@ -177,11 +183,25 @@ export function sanitizeStoredToken(token) {
     }
 }
 
+/*
+ * A recent record carries the classification it had when it was saved, and
+ * that snapshot decides whether the risk prompt appears on re-selection. A
+ * token flagged after it was saved would otherwise stay silently trusted, so
+ * the key is bound to the classification version and every record is
+ * re-validated and aged out on read.
+ */
+const RECENT_TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+
 /** Returns the localStorage key for one chain's recent token searches. */
 export function getRecentStorageKey(chainId) {
     const scope = String(chainId).trim().toLowerCase() === 'all' ? 'all' : Number(chainId)
     if (scope !== 'all' && (!Number.isSafeInteger(scope) || scope <= 0)) return null
-    return ['pistachioswap', 'recent-token-searches', 'v4', scope].join(':')
+    return [
+        'pistachioswap',
+        'recent-token-searches',
+        `v${WALLET_TOKEN_CLASSIFICATION_VERSION}`,
+        scope,
+    ].join(':')
 }
 
 /** Reads recent token records and fails closed when browser storage is unavailable or malformed. */
@@ -193,7 +213,13 @@ export function readRecentTokens(chainId) {
         const value = window.localStorage.getItem(key)
         if (!value) return []
         const parsed = JSON.parse(value)
-        return Array.isArray(parsed) ? parsed : []
+        if (!Array.isArray(parsed)) return []
+        const oldest = Date.now() - RECENT_TOKEN_MAX_AGE_MS
+        return parsed.filter((token) =>
+            isCurrentWalletTokenRecord(token) &&
+            Number.isFinite(Number(token?.savedAt)) &&
+            Number(token.savedAt) > oldest,
+        )
     } catch {
         return []
     }

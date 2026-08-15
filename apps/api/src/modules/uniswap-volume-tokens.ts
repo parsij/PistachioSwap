@@ -508,13 +508,25 @@ export async function buildUniswapVolumeCatalog({
                 }
             }
         } catch (error) {
+            console.warn('[uniswap-volume-tokens]', {
+                chainId: source.chainId,
+                protocol: source.protocol,
+                subgraphId: source.subgraphId,
+                message: error instanceof Error ? error.message : String(error),
+            })
             sourceDiagnostics.push({
                 chainId: source.chainId,
                 protocol: source.protocol,
                 subgraphId: source.subgraphId,
                 status: 'failed',
                 tokenRows: 0,
-                error: error instanceof Error ? error.message : 'Unknown provider failure.',
+                /*
+                 * These diagnostics are served publicly, and the subgraph URL
+                 * one layer away carries THE_GRAPH_API_KEY in its path. Upstream
+                 * text is logged rather than reflected so no vendor message can
+                 * ever carry part of that request back to a caller.
+                 */
+                error: 'Provider request failed.',
             })
         }
     }))

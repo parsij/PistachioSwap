@@ -225,11 +225,17 @@ export class CrossChainRegistry {
                 this.quotes.set(quote.quoteId, quote)
                 return { quote }
             } catch (error) {
-                return {
-                    provider,
-                    code: classifyProviderFailure(error),
-                    reason: error instanceof Error ? error.message : 'Provider failed.',
+                const code = classifyProviderFailure(error)
+                // Upstream vendor text is logged, never reflected: it is
+                // third-party content shaped by whatever the provider returned.
+                if (error instanceof Error) {
+                    console.warn('[cross-chain-provider]', {
+                        provider,
+                        code,
+                        message: error.message,
+                    })
                 }
+                return { provider, code, reason: errorMessage(code) }
             }
         }))
         const quotes: CrossChainQuote[] = []

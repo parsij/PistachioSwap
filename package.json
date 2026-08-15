@@ -78,14 +78,15 @@
     "vitest": "^4.0.0"
   },
   "pnpm": {
+    "_overridesNote": "Bare-name or range selectors so a transitive version bump cannot silently stop an override from matching and reinstall the vulnerable package.",
     "overrides": {
-      "@pancakeswap/swap-sdk-core>bn.js": "5.2.3",
-      "axios@1.16.0": "1.18.0",
-      "bigint-buffer@1.1.5": "link:packages/bigint-buffer-safe",
+      "@pancakeswap/swap-sdk-core>bn.js": "^5.2.3",
+      "axios": "^1.18.0",
+      "bigint-buffer": "link:packages/bigint-buffer-safe",
       "esbuild@<=0.24.2": "0.25.12",
-      "fast-uri@3.1.3": "3.1.5",
-      "fast-uri@4.1.0": "4.1.2",
-      "find-my-way@9.6.0": "9.7.0",
+      "fast-uri@3": "^3.1.5",
+      "fast-uri@4": "^4.1.2",
+      "find-my-way": "^9.7.0",
       "nanoid@<3.3.18": "3.3.18",
       "postcss@<=8.5.22": "8.5.23",
       "undici@>=7.0.0 <7.29.0": "7.29.0",

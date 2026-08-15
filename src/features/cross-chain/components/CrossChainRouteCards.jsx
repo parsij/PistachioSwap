@@ -5,6 +5,7 @@ import {
     sortCrossChainRoutes,
 } from '../services/crossChainRoutes.js'
 import './crossChain.css'
+import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 
 const SORT_OPTIONS = [
     [CROSS_CHAIN_SORTS.RETURN, 'Best return'],
@@ -65,7 +66,7 @@ export default function CrossChainRouteCards({
                         {route.publicRouteId === recommendedRouteId && <small>Recommended</small>}
                     </span>
                     <span>
-                        <strong>{formatTokenAmount(route.outputAmount, route.destinationAsset?.decimals)} {route.destinationAsset?.symbol}</strong>
+                        <strong>{formatTokenAmount(route.outputAmount, route.destinationAsset?.decimals)} {getTokenDisplaySymbol(route.destinationAsset)}</strong>
                         <small>~{route.durationSeconds} sec</small>
                     </span>
                 </button>

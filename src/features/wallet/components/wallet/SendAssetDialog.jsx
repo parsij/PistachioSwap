@@ -47,6 +47,7 @@ import {
     isCuratedEvmChainId,
 } from '../../../../web3/curatedEvmChains.js'
 import { recordWalletActivity } from '../../services/walletActivity.js'
+import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
 
 function matchesExactContract(token, search) {
     return /^0x[a-fA-F0-9]{40}$/.test(search) &&
@@ -354,7 +355,7 @@ export default function SendAssetDialog({
                                                 onClick={() => setShowSelector(true)}
                                             >
                                                 {activeSelectedToken && <TokenIcon token={activeSelectedToken} size="button" />}
-                                                <span>{activeSelectedToken?.symbol ?? 'Select'}</span>
+                                                <span>{activeSelectedToken ? getTokenDisplaySymbol(activeSelectedToken) : 'Select'}</span>
                                             </button>
                                         </div>
                                         <div className="send-balance-line">
@@ -399,15 +400,23 @@ export default function SendAssetDialog({
                                         </p>
                                     )}
                                     <dl>
-                                        <div><dt>Amount</dt><dd>{review.amount} {review.token.symbol}</dd></div>
+                                        <div><dt>Amount</dt><dd>{review.amount} {getTokenDisplaySymbol(review.token)}</dd></div>
                                         <div><dt>USD value</dt><dd>{formatUsdAmount(review.amount, review.token.trustedPriceUSD)}</dd></div>
-                                        <div><dt>Recipient</dt><dd>{shortenAddress(review.recipient, 6)}</dd></div>
+                                        {/*
+                                          * Shown in full: address-poisoning
+                                          * attacks mine a vanity address that
+                                          * matches the first and last few
+                                          * characters of one the victim used
+                                          * before, so a truncated review row is
+                                          * exactly what they are built to pass.
+                                          */}
+                                        <div className="send-review-recipient"><dt>Recipient</dt><dd>{review.recipient}</dd></div>
                                         <div><dt>Network</dt><dd>{chain?.name}</dd></div>
                                         <div><dt>Estimated network fee</dt><dd>{formatEther(review.feeWei)} {nativeSymbol}</dd></div>
                                         <div><dt>Total native {nativeSymbol} required</dt><dd>{formatEther(
                                             review.feeWei + (isNativeEvmToken(review.token) ? review.plan.amountWei : 0n),
                                         )} {nativeSymbol}</dd></div>
-                                        <div><dt>Balance after send</dt><dd>{afterBalance} {review.token.symbol}</dd></div>
+                                        <div><dt>Balance after send</dt><dd>{afterBalance} {getTokenDisplaySymbol(review.token)}</dd></div>
                                     </dl>
                                 </section>
                             )}
