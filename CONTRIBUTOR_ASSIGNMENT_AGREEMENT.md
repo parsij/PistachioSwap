@@ -1,10 +1,10 @@
 # PistachioSwap Contributor Assignment Agreement
 
-Version 1.0
+Version 1.1
 
 This Contributor Assignment Agreement (the “Agreement”) applies to every contribution submitted to `parsij/PistachioSwap` after the contributor accepts this Agreement.
 
-The “Project Owner” is the individual or legal entity controlling the GitHub account `parsij`. The “Contributor” is the individual or legal entity submitting a contribution and accepting this Agreement.
+The “Project Owner” is **Parsa P.**, operating through and controlling the GitHub account **[@parsij](https://github.com/parsij)**. The “Contributor” is the individual or legal entity submitting a contribution and accepting this Agreement through the GitHub account used for that contribution.
 
 ## 1. Contribution
 
@@ -35,11 +35,13 @@ The Contributor represents that:
 - no employer, client, school, or other organization owns rights that prevent this assignment; and
 - the Contributor has disclosed any applicable third-party notices or license obligations.
 
-## 6. Project licensing
+## 6. Project ownership and licensing
+
+PistachioSwap’s repository, name, branding, releases, and owner-controlled code remain owned and controlled by the Project Owner. Third-party material remains subject to its original ownership and license.
 
 The Contributor authorizes the Project Owner to license or relicense the Contribution under the PolyForm Noncommercial License, a commercial license, a proprietary license, or any other terms selected by the Project Owner.
 
-The Contributor receives only the rights granted to the public under the license that applies to the repository. Contributing does not grant the Contributor ownership of PistachioSwap, ownership of the repository, or authority to commercially license the project.
+The Contributor receives only the rights granted to the public under the license that applies to the repository. Contributing does not grant the Contributor ownership of PistachioSwap, ownership or control of the repository, or authority to commercially license or act for the project.
 
 ## 7. Voluntary contribution and no compensation
 
@@ -62,15 +64,17 @@ The Contributor provides the Contribution as is, without warranties or condition
 
 ## 9. Acceptance and electronic signature
 
-A Contribution must not be merged unless the Contributor accepts this Agreement using the acceptance statement required by `CONTRIBUTING.md`.
+A Contribution must not be merged unless the Contributor posts the following statement in the pull-request description or as a pull-request comment from the same GitHub account used to submit the Contribution:
 
-By posting that statement from the GitHub account used to submit the Contribution, the Contributor intends that act to serve as the Contributor’s electronic signature and agreement to these terms.
+> I have read and agree to the PistachioSwap Contributor Assignment Agreement Version 1.1. I intend this acceptance from my GitHub account to serve as my electronic signature, and I confirm that I have authority to submit and assign this contribution.
+
+The Contributor agrees that the authenticated GitHub account, repository, pull request, commits, statement, and timestamp identify the Contributor’s acceptance and form the electronic record of this Agreement. A separate public legal-name statement is not required for an individual contribution.
 
 For a contribution made on behalf of an organization, the person accepting this Agreement represents that they have authority to bind that organization.
 
 ## 10. Existing contributions
 
-This Agreement does not retroactively transfer ownership of contributions submitted before acceptance. Any earlier contribution requires a separate valid assignment or license if the Project Owner does not already own the necessary rights.
+This Agreement does not retroactively transfer ownership of contributions submitted before acceptance. An existing pull request may be covered when its contributor accepts this Agreement before merge. Any already-merged earlier contribution requires a separate valid assignment or license if the Project Owner does not already own the necessary rights.
 
 ## 11. Entire agreement
 
