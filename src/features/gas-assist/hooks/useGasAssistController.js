@@ -171,6 +171,22 @@ export function useGasAssistController({
         setBuyAmount,
     ])
 
+    // The review opens immediately on the user's click, even while the exact
+    // non-mutating preview is in flight. Hydrate it only when its current
+    // request completes so no wallet prompt can precede the review.
+    useEffect(() => {
+        if (
+            prepaidSponsorship.phase !== 'preview-loading' ||
+            previewState.status !== 'success' ||
+            !previewState.preview
+        ) return
+        prepaidSponsorship.reviewOrder(previewState.preview)
+    }, [
+        prepaidSponsorship,
+        previewState.preview,
+        previewState.status,
+    ])
+
     useEffect(() => {
         if (!gasAssistRequested) return
         if (prepaidSponsorship.configStatus === 'idle' || prepaidSponsorship.configStatus === 'loading') return
@@ -212,6 +228,13 @@ export function useGasAssistController({
         preview: prepaidEnabled ? previewState.preview : null,
         previewStatus: prepaidEnabled ? previewState.status : 'idle',
         previewError: prepaidEnabled ? previewState.error : null,
+        openPrepaidReview: () => {
+            if (previewState.preview) {
+                prepaidSponsorship.reviewOrder(previewState.preview)
+                return
+            }
+            prepaidSponsorship.openPreview()
+        },
         executionMode,
         activeQuote,
         activeQuoteStatus,

@@ -31,7 +31,7 @@ export default function CrossChainReviewDialog({
     onClose,
     onConfirm,
 }) {
-    if (!open || !route) return null
+    if (!open) return null
     const gasAssistState = gasAssist ?? {
         required: false,
         expected: false,
@@ -82,6 +82,15 @@ export default function CrossChainReviewDialog({
                             </Dialog.Close>
                         </header>
                         <div className="cross-chain-review-scroll">
+                            {!route && (
+                                <div className="cross-chain-review-skeleton" role="status" aria-live="polite">
+                                    <span />
+                                    <span />
+                                    <span />
+                                    <p>Preparing your exact cross-chain swap…</p>
+                                </div>
+                            )}
+                            {route && (
                             <dl className="cross-chain-review">
                                 <div>
                                     <dt>{activeAmountSide === 'buy' ? 'You pay at most' : 'You pay'}</dt>
@@ -121,7 +130,10 @@ export default function CrossChainReviewDialog({
                                 <div><dt>Minimum received</dt><dd>{formatTokenAmount(route.minimumOutputAmount, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</dd></div>
                                 {route.expiresAt && <div><dt>Expires</dt><dd>{route.expiresAt}</dd></div>}
                             </dl>
+                            )}
+                            {route && (
                             <p className="cross-chain-cost-note">Final network cost may change with gas prices.</p>
+                            )}
                             {preparation.status === 'refreshing' && (
                                 <p className="cross-chain-cost-note" role="status">
                                     Approval confirmed. Fetching fresh execution calldata before the swap transaction.
@@ -141,7 +153,9 @@ export default function CrossChainReviewDialog({
                         </div>
                         <div className="cross-chain-review-actions">
                             <button type="button" onClick={onClose}>Cancel</button>
-                            {gasAssistState.required ? (
+                            {!route ? (
+                                <button type="button" className="primary" disabled>Preparing…</button>
+                            ) : gasAssistState.required ? (
                                 <button
                                     type="button"
                                     className="primary"

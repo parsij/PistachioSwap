@@ -133,7 +133,7 @@ export function useSwapPrimaryAction(config) {
             })
             if (prepaid.required) {
                 if (prepaid.enabled) {
-                    await prepaid.start()
+                    prepaid.openReview()
                 } else {
                     setVisibleStatus('Prepaid Gas Assist is unavailable. Normal approval is blocked because this wallet does not have enough BNB for gas.')
                     diagnostic('primary-action.blocked', { reason: 'prepaid-sponsorship-unavailable' }, 'warn')

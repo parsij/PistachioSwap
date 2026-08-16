@@ -597,7 +597,7 @@ export function createSwapViewModel(context) {
                 onConfirm: callbacks.onConfirmSameChainSwap,
             },
             crossChainReview: {
-                open: Boolean(crossChain.review.route) && !crossChainGasAssist?.sponsorship.open,
+                open: crossChain.review.open === true && !crossChainGasAssist?.sponsorship.open,
                 route: crossChain.review.route,
                 reducedMotion,
                 activeAmountSide: inputs.activeAmountSide,

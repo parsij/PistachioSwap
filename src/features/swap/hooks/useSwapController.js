@@ -356,7 +356,7 @@ export function useSwapController() {
         prepaid: {
             required: gasAssist.prepaidRequired,
             enabled: gasAssist.prepaidSponsorship.config?.enabled,
-            start: gasAssist.prepaidSponsorship.start,
+            openReview: gasAssist.openPrepaidReview,
         },
         refreshSameChainQuote: quote.refreshQuote,
         clearSameChainQuoteForRefresh: quote.clearQuoteForRefresh,

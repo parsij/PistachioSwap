@@ -66,6 +66,7 @@ export function useCrossChainController({
     const [executionError, setExecutionError] = useState(null)
     const [reviewRoute, setReviewRoute] = useState(null)
     const [reviewPreparation, setReviewPreparation] = useState(IDLE_PREPARATION)
+    const [reviewOpen, setReviewOpen] = useState(false)
     const reviewRequestRef = useRef(null)
     const refreshingAfterApprovalRef = useRef(false)
 
@@ -185,6 +186,7 @@ export function useCrossChainController({
     function closeReview() {
         reviewRequestRef.current = null
         refreshingAfterApprovalRef.current = false
+        setReviewOpen(false)
         setReviewRoute(null)
         setReviewPreparation(IDLE_PREPARATION)
     }
@@ -314,8 +316,9 @@ export function useCrossChainController({
         }
         setExecutionError(null)
         reviewRequestRef.current = currentRoute.publicRouteId
+        setReviewOpen(true)
         setReviewRoute(null)
-        setVisibleStatus('Preparing cross-chain swap. Confirm the wallet request if prompted.')
+        setVisibleStatus('Preparing cross-chain swap.')
         const prepared = await prepareReview(currentRoute)
         if (reviewRequestRef.current !== currentRoute.publicRouteId) return false
         if (prepared) setVisibleStatus(null)
@@ -604,6 +607,7 @@ export function useCrossChainController({
         openReview,
         refreshExpiredRoute,
         review: {
+            open: reviewOpen,
             route: reviewRoute,
             preparation: reviewPreparation,
             executionError,

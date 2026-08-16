@@ -353,6 +353,16 @@ export function usePrepaidSponsorship({
         })
     }, [config, walletAddress])
 
+    // Open feedback immediately while the non-mutating preview is being fetched.
+    // This path intentionally performs no wallet authentication or signing.
+    const openPreview = useCallback(() => {
+        flowEpochRef.current += 1
+        operationRef.current = null
+        sessionTokenRef.current = null
+        setState({ ...initial, open: true, phase: 'preview-loading', config })
+        gasAssistTrace('flow.preview.loading', { walletAddress })
+    }, [config, walletAddress])
+
     const signIntent = useCallback(async (action) => {
         const operation = `${action}-intent`
         if (!beginOperation(operation)) return
@@ -766,6 +776,7 @@ export function usePrepaidSponsorship({
         available: Boolean(required && config?.enabled),
         start,
         reviewOrder,
+        openPreview,
         close,
         signPackage,
         signPayment: () => signIntent('payment'),

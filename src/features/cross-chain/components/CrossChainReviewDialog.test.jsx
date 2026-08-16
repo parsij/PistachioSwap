@@ -90,4 +90,29 @@ describe('CrossChainReviewDialog', () => {
         expect(screen.getByText('Review cross-chain swap')).toBeTruthy()
         shell.remove()
     })
+
+    it('shows an in-dialog loading state while the route is prepared', () => {
+        const shell = document.createElement('main')
+        shell.className = 'app-shell'
+        document.body.append(shell)
+        render(<CrossChainReviewDialog
+            open
+            route={null}
+            reducedMotion
+            activeAmountSide="sell"
+            sellToken={{ symbol: 'SELL', decimals: 18 }}
+            buyToken={{ symbol: 'BUY', decimals: 6 }}
+            costs={{}}
+            preparation={{ status: 'preparing', gasEstimateUnavailable: false, insufficientNativeGas: false }}
+            routeError={null}
+            executionError={null}
+            confirmDisabled
+            onClose={vi.fn()}
+            onConfirm={vi.fn()}
+        />)
+
+        expect(screen.getByText('Preparing your exact cross-chain swap…')).toBeTruthy()
+        expect(screen.getByRole('button', { name: 'Preparing…' }).disabled).toBe(true)
+        shell.remove()
+    })
 })

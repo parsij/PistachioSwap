@@ -164,6 +164,25 @@
     margin-top: 12px;
 }
 
+.cross-chain-review-skeleton {
+    display: grid;
+    gap: 12px;
+    padding: 8px 0;
+}
+.cross-chain-review-skeleton span {
+    display: block;
+    height: 38px;
+    border-radius: 9px;
+    background: linear-gradient(90deg, var(--color-panel, #2a2a2a) 20%, var(--color-border, #3a3a3a) 45%, var(--color-panel, #2a2a2a) 70%);
+    background-size: 200% 100%;
+    animation: cross-chain-shimmer 1.2s linear infinite;
+}
+.cross-chain-review-skeleton p {
+    margin: 2px 0 0;
+    color: var(--color-muted, #a9a9a9);
+    font-size: 12px;
+}
+
 .cross-chain-review dt,
 .cross-chain-cost-note {
     color: var(--color-muted, #a9a9a9);
@@ -208,7 +227,8 @@
 
 @media (prefers-reduced-motion: reduce) {
     .cross-chain-review-backdrop,
-    .cross-chain-review-dialog { animation: none; }
+    .cross-chain-review-dialog,
+    .cross-chain-review-skeleton span { animation: none; }
 }
 .swap-compact-details { padding: 0 4px; color: var(--color-text); font-size: 12px; }
 .swap-compact-details summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; color: var(--color-muted); list-style: none; }

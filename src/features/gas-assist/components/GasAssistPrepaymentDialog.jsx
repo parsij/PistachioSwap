@@ -97,6 +97,9 @@ function statusContent({ phase, order, orderExpired }) {
     if (phase === 'authenticating') {
         return { title: 'Checking your wallet', detail: 'Confirm the wallet authentication request.' }
     }
+    if (phase === 'preview-loading') {
+        return { title: 'Preparing your review', detail: 'Calculating the exact fee and minimum output.' }
+    }
     if (phase === 'package-preparing') {
         return { title: 'Preparing your swap', detail: 'Building the exact fee, approval, and swap transactions.' }
     }
@@ -210,7 +213,8 @@ export default function GasAssistPrepaymentDialog({
     if (!sponsorship.open || walletReviewActive) return null
 
     const walletBusy = sponsorship.phase === 'continuation-loading' ||
-        sponsorship.phase.endsWith('-preparing')
+        sponsorship.phase.endsWith('-preparing') ||
+        sponsorship.phase === 'preview-loading'
     const waitingForChain = ['payment-confirming', 'approval-confirming', 'swap-confirming'].includes(sponsorship.phase) ||
         ['payment-submitting', 'payment-submitted', 'approval-submitted', 'swap-submitted'].includes(order?.status)
     const orderExpired = expired || Boolean(order?.expiresAt && Date.parse(order.expiresAt) <= Date.now())
@@ -292,6 +296,13 @@ export default function GasAssistPrepaymentDialog({
                                 <small>{formatUsdMicros(order.totalPrepaymentUsdMicros)}</small>
                             </div>
                             <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />
+                        </div>
+                    )}
+                    {sponsorship.phase === 'preview-loading' && !order && (
+                        <div className="gas-assist-swap-summary gas-assist-summary-skeleton" aria-label="Loading Gas Assist quote">
+                            <span />
+                            <span />
+                            <span />
                         </div>
                     )}
 

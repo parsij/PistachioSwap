@@ -77,6 +77,9 @@ describe('exact prepaid Gas Assist route ownership', () => {
             config: { enabled: true },
             configStatus: 'success',
             configError: null,
+            phase: 'idle',
+            reviewOrder: vi.fn(),
+            openPreview: vi.fn(),
         }
         mocks.preview = {
             preview,
@@ -122,6 +125,25 @@ describe('exact prepaid Gas Assist route ownership', () => {
         await waitFor(() => {
             expect(baseProps.setBuyAmount).toHaveBeenCalledWith('2')
         })
+    })
+
+    it('opens the exact review before any wallet authentication', () => {
+        const { result } = renderHook(() => useGasAssistController(baseProps))
+
+        result.current.openPrepaidReview()
+
+        expect(mocks.prepaid.reviewOrder).toHaveBeenCalledWith(preview)
+        expect(mocks.prepaid.openPreview).not.toHaveBeenCalled()
+    })
+
+    it('opens a loading review when the exact preview is still pending', () => {
+        mocks.preview = { preview: null, status: 'loading', error: null }
+        const { result } = renderHook(() => useGasAssistController(baseProps))
+
+        result.current.openPrepaidReview()
+
+        expect(mocks.prepaid.openPreview).toHaveBeenCalledOnce()
+        expect(mocks.prepaid.reviewOrder).not.toHaveBeenCalled()
     })
 
     it('fails closed without putting backend codes in the customer status area', async () => {

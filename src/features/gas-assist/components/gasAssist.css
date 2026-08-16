@@ -116,6 +116,22 @@
 }
 .gas-assist-swap-summary > span::before { content: 'Quote refreshes in '; }
 
+.gas-assist-summary-skeleton {
+    gap: 10px;
+    padding: 16px;
+    background: #181818;
+}
+.gas-assist-summary-skeleton > span {
+    display: block;
+    min-height: 46px;
+    padding: 0;
+    border-radius: 12px;
+    background: linear-gradient(90deg, #202020 20%, #303030 45%, #202020 70%);
+    background-size: 200% 100%;
+    animation: gas-assist-shimmer 1.3s ease-in-out infinite;
+}
+.gas-assist-summary-skeleton > span::before { content: none; }
+
 .gas-assist-compact-status {
     display: flex;
     align-items: center;
@@ -233,6 +249,7 @@
 @keyframes gas-assist-spin { to { transform: rotate(360deg); } }
 @keyframes gas-assist-progress { from { transform: translateX(-110%); } to { transform: translateX(340%); } }
 @keyframes gas-assist-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes gas-assist-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
 @media (max-width: 520px) {
     .gas-assist-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); padding: 16px; border-radius: 22px; }
@@ -243,7 +260,8 @@
 @media (prefers-reduced-motion: reduce) {
     .gas-assist-status-icon svg,
     .gas-assist-confirmation-dot,
-    .gas-assist-progress-track span { animation: none; }
+    .gas-assist-progress-track span,
+    .gas-assist-summary-skeleton > span { animation: none; }
     .gas-assist-progress-track span { width: 100%; }
     .gas-assist-primary,
     .gas-assist-close,
