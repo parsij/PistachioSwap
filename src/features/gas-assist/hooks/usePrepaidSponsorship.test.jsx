@@ -31,6 +31,10 @@ vi.mock('../services/prepaidSponsorship.js', () => ({
     submitSponsorshipPackage: mocks.submitPackage,
 }))
 
+vi.mock('../services/sponsorshipPreview.js', () => ({
+    fetchSponsorshipPreview: vi.fn(),
+}))
+
 vi.mock('../services/rawTransactionSigning.js', () => ({
     detectRawTransactionSigning: () => ({
         rawTransactionSigningSupported: true,
@@ -43,11 +47,32 @@ vi.mock('../services/rawTransactionSigning.js', () => ({
 }))
 
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
+import { fetchSponsorshipPreview } from '../services/sponsorshipPreview.js'
 
 const walletA = '0x0000000000000000000000000000000000000001'
 const walletB = '0x0000000000000000000000000000000000000002'
 const tokenA = { address: '0x0000000000000000000000000000000000000011' }
 const tokenB = { address: '0x0000000000000000000000000000000000000012' }
+const previewPayload = {
+    chainId: 56,
+    sellToken: tokenA.address,
+    buyToken: tokenB.address,
+    grossInputAmountRaw: '1000',
+    netSwapAmountRaw: '900',
+    paymentToken: tokenA.address,
+    paymentTokenSymbol: 'SELL',
+    paymentAmountRaw: '100',
+    paymentTokenDecimals: 18,
+    expectedOutputRaw: '800',
+    minimumOutputRaw: '790',
+    expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    amountsUsd: {
+        fixedServiceFee: '0.067',
+        platformFee: '0.0105',
+        gasReserve: '0.0169',
+        totalPrepayment: '0.0945',
+    },
+}
 
 function setup(walletAddress = walletA, onConfirmed = vi.fn(), overrides = {}) {
     return renderHook(({ wallet, inputOverrides }) => usePrepaidSponsorship({
@@ -78,6 +103,7 @@ describe('prepaid sponsorship async ownership', () => {
         mocks.fetchConfig.mockResolvedValue({ enabled: true })
         mocks.authenticate.mockResolvedValue({ sessionToken: 'session' })
         mocks.createOrder.mockResolvedValue({ id: 'order-1', status: 'awaiting-payment' })
+        fetchSponsorshipPreview.mockResolvedValue(previewPayload)
         mocks.preparePackage.mockResolvedValue({
             orderId: 'order-1',
             expiresAt: new Date(Date.now() + 900_000).toISOString(),
@@ -88,6 +114,7 @@ describe('prepaid sponsorship async ownership', () => {
 
     afterEach(() => {
         vi.useRealTimers()
+        fetchSponsorshipPreview.mockResolvedValue(previewPayload)
     })
 
     it('continues order polling after a transient status failure without converting it into a fatal error', async () => {
@@ -102,6 +129,9 @@ describe('prepaid sponsorship async ownership', () => {
         await act(async () => {
             await result.current.start()
         })
+        expect(result.current.order?.isPreview).toBe(true)
+
+        await act(async () => result.current.signPackage())
         expect(result.current.order?.id).toBe('order-1')
 
         await act(() => vi.advanceTimersByTimeAsync(3_000))
@@ -141,8 +171,11 @@ describe('prepaid sponsorship async ownership', () => {
         vi.useFakeTimers()
 
         await act(async () => result.current.start())
-        expect(createOrder).toHaveBeenCalledOnce()
+        expect(createOrder).not.toHaveBeenCalled()
         expect(mocks.createOrder).not.toHaveBeenCalled()
+
+        await act(async () => result.current.signPackage())
+        expect(createOrder).toHaveBeenCalledOnce()
 
         await act(() => vi.advanceTimersByTimeAsync(3_000))
         expect(onSubmitted).toHaveBeenCalledWith(expect.objectContaining({
@@ -158,9 +191,9 @@ describe('prepaid sponsorship async ownership', () => {
     })
 
     it('does not publish an order authenticated for a disconnected wallet', async () => {
-        let resolveAuthentication
-        mocks.authenticate.mockImplementation(() => new Promise((resolve) => {
-            resolveAuthentication = resolve
+        let resolvePreview
+        fetchSponsorshipPreview.mockImplementation(() => new Promise((resolve) => {
+            resolvePreview = resolve
         }))
         const { result, rerender } = setup()
         await waitForConfig(result)
@@ -170,7 +203,7 @@ describe('prepaid sponsorship async ownership', () => {
             await Promise.resolve()
         })
         rerender({ wallet: walletB, inputOverrides: {} })
-        await act(async () => resolveAuthentication({ sessionToken: 'stale-session' }))
+        await act(async () => resolvePreview(previewPayload))
         await act(async () => pendingStart)
 
         expect(mocks.createOrder).not.toHaveBeenCalled()
@@ -200,6 +233,7 @@ describe('prepaid sponsorship async ownership', () => {
         await act(async () => {
             await result.current.start()
         })
+        expect(result.current.order?.isPreview).toBe(true)
 
         let first
         await act(async () => {
@@ -264,6 +298,30 @@ describe('prepaid sponsorship async ownership', () => {
         ])
         expect(mocks.authenticate).toHaveBeenCalledOnce()
         expect(createOrder).toHaveBeenCalledOnce()
+        expect(mocks.signPackage).toHaveBeenCalledOnce()
+    })
+
+    it('opens a preview review without authentication and authenticates once on confirmation', async () => {
+        const events = []
+        mocks.authenticate.mockImplementation(async () => {
+            events.push('sponsorship-auth')
+            return { sessionToken: 'session' }
+        })
+        const { result } = setup()
+        await waitForConfig(result)
+
+        await act(async () => result.current.start())
+
+        expect(result.current.phase).toBe('review')
+        expect(result.current.order?.isPreview).toBe(true)
+        expect(mocks.authenticate).not.toHaveBeenCalled()
+        expect(mocks.createOrder).not.toHaveBeenCalled()
+
+        await act(async () => result.current.signPackage())
+
+        expect(events).toEqual(['sponsorship-auth'])
+        expect(mocks.authenticate).toHaveBeenCalledOnce()
+        expect(mocks.createOrder).toHaveBeenCalledOnce()
         expect(mocks.signPackage).toHaveBeenCalledOnce()
     })
 

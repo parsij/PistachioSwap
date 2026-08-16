@@ -100,17 +100,32 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.queryByText(/converts only/i)).toBeNull()
     })
 
-    it('fully hands modal focus to Pistachio Wallet while authentication or signing is active', () => {
-        const value = sponsorship({ phase: 'authenticating', order: null })
-        const { container, rerender } = render(
+    it('renders a skeleton while the preview quote is loading', () => {
+        render(
             <GasAssistPrepaymentDialog
-                sponsorship={value}
+                sponsorship={sponsorship({ phase: 'loading', order: null })}
                 sellToken={sellToken}
                 buyToken={buyToken}
             />,
         )
 
-        expect(container.firstChild).toBeNull()
+        expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
+        expect(screen.getByText('Preparing your quote')).toBeTruthy()
+        expect(document.querySelector('.gas-assist-swap-summary-skeleton')).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
+    })
+
+    it('keeps the review modal visible while authentication or signing is active', () => {
+        const { rerender } = render(
+            <GasAssistPrepaymentDialog
+                sponsorship={sponsorship({ phase: 'authenticating', order: null })}
+                sellToken={sellToken}
+                buyToken={buyToken}
+            />,
+        )
+
+        expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
+        expect(screen.getByText('Checking your wallet')).toBeTruthy()
 
         rerender(
             <GasAssistPrepaymentDialog
@@ -119,16 +134,7 @@ describe('Gas Assist prepayment review', () => {
                 buyToken={buyToken}
             />,
         )
-        expect(container.firstChild).toBeNull()
-
-        rerender(
-            <GasAssistPrepaymentDialog
-                sponsorship={sponsorship({ phase: 'review' })}
-                sellToken={sellToken}
-                buyToken={buyToken}
-            />,
-        )
-        expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
+        expect(screen.getByText('Confirm in Pistachio Wallet')).toBeTruthy()
     })
 
     it('shows compact progress and prevents another primary submission while payment is pending', () => {

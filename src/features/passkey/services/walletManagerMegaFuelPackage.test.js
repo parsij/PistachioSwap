@@ -77,6 +77,18 @@ function fakeManager({ phase = 'unlocked' } = {}) {
 beforeEach(() => vi.restoreAllMocks())
 
 describe('Pistachio Wallet MegaFuel package signing', () => {
+    it('skips the package review when a Gas Assist flow is already active', async () => {
+        const manager = {
+            ...fakeManager({ phase: 'unlocked' }),
+            isGasAssistFlowActive: vi.fn(() => true),
+        }
+        await methods.signMegaFuelPackage.call(manager, preparedPackage())
+
+        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
+        expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)
+        expect(manager.client.request).toHaveBeenCalledTimes(3)
+    })
+
     it('reviews the exact package once before invoking the one passkey gate', async () => {
         const manager = fakeManager({ phase: 'unlocked' })
         const result = await methods.signMegaFuelPackage.call(manager, preparedPackage())

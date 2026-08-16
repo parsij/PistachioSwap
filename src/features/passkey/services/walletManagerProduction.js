@@ -255,6 +255,8 @@ export function hardenPistachioWalletManager(manager) {
         return true
     }
 
+    manager.isGasAssistFlowActive = () => gasAssistFlowMatches()
+
     manager.snapshot = function snapshot() {
         return Object.freeze({
             ...originalSnapshot(),

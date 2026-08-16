@@ -207,7 +207,11 @@ export function useGasAssistController({
 
     return {
         gasAssist,
-        prepaidSponsorship,
+        prepaidSponsorship: {
+            ...prepaidSponsorship,
+            refreshing: prepaidSponsorship.phase === 'loading' ||
+                (prepaidSponsorship.open && previewState.status === 'loading'),
+        },
         prepaidRequired,
         preview: prepaidEnabled ? previewState.preview : null,
         previewStatus: prepaidEnabled ? previewState.status : 'idle',

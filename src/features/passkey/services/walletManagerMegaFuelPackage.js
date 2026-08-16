@@ -137,21 +137,25 @@ export const methods = {
             reviewWalletAddress,
         )
 
-        await this.reviewQueue.request({
-            walletAddress: reviewWalletAddress,
-            chainId: 56,
-            action: 'Confirm Gas Assist swap',
-            payload: {
-                purpose: 'One-time authorization for this exact Gas Assist package',
-                orderId: normalizedPackage.orderId,
-                expiresAt: normalizedPackage.expiresAt,
-                transactions: normalizedPackage.transactions.map((item) => ({
-                    action: item.action,
-                    intentId: item.intentId,
-                    ...describeTransactionReview(item.transaction, 'megafuel'),
-                })),
-            },
-        })
+        const skipPackageReview = typeof this.isGasAssistFlowActive === 'function' &&
+            this.isGasAssistFlowActive()
+        if (!skipPackageReview) {
+            await this.reviewQueue.request({
+                walletAddress: reviewWalletAddress,
+                chainId: 56,
+                action: 'Confirm Gas Assist swap',
+                payload: {
+                    purpose: 'One-time authorization for this exact Gas Assist package',
+                    orderId: normalizedPackage.orderId,
+                    expiresAt: normalizedPackage.expiresAt,
+                    transactions: normalizedPackage.transactions.map((item) => ({
+                        action: item.action,
+                        intentId: item.intentId,
+                        ...describeTransactionReview(item.transaction, 'megafuel'),
+                    })),
+                },
+            })
+        }
 
         // The production wallet hardener makes this exactly one fresh passkey
         // ceremony whether the worker is currently unlocked or must be resumed.

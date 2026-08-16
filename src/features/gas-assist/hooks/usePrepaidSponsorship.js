@@ -13,6 +13,8 @@ import {
     submitSponsorshipIntent,
     submitSponsorshipPackage,
 } from '../services/prepaidSponsorship.js'
+import { buildSponsorshipPreviewOrder } from '../services/sponsorshipPreviewOrder.js'
+import { fetchSponsorshipPreview } from '../services/sponsorshipPreview.js'
 import {
     detectRawTransactionSigning,
     signPreparedSponsoredTransaction,
@@ -208,87 +210,66 @@ export function usePrepaidSponsorship({
         return () => controller.abort()
     }, [quoteEndpoint, walletAddress])
 
+    const validateStartContext = useCallback(() => {
+        if (
+            connection.connector?.id !== 'pistachio-local' ||
+            !capability.rawTransactionSigningSupported
+        ) {
+            throw flowError(
+                'PISTACHIO_WALLET_REQUIRED',
+                'Gas Assist requires Pistachio Wallet.',
+                { stage: 'flow.start' },
+            )
+        }
+        if (configStatus === 'loading') {
+            throw flowError(
+                'SPONSORSHIP_CONFIG_LOADING',
+                'Gas Assist is still loading. Try again in a moment.',
+                { stage: 'flow.start' },
+            )
+        }
+        if (configStatus === 'error') {
+            throw configError ?? flowError(
+                'SPONSORSHIP_CONFIG_UNAVAILABLE',
+                'Gas Assist configuration could not be loaded.',
+                { stage: 'flow.start' },
+            )
+        }
+        if (!config?.enabled) {
+            throw flowError(
+                'SPONSORSHIP_DISABLED',
+                'Gas Assist is currently unavailable.',
+                { stage: 'flow.start' },
+            )
+        }
+        if (!quoteEndpoint) {
+            throw flowError('SPONSORSHIP_ENDPOINT_MISSING', 'Gas Assist is not configured.', { stage: 'flow.start' })
+        }
+        if (!walletClient || !walletAddress) {
+            throw flowError('WALLET_NOT_CONNECTED', 'Connect Pistachio Wallet first.', { stage: 'flow.start' })
+        }
+        if (!sellToken?.address || !buyToken || (!buyToken.isNative && !buyToken.address)) {
+            throw flowError('SWAP_TOKENS_MISSING', 'Choose both swap tokens first.', { stage: 'flow.start' })
+        }
+        if (!validRawAmount(grossInputAmount)) {
+            throw flowError('SWAP_AMOUNT_INVALID', 'Enter a valid token amount.', { stage: 'flow.start' })
+        }
+        if (!Number.isInteger(Number(slippageBps)) || Number(slippageBps) < 0) {
+            throw flowError('SLIPPAGE_INVALID', 'The slippage setting is invalid.', { stage: 'flow.start' })
+        }
+    }, [buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, grossInputAmount, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
+
     const start = useCallback(async () => {
         const operation = 'start'
         if (!beginOperation(operation)) return
         const walletEpoch = walletEpochRef.current
         const flowEpoch = ++flowEpochRef.current
-        // Do not mount a modal focus trap while Pistachio Wallet is authenticating.
-        // The wallet review must be the only active dialog during this handoff.
-        setState({ ...initial, open: false, phase: 'authenticating', config })
+        setState({ ...initial, open: true, phase: 'loading', config })
 
         try {
-            if (
-                connection.connector?.id !== 'pistachio-local' ||
-                !capability.rawTransactionSigningSupported
-            ) {
-                const error = flowError(
-                    'PISTACHIO_WALLET_REQUIRED',
-                    'Gas Assist requires Pistachio Wallet.',
-                    { stage: 'flow.start' },
-                )
-                if (isCurrent(walletEpoch, flowEpoch)) {
-                    setState({
-                        ...initial,
-                        open: true,
-                        phase: 'unsupported',
-                        config,
-                        error,
-                    })
-                }
-                return
-            }
-            if (configStatus === 'loading') {
-                throw flowError(
-                    'SPONSORSHIP_CONFIG_LOADING',
-                    'Gas Assist is still loading. Try again in a moment.',
-                    { stage: 'flow.start' },
-                )
-            }
-            if (configStatus === 'error') {
-                throw configError ?? flowError(
-                    'SPONSORSHIP_CONFIG_UNAVAILABLE',
-                    'Gas Assist configuration could not be loaded.',
-                    { stage: 'flow.start' },
-                )
-            }
-            if (!config?.enabled) {
-                throw flowError(
-                    'SPONSORSHIP_DISABLED',
-                    'Gas Assist is currently unavailable.',
-                    { stage: 'flow.start' },
-                )
-            }
-            if (!quoteEndpoint) {
-                throw flowError('SPONSORSHIP_ENDPOINT_MISSING', 'Gas Assist is not configured.', { stage: 'flow.start' })
-            }
-            if (!walletClient || !walletAddress) {
-                throw flowError('WALLET_NOT_CONNECTED', 'Connect Pistachio Wallet first.', { stage: 'flow.start' })
-            }
-            if (!sellToken?.address || !buyToken || (!buyToken.isNative && !buyToken.address)) {
-                throw flowError('SWAP_TOKENS_MISSING', 'Choose both swap tokens first.', { stage: 'flow.start' })
-            }
-            if (!validRawAmount(grossInputAmount)) {
-                throw flowError('SWAP_AMOUNT_INVALID', 'Enter a valid token amount.', { stage: 'flow.start' })
-            }
-            if (!Number.isInteger(Number(slippageBps)) || Number(slippageBps) < 0) {
-                throw flowError('SLIPPAGE_INVALID', 'The slippage setting is invalid.', { stage: 'flow.start' })
-            }
-
-            const session = await gasAssistTraceStep(
-                'flow.authenticate',
-                { walletAddress },
-                () => authenticateSponsorshipWallet({
-                    quoteEndpoint,
-                    walletAddress,
-                    walletClient,
-                }),
-            )
-            if (!isCurrent(walletEpoch, flowEpoch)) return
-            sessionTokenRef.current = session.sessionToken
-
-            const order = await gasAssistTraceStep(
-                'flow.order-create',
+            validateStartContext()
+            const preview = await gasAssistTraceStep(
+                'flow.preview-fetch',
                 {
                     walletAddress,
                     sellToken: sellToken.address,
@@ -296,34 +277,37 @@ export function usePrepaidSponsorship({
                     grossInputAmount,
                     slippageBps,
                 },
-                () => {
-                    const idempotencyKey = createIdempotencyKey()
-                    return typeof createOrderOverride === 'function'
-                        ? createOrderOverride({
-                            sessionToken: session.sessionToken,
-                            idempotencyKey,
-                            walletAddress,
-                            sellToken,
-                            buyToken,
-                            grossInputAmount,
-                            slippageBps,
-                        })
-                        : createSponsorshipOrder(quoteEndpoint, session.sessionToken, {
-                            sellToken: sellToken.address,
-                            buyToken: buyToken.isNative ? 'native' : buyToken.address,
-                            grossInputAmount,
-                            slippageBps,
-                        }, idempotencyKey)
-                },
+                () => fetchSponsorshipPreview(quoteEndpoint, {
+                    walletAddress,
+                    sellToken: sellToken.address,
+                    buyToken: buyToken.isNative ? 'native' : buyToken.address,
+                    grossInputAmount,
+                    slippageBps,
+                }),
             )
             if (!isCurrent(walletEpoch, flowEpoch)) return
+            const order = buildSponsorshipPreviewOrder(preview, walletAddress)
             setState({ ...initial, open: true, phase: 'review', config, order })
+            gasAssistTrace('flow.preview.opened', {
+                walletAddress,
+                previewId: order.id,
+            })
         } catch (error) {
+            if (isCurrent(walletEpoch, flowEpoch) && error?.code === 'PISTACHIO_WALLET_REQUIRED') {
+                setState({
+                    ...initial,
+                    open: true,
+                    phase: 'unsupported',
+                    config,
+                    error,
+                })
+                return
+            }
             publishFailure(error, { walletEpoch, flowEpoch, keepOrder: false })
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, walletAddress, walletClient])
+    }, [beginOperation, buyToken, config, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, validateStartContext, walletAddress])
 
     const reviewOrder = useCallback((order) => {
         if (!order?.id || order.isPreview !== true) {
@@ -472,13 +456,6 @@ export function usePrepaidSponsorship({
                 sessionTokenRef.current = sessionToken
             }
             if (order.isPreview === true) {
-                if (typeof createOrderOverride !== 'function') {
-                    throw flowError(
-                        'SPONSORSHIP_CONTEXT_MISSING',
-                        'The exact Gas Assist order cannot be created.',
-                        { stage: 'package.order-create' },
-                    )
-                }
                 order = await gasAssistTraceStep(
                     'flow.order-create',
                     {
@@ -488,15 +465,26 @@ export function usePrepaidSponsorship({
                         grossInputAmount,
                         slippageBps,
                     },
-                    () => createOrderOverride({
-                        sessionToken,
-                        idempotencyKey: createIdempotencyKey(),
-                        walletAddress,
-                        sellToken,
-                        buyToken,
-                        grossInputAmount,
-                        slippageBps,
-                    }),
+                    () => {
+                        const idempotencyKey = createIdempotencyKey()
+                        if (typeof createOrderOverride === 'function') {
+                            return createOrderOverride({
+                                sessionToken,
+                                idempotencyKey,
+                                walletAddress,
+                                sellToken,
+                                buyToken,
+                                grossInputAmount,
+                                slippageBps,
+                            })
+                        }
+                        return createSponsorshipOrder(quoteEndpoint, sessionToken, {
+                            sellToken: sellToken.address,
+                            buyToken: buyToken.isNative ? 'native' : buyToken.address,
+                            grossInputAmount,
+                            slippageBps,
+                        }, idempotencyKey)
+                    },
                 )
                 if (!isCurrent(walletEpoch, flowEpoch)) return
                 setState((current) => ({ ...current, order }))
