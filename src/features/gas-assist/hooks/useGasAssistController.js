@@ -175,14 +175,15 @@ export function useGasAssistController({
     // non-mutating preview is in flight. Hydrate it only when its current
     // request completes so no wallet prompt can precede the review.
     useEffect(() => {
-        if (
-            prepaidSponsorship.phase !== 'preview-loading' ||
-            previewState.status !== 'success' ||
-            !previewState.preview
-        ) return
-        prepaidSponsorship.reviewOrder(previewState.preview)
+        if (prepaidSponsorship.phase !== 'preview-loading') return
+        if (previewState.status === 'success' && previewState.preview) {
+            prepaidSponsorship.reviewOrder(previewState.preview)
+        } else if (previewState.status === 'error') {
+            prepaidSponsorship.failPreview(previewState.error)
+        }
     }, [
         prepaidSponsorship,
+        previewState.error,
         previewState.preview,
         previewState.status,
     ])

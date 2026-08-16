@@ -80,6 +80,7 @@ describe('exact prepaid Gas Assist route ownership', () => {
             phase: 'idle',
             reviewOrder: vi.fn(),
             openPreview: vi.fn(),
+            failPreview: vi.fn(),
         }
         mocks.preview = {
             preview,

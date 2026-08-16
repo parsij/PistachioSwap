@@ -363,6 +363,16 @@ export function usePrepaidSponsorship({
         gasAssistTrace('flow.preview.loading', { walletAddress })
     }, [config, walletAddress])
 
+    const failPreview = useCallback((error) => {
+        setState((current) => current.phase === 'preview-loading'
+            ? {
+                ...current,
+                phase: 'failed',
+                error,
+            }
+            : current)
+    }, [])
+
     const signIntent = useCallback(async (action) => {
         const operation = `${action}-intent`
         if (!beginOperation(operation)) return
@@ -777,6 +787,7 @@ export function usePrepaidSponsorship({
         start,
         reviewOrder,
         openPreview,
+        failPreview,
         close,
         signPackage,
         signPayment: () => signIntent('payment'),

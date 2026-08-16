@@ -94,6 +94,7 @@ export function useCrossChainGasAssist({
         preparedResponseRef.current = null
         setPreviewStatus('loading')
         setPreviewError(null)
+        sponsorship.openPreview()
         try {
             const preview = await previewSponsorship(route)
             if (
@@ -108,6 +109,7 @@ export function useCrossChainGasAssist({
         } catch (error) {
             setPreviewStatus('error')
             setPreviewError(error)
+            sponsorship.failPreview(error)
             console.error('[pistachio-swap] Cross-chain Gas Assist preview failed', {
                 code: error?.code ?? 'CROSS_CHAIN_GAS_ASSIST_PREVIEW_FAILED',
                 message: error?.message ?? 'Gas Assist preview failed.',
