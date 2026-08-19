@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 const legalFooterStyle = {
     padding: '2rem 1rem 1.25rem',
     color: 'var(--color-text-secondary, currentColor)',
@@ -18,7 +20,7 @@ const legalSeparatorStyle = {
 
 const coldWalletSectionStyle = {
     marginTop: '0.5rem',
-    fontSize: '0.6875rem',
+    fontSize: '0.75rem',
     lineHeight: 1.45,
 }
 
@@ -39,11 +41,17 @@ const showLegalFooter = import.meta.env.PROD
  * @sideEffects None; child slots own their interactions.
  */
 export default function AppLayout({ style, header, children, overlays }) {
+    const [footerReady, setFooterReady] = useState(false)
+
+    useEffect(() => {
+        setFooterReady(true)
+    }, [])
+
     return (
         <main className="app-shell" style={style}>
             {header}
             {children}
-            {showLegalFooter && (
+            {showLegalFooter && footerReady && (
                 <footer style={legalFooterStyle}>
                     {/*
                       * The overview page is otherwise unreachable from the

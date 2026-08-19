@@ -13,8 +13,8 @@ function css(path) {
 }
 
 function coarseBlocks(source) {
-    // Both the top-level `@media (pointer: coarse)` blocks and the nested ones.
-    return [...source.matchAll(/@media\s*\(pointer:\s*coarse\)\s*\{/g)]
+    // Top-level `@media (pointer: coarse)` blocks, including narrow-viewport fallbacks.
+    return [...source.matchAll(/@media\s*\(pointer:\s*coarse\)(?:,\s*\(max-width:\s*520px\))?\s*\{/g)]
         .map((match) => {
             let depth = 1
             let index = match.index + match[0].length
@@ -41,7 +41,9 @@ describe('mobile touch targets', () => {
     it('extends the fixed-height panel controls to a 44px hit area', () => {
         // The controls measure 14–36px tall and are absolutely positioned inside
         // panels of fixed height, so the hit area grows instead of the box.
-        const coarse = coarseBlocks(css('src/index.css'))
+        const source = css('src/index.css')
+        expect(source).toMatch(/@media\s*\(pointer:\s*coarse\),\s*\(max-width:\s*520px\)/)
+        const coarse = coarseBlocks(source)
         for (const control of [
             '.sell-fiat-value::after',
             '.buy-fiat-value::after',
@@ -59,7 +61,7 @@ describe('mobile touch targets', () => {
         // The expansion must not apply to a mouse, which can already hit 14px.
         const source = css('src/index.css')
         const outsideCoarse = source.replace(
-            /@media\s*\(pointer:\s*coarse\)\s*\{[\s\S]*?\n\}/g,
+            /@media\s*\(pointer:\s*coarse\),\s*\(max-width:\s*520px\)\s*\{[\s\S]*?\n\}/g,
             '',
         )
         expect(outsideCoarse).not.toContain('.sell-fiat-value::after')

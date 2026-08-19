@@ -75,8 +75,8 @@ export default function SwapTokenPanel(props) {
                 className={`${side}-fiat-value denomination-toggle`}
                 onClick={onToggleDenomination}
                 aria-label={amount.denomination === 'TOKEN'
-                    ? `Show ${label} amount in USD`
-                    : `Show ${label} amount in ${token ? getTokenDisplaySymbol(token) : 'token'}`}
+                    ? `${secondaryValue}. Show ${label} amount in USD`
+                    : `${secondaryValue}. Show ${label} amount in ${token ? getTokenDisplaySymbol(token) : 'token'}`}
             >
                 {secondaryValue}
             </button>
@@ -85,7 +85,7 @@ export default function SwapTokenPanel(props) {
                     type="button"
                     className={['sell-balance', invalid ? 'sell-balance-insufficient' : ''].filter(Boolean).join(' ')}
                     onClick={balance.onUseMaximum}
-                    aria-label={`Use maximum ${getTokenDisplaySymbol(token)} balance`}
+                    aria-label={`${formatWalletTokenAmount(token.balance)} ${getTokenDisplaySymbol(token)}. Use maximum ${getTokenDisplaySymbol(token)} balance`}
                     title={`${token.balance} ${getTokenDisplaySymbol(token)}`}
                 >
                     {formatWalletTokenAmount(token.balance)}{' '}{getTokenDisplaySymbol(token)}

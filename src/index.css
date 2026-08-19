@@ -815,7 +815,7 @@ button:disabled {
     gap: var(--spacing-select-token-gap);
     padding: 0;
     background: var(--color-accent);
-    color: var(--color-text);
+    color: var(--color-accent-foreground);
 }
 
 .token-chevron {
@@ -951,7 +951,7 @@ button:disabled {
  *
  * Scoped to coarse pointers so a mouse keeps the tighter original hit areas.
  */
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 520px) {
     .sell-fiat-value::after,
     .buy-fiat-value::after,
     .sell-balance::after,
@@ -1038,7 +1038,7 @@ button:disabled {
 
 .primary-action-ready {
     background: var(--color-accent);
-    color: var(--color-text);
+    color: var(--color-accent-foreground);
 }
 
 .primary-action-error {

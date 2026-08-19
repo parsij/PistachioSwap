@@ -27,7 +27,30 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      sourcemap: true,
       rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (
+                id.includes('@reown/appkit')
+                || id.includes('@walletconnect')
+                || id.includes('wui-')
+              ) {
+                return 'appkit'
+              }
+              if (id.includes('wagmi') || id.includes('viem')) {
+                return 'wagmi'
+              }
+              if (id.includes('ethers')) {
+                return 'ethers'
+              }
+              if (id.includes('motion')) {
+                return 'motion'
+              }
+            }
+          },
+        },
         /*
          * Two entries. `index.html` stays the swap application at `/`, so no
          * existing link moves. `landing/index.html` builds to

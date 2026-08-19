@@ -1,0 +1,21 @@
+# Pistachio Swap
+
+> Self-custodial crypto wallet with Gas Assist: swap BEP-20 tokens on BNB Chain even with no BNB for gas, across 25 EVM networks.
+
+## Primary pages
+
+- [Open the wallet](https://pistachioswap.com/): Swap interface and wallet connection
+- [About Pistachio Swap](https://pistachioswap.com/landing/): Product overview, Gas Assist explanation, supported networks, and FAQ
+- [Legal & third-party notices](https://pistachioswap.com/legal/third-party/): Licence and attribution information
+
+## Documentation
+
+- [GitHub repository](https://github.com/parsij/PistachioSwap): Source code, architecture docs, and contribution guidelines
+- [Sitemap](https://pistachioswap.com/sitemap.xml): Crawlable page index
+
+## Key facts
+
+- Gas Assist covers BNB Chain gas when you hold BEP-20 tokens but no BNB; fees are shown before you sign.
+- Supports 25 EVM networks for routing; Gas Assist is limited to BNB Smart Chain.
+- Optional Pistachio Wallet is a passkey-protected browser wallet; any standard EVM wallet also works.
+- Pre-release software; not independently audited.

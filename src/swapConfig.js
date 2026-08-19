@@ -302,6 +302,10 @@ export const swapUiConfig = {
                 import.meta.env.VITE_ACCENT_COLOR ??
                 '#8ac27c',
 
+            accentForeground:
+                import.meta.env.VITE_ACCENT_FOREGROUND_COLOR ??
+                '#151515',
+
             ethereum:
                 import.meta.env.VITE_ETHEREUM_COLOR ??
                 '#627eea',
