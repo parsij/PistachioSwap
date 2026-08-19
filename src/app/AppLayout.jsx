@@ -62,6 +62,14 @@ export default function AppLayout({ style, header, children, overlays }) {
                         About Pistachio Swap
                     </a>
                     <span style={legalSeparatorStyle} aria-hidden="true">·</span>
+                    <a href="/landing/gas-assist/" style={legalLinkStyle}>
+                        How Gas Assist works
+                    </a>
+                    <span style={legalSeparatorStyle} aria-hidden="true">·</span>
+                    <a href="/landing/faq/" style={legalLinkStyle}>
+                        FAQ
+                    </a>
+                    <span style={legalSeparatorStyle} aria-hidden="true">·</span>
                     <a href="/legal/third-party/" style={legalLinkStyle}>
                         Legal &amp; third-party notices
                     </a>

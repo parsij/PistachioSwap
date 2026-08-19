@@ -262,6 +262,64 @@ p {
     font-size: 13px;
 }
 
+.page-hero {
+    padding: 48px 0 8px;
+    text-align: left;
+}
+
+.page-hero h1 {
+    max-width: 22ch;
+    margin-inline: 0;
+    font-size: clamp(32px, 4.5vw, 48px);
+}
+
+.crumbs {
+    margin-bottom: 18px;
+    color: var(--subtle);
+    font-size: 14px;
+}
+
+.crumbs a {
+    color: var(--muted);
+}
+
+.prose {
+    max-width: 72ch;
+    margin-top: 28px;
+    color: var(--muted);
+    font-size: 17px;
+}
+
+.prose p + p,
+.prose ul + p,
+.prose ol + p,
+.prose p + ul,
+.prose p + ol {
+    margin-top: 14px;
+}
+
+.prose h2 {
+    margin-top: 36px;
+    color: var(--text);
+    font-size: clamp(22px, 2.6vw, 28px);
+}
+
+.prose h2 + p,
+.prose h2 + ul,
+.prose h2 + ol {
+    margin-top: 12px;
+}
+
+.prose ul,
+.prose ol {
+    margin: 0;
+    padding-left: 1.2em;
+}
+
+.prose li + li {
+    margin-top: 8px;
+}
+
 /* ---------- stats ---------- */
 
 .stats {

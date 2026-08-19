@@ -52,15 +52,15 @@ export default defineConfig(({ mode }) => {
           },
         },
         /*
-         * Two entries. `index.html` stays the swap application at `/`, so no
-         * existing link moves. `landing/index.html` builds to
-         * `dist/landing/index.html`, which the existing static host serves
-         * directly — the marketing copy is real HTML rather than something a
-         * crawler has to execute React to see.
+         * App plus static HTML pages. `index.html` stays the swap application
+         * at `/`. Landing, FAQ, and Gas Assist build to `dist/landing/...` so
+         * crawlers can read them without executing the wallet bundle.
          */
         input: {
           main: resolve(import.meta.dirname, 'index.html'),
           landing: resolve(import.meta.dirname, 'landing/index.html'),
+          faq: resolve(import.meta.dirname, 'landing/faq/index.html'),
+          gasAssist: resolve(import.meta.dirname, 'landing/gas-assist/index.html'),
         },
       },
     },

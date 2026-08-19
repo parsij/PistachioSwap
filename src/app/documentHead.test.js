@@ -24,6 +24,8 @@ function structuredData(html) {
 describe.each([
     ['index.html', `${SITE}/`],
     ['landing/index.html', `${SITE}/landing/`],
+    ['landing/faq/index.html', `${SITE}/landing/faq/`],
+    ['landing/gas-assist/index.html', `${SITE}/landing/gas-assist/`],
 ])('%s document head', (path, canonical) => {
     const html = read(path)
 
@@ -75,11 +77,19 @@ describe('crawler-facing static files', () => {
         const robots = read('public/robots.txt')
         expect(robots).toContain(`Sitemap: ${SITE}/sitemap.xml`)
         expect(robots).toContain('Disallow: /legal/third-party/')
+        expect(robots).toMatch(/User-agent:\s*Googlebot[\s\S]*Allow:\s*\/landing/)
+        expect(robots).toMatch(/User-agent:\s*Google-Extended[\s\S]*Disallow:\s*\//)
+        expect(robots).toMatch(/User-agent:\s*ChatGPT-User[\s\S]*Allow:\s*\/landing/)
     })
 
     it('lists every indexable page in the sitemap', () => {
         const sitemap = read('public/sitemap.xml')
-        for (const location of [`${SITE}/`, `${SITE}/landing/`]) {
+        for (const location of [
+            `${SITE}/`,
+            `${SITE}/landing/`,
+            `${SITE}/landing/faq/`,
+            `${SITE}/landing/gas-assist/`,
+        ]) {
             expect(sitemap).toContain(`<loc>${location}</loc>`)
         }
     })
@@ -98,28 +108,17 @@ describe('crawler-facing static files', () => {
 describe('landing page', () => {
     const html = read('landing/index.html')
 
-    it('answers questions in markup, not only in structured data', () => {
-        const faq = structuredData(html)
-            .find((node) => node['@type'] === 'FAQPage')
-        expect(faq.mainEntity.length).toBeGreaterThanOrEqual(5)
-
-        // Every advertised answer must also be readable on the page itself.
-        for (const question of faq.mainEntity) {
-            expect(html).toContain(question.name)
-        }
-    })
-
     it('puts the terms people search for into its headings', () => {
-        // A heading carries weight a paragraph does not, so the brand and the
-        // feature people actually search for have to appear in one.
         const h1 = /<h1>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? ''
         const headings = [...html.matchAll(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/g)]
             .map((match) => match[1].replace(/<[^>]+>/g, ' '))
             .join(' ')
             .toLowerCase()
 
-        expect(h1.toLowerCase()).toContain('pistachio swap')
+        expect(html.match(/<h1[\s\S]*?<\/h1>/g)?.length ?? 0).toBe(1)
+        expect(h1.toLowerCase()).toContain('without bnb')
         expect(headings).toContain('gas assisted swaps')
+        expect(headings).toContain('self-custodial')
     })
 
     it('stays short enough for someone to actually read it', () => {
@@ -143,7 +142,47 @@ describe('landing page', () => {
         expect(html).toContain('has not been independently audited')
     })
 
-    it('links back to the application', () => {
+    it('links to the wallet, FAQ, and Gas Assist pages', () => {
         expect(html).toContain('href="/"')
+        expect(html).toContain('href="/landing/faq/"')
+        expect(html).toContain('href="/landing/gas-assist/"')
+    })
+})
+
+describe('FAQ page', () => {
+    const html = read('landing/faq/index.html')
+
+    it('answers questions in markup, not only in structured data', () => {
+        const faq = structuredData(html)
+            .find((node) => node['@type'] === 'FAQPage')
+        expect(faq.mainEntity.length).toBeGreaterThanOrEqual(5)
+
+        for (const question of faq.mainEntity) {
+            expect(html).toContain(question.name)
+        }
+    })
+
+    it('keeps a single H1 that matches the search topic', () => {
+        const h1 = /<h1>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? ''
+        expect(html.match(/<h1[\s\S]*?<\/h1>/g)?.length ?? 0).toBe(1)
+        expect(h1.toLowerCase()).toContain('faq')
+        expect(h1.toLowerCase()).toContain('without bnb')
+    })
+})
+
+describe('Gas Assist page', () => {
+    const html = read('landing/gas-assist/index.html')
+
+    it('explains the flow in HTML, not only in the wallet app', () => {
+        expect(html).not.toContain('/src/main.jsx')
+        expect(html).toContain('three-transaction package')
+        expect(html).toContain('has not been independently audited')
+    })
+
+    it('keeps a single H1 about Gas Assist on BNB Chain', () => {
+        const h1 = /<h1>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? ''
+        expect(html.match(/<h1[\s\S]*?<\/h1>/g)?.length ?? 0).toBe(1)
+        expect(h1.toLowerCase()).toContain('gas assist')
+        expect(h1.toLowerCase()).toContain('bnb')
     })
 })

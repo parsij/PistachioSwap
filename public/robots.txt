@@ -1,3 +1,49 @@
+# Cloudflare currently prepends a "Managed content" block that Disallows
+# GPTBot, ClaudeBot, and Google-Extended. That block wins until you turn it
+# off. In Cloudflare:
+#
+#   1. Open the pistachioswap.com zone.
+#   2. Go to Settings → Crawlers, or Security → Bots → AI Crawl Control
+#      (the label varies by dashboard version).
+#   3. Disable "Manage robots.txt" / "Block AI crawlers" / "Cloudflare
+#      managed content" so THIS file is the live robots.txt.
+#   4. Confirm https://pistachioswap.com/robots.txt starts with these
+#      comments and has no "# BEGIN Cloudflare Managed content" section.
+#   5. Leave Googlebot allowed. Do not add a WAF rule that challenges
+#      Googlebot on /landing/.
+
+# Google Search may read the lightweight HTML pages. It does not need the
+# hashed wallet JavaScript under /assets/.
+User-agent: Googlebot
+Allow: /landing
+Allow: /llms.txt
+Allow: /sitemap.xml
+Allow: /icons/
+Allow: /favicon
+Allow: /og-image.png
+Disallow: /assets/
+Disallow: /legal/third-party/
+
+# Training crawlers may not use this site to train models.
+User-agent: Google-Extended
+User-agent: GPTBot
+User-agent: CCBot
+User-agent: Bytespider
+User-agent: Applebot-Extended
+User-agent: Amazonbot
+User-agent: anthropic-ai
+User-agent: ClaudeBot
+Disallow: /
+
+# Assistants answering a live question may read only the static pages.
+User-agent: ChatGPT-User
+User-agent: Claude-User
+User-agent: PerplexityBot
+Allow: /llms.txt
+Allow: /landing
+Disallow: /assets/
+Disallow: /
+
 User-agent: *
 Allow: /
 
