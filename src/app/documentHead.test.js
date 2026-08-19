@@ -24,6 +24,7 @@ function structuredData(html) {
 describe.each([
     ['index.html', `${SITE}/`],
     ['landing/index.html', `${SITE}/landing/`],
+    ['gas-assist/index.html', `${SITE}/gas-assist/`],
 ])('%s document head', (path, canonical) => {
     const html = read(path)
 
@@ -79,7 +80,11 @@ describe('crawler-facing static files', () => {
 
     it('lists every indexable page in the sitemap', () => {
         const sitemap = read('public/sitemap.xml')
-        for (const location of [`${SITE}/`, `${SITE}/landing/`]) {
+        for (const location of [
+            `${SITE}/`,
+            `${SITE}/landing/`,
+            `${SITE}/gas-assist/`,
+        ]) {
             expect(sitemap).toContain(`<loc>${location}</loc>`)
         }
     })

@@ -38,6 +38,7 @@ export default defineConfig(({ mode }) => {
         input: {
           main: resolve(import.meta.dirname, 'index.html'),
           landing: resolve(import.meta.dirname, 'landing/index.html'),
+          gasAssist: resolve(import.meta.dirname, 'gas-assist/index.html'),
         },
       },
     },
