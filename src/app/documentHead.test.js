@@ -147,6 +147,17 @@ describe('landing page', () => {
         expect(html).toContain('href="/landing/faq/"')
         expect(html).toContain('href="/landing/gas-assist/"')
     })
+
+    it('shows network icons in a sticky auto-scrolling bar', () => {
+        expect(html).toContain('class="network-ticker"')
+        expect(html).toContain('/networkIcons/bsc.webp')
+        expect(html).toContain('BNB Smart Chain')
+
+        const css = read('landing/landing.css')
+        expect(css).toMatch(/\.site-chrome\s*\{[^}]*position:\s*sticky/)
+        expect(css).toContain('@keyframes network-ticker-scroll')
+        expect(css).toContain('animation-play-state: paused')
+    })
 })
 
 describe('FAQ page', () => {
