@@ -14,6 +14,34 @@ function read(path) {
     return readFileSync(resolve(path), 'utf8')
 }
 
+function decode(value) {
+    return String(value)
+        .replace(/&amp;/g, '&')
+        .replace(/&nbsp;/g, ' ')
+}
+
+function oneLine(value) {
+    return decode(value).replace(/\s+/g, ' ').trim()
+}
+
+function metaContent(html, attribute, name) {
+    const pattern = new RegExp(
+        `<meta\\s+${attribute}="${name}"[\\s\\S]*?content="([^"]+)"`,
+    )
+    return oneLine(pattern.exec(html)?.[1] ?? '')
+}
+
+function pageTitle(html) {
+    return oneLine(/<title>([^<]+)<\/title>/.exec(html)?.[1] ?? '')
+}
+
+function pageH1s(html) {
+    const body = html.replace(/<script[\s\S]*?<\/script>/g, '')
+    return [...body.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((match) => (
+        oneLine(match[1].replace(/<[^>]+>/g, ' '))
+    ))
+}
+
 function structuredData(html) {
     const blocks = [...html.matchAll(
         /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
@@ -30,14 +58,30 @@ describe.each([
     const html = read(path)
 
     it('carries a title and a meta description', () => {
-        const title = /<title>([^<]+)<\/title>/.exec(html)?.[1] ?? ''
+        const title = pageTitle(html)
         expect(title.length).toBeGreaterThan(10)
         expect(title.length).toBeLessThanOrEqual(70)
 
-        const description = /<meta\s+name="description"[\s\S]*?content="([^"]+)"/
-            .exec(html)?.[1] ?? ''
+        const description = metaContent(html, 'name', 'description')
         expect(description.length).toBeGreaterThan(50)
-        expect(description.length).toBeLessThanOrEqual(320)
+        expect(description.length).toBeLessThanOrEqual(160)
+    })
+
+    it('keeps one H1 that matches the title and description', () => {
+        const title = pageTitle(html)
+        const description = metaContent(html, 'name', 'description')
+        const headings = pageH1s(html)
+
+        expect(headings).toHaveLength(1)
+        const heading = headings[0]
+        expect(heading.length).toBeGreaterThan(8)
+        expect(title.toLowerCase().startsWith(heading.toLowerCase())).toBe(true)
+        expect(description.toLowerCase()).toContain(heading.toLowerCase())
+
+        expect(metaContent(html, 'property', 'og:title')).toBe(title)
+        expect(metaContent(html, 'property', 'og:description')).toBe(description)
+        expect(metaContent(html, 'name', 'twitter:title')).toBe(title)
+        expect(metaContent(html, 'name', 'twitter:description')).toBe(description)
     })
 
     it('declares its own canonical URL', () => {
