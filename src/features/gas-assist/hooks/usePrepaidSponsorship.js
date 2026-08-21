@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useConnection, useWalletClient } from 'wagmi'
+import { useConnection, useWalletClient } from '#wallet-runtime'
 
 import {
     authenticateSponsorshipWallet,

@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
 import { encodeFunctionData, isAddress } from 'viem'
-import { usePublicClient, useSendTransaction, useWalletClient } from 'wagmi'
+import { usePublicClient, useSendTransaction, useWalletClient } from '#wallet-runtime'
 import { isCanonicalPermit2Address } from '../../../web3/approvalTargets.js'
 
 function throwIfApprovalCancelled(signal) {

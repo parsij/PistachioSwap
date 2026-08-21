@@ -1,4 +1,4 @@
-import { useAppKit } from '@reown/appkit/react'
+import { useAppKit } from '#wallet-runtime'
 import { shortenAddress } from '../../../../services/address.js'
 
 export function WalletAvatar({ address, size = 'md' }) {

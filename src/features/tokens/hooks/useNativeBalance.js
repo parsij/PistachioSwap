@@ -1,4 +1,4 @@
-import { useBalance } from 'wagmi'
+import { useBalance } from '#wallet-runtime'
 import { formatEther } from 'viem'
 
 import { BSC_CHAIN_ID } from '../../../services/balances.js'

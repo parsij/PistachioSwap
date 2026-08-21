@@ -1,9 +1,10 @@
+import { isAddress } from 'viem'
 import {
+    useAccount,
     useAppKitAccount,
     useAppKitNetwork,
-} from '@reown/appkit/react'
-import { isAddress } from 'viem'
-import { useAccount, useChainId } from 'wagmi'
+    useChainId,
+} from '#wallet-runtime'
 
 export const BSC_CHAIN_ID = 56
 

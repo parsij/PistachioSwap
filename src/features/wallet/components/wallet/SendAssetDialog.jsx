@@ -15,7 +15,7 @@ import {
     usePublicClient,
     useSendTransaction,
     useWriteContract,
-} from 'wagmi'
+} from '#wallet-runtime'
 
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
 import TransactionStatusDialog from './TransactionStatusDialog.jsx'

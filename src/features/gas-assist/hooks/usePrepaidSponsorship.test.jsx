@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
     signPackage: vi.fn(),
 }))
 
-vi.mock('wagmi', () => ({
+vi.mock('#wallet-runtime', () => ({
     useConnection: () => ({ connector: { id: 'pistachio-local' } }),
     useWalletClient: () => ({ data: { account: { address: '0x1' }, request: vi.fn() } }),
 }))

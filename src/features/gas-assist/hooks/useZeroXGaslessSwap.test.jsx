@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
     status: vi.fn(),
 }))
 
-vi.mock('wagmi', () => ({ useWalletClient: () => ({ data: { signTypedData: mocks.signTypedData } }) }))
+vi.mock('#wallet-runtime', () => ({ useWalletClient: () => ({ data: { signTypedData: mocks.signTypedData } }) }))
 vi.mock('../services/gasAssist.js', async () => {
     const actual = await vi.importActual('../services/gasAssist.js')
     return {

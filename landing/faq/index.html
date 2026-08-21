@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Swap BEP-20 Tokens Without BNB | Pistachio Swap</title>
+    <title>FAQ: Swap Without BNB and Gas Assist | Pistachio Swap</title>
     <meta
       name="description"
-      content="Swap BEP-20 tokens without BNB with a self-custodial wallet and Gas Assist on BNB Chain. You keep the keys; fees are shown before you sign."
+      content="FAQ: swap without BNB and Gas Assist. Answers about BEP-20 swaps, the self-custodial wallet, and fees shown before you sign."
     />
-    <link rel="canonical" href="https://pistachioswap.com/landing/" />
+    <link rel="canonical" href="https://pistachioswap.com/landing/faq/" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta name="theme-color" content="#191919" />
     <meta name="color-scheme" content="dark" />
@@ -21,14 +21,14 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Pistachio Swap" />
-    <meta property="og:url" content="https://pistachioswap.com/landing/" />
+    <meta property="og:url" content="https://pistachioswap.com/landing/faq/" />
     <meta
       property="og:title"
-      content="Swap BEP-20 Tokens Without BNB | Pistachio Swap"
+      content="FAQ: Swap Without BNB and Gas Assist | Pistachio Swap"
     />
     <meta
       property="og:description"
-      content="Swap BEP-20 tokens without BNB with a self-custodial wallet and Gas Assist on BNB Chain. You keep the keys; fees are shown before you sign."
+      content="FAQ: swap without BNB and Gas Assist. Answers about BEP-20 swaps, the self-custodial wallet, and fees shown before you sign."
     />
     <meta property="og:image" content="https://pistachioswap.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
@@ -39,11 +39,11 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:title"
-      content="Swap BEP-20 Tokens Without BNB | Pistachio Swap"
+      content="FAQ: Swap Without BNB and Gas Assist | Pistachio Swap"
     />
     <meta
       name="twitter:description"
-      content="Swap BEP-20 tokens without BNB with a self-custodial wallet and Gas Assist on BNB Chain. You keep the keys; fees are shown before you sign."
+      content="FAQ: swap without BNB and Gas Assist. Answers about BEP-20 swaps, the self-custodial wallet, and fees shown before you sign."
     />
     <meta name="twitter:image" content="https://pistachioswap.com/og-image.png" />
 
@@ -60,13 +60,77 @@
             "sameAs": ["https://github.com/parsij/PistachioSwap"]
           },
           {
-            "@type": "WebPage",
-            "@id": "https://pistachioswap.com/landing/#webpage",
-            "url": "https://pistachioswap.com/landing/",
-            "name": "Swap BEP-20 tokens without BNB",
-            "isPartOf": { "@id": "https://pistachioswap.com/#website" },
-            "about": { "@id": "https://pistachioswap.com/#organization" },
-            "inLanguage": "en"
+            "@type": "FAQPage",
+            "@id": "https://pistachioswap.com/landing/faq/#faq",
+            "url": "https://pistachioswap.com/landing/faq/",
+            "name": "FAQ: swap without BNB and Gas Assist",
+            "inLanguage": "en",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Can I swap BEP-20 tokens without BNB?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, when Gas Assist is available for that token and route. The gas is covered for you, and the cost is taken from the swap. It is not free: the fee is shown before you sign."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What is Gas Assist?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Gas Assist is a BNB Chain flow for wallets that hold BEP-20 tokens but no BNB to pay gas. The backend prepares an exact fee, approval, and swap package. You review the cost, then sign."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Pistachio Swap a self-custodial wallet?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Your tokens stay in your own wallet. Nothing moves until you sign a transaction you have seen in full."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does Pistachio Swap hold my funds?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Your tokens stay in your own wallet. Nothing moves until you sign a transaction you have seen in full."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Gas Assist free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Network cost, sponsorship cost, and Pistachio Swap fees are shown in the quote before you sign."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which networks are supported?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "25 EVM networks, including Ethereum, BNB Smart Chain, Polygon, Arbitrum, OP Mainnet, Base and Avalanche. Gas Assist runs on BNB Smart Chain only."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Do I need a special wallet?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Any standard EVM wallet works. Pistachio Wallet is an optional passkey-protected wallet that lives in your own browser."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Pistachio Swap audited?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Not yet. It is pre-release software and has not been independently audited. Use a separate wallet and small amounts."
+                }
+              }
+            ]
           },
           {
             "@type": "BreadcrumbList",
@@ -80,8 +144,14 @@
               {
                 "@type": "ListItem",
                 "position": 2,
-                "name": "Swap without BNB",
+                "name": "About",
                 "item": "https://pistachioswap.com/landing/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "FAQ",
+                "item": "https://pistachioswap.com/landing/faq/"
               }
             ]
           }
@@ -89,7 +159,7 @@
       }
     </script>
 
-    <link rel="stylesheet" href="./landing.css" />
+    <link rel="stylesheet" href="../landing.css" />
   </head>
 
   <body>
@@ -103,9 +173,8 @@
             Pistachio Swap
           </a>
           <nav class="header-nav" aria-label="About pages">
+            <a href="/landing/">About</a>
             <a href="/landing/gas-assist/">Gas Assist</a>
-            <a href="#networks">Networks</a>
-            <a href="#wallet">Wallet</a>
             <a href="/landing/faq/">FAQ</a>
           </nav>
           <a class="button button-primary" href="/">Open the wallet</a>
@@ -173,205 +242,42 @@
 
     <main id="main">
       <div class="shell">
-        <section class="hero">
-          <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Pre-release · not yet audited</p>
-          <h1>Swap BEP-20 tokens without BNB</h1>
+        <section class="hero page-hero">
+          <p class="crumbs">
+            <a href="/landing/">About</a>
+            · FAQ
+          </p>
+          <h1>FAQ: swap without BNB and Gas Assist</h1>
           <p class="hero-lede">
-            Pistachio Swap is a <span class="nowrap">self-custodial</span> crypto
-            wallet with Gas Assist on BNB Chain. Trade BEP-20 tokens even when
-            you hold no BNB for gas, and swap across 25 EVM networks.
-          </p>
-          <div class="hero-actions">
-            <a class="button button-primary button-lg" href="/">Open the wallet</a>
-            <a class="button button-ghost button-lg" href="/landing/gas-assist/">How Gas Assist works</a>
-          </div>
-          <p class="hero-note">No account · no email · your keys stay yours</p>
-        </section>
-
-        <dl class="stats">
-          <div class="stat">
-            <dt>EVM networks</dt>
-            <dd>25</dd>
-          </div>
-          <div class="stat">
-            <dt>Route providers</dt>
-            <dd>8</dd>
-          </div>
-          <div class="stat">
-            <dt>Custody of your keys</dt>
-            <dd>Yours</dd>
-          </div>
-          <div class="stat">
-            <dt>Signatures without review</dt>
-            <dd>0</dd>
-          </div>
-        </dl>
-
-        <section class="section" id="gas-assist">
-          <div class="section-head">
-            <h2>Gas assisted swaps on BNB Chain</h2>
-            <p>
-              Holding tokens you cannot move, because paying gas needs BNB you do
-              not have? That is what Gas Assist is for.
-            </p>
-          </div>
-
-          <div class="split">
-            <ol class="steps">
-              <li>
-                <strong>We prepare the whole swap</strong>
-                <span>The fee, the approval and the swap itself, as one exact package.</span>
-              </li>
-              <li>
-                <strong>You see the full cost first</strong>
-                <span>The exact fee and the minimum you receive, before anything is signed.</span>
-              </li>
-              <li>
-                <strong>One approval covers it</strong>
-                <span>With Pistachio Wallet the package is authorized once, then signed on your device.</span>
-              </li>
-              <li>
-                <strong>All or nothing</strong>
-                <span>If anything changes mid-flow, the whole package is abandoned.</span>
-              </li>
-            </ol>
-
-            <aside class="callout">
-              <h3>Gas Assist is not free</h3>
-              <p>
-                The network cost, the sponsorship cost and our fee are all shown in
-                the quote before you sign.
-              </p>
-              <p>
-                It is not available for every token or every route. When it is not,
-                the app says so instead of failing quietly.
-              </p>
-              <p>
-                <a href="/gas-assist/">Read the full Gas Assist guide →</a>
-              </p>
-            </aside>
-          </div>
-        </section>
-
-        <section class="section" id="how">
-          <div class="section-head">
-            <h2>A self-custodial wallet, not a custodian</h2>
-            <p>
-              Your tokens stay in your wallet. Nothing moves until you sign a
-              transaction you have seen in full.
-            </p>
-          </div>
-
-          <div class="cards">
-            <article class="card">
-              <span class="card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-                </svg>
-              </span>
-              <h3>You see the whole transaction</h3>
-              <p>
-                Where it goes, who can spend what, and how much — before you approve.
-                What gets broadcast is checked against what you saw.
-              </p>
-            </article>
-
-            <article class="card">
-              <span class="card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 12h18" />
-                  <path d="m14 5 7 7-7 7" />
-                  <path d="M10 19 3 12l7-7" />
-                </svg>
-              </span>
-              <h3>Routes compared after fees</h3>
-              <p>
-                Several exchanges and bridges are quoted, then ranked on what you
-                actually receive — not the headline number.
-              </p>
-            </article>
-
-            <article class="card">
-              <span class="card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 8v5" />
-                  <path d="M12 16h.01" />
-                </svg>
-              </span>
-              <h3>Fake tokens stay obvious</h3>
-              <p>
-                A token that copies a real name with lookalike letters is never shown
-                as the real thing. Unverified holdings are kept separate.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section class="section" id="networks">
-          <div class="section-head">
-            <h2>25 EVM networks</h2>
-            <p>Gas assisted swaps run on BNB Smart Chain. Other networks use a normal swap when you hold gas.</p>
-          </div>
-
-          <p class="providers">
-            Routed through Across, deBridge, Relay, Chainflip, 0x, KyberSwap and
-            Uniswap.
+            Short answers about the self-custodial wallet, BEP-20 swaps with no
+            BNB, and Gas Assist on BNB Chain.
           </p>
         </section>
 
-        <section class="section" id="wallet">
-          <div class="section-head">
-            <h2>Your wallet, or the one in your browser</h2>
-            <p>
-              Any standard EVM wallet works. Pistachio Wallet is optional, and lives
-              on your device.
-            </p>
-          </div>
-
-          <div class="cards">
-            <article class="card">
-              <h3>Keys never leave your device</h3>
-              <p>
-                Your key is held in an isolated worker and wiped on lock. The stored
-                vault is encrypted and unlocked by your passkey.
-              </p>
-            </article>
-            <article class="card">
-              <h3>A passkey check every time</h3>
-              <p>
-                Signing, revealing a recovery phrase or exporting a key each need a
-                fresh check — not one unlock for the whole session.
-              </p>
-            </article>
-            <article class="card">
-              <h3>You can always take it with you</h3>
-              <p>
-                Export a recovery phrase or an encrypted backup whenever you like.
-                Removing it here does not touch anything on-chain.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section class="section" id="faq">
-          <div class="section-head">
-            <h2>Common questions</h2>
-            <p>
-              Short answers below.
-              <a href="/landing/faq/">See the full FAQ</a>
-              for more detail.
-            </p>
-          </div>
-
+        <section class="section" style="padding-top: 36px">
           <div class="faq">
-            <details>
+            <details open>
               <summary>Can I swap BEP-20 tokens without BNB?</summary>
               <div>
                 <p>
                   Yes, when Gas Assist is available for that token and route. The
                   gas is covered for you, and the cost is taken from the swap.
                   It is not free: the fee is shown before you sign.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>What is Gas Assist?</summary>
+              <div>
+                <p>
+                  Gas Assist is a BNB Chain flow for wallets that hold BEP-20
+                  tokens but no BNB to pay gas. The backend prepares an exact
+                  fee, approval, and swap package. You review the cost, then sign.
+                </p>
+                <p>
+                  <a href="/landing/gas-assist/">How Gas Assist works</a>
+                  explains the steps in more detail.
                 </p>
               </div>
             </details>
@@ -387,11 +293,52 @@
             </details>
 
             <details>
-              <summary>Does Gas Assist work on every network?</summary>
+              <summary>Does Pistachio Swap hold my funds?</summary>
               <div>
                 <p>
-                  No. Gas Assist runs on BNB Smart Chain. You can still swap on the
-                  other supported EVM networks when you hold that network’s gas token.
+                  No. Your tokens stay in your own wallet. Nothing moves until you
+                  sign a transaction you have seen in full.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>Is Gas Assist free?</summary>
+              <div>
+                <p>
+                  No. Network cost, sponsorship cost, and Pistachio Swap fees are
+                  shown in the quote before you sign.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>Which networks are supported?</summary>
+              <div>
+                <p>
+                  25 EVM networks, including Ethereum, BNB Smart Chain, Polygon,
+                  Arbitrum, OP Mainnet, Base and Avalanche. Gas Assist runs on BNB
+                  Smart Chain only.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>Do I need a special wallet?</summary>
+              <div>
+                <p>
+                  No. Any standard EVM wallet works. Pistachio Wallet is an optional
+                  passkey-protected wallet that lives in your own browser.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>Is Pistachio Swap audited?</summary>
+              <div>
+                <p>
+                  Not yet. It is pre-release software and has not been independently
+                  audited. Use a separate wallet and small amounts.
                 </p>
               </div>
             </details>
@@ -408,15 +355,11 @@
         </section>
 
         <section class="cta">
-          <h2>Open the wallet and look around</h2>
-          <p>Nothing to sign up for. Connect only when you want to trade.</p>
+          <h2>Still want to try a swap?</h2>
+          <p>Open the wallet. Connect only when you want to trade.</p>
           <div class="hero-actions">
             <a class="button button-primary button-lg" href="/">Open the wallet</a>
-            <a
-              class="button button-ghost button-lg"
-              href="https://github.com/parsij/PistachioSwap"
-              rel="noopener"
-            >Read the source</a>
+            <a class="button button-ghost button-lg" href="/landing/gas-assist/">How Gas Assist works</a>
           </div>
         </section>
       </div>

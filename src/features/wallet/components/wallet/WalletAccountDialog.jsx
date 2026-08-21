@@ -19,7 +19,7 @@ import {
     X,
 } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useDisconnect } from 'wagmi'
+import { useDisconnect } from '#wallet-runtime'
 
 import ReceiveDialog from './ReceiveDialog.jsx'
 import SendAssetDialog from './SendAssetDialog.jsx'
