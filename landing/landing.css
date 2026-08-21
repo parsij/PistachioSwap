@@ -288,6 +288,9 @@ p {
     width: 22px;
     height: 22px;
     object-fit: contain;
+    border-radius: 50%;
+    clip-path: circle(50%);
+    background: var(--panel-raised);
 }
 
 @keyframes network-ticker-scroll {

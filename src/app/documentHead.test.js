@@ -197,7 +197,7 @@ describe('landing page', () => {
     it('shows network icons in a sticky auto-scrolling bar', () => {
         expect(html).toContain('class="network-ticker"')
         expect(html).toContain('class="site-nav"')
-        expect(html).toContain('/networkIcons/bsc.webp')
+        expect(html).toContain('/icons/bnb.svg')
         expect(html).toContain('BNB Smart Chain')
         expect(html).toContain('ticker.js')
         expect(html).toContain('type="module"')
@@ -207,6 +207,7 @@ describe('landing page', () => {
         expect(css).toContain('@keyframes network-ticker-scroll')
         expect(css).toContain('animation-play-state: paused')
         expect(css).toContain('cursor: grab')
+        expect(css).toContain('clip-path: circle(50%)')
         expect(css).toMatch(/\.site-nav\s*\{[^}]*background:\s*transparent/)
         expect(css).toContain('color: #f4f4f4')
     })
