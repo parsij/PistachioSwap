@@ -142,7 +142,7 @@ p {
     display: flex;
     align-items: center;
     gap: 26px;
-    color: var(--muted);
+    color: #f4f4f4;
     font-size: 15px;
 }
 
@@ -151,7 +151,7 @@ p {
 }
 
 .header-nav a:hover {
-    color: var(--text);
+    color: #ffffff;
     text-decoration: none;
 }
 
@@ -205,16 +205,13 @@ p {
     position: sticky;
     top: 0;
     z-index: 20;
-    border-bottom: 1px solid var(--border);
-    background: rgb(25 25 25 / 90%);
-    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgb(255 255 255 / 6%);
+    background: rgb(25 25 25 / 42%);
+    backdrop-filter: blur(14px);
 }
 
 .site-nav {
-    background: rgb(255 255 255 / 8%);
-    border-bottom: 1px solid rgb(255 255 255 / 12%);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    background: transparent;
 }
 
 .network-ticker {

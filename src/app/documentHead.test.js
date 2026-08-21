@@ -206,7 +206,8 @@ describe('landing page', () => {
         expect(css).toContain('@keyframes network-ticker-scroll')
         expect(css).toContain('animation-play-state: paused')
         expect(css).toContain('cursor: grab')
-        expect(css).toMatch(/\.site-nav\s*\{[^}]*background:\s*rgb\(255 255 255/)
+        expect(css).toMatch(/\.site-nav\s*\{[^}]*background:\s*transparent/)
+        expect(css).toContain('color: #f4f4f4')
     })
 })
 
