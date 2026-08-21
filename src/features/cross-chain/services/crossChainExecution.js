@@ -7,12 +7,12 @@ import {
     isHex,
 } from 'viem'
 import { sendTransaction } from 'viem/actions'
-import {
-    getAccount,
-    waitForTransactionReceipt,
-} from 'wagmi/actions'
 import { multiplyUsdAmount } from '../../../services/fiatValue.js'
 import { withPreparedSourceGasCosts } from './crossChainRoutes.js'
+
+async function loadWagmiActions() {
+    return import('wagmi/actions')
+}
 
 const CHAIN_STATE_TIMEOUT_MS = 10_000
 const CHAIN_STATE_POLL_MS = 100
@@ -149,13 +149,14 @@ export async function waitForSourceChain({
     config,
     sourceChainId,
     timeoutMs = CHAIN_STATE_TIMEOUT_MS,
-    getAccountState = getAccount,
+    getAccountState,
     now = Date.now,
     sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay)),
 }) {
+    const resolveAccount = getAccountState ?? (await loadWagmiActions()).getAccount
     const deadline = now() + timeoutMs
     do {
-        const account = getAccountState(config)
+        const account = resolveAccount(config)
         if (Number(account.chainId) === Number(sourceChainId)) return account
         await sleep(CHAIN_STATE_POLL_MS)
     } while (now() < deadline)
@@ -193,15 +194,16 @@ export async function resolveCurrentCrossChainWallet({
     destinationChainId = null,
     switchNetwork,
     onPhase,
-    getAccountState = getAccount,
+    getAccountState,
     createClient = createWalletClient,
     createTransport = custom,
 }) {
+    const resolveAccount = getAccountState ?? (await loadWagmiActions()).getAccount
     const baseMetadata = {
         sourceChainId: sourceChain.id,
         destinationChainId,
     }
-    let account = getAccountState(config)
+    let account = resolveAccount(config)
     if (Number(account.chainId) !== Number(sourceChain.id)) {
         onPhase?.('switch-chain', baseMetadata)
         try {
@@ -209,7 +211,7 @@ export async function resolveCurrentCrossChainWallet({
             account = await waitForSourceChain({
                 config,
                 sourceChainId: sourceChain.id,
-                getAccountState,
+                getAccountState: resolveAccount,
             })
         } catch (error) {
             throw executionError(
@@ -367,12 +369,13 @@ export async function waitForCrossChainApproval({
     chainId,
     hash,
     onPhase,
-    wait = waitForTransactionReceipt,
+    wait,
 }) {
+    const waitForReceipt = wait ?? (await loadWagmiActions()).waitForTransactionReceipt
     const metadata = { sourceChainId: chainId, transactionHash: hash }
     onPhase?.('wait-approval', metadata)
     try {
-        const receipt = await wait(config, { chainId, hash, confirmations: 1 })
+        const receipt = await waitForReceipt(config, { chainId, hash, confirmations: 1 })
         if (receipt.status !== 'success') throw new Error('The approval transaction reverted.')
         return receipt
     } catch (error) {

@@ -3,26 +3,42 @@ import { createRoot } from 'react-dom/client'
 
 import AppErrorBoundary from './app/AppErrorBoundary.jsx'
 import AppFatalError from './app/AppFatalError.jsx'
+import { registerWalletRuntimeLoader } from './web3/walletRuntime.js'
 import './index.css'
 
 const root = createRoot(document.getElementById('root'))
+const kitHost = document.getElementById('wallet-kit-root')
+let kitRoot = null
 
 /*
- * AppKit validates its configuration while its module is evaluated, so a bad
- * or missing project ID throws before React can mount. Importing it lazily
- * keeps that failure inside a catch and shows the fatal-error screen instead
- * of leaving a blank document.
+ * AppKit and Wagmi stay out of the first visit. The swap UI mounts on its own;
+ * Connect wallet dynamically imports the provider into a sibling React root so
+ * the swap tree is not remounted.
  */
-Promise.all([
-    import('./App.jsx'),
-    import('./web3/AppKitProvider.jsx'),
-]).then(([{ default: App }, { default: AppKitProvider }]) => {
+registerWalletRuntimeLoader(async () => {
+    const [{ default: AppKitProvider }, { default: LiveWalletBindings }] =
+        await Promise.all([
+            import('./web3/AppKitProvider.jsx'),
+            import('./web3/LiveWalletBindings.jsx'),
+        ])
+    if (!kitHost) {
+        throw new Error('Wallet host element #wallet-kit-root is missing.')
+    }
+    if (!kitRoot) kitRoot = createRoot(kitHost)
+    kitRoot.render(
+        <StrictMode>
+            <AppKitProvider>
+                <LiveWalletBindings />
+            </AppKitProvider>
+        </StrictMode>,
+    )
+})
+
+import('./App.jsx').then(({ default: App }) => {
     root.render(
         <StrictMode>
             <AppErrorBoundary>
-                <AppKitProvider>
-                    <App />
-                </AppKitProvider>
+                <App />
             </AppErrorBoundary>
         </StrictMode>,
     )

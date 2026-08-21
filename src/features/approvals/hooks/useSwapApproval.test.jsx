@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     sendTransaction: vi.fn(),
 }))
 
-vi.mock('wagmi', () => ({
+vi.mock('#wallet-runtime', () => ({
     usePublicClient: () => ({
         readContract: mocks.readContract,
         waitForTransactionReceipt: mocks.waitForReceipt,

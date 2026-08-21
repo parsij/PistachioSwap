@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const receiptState = vi.hoisted(() => ({ isSuccess: false, isError: false }))
 
-vi.mock('wagmi', () => ({
+vi.mock('#wallet-runtime', () => ({
     useWaitForTransactionReceipt: () => receiptState,
 }))
 

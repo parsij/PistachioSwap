@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useWaitForTransactionReceipt } from 'wagmi'
+import { useWaitForTransactionReceipt } from '#wallet-runtime'
 
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
 

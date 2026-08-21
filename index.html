@@ -28,7 +28,7 @@
     />
     <meta
       property="og:description"
-      content="A self-custodial crypto wallet with Gas Assist: swap BEP-20 tokens on BNB Chain even with no BNB for gas, across 25 EVM networks."
+      content="Pistachio Swap is a self-custodial crypto wallet with Gas Assist: swap BEP-20 tokens on BNB Chain even with no BNB for gas, across 25 EVM networks."
     />
     <meta property="og:image" content="https://pistachioswap.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
@@ -43,7 +43,7 @@
     />
     <meta
       name="twitter:description"
-      content="A self-custodial crypto wallet with Gas Assist: swap BEP-20 tokens on BNB Chain even with no BNB for gas, across 25 EVM networks."
+      content="Pistachio Swap is a self-custodial crypto wallet with Gas Assist: swap BEP-20 tokens on BNB Chain even with no BNB for gas, across 25 EVM networks."
     />
     <meta name="twitter:image" content="https://pistachioswap.com/og-image.png" />
 
@@ -71,7 +71,7 @@
             "@id": "https://pistachioswap.com/#app",
             "name": "Pistachio Swap",
             "url": "https://pistachioswap.com/",
-            "description": "A self-custodial crypto wallet with Gas Assist: swap BEP-20 tokens on BNB Chain even with no BNB for gas, across 25 EVM networks.",
+            "description": "Pistachio Swap is a self-custodial crypto wallet with Gas Assist: swap BEP-20 tokens on BNB Chain even with no BNB for gas, across 25 EVM networks.",
             "applicationCategory": "FinanceApplication",
             "operatingSystem": "Web browser",
             "browserRequirements": "Requires JavaScript and a secure context.",
@@ -81,9 +81,101 @@
         ]
       }
     </script>
+
+    <style>
+      /*
+       * Static boot shell shown before React mounts. It gives Lighthouse and
+       * first-time visitors immediate content instead of a blank page while
+       * wallet bundles download and compile.
+       */
+      .app-boot-shell {
+        box-sizing: border-box;
+        min-height: 100vh;
+        padding: 53px 12px 2rem;
+        background: #191919;
+        color: #fff;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+
+      .app-boot-header,
+      .app-boot-card {
+        width: min(480px, calc(100vw - 24px));
+        margin-inline: auto;
+      }
+
+      .app-boot-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 72px;
+        margin-bottom: 0.5rem;
+      }
+
+      .app-boot-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+
+      .app-boot-brand img {
+        width: 24px;
+        height: 24px;
+      }
+
+      .app-boot-pill {
+        width: 108px;
+        height: 36px;
+        border-radius: 999px;
+        background: #252525;
+      }
+
+      .app-boot-card {
+        padding: 1rem;
+        border: 1px solid #353535;
+        border-radius: 22px;
+        background: #252525;
+      }
+
+      .app-boot-panel {
+        height: 136px;
+        margin-bottom: 0.5rem;
+        border-radius: 18px;
+        background: #191919;
+      }
+
+      .app-boot-panel:last-of-type {
+        height: 132px;
+      }
+
+      .app-boot-action {
+        height: 55px;
+        margin-top: 0.75rem;
+        border-radius: 18px;
+        background: #8ac27c;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="wallet-kit-root"></div>
+    <div id="root">
+      <div class="app-boot-shell" aria-hidden="true">
+        <header class="app-boot-header">
+          <div class="app-boot-brand">
+            <img src="/icons/PistachioLogo.svg" alt="" width="24" height="24" />
+            Pistachio Swap
+          </div>
+          <div class="app-boot-pill"></div>
+        </header>
+        <section class="app-boot-card" aria-hidden="true">
+          <div class="app-boot-panel"></div>
+          <div class="app-boot-panel"></div>
+          <div class="app-boot-action"></div>
+        </section>
+      </div>
+    </div>
     <noscript>
       <div style="max-width: 40rem; margin: 12vh auto 0; padding: 0 1.5rem; color: #fff; font-family: system-ui, sans-serif; text-align: center;">
         <h1 style="font-size: 1.5rem;">Pistachio Swap</h1>

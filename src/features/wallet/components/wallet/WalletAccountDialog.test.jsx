@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
     },
 }))
 
-vi.mock('wagmi', () => ({
+vi.mock('#wallet-runtime', () => ({
     useDisconnect: () => ({ mutateAsync: mocks.disconnect }),
     usePublicClient: () => mocks.publicClient,
     useSendTransaction: () => ({ mutateAsync: vi.fn() }),

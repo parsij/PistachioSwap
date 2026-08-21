@@ -71,24 +71,13 @@ const mocks = vi.hoisted(() => ({
     crossChainGasAssistState: null,
 }))
 
-vi.mock('@reown/appkit/react', () => ({
-    AppKitNetworkButton: () => (
-        <button
-            type="button"
-            data-testid="appkit-network-button"
-        >
-            BNB Chain
-        </button>
-    ),
+vi.mock('#wallet-runtime', () => ({
     useAppKit: () => ({ open: mocks.open }),
     useAppKitAccount: () => mocks.account,
     useAppKitNetwork: () => ({
         chainId: mocks.network.chainId,
         switchNetwork: mocks.switchNetwork,
     }),
-}))
-
-vi.mock('wagmi', () => ({
     useConfig: () => ({ state: {} }),
     useAccount: () => mocks.wagmiAccount,
     useBalance: (options) => {
@@ -1206,7 +1195,7 @@ describe('App wallet integration', () => {
         const { container, getByRole } = render(<App />)
         const amountInput = getByRole('textbox', { name: 'Sell amount' })
 
-        fireEvent.click(getByRole('button', { name: 'Use maximum BNB balance' }))
+        fireEvent.click(getByRole('button', { name: /Use maximum BNB balance/ }))
         expect(amountInput.value).toBe('0.0053')
         fireEvent.focus(amountInput)
         expect(amountInput.value).toBe('0.00529963167546908')
@@ -1258,7 +1247,7 @@ describe('App wallet integration', () => {
             .map((node) => node.closest('.ps-token-row'))
             .find(Boolean)
         fireEvent.click(usdcRow)
-        fireEvent.click(getByRole('button', { name: 'Use maximum USDC balance' }))
+        fireEvent.click(getByRole('button', { name: /Use maximum USDC balance/ }))
         expect(getByRole('textbox', { name: 'Sell amount' }).value).toBe('123.456789')
     })
 
@@ -1360,10 +1349,10 @@ describe('App wallet integration', () => {
         fireEvent.change(getByRole('textbox', { name: 'Sell amount' }), {
             target: { value: '1' },
         })
-        fireEvent.click(getByRole('button', { name: 'Show Sell amount in USD' }))
+        fireEvent.click(getByRole('button', { name: /Show Sell amount in USD/ }))
 
         expect(getByRole('textbox', { name: 'Sell USD amount' }).value).toBe('1')
-        expect(getByRole('button', { name: 'Show Sell amount in USDT' }).textContent)
+        expect(getByRole('button', { name: /Show Sell amount in USDT/ }).textContent)
             .toContain('1 USDT')
 
         fireEvent.change(getByRole('textbox', { name: 'Sell USD amount' }), {
@@ -1391,7 +1380,7 @@ describe('App wallet integration', () => {
         const { container, getAllByText, getByRole } = render(<App />)
         selectBuyToken(container, getAllByText)
 
-        fireEvent.click(getByRole('button', { name: 'Show Buy amount in USD' }))
+        fireEvent.click(getByRole('button', { name: /Show Buy amount in USD/ }))
         fireEvent.change(getByRole('textbox', { name: 'Buy USD amount' }), {
             target: { value: '9' },
         })
@@ -1409,7 +1398,7 @@ describe('App wallet integration', () => {
     it('keeps token mode and reports unavailable USD input when display price is unsafe or missing', () => {
         const { getByRole, getByText } = render(<App />)
 
-        fireEvent.click(getByRole('button', { name: 'Show Buy amount in USD' }))
+        fireEvent.click(getByRole('button', { name: /Show Buy amount in USD/ }))
 
         expect(getByText('USD input is unavailable for this token.')).toBeTruthy()
         expect(getByRole('textbox', { name: 'Buy amount' })).toBeTruthy()
@@ -2003,7 +1992,7 @@ describe('App wallet integration', () => {
             .find(Boolean))
         fireEvent.click(container.querySelector('.buy-token-position button'))
         fireEvent.click(findNativeBnbRow())
-        fireEvent.click(getByRole('button', { name: 'Show Sell amount in USD' }))
+        fireEvent.click(getByRole('button', { name: /Show Sell amount in USD/ }))
         fireEvent.change(getByRole('textbox', { name: 'Sell USD amount' }), {
             target: { value: '0.80' },
         })
@@ -2042,7 +2031,7 @@ describe('App wallet integration', () => {
             .find(Boolean))
         fireEvent.click(container.querySelector('.buy-token-position button'))
         fireEvent.click(findNativeBnbRow())
-        fireEvent.click(getByRole('button', { name: 'Show Sell amount in USD' }))
+        fireEvent.click(getByRole('button', { name: /Show Sell amount in USD/ }))
         fireEvent.change(getByRole('textbox', { name: 'Sell USD amount' }), {
             target: { value: '0.80' },
         })

@@ -5,6 +5,10 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 
+import { crawlerLandingPlugin } from './src/web3/crawlerLandingMiddleware.js'
+import { originCacheHeadersPlugin } from './src/web3/originCacheMiddleware.js'
+import { resolveModulePreloadDependencies } from './src/web3/walletChunkPreload.js'
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -14,10 +18,17 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      crawlerLandingPlugin(),
+      originCacheHeadersPlugin(),
       tailwindcss(),
       react(),
       babel({ presets: [reactCompilerPreset()] })
     ],
+    resolve: {
+      alias: {
+        '#wallet-runtime': resolve(import.meta.dirname, 'src/web3/walletRuntime.js'),
+      },
+    },
     server: {
       proxy: {
         '/api': {
@@ -27,17 +38,44 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      sourcemap: true,
+      modulePreload: {
+        resolveDependencies: resolveModulePreloadDependencies,
+      },
       rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (
+                id.includes('@reown/appkit')
+                || id.includes('@walletconnect')
+                || id.includes('wui-')
+              ) {
+                return 'appkit'
+              }
+              if (id.includes('wagmi')) {
+                return 'wagmi'
+              }
+              if (id.includes('ethers')) {
+                return 'ethers'
+              }
+              if (id.includes('motion')) {
+                return 'motion'
+              }
+            }
+          },
+        },
         /*
-         * Two entries. `index.html` stays the swap application at `/`, so no
-         * existing link moves. `landing/index.html` builds to
-         * `dist/landing/index.html`, which the existing static host serves
-         * directly — the marketing copy is real HTML rather than something a
-         * crawler has to execute React to see.
+         * App plus static HTML pages. `index.html` stays the swap application
+         * at `/`. Landing, FAQ, and Gas Assist build to `dist/landing/...`,
+         * and the dedicated guide stays at `dist/gas-assist/`, so crawlers
+         * can read them without executing the wallet bundle.
          */
         input: {
           main: resolve(import.meta.dirname, 'index.html'),
           landing: resolve(import.meta.dirname, 'landing/index.html'),
+          faq: resolve(import.meta.dirname, 'landing/faq/index.html'),
+          landingGasAssist: resolve(import.meta.dirname, 'landing/gas-assist/index.html'),
           gasAssist: resolve(import.meta.dirname, 'gas-assist/index.html'),
         },
       },
