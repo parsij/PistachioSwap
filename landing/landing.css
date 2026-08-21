@@ -206,13 +206,24 @@ p {
     top: 0;
     z-index: 20;
     border-bottom: 1px solid var(--border);
-    background: rgb(25 25 25 / 94%);
+    background: rgb(25 25 25 / 90%);
     backdrop-filter: blur(16px);
+}
+
+.site-nav {
+    background: rgb(255 255 255 / 8%);
+    border-bottom: 1px solid rgb(255 255 255 / 12%);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
 }
 
 .network-ticker {
     overflow: hidden;
-    border-top: 1px solid var(--border);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    border-top: 1px solid transparent;
     mask-image: linear-gradient(
         90deg,
         transparent,
@@ -222,14 +233,23 @@ p {
     );
 }
 
+.network-ticker.is-dragging {
+    cursor: grabbing;
+}
+
 .network-ticker-track {
     display: flex;
     width: max-content;
     animation: network-ticker-scroll 48s linear infinite;
+    will-change: transform;
 }
 
 .network-ticker:hover .network-ticker-track {
     animation-play-state: paused;
+}
+
+.network-ticker.is-js .network-ticker-track {
+    animation: none;
 }
 
 .network-ticker-list {
@@ -808,7 +828,7 @@ p {
         animation: none;
     }
 
-    .network-ticker {
+    .network-ticker:not(.is-js) {
         overflow-x: auto;
         mask-image: none;
     }

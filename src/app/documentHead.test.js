@@ -196,13 +196,17 @@ describe('landing page', () => {
 
     it('shows network icons in a sticky auto-scrolling bar', () => {
         expect(html).toContain('class="network-ticker"')
+        expect(html).toContain('class="site-nav"')
         expect(html).toContain('/networkIcons/bsc.webp')
         expect(html).toContain('BNB Smart Chain')
+        expect(html).toContain('ticker.js')
 
         const css = read('landing/landing.css')
         expect(css).toMatch(/\.site-chrome\s*\{[^}]*position:\s*sticky/)
         expect(css).toContain('@keyframes network-ticker-scroll')
         expect(css).toContain('animation-play-state: paused')
+        expect(css).toContain('cursor: grab')
+        expect(css).toMatch(/\.site-nav\s*\{[^}]*background:\s*rgb\(255 255 255/)
     })
 })
 
