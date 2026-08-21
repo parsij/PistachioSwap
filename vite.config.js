@@ -5,6 +5,10 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 
+import { crawlerLandingPlugin } from './src/web3/crawlerLandingMiddleware.js'
+import { originCacheHeadersPlugin } from './src/web3/originCacheMiddleware.js'
+import { resolveModulePreloadDependencies } from './src/web3/walletChunkPreload.js'
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -14,10 +18,17 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      crawlerLandingPlugin(),
+      originCacheHeadersPlugin(),
       tailwindcss(),
       react(),
       babel({ presets: [reactCompilerPreset()] })
     ],
+    resolve: {
+      alias: {
+        '#wallet-runtime': resolve(import.meta.dirname, 'src/web3/walletRuntime.js'),
+      },
+    },
     server: {
       proxy: {
         '/api': {
@@ -28,6 +39,9 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       sourcemap: true,
+      modulePreload: {
+        resolveDependencies: resolveModulePreloadDependencies,
+      },
       rollupOptions: {
         output: {
           manualChunks(id) {
@@ -39,7 +53,7 @@ export default defineConfig(({ mode }) => {
               ) {
                 return 'appkit'
               }
-              if (id.includes('wagmi') || id.includes('viem')) {
+              if (id.includes('wagmi')) {
                 return 'wagmi'
               }
               if (id.includes('ethers')) {

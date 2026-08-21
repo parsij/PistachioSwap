@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAppKit, useAppKitNetwork } from '@reown/appkit/react'
 import { useReducedMotion } from 'motion/react'
-import { useConfig, usePublicClient, useSendTransaction } from 'wagmi'
+import {
+    useAppKit,
+    useAppKitNetwork,
+    useConfig,
+    usePublicClient,
+    useSendTransaction,
+} from '#wallet-runtime'
 import { parseEther } from 'viem'
 import { useSwapSettings } from '../../settings/hooks/useSwapSettings.js'
 import { useWalletState } from '../../wallet/hooks/useWalletState.js'

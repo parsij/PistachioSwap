@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
     },
 }))
 
-vi.mock('wagmi', () => ({
+vi.mock('#wallet-runtime', () => ({
     usePublicClient: () => mocks.publicClient,
     useSendTransaction: () => ({ mutateAsync: mocks.send }),
     useWriteContract: () => ({ mutateAsync: mocks.write }),

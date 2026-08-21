@@ -71,24 +71,13 @@ const mocks = vi.hoisted(() => ({
     crossChainGasAssistState: null,
 }))
 
-vi.mock('@reown/appkit/react', () => ({
-    AppKitNetworkButton: () => (
-        <button
-            type="button"
-            data-testid="appkit-network-button"
-        >
-            BNB Chain
-        </button>
-    ),
+vi.mock('#wallet-runtime', () => ({
     useAppKit: () => ({ open: mocks.open }),
     useAppKitAccount: () => mocks.account,
     useAppKitNetwork: () => ({
         chainId: mocks.network.chainId,
         switchNetwork: mocks.switchNetwork,
     }),
-}))
-
-vi.mock('wagmi', () => ({
     useConfig: () => ({ state: {} }),
     useAccount: () => mocks.wagmiAccount,
     useBalance: (options) => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useWalletClient } from 'wagmi'
+import { useWalletClient } from '#wallet-runtime'
 
 import {
     createGaslessQuote,
