@@ -1,16 +1,20 @@
 /**
- * Cloudflare Worker for pistachioswap.com.
+ * Optional Cloudflare Worker for pistachioswap.com.
  *
- * 1. Crawlers and assistants requesting `/` or `/index.html` receive the
- *    landing HTML (no wallet JavaScript).
- * 2. Cache-Control:
- *    - `/assets/*`  1 year, immutable
- *    - icons/favicons  1 week
- *    - `/` and `/index.html`  no-store
- *    - `/api/*`  no-store
+ * Skip this if you merged deploy/nginx-origin-cache.conf into origin nginx.
+ * Nginx Cache-Control is enough: Cloudflare honors origin TTLs for JS/CSS/images.
  *
- * Paste this into a Worker route covering pistachioswap.com/*. After
- * deploy, disable Cloudflare's managed robots.txt so the repo file wins.
+ * Use this Worker only when you cannot edit nginx. Then:
+ *   Workers & Pages → Create → paste this file →
+ *   Add route pistachioswap.com/* (and www if used).
+ *
+ * Cache-Control:
+ *   /assets/*           1 year, immutable
+ *   icons/favicons      1 week
+ *   / and /index.html   no-store
+ *   /api/*              no-store
+ *
+ * Crawlers requesting / receive /landing/ HTML (no wallet JavaScript).
  */
 
 const BOT_USER_AGENT_PATTERN = /Googlebot|Google-Extended|GoogleOther|bingbot|BingPreview|GPTBot|ChatGPT-User|OAI-SearchBot|ClaudeBot|Claude-User|anthropic-ai|PerplexityBot|CCBot|Bytespider|Applebot|Amazonbot|Slurp|DuckDuckBot|YandexBot|Baiduspider|facebookexternalhit|meta-externalagent/i

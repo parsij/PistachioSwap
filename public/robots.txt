@@ -1,16 +1,7 @@
-# Cloudflare currently prepends a "Managed content" block that Disallows
-# GPTBot, ClaudeBot, and Google-Extended. That block wins until you turn it
-# off. In Cloudflare:
-#
-#   1. Open the pistachioswap.com zone.
-#   2. Go to Settings → Crawlers, or Security → Bots → AI Crawl Control
-#      (the label varies by dashboard version).
-#   3. Disable "Manage robots.txt" / "Block AI crawlers" / "Cloudflare
-#      managed content" so THIS file is the live robots.txt.
-#   4. Confirm https://pistachioswap.com/robots.txt starts with these
-#      comments and has no "# BEGIN Cloudflare Managed content" section.
-#   5. Leave Googlebot allowed. Do not add a WAF rule that challenges
-#      Googlebot on /landing/.
+# This file is served as https://pistachioswap.com/robots.txt from public/.
+# Cloudflare managed robots.txt is already off. Leave it off so this file
+# is not prepended with "# BEGIN Cloudflare Managed content".
+# Do not WAF-challenge Googlebot on /landing/.
 
 # Google Search may read the lightweight HTML pages. It does not need the
 # hashed wallet JavaScript under /assets/.
