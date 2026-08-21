@@ -200,6 +200,7 @@ describe('landing page', () => {
         expect(html).toContain('/networkIcons/bsc.webp')
         expect(html).toContain('BNB Smart Chain')
         expect(html).toContain('ticker.js')
+        expect(html).toContain('type="module"')
 
         const css = read('landing/landing.css')
         expect(css).toMatch(/\.site-chrome\s*\{[^}]*position:\s*sticky/)

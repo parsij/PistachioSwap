@@ -51,5 +51,8 @@ describe('wallet JavaScript stays off first visit and off crawler HTML', () => {
         expect(html).not.toContain('LiveWalletBindings')
         expect(html).not.toContain('AppKitProvider')
         expect(readFileSync('dist/landing/index.html', 'utf8')).not.toMatch(/\/assets\/main-/)
+        const landing = readFileSync('dist/landing/index.html', 'utf8')
+        expect(landing).toMatch(/\/assets\/ticker-[^"]+\.js/)
+        expect(landing).not.toContain('src="./ticker.js"')
     })
 })

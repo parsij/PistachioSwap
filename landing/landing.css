@@ -215,11 +215,14 @@ p {
 }
 
 .network-ticker {
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     cursor: grab;
-    touch-action: none;
+    touch-action: pan-x;
     user-select: none;
     -webkit-user-select: none;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
     border-top: 1px solid transparent;
     mask-image: linear-gradient(
         90deg,
@@ -230,8 +233,13 @@ p {
     );
 }
 
+.network-ticker::-webkit-scrollbar {
+    display: none;
+}
+
 .network-ticker.is-dragging {
     cursor: grabbing;
+    scroll-behavior: auto;
 }
 
 .network-ticker li,
@@ -246,7 +254,6 @@ p {
     display: flex;
     width: max-content;
     animation: network-ticker-scroll 48s linear infinite;
-    will-change: transform;
 }
 
 .network-ticker:hover .network-ticker-track {
@@ -255,6 +262,7 @@ p {
 
 .network-ticker.is-js .network-ticker-track {
     animation: none;
+    transform: none;
 }
 
 .network-ticker-list {
