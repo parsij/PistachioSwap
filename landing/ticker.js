@@ -1,32 +1,22 @@
 /*
- * Auto-scrolling chain bar that can be grabbed and dragged left or right.
- * CSS animation remains the no-JS fallback.
+ * Auto-scrolling chain bar. Hold the left mouse button (or a finger) and
+ * drag left or right to scrub. CSS animation remains the no-JS fallback.
  */
 (() => {
     const LOOP_SECONDS = 48
-
-    function translateX(element) {
-        const transform = getComputedStyle(element).transform
-        if (!transform || transform === 'none') return 0
-        const matrix3d = transform.match(/^matrix3d\((.+)\)$/)
-        if (matrix3d) return Number(matrix3d[1].split(',')[12]) || 0
-        const matrix = transform.match(/^matrix\((.+)\)$/)
-        if (matrix) return Number(matrix[1].split(',')[4]) || 0
-        return 0
-    }
 
     function setup(root) {
         const track = root.querySelector('.network-ticker-track')
         if (!track) return
 
-        let offset = translateX(track)
+        root.classList.add('is-js')
+
+        let offset = 0
         let half = 0
         let dragging = false
-        let pointerId = null
         let lastX = 0
         let lastTime = 0
         let hoverPaused = false
-
         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 
         const measure = () => {
@@ -55,52 +45,71 @@
             requestAnimationFrame(tick)
         }
 
-        const onDown = (event) => {
-            if (event.pointerType === 'mouse' && event.button !== 0) return
-            dragging = true
-            pointerId = event.pointerId
-            lastX = event.clientX
-            lastTime = 0
-            root.classList.add('is-dragging')
-            try {
-                root.setPointerCapture(event.pointerId)
-            } catch {
-                /* older browsers */
-            }
-            event.preventDefault()
-        }
-
-        const onMove = (event) => {
-            if (!dragging || event.pointerId !== pointerId) return
-            offset = wrap(offset + (event.clientX - lastX))
-            lastX = event.clientX
+        const dragTo = (clientX) => {
+            if (!dragging) return
+            if (half <= 0) measure()
+            offset = wrap(offset + (clientX - lastX))
+            lastX = clientX
             apply()
         }
 
-        const onUp = (event) => {
-            if (!dragging || event.pointerId !== pointerId) return
+        const endDrag = () => {
+            if (!dragging) return
             dragging = false
-            pointerId = null
             lastTime = 0
             root.classList.remove('is-dragging')
             hoverPaused = root.matches(':hover')
+            window.removeEventListener('pointermove', onWindowPointerMove, true)
+            window.removeEventListener('pointerup', onWindowPointerUp, true)
+            window.removeEventListener('mousemove', onWindowPointerMove, true)
+            window.removeEventListener('mouseup', onWindowPointerUp, true)
         }
 
-        root.classList.add('is-js')
-        measure()
-        offset = wrap(offset)
-        apply()
+        const startDrag = (clientX) => {
+            if (dragging) return
+            if (half <= 0) measure()
+            dragging = true
+            lastX = clientX
+            lastTime = 0
+            hoverPaused = false
+            root.classList.add('is-dragging')
+            window.addEventListener('pointermove', onWindowPointerMove, true)
+            window.addEventListener('pointerup', onWindowPointerUp, true)
+            window.addEventListener('mousemove', onWindowPointerMove, true)
+            window.addEventListener('mouseup', onWindowPointerUp, true)
+        }
 
-        root.addEventListener('pointerdown', onDown)
-        root.addEventListener('pointermove', onMove)
-        root.addEventListener('pointerup', onUp)
-        root.addEventListener('pointercancel', onUp)
+        const onWindowPointerMove = (event) => {
+            dragTo(event.clientX)
+        }
+
+        const onWindowPointerUp = () => {
+            endDrag()
+        }
+
+        root.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            startDrag(event.clientX)
+        }, { passive: false })
+
+        root.addEventListener('mousedown', (event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            startDrag(event.clientX)
+        })
+
+        root.addEventListener('dragstart', (event) => {
+            event.preventDefault()
+        })
+
         root.addEventListener('pointerenter', () => {
             if (!dragging) hoverPaused = true
         })
         root.addEventListener('pointerleave', () => {
             if (!dragging) hoverPaused = false
         })
+
         window.addEventListener('resize', () => {
             const previous = half
             measure()
@@ -108,8 +117,18 @@
             apply()
         })
 
+        measure()
+        apply()
         requestAnimationFrame(tick)
     }
 
-    document.querySelectorAll('.network-ticker').forEach(setup)
+    const start = () => {
+        document.querySelectorAll('.network-ticker').forEach(setup)
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start)
+    } else {
+        start()
+    }
 })()

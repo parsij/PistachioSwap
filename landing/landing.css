@@ -237,6 +237,14 @@ p {
     cursor: grabbing;
 }
 
+.network-ticker li,
+.network-ticker img,
+.network-ticker span {
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
 .network-ticker-track {
     display: flex;
     width: max-content;
