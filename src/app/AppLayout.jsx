@@ -18,20 +18,6 @@ const legalSeparatorStyle = {
     opacity: 0.5,
 }
 
-const coldWalletSectionStyle = {
-    marginTop: '0.5rem',
-    fontSize: '0.75rem',
-    lineHeight: 1.45,
-}
-
-const coldWalletHeadingStyle = {
-    margin: 0,
-}
-
-const coldWalletItemStyle = {
-    margin: '0.2rem 0 0',
-}
-
 const showLegalFooter = import.meta.env.PROD
 
 /**
@@ -73,12 +59,6 @@ export default function AppLayout({ style, header, children, overlays }) {
                     <a href="/legal/third-party/" style={legalLinkStyle}>
                         Legal &amp; third-party notices
                     </a>
-                    <div style={coldWalletSectionStyle}>
-                        <p style={coldWalletHeadingStyle}>Pistachio Swap cold wallets:</p>
-                        <p style={coldWalletItemStyle}>
-                            PistachioSwap: Cold Wallet 1 — 0x2941909551C7ceFd9EbEB1C5200D8B614CF887Ca
-                        </p>
-                    </div>
                 </footer>
             )}
             {overlays}
