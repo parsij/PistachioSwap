@@ -7,6 +7,15 @@ export function ChevronDownIcon({ className = '' }) {
     )
 }
 
+/** Decorative hamburger glyph used by the mobile brand menu trigger. */
+export function MenuIcon({ className = '' }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+        </svg>
+    )
+}
+
 /** Decorative search glyph for the application header. */
 export function SearchIcon() {
     return (
