@@ -122,7 +122,9 @@ describe('crawler-facing static files', () => {
         expect(robots).toContain(`Sitemap: ${SITE}/sitemap.xml`)
         expect(robots).toContain('Disallow: /legal/third-party/')
         expect(robots).toMatch(/User-agent:\s*Googlebot[\s\S]*Allow:\s*\/landing/)
-        expect(robots).toMatch(/User-agent:\s*Google-Extended[\s\S]*Disallow:\s*\//)
+        expect(robots).toMatch(
+            /User-agent:\s*Google-Extended[\s\S]*Allow:\s*\/llms\.txt[\s\S]*Allow:\s*\/landing\/[\s\S]*Disallow:\s*\/assets\/[\s\S]*Disallow:\s*\//,
+        )
         expect(robots).toMatch(/User-agent:\s*ChatGPT-User[\s\S]*Allow:\s*\/landing/)
     })
 
