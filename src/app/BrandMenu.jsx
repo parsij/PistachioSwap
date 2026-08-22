@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeftRight, BookOpen, CircleHelp, Fuel, Github } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, CircleHelp, Fuel } from 'lucide-react'
 
-import { ChevronDownIcon, MenuIcon } from '../shared/components/AppIcons.jsx'
+import { ChevronDownIcon, GitHubIcon, MenuIcon } from '../shared/components/AppIcons.jsx'
 
 const LANDING_HREF = '/landing/'
 const MOBILE_MEDIA = '(max-width: 640px)'
@@ -113,7 +113,7 @@ function BrandMenuPanel({ id, mobile, onNavigate }) {
                     aria-label="GitHub"
                     onClick={onNavigate}
                 >
-                    <Github aria-hidden="true" />
+                    <GitHubIcon />
                 </a>
             </div>
         </nav>
