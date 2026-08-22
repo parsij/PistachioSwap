@@ -656,22 +656,42 @@ p {
 }
 
 .faq summary::after {
-    color: var(--subtle);
-    content: '+';
-    font-size: 22px;
-    font-weight: 400;
-    line-height: 1;
+    width: 9px;
+    height: 9px;
+    border-right: 2px solid var(--muted);
+    border-bottom: 2px solid var(--muted);
+    content: '';
+    flex: 0 0 9px;
+    transform: rotate(45deg) translate(-2px, -2px);
+    transition: transform 220ms ease, border-color 160ms ease;
 }
 
 .faq details[open] summary::after {
-    content: '−';
+    border-color: var(--accent);
+    transform: rotate(225deg) translate(-2px, -2px);
 }
 
 .faq details > div {
+    display: grid;
     max-width: 78ch;
-    padding: 0 4px 24px;
+    grid-template-rows: 0fr;
+    padding: 0 4px;
     color: var(--muted);
     font-size: 15px;
+    opacity: 0;
+    overflow: hidden;
+    transition: grid-template-rows 240ms ease, padding-bottom 240ms ease, opacity 180ms ease;
+}
+
+.faq details > div > * {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.faq details[open] > div {
+    grid-template-rows: 1fr;
+    padding-bottom: 24px;
+    opacity: 1;
 }
 
 .faq details > div p + p {
@@ -847,5 +867,12 @@ p {
     .network-ticker:not(.is-js) {
         overflow-x: auto;
         mask-image: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .faq summary::after,
+    .faq details > div {
+        transition-duration: 0.01ms;
     }
 }

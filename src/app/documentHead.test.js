@@ -210,6 +210,9 @@ describe('landing page', () => {
         expect(css).toContain('clip-path: circle(50%)')
         expect(css).toMatch(/\.site-nav\s*\{[^}]*background:\s*transparent/)
         expect(css).toContain('color: #f4f4f4')
+        expect(css).toContain('transform: rotate(225deg)')
+        expect(css).toContain('grid-template-rows: 0fr')
+        expect(css).toContain('grid-template-rows: 1fr')
     })
 })
 
