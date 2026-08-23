@@ -1,4 +1,5 @@
-import { useAppKit } from '#wallet-runtime'
+import { useState } from 'react'
+import { useAppKit, useWalletRuntimeStatus } from '#wallet-runtime'
 import { shortenAddress } from '../../../../services/address.js'
 
 export function WalletAvatar({ address, size = 'md' }) {
@@ -24,15 +25,31 @@ export default function WalletAccountButton({
     onConnectedClick,
 }) {
     const { open } = useAppKit()
+    const runtime = useWalletRuntimeStatus()
+    const [opening, setOpening] = useState(false)
+    const busy = opening || runtime.visible
+
+    async function handleConnect() {
+        if (busy) return
+        setOpening(true)
+        try {
+            await open({ view: 'Connect' })
+        } finally {
+            setOpening(false)
+        }
+    }
 
     if (!isConnected) {
         return (
             <button
                 type="button"
                 className="wallet-connect-button"
-                onClick={() => open({ view: 'Connect' })}
+                onClick={handleConnect}
+                aria-busy={busy || undefined}
+                aria-live="polite"
+                disabled={busy}
             >
-                Connect
+                {busy ? 'Connecting' : 'Connect'}
             </button>
         )
     }

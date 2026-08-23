@@ -25,6 +25,7 @@ import {
     publishReceiptResult,
     subscribeWalletQueries,
 } from './walletRuntime.js'
+import { forgetWalletSession, rememberWalletSession } from './walletSession.js'
 
 function BalanceBridge({ queryKey, address, chainId, enabled }) {
     const {
@@ -109,7 +110,11 @@ export default function LiveWalletBindings() {
     const config = useConfig()
     const connection = useConnection()
     const { data: walletClient } = useWalletClient()
-    const { mutateAsync: disconnect } = useDisconnect()
+    const { mutateAsync: disconnectWallet } = useDisconnect()
+    const disconnect = useCallback(async (...args) => {
+        forgetWalletSession()
+        return disconnectWallet(...args)
+    }, [disconnectWallet])
     const { mutateAsync: sendTransaction } = useSendTransaction()
     const { mutateAsync: writeContract } = useWriteContract()
     const queries = useSyncExternalStore(
@@ -131,6 +136,12 @@ export default function LiveWalletBindings() {
             return undefined
         }
     }, [config])
+
+    useEffect(() => {
+        if (account?.isConnected || wagmiAccount?.isConnected) {
+            rememberWalletSession()
+        }
+    }, [account?.isConnected, wagmiAccount?.isConnected])
 
     useEffect(() => {
         patchWalletRuntime({

@@ -28,6 +28,9 @@ describe('wallet JavaScript stays off first visit and off crawler HTML', () => {
         expect(main).toContain("import('./web3/AppKitProvider.jsx')")
         expect(main).toContain("import('./web3/LiveWalletBindings.jsx')")
         expect(main).toContain("import('./App.jsx')")
+        expect(main).toContain('hasPersistedWalletSession')
+        expect(main).toContain('scheduleWalletRuntimeWarmup')
+        expect(main).toContain('ensureWalletRuntime')
     })
 
     it('keeps landing pages free of the wallet entry script', () => {

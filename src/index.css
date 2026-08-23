@@ -1237,6 +1237,8 @@ button:disabled {
 }
 
 .primary-action {
+    position: relative;
+    overflow: hidden;
     width: 100%;
     height: var(--size-action-height);
     margin-top: var(--spacing-action-top);

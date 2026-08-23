@@ -102,6 +102,7 @@ vi.mock('#wallet-runtime', () => ({
         isSuccess: false,
         isError: false,
     }),
+    useWalletRuntimeStatus: () => ({ ready: false, loading: false, visible: false }),
 }))
 
 vi.mock('wagmi/actions', () => ({

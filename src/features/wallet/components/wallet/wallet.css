@@ -14,7 +14,44 @@
     font-weight: 650;
 }
 
-.wallet-connect-button { border-color: #8ac27c; background: #8ac27c; color: #122012; }
+.wallet-connect-button {
+    position: relative;
+    overflow: hidden;
+    border-color: #8ac27c;
+    background: #8ac27c;
+    color: #122012;
+}
+
+.wallet-connect-button[aria-busy='true'],
+.primary-action[aria-busy='true'] {
+    cursor: progress;
+}
+
+.wallet-connect-button[aria-busy='true']::after,
+.primary-action[aria-busy='true']::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        currentColor 40%,
+        currentColor 60%,
+        transparent
+    );
+    background-size: 40% 100%;
+    background-repeat: no-repeat;
+    animation: wallet-connect-bar 1.1s ease-in-out infinite;
+    content: '';
+    opacity: 0.55;
+}
+
+@keyframes wallet-connect-bar {
+    from { background-position: -40% 0; }
+    to { background-position: 140% 0; }
+}
 
 .wallet-avatar {
     display: grid;

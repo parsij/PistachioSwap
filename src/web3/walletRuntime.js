@@ -54,6 +54,9 @@ let state = { ...disconnected }
 const listeners = new Set()
 let runtimeLoader = null
 let runtimeLoadPromise = null
+let loadVisible = false
+let loadSnapshot = { ready: false, loading: false, visible: false }
+const WARMUP_DELAY_MS = 2500
 
 const balanceQueries = new Map()
 const balanceRefs = new Map()
@@ -99,6 +102,8 @@ export function resetWalletRuntime() {
     state = { ...disconnected }
     runtimeLoader = null
     runtimeLoadPromise = null
+    loadVisible = false
+    loadSnapshot = { ready: false, loading: false, visible: false }
     balanceQueries.clear()
     balanceRefs.clear()
     balanceResults.clear()
@@ -126,18 +131,74 @@ export function waitForWalletRuntime() {
     })
 }
 
-export async function ensureWalletRuntime() {
+function getLoadStatus() {
+    const loading = Boolean(runtimeLoadPromise) && !state.ready
+    const next = {
+        ready: state.ready,
+        loading,
+        visible: loadVisible && !state.ready,
+    }
+    if (
+        loadSnapshot.ready === next.ready
+        && loadSnapshot.loading === next.loading
+        && loadSnapshot.visible === next.visible
+    ) {
+        return loadSnapshot
+    }
+    loadSnapshot = next
+    return loadSnapshot
+}
+
+export function getWalletRuntimeStatus() {
+    return getLoadStatus()
+}
+
+export function useWalletRuntimeStatus() {
+    return useSyncExternalStore(subscribe, getLoadStatus, getLoadStatus)
+}
+
+export async function ensureWalletRuntime({ visible = true } = {}) {
     if (getState().ready) return
+    if (visible && !loadVisible) {
+        loadVisible = true
+        emit()
+    }
     if (!runtimeLoadPromise && runtimeLoader) {
         runtimeLoadPromise = Promise.resolve()
             .then(() => runtimeLoader())
             .catch((error) => {
                 runtimeLoadPromise = null
+                loadVisible = false
+                emit()
                 throw error
             })
+        emit()
     }
     if (runtimeLoadPromise) await runtimeLoadPromise
     if (!getState().ready) await waitForWalletRuntime()
+    loadVisible = false
+    emit()
+}
+
+export function warmWalletRuntime() {
+    return ensureWalletRuntime({ visible: false })
+}
+
+/**
+ * Downloads AppKit into the HTTP cache after first paint so a later Connect
+ * click does not sit on a blank button. Does not show connecting UI.
+ */
+export function scheduleWalletRuntimeWarmup() {
+    if (typeof window === 'undefined') return
+    const run = () => {
+        if (getState().ready || runtimeLoadPromise) return
+        void warmWalletRuntime()
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: WARMUP_DELAY_MS })
+        return
+    }
+    window.setTimeout(run, WARMUP_DELAY_MS)
 }
 
 function emitQueries() {

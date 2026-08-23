@@ -15,8 +15,10 @@ import {
 import { resolveModulePreloadDependencies } from './walletChunkPreload.js'
 import {
     ensureWalletRuntime,
+    getWalletRuntimeStatus,
     registerWalletRuntimeLoader,
     resetWalletRuntime,
+    warmWalletRuntime,
 } from './walletRuntime.js'
 
 describe('crawler detection', () => {
@@ -42,6 +44,7 @@ describe('crawler detection', () => {
 describe('origin cache headers', () => {
     it('caches hashed assets for a year and icons for a week', () => {
         expect(cacheControlForPath('/assets/main-abc123.js')).toBe(ASSET_CACHE_CONTROL)
+        expect(cacheControlForPath('/assets/appkit-bbb.js')).toBe(ASSET_CACHE_CONTROL)
         expect(ASSET_CACHE_CONTROL).toContain('max-age=31536000')
         expect(ASSET_CACHE_CONTROL).toContain('immutable')
         expect(cacheControlForPath('/favicon.svg')).toBe(ICON_CACHE_CONTROL)
@@ -90,6 +93,37 @@ describe('wallet runtime loader', () => {
         expect(loaded).toBe(false)
         await ensureWalletRuntime()
         expect(loaded).toBe(true)
+    })
+
+    it('marks connecting UI while a requested load is in flight', async () => {
+        let resolveLoader
+        registerWalletRuntimeLoader(() => new Promise((resolve) => {
+            resolveLoader = resolve
+        }))
+
+        const pending = ensureWalletRuntime({ visible: true })
+        expect(getWalletRuntimeStatus()).toMatchObject({ loading: true, visible: true })
+        const { patchWalletRuntime } = await import('./walletRuntime.js')
+        patchWalletRuntime({ ready: true, open: async () => {} })
+        resolveLoader()
+        await pending
+        expect(getWalletRuntimeStatus()).toMatchObject({ ready: true, loading: false, visible: false })
+    })
+
+    it('warms the runtime without a connecting indicator', async () => {
+        const { warmWalletRuntime, getWalletRuntimeStatus } = await import('./walletRuntime.js')
+        let resolveLoader
+        registerWalletRuntimeLoader(() => new Promise((resolve) => {
+            resolveLoader = resolve
+        }))
+
+        const pending = warmWalletRuntime()
+        expect(getWalletRuntimeStatus()).toMatchObject({ loading: true, visible: false })
+        const { patchWalletRuntime } = await import('./walletRuntime.js')
+        patchWalletRuntime({ ready: true, open: async () => {} })
+        resolveLoader()
+        await pending
+        expect(getWalletRuntimeStatus().ready).toBe(true)
     })
 })
 

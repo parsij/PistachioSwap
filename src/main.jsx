@@ -3,7 +3,12 @@ import { createRoot } from 'react-dom/client'
 
 import AppErrorBoundary from './app/AppErrorBoundary.jsx'
 import AppFatalError from './app/AppFatalError.jsx'
-import { registerWalletRuntimeLoader } from './web3/walletRuntime.js'
+import {
+    ensureWalletRuntime,
+    registerWalletRuntimeLoader,
+    scheduleWalletRuntimeWarmup,
+} from './web3/walletRuntime.js'
+import { hasPersistedWalletSession } from './web3/walletSession.js'
 import './index.css'
 
 const root = createRoot(document.getElementById('root'))
@@ -11,9 +16,9 @@ const kitHost = document.getElementById('wallet-kit-root')
 let kitRoot = null
 
 /*
- * AppKit and Wagmi stay out of the first visit. The swap UI mounts on its own;
- * Connect wallet dynamically imports the provider into a sibling React root so
- * the swap tree is not remounted.
+ * AppKit and Wagmi stay out of the first visit so the swap UI can paint.
+ * A saved WalletConnect/AppKit session is restored immediately; otherwise the
+ * hashed wallet chunks are warmed into the browser HTTP cache after idle.
  */
 registerWalletRuntimeLoader(async () => {
     const [{ default: AppKitProvider }, { default: LiveWalletBindings }] =
@@ -33,6 +38,12 @@ registerWalletRuntimeLoader(async () => {
         </StrictMode>,
     )
 })
+
+if (hasPersistedWalletSession()) {
+    void ensureWalletRuntime({ visible: true })
+} else {
+    scheduleWalletRuntimeWarmup()
+}
 
 import('./App.jsx').then(({ default: App }) => {
     root.render(
