@@ -3,12 +3,9 @@ import { createPortal } from 'react-dom'
 import {
     ArrowLeftRight,
     CircleHelp,
-    Compass,
     Fuel,
     Network,
-    Rocket,
     WalletCards,
-    Waves,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
@@ -21,10 +18,6 @@ const HOVER_CLOSE_DELAY_MS = 160
 
 const APP_LINKS = [
     { href: '/', label: 'Trade', Icon: ArrowLeftRight },
-    { href: '/landing/#networks', label: 'Explore', Icon: Compass },
-    { href: '/landing/gas-assist/', label: 'Launches', badge: 'Beta', Icon: Rocket },
-    { href: '/landing/#how', label: 'Pool', Icon: Waves },
-    { href: '/landing/#wallet', label: 'Portfolio', Icon: WalletCards },
 ]
 
 const PRODUCT_LINKS = [

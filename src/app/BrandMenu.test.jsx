@@ -92,8 +92,11 @@ describe('brand menu', () => {
             expect(menu.className).toContain('brand-menu-sheet')
             expect(menu.querySelector('.brand-menu-handle')).toBeTruthy()
             expect(menu.parentElement.className).toContain('brand-menu-backdrop')
-            expect(screen.getByRole('link', { name: /Launches/ }).getAttribute('href'))
-                .toBe('/landing/gas-assist/')
+            expect(menu.querySelectorAll('.brand-menu-app-links a')).toHaveLength(1)
+            expect(screen.queryByRole('link', { name: /Explore/ })).toBeNull()
+            expect(screen.queryByRole('link', { name: /Launches/ })).toBeNull()
+            expect(screen.queryByRole('link', { name: /Pool/ })).toBeNull()
+            expect(screen.queryByRole('link', { name: /Portfolio/ })).toBeNull()
             expect(screen.getByRole('button', { name: 'Products' }).getAttribute('aria-expanded'))
                 .toBe('false')
 

@@ -189,8 +189,18 @@ describe('landing page', () => {
         expect(html).toContain('has not been independently audited')
     })
 
+    it('opens with the Just Swap brand signature', () => {
+        expect(html).toContain('<p class="hero-signature">Just Swap</p>')
+
+        const css = read('landing/landing.css')
+        expect(css).toMatch(/\.hero-signature\s*\{[^}]*color:\s*var\(--accent\)/)
+        expect(css).toMatch(/\.hero-signature\s*\{[^}]*font-style:\s*italic/)
+    })
+
     it('links to the wallet, FAQ, and Gas Assist pages', () => {
         expect(html).toContain('href="/"')
+        expect(html).toContain('>Open wallet</a>')
+        expect(html).not.toContain('Open the wallet')
         expect(html).toContain('href="/landing/faq/"')
         expect(html).toContain('href="/landing/gas-assist/"')
         expect(html).toContain('href="/gas-assist/"')

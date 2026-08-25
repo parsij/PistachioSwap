@@ -93,27 +93,6 @@ export const swapUiConfig = {
             active: true,
             href: '/',
         },
-        {
-            label: 'Explore',
-            active: false,
-            href: '/landing/#networks',
-        },
-        {
-            label: 'Launches',
-            badge: 'Beta',
-            active: false,
-            href: '/landing/gas-assist/',
-        },
-        {
-            label: 'Pool',
-            active: false,
-            href: '/landing/#how',
-        },
-        {
-            label: 'Portfolio',
-            active: false,
-            href: '/landing/#wallet',
-        },
     ],
 
     tabs: [
