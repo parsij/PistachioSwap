@@ -207,7 +207,12 @@ describe('landing page', () => {
         const css = read('landing/landing.css')
         expect(css).toMatch(/\.site-chrome\s*\{[^}]*position:\s*sticky/)
         expect(css).toContain('@keyframes network-ticker-scroll')
-        expect(css).toContain('animation-play-state: paused')
+        expect(css).not.toContain('animation-play-state: paused')
+
+        const ticker = read('landing/ticker.js')
+        expect(ticker).not.toContain('hoverPaused')
+        expect(ticker).not.toContain("root.addEventListener('pointerenter'")
+        expect(ticker).not.toContain("root.addEventListener('pointerleave'")
         expect(css).toContain('cursor: grab')
         expect(css).toContain('clip-path: circle(50%)')
         expect(css).toMatch(/\.site-nav\s*\{[^}]*background:\s*transparent/)

@@ -13,7 +13,6 @@ function setupTicker(root) {
     let startX = 0
     let startScroll = 0
     let lastTime = 0
-    let hoverPaused = false
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     const LOOP_SECONDS = 48
 
@@ -28,7 +27,7 @@ function setupTicker(root) {
     }
 
     const tick = (now) => {
-        if (!dragging && !hoverPaused && !reducedMotion.matches && half > 0) {
+        if (!dragging && !reducedMotion.matches && half > 0) {
             const dt = lastTime ? (now - lastTime) / 1000 : 0
             root.scrollLeft += (half / LOOP_SECONDS) * dt
             wrapScroll()
@@ -50,7 +49,6 @@ function setupTicker(root) {
         dragging = false
         lastTime = 0
         root.classList.remove('is-dragging')
-        hoverPaused = root.matches(':hover')
         window.removeEventListener('pointermove', onPointerMove)
         window.removeEventListener('pointerup', endDrag)
         window.removeEventListener('mousemove', onMouseMove)
@@ -64,7 +62,6 @@ function setupTicker(root) {
         startX = clientX
         startScroll = root.scrollLeft
         lastTime = 0
-        hoverPaused = false
         root.classList.add('is-dragging')
         window.addEventListener('pointermove', onPointerMove)
         window.addEventListener('pointerup', endDrag)
@@ -98,13 +95,6 @@ function setupTicker(root) {
 
     root.addEventListener('dragstart', (event) => {
         event.preventDefault()
-    })
-
-    root.addEventListener('pointerenter', () => {
-        if (!dragging) hoverPaused = true
-    })
-    root.addEventListener('pointerleave', () => {
-        if (!dragging) hoverPaused = false
     })
 
     window.addEventListener('resize', measure)
