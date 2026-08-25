@@ -256,10 +256,6 @@ p {
     animation: network-ticker-scroll 48s linear infinite;
 }
 
-.network-ticker:hover .network-ticker-track {
-    animation-play-state: paused;
-}
-
 .network-ticker.is-js .network-ticker-track {
     animation: none;
     transform: none;

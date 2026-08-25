@@ -35,6 +35,10 @@ describe('application header', () => {
         render(
             <AppHeader
                 brand={{ name: 'PistachioSwap' }}
+                navigation={[
+                    { label: 'Trade', href: '/', active: true },
+                    { label: 'Launches', href: '/landing/gas-assist/', badge: 'Beta' },
+                ]}
                 wallet={{}}
             />,
         )
@@ -42,6 +46,10 @@ describe('application header', () => {
         expect(screen.getByRole('link', { name: 'PistachioSwap landing page' }).getAttribute('href'))
             .toBe('/landing/')
         expect(screen.getByRole('button', { name: 'Open product menu' })).toBeTruthy()
+        expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy()
+        expect(screen.getByRole('link', { name: 'Trade' }).getAttribute('aria-current')).toBe('page')
+        expect(screen.getByRole('link', { name: /Launches/ }).getAttribute('href'))
+            .toBe('/landing/gas-assist/')
         expect(screen.getByTestId('pistachio-wallet')).toBeTruthy()
         expect(screen.getByTestId('wallet-button')).toBeTruthy()
     })

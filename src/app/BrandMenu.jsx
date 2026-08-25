@@ -1,38 +1,73 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeftRight, BookOpen, CircleHelp, Fuel } from 'lucide-react'
+import {
+    ArrowLeftRight,
+    CircleHelp,
+    Compass,
+    Fuel,
+    Network,
+    Rocket,
+    WalletCards,
+    Waves,
+} from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
 import { ChevronDownIcon, GitHubIcon, MenuIcon } from '../shared/components/AppIcons.jsx'
 
 const LANDING_HREF = '/landing/'
-const MOBILE_MEDIA = '(max-width: 640px)'
-const HOVER_CLOSE_DELAY_MS = 120
+// Keep in sync with the compact-header media query in src/index.css.
+const MOBILE_MEDIA = '(max-width: 1024px)'
+const HOVER_CLOSE_DELAY_MS = 160
 
 const APP_LINKS = [
+    { href: '/', label: 'Trade', Icon: ArrowLeftRight },
+    { href: '/landing/#networks', label: 'Explore', Icon: Compass },
+    { href: '/landing/gas-assist/', label: 'Launches', badge: 'Beta', Icon: Rocket },
+    { href: '/landing/#how', label: 'Pool', Icon: Waves },
+    { href: '/landing/#wallet', label: 'Portfolio', Icon: WalletCards },
+]
+
+const PRODUCT_LINKS = [
     {
-        href: '/',
-        label: 'Trade',
-        description: 'Swap tokens',
-        Icon: ArrowLeftRight,
+        href: '/landing/#wallet',
+        label: 'Pistachio Wallet',
+        description: 'Self-custody wallet',
+        Icon: WalletCards,
     },
     {
         href: '/landing/gas-assist/',
         label: 'Gas Assist',
-        description: 'Cover swap gas',
+        description: 'Swap without gas',
         Icon: Fuel,
     },
     {
-        href: '/landing/',
-        label: 'About',
-        description: 'What Pistachio is',
-        Icon: BookOpen,
+        href: '/landing/#how',
+        label: 'Smart routing',
+        description: 'Compare swap routes',
+        Icon: ArrowLeftRight,
     },
     {
-        href: '/landing/faq/',
-        label: 'FAQ',
-        description: 'Common questions',
-        Icon: CircleHelp,
+        href: '/landing/#networks',
+        label: 'Multi-chain',
+        description: '25 EVM networks',
+        Icon: Network,
     },
+]
+
+const PROTOCOL_LINKS = [
+    { href: '/', label: 'Trade' },
+    { href: '/landing/gas-assist/', label: 'Gas Assist' },
+    {
+        href: 'https://github.com/parsij/PistachioSwap',
+        label: 'Developers',
+        external: true,
+    },
+]
+
+const COMPANY_LINKS = [
+    { href: '/landing/', label: 'About' },
+    { href: '/landing/faq/', label: 'FAQ' },
+    { href: '/landing/#risk', label: 'Safety' },
 ]
 
 const LEGAL_LINK = {
@@ -61,13 +96,18 @@ function useMobileViewport() {
     return mobile
 }
 
-function MenuLink({ href, label, description, Icon, external, onNavigate }) {
+function MenuLink({ href, label, description, badge, Icon, external, onNavigate, appLink = false }) {
     const rel = external ? 'noopener noreferrer' : undefined
     const target = external ? '_blank' : undefined
+    const className = description
+        ? 'brand-menu-product'
+        : appLink
+            ? 'brand-menu-app-link'
+            : 'brand-menu-link'
 
     return (
         <a
-            className={description ? 'brand-menu-product' : 'brand-menu-link'}
+            className={className}
             href={href}
             rel={rel}
             target={target}
@@ -79,7 +119,10 @@ function MenuLink({ href, label, description, Icon, external, onNavigate }) {
                 </span>
             ) : null}
             <span className="brand-menu-product-copy">
-                <span className="brand-menu-product-label">{label}</span>
+                <span className="brand-menu-product-label">
+                    {label}
+                    {badge ? <span className="brand-menu-badge">{badge}</span> : null}
+                </span>
                 {description ? (
                     <span className="brand-menu-product-description">{description}</span>
                 ) : null}
@@ -88,23 +131,83 @@ function MenuLink({ href, label, description, Icon, external, onNavigate }) {
     )
 }
 
-function BrandMenuPanel({ id, mobile, onNavigate }) {
+function MobileSection({ title, links, onNavigate }) {
+    const [expanded, setExpanded] = useState(false)
+    const contentId = useId()
+
     return (
-        <nav
-            id={id}
-            className={mobile ? 'brand-menu-sheet' : 'brand-menu-dropdown'}
-            aria-label="PistachioSwap"
-            onClick={mobile ? (event) => event.stopPropagation() : undefined}
-        >
-            {mobile ? <div className="brand-menu-handle" aria-hidden="true" /> : null}
-            <p className="brand-menu-heading">App</p>
-            <div className="brand-menu-products">
-                {APP_LINKS.map((item) => (
+        <section className={`brand-menu-mobile-section${expanded ? ' is-expanded' : ''}`}>
+            <button
+                type="button"
+                className="brand-menu-section-trigger"
+                aria-expanded={expanded}
+                aria-controls={contentId}
+                onClick={() => setExpanded((current) => !current)}
+            >
+                <span>{title}</span>
+                <ChevronDownIcon className="brand-menu-section-chevron" />
+            </button>
+            <div id={contentId} className="brand-menu-section-content" hidden={!expanded}>
+                {links.map((item) => (
                     <MenuLink key={item.label} {...item} onNavigate={onNavigate} />
                 ))}
             </div>
-            <div className="brand-menu-footer">
-                <MenuLink {...LEGAL_LINK} onNavigate={onNavigate} />
+        </section>
+    )
+}
+
+function BrandMenuContents({ mobile, onNavigate }) {
+    if (mobile) {
+        return (
+            <>
+                <section className="brand-menu-app-section">
+                    <p className="brand-menu-heading">App</p>
+                    <div className="brand-menu-app-links">
+                        {APP_LINKS.map((item) => (
+                            <MenuLink key={item.label} {...item} appLink onNavigate={onNavigate} />
+                        ))}
+                    </div>
+                </section>
+                <div className="brand-menu-mobile-groups">
+                    <MobileSection title="Products" links={PRODUCT_LINKS} onNavigate={onNavigate} />
+                    <MobileSection title="Protocol" links={PROTOCOL_LINKS} onNavigate={onNavigate} />
+                    <MobileSection title="Company" links={COMPANY_LINKS} onNavigate={onNavigate} />
+                </div>
+            </>
+        )
+    }
+
+    return (
+        <>
+            <p className="brand-menu-heading">Products</p>
+            <div className="brand-menu-products">
+                {PRODUCT_LINKS.map((item) => (
+                    <MenuLink key={item.label} {...item} onNavigate={onNavigate} />
+                ))}
+            </div>
+            <div className="brand-menu-columns">
+                <section>
+                    <p className="brand-menu-heading">Protocol</p>
+                    {PROTOCOL_LINKS.map((item) => (
+                        <MenuLink key={item.label} {...item} onNavigate={onNavigate} />
+                    ))}
+                </section>
+                <section>
+                    <p className="brand-menu-heading">Company</p>
+                    {COMPANY_LINKS.map((item) => (
+                        <MenuLink key={item.label} {...item} onNavigate={onNavigate} />
+                    ))}
+                </section>
+            </div>
+        </>
+    )
+}
+
+function BrandMenuFooter({ onNavigate }) {
+    return (
+        <div className="brand-menu-footer">
+            <MenuLink {...LEGAL_LINK} onNavigate={onNavigate} />
+            <div className="brand-menu-socials">
                 <a
                     className="brand-menu-social"
                     href="https://github.com/parsij/PistachioSwap"
@@ -115,19 +218,59 @@ function BrandMenuPanel({ id, mobile, onNavigate }) {
                 >
                     <GitHubIcon />
                 </a>
+                <a
+                    className="brand-menu-social"
+                    href="/landing/faq/"
+                    aria-label="Help"
+                    onClick={onNavigate}
+                >
+                    <CircleHelp aria-hidden="true" />
+                </a>
             </div>
-        </nav>
+        </div>
+    )
+}
+
+function BrandMenuPanel({ id, mobile, onNavigate, reducedMotion }) {
+    const panelMotion = mobile
+        ? {
+            initial: { opacity: 0, y: reducedMotion ? 0 : 32 },
+            animate: { opacity: 1, y: 0 },
+            exit: { opacity: 0, y: reducedMotion ? 0 : 24 },
+        }
+        : {
+            initial: { opacity: 0, scale: reducedMotion ? 1 : 0.97, y: reducedMotion ? 0 : -6 },
+            animate: { opacity: 1, scale: 1, y: 0 },
+            exit: { opacity: 0, scale: reducedMotion ? 1 : 0.985, y: reducedMotion ? 0 : -4 },
+        }
+
+    return (
+        <motion.nav
+            id={id}
+            className={mobile ? 'brand-menu-sheet' : 'brand-menu-dropdown'}
+            aria-label="PistachioSwap"
+            onClick={mobile ? (event) => event.stopPropagation() : undefined}
+            {...panelMotion}
+            transition={reducedMotion
+                ? { duration: 0 }
+                : { type: 'spring', stiffness: 520, damping: 40, mass: 0.72 }}
+        >
+            {mobile ? <div className="brand-menu-handle" aria-hidden="true" /> : null}
+            <BrandMenuContents mobile={mobile} onNavigate={onNavigate} />
+            <BrandMenuFooter onNavigate={onNavigate} />
+        </motion.nav>
     )
 }
 
 /**
- * Brand mark plus Uniswap-style product menu: hover chevron on desktop, hamburger bottom sheet on mobile.
+ * Brand mark plus Uniswap-style product menu: logo hover and chevron on desktop, hamburger sheet on mobile.
  * @param {{name: string}} props Brand labels used by the landing-page link.
  * @returns {import('react').ReactElement} Logo home link and product menu trigger.
  * @sideEffects Locks body scroll while the mobile sheet is open.
  */
 export default function BrandMenu({ name }) {
     const mobile = useMobileViewport()
+    const reducedMotion = useReducedMotion()
     const [open, setOpen] = useState(false)
     const menuId = useId()
     const rootRef = useRef(null)
@@ -193,28 +336,41 @@ export default function BrandMenu({ name }) {
     }
 
     function handleTriggerClick() {
-        if (mobile) {
-            setOpen((current) => !current)
-            return
-        }
-        setOpen(true)
+        setOpen((current) => !current)
     }
 
-    const sheet = open && mobile && typeof document !== 'undefined'
+    const sheet = mobile && typeof document !== 'undefined'
         ? createPortal(
-            <div className="brand-menu-backdrop" onClick={closeMenu}>
-                <BrandMenuPanel
-                    id={menuId}
-                    mobile
-                    onNavigate={closeMenu}
-                />
-            </div>,
+            <AnimatePresence>
+                {open ? (
+                    <motion.div
+                        className="brand-menu-backdrop"
+                        onClick={closeMenu}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: reducedMotion ? 0 : 0.16 }}
+                    >
+                        <BrandMenuPanel
+                            id={menuId}
+                            mobile
+                            onNavigate={closeMenu}
+                            reducedMotion={reducedMotion}
+                        />
+                    </motion.div>
+                ) : null}
+            </AnimatePresence>,
             document.body,
         )
         : null
 
     return (
-        <div className="brand-cluster">
+        <div
+            ref={rootRef}
+            className="brand-cluster"
+            onMouseEnter={openFromHover}
+            onMouseLeave={leaveFromHover}
+        >
             <a
                 className="brand-home"
                 href={LANDING_HREF}
@@ -227,12 +383,7 @@ export default function BrandMenu({ name }) {
                     draggable="false"
                 />
             </a>
-            <div
-                ref={rootRef}
-                className="brand-menu"
-                onMouseEnter={openFromHover}
-                onMouseLeave={leaveFromHover}
-            >
+            <div className="brand-menu">
                 <button
                     type="button"
                     className="brand-menu-trigger"
@@ -245,10 +396,17 @@ export default function BrandMenu({ name }) {
                     <ChevronDownIcon className={`brand-chevron brand-menu-chevron${open ? ' is-open' : ''}`} />
                     <MenuIcon className="brand-menu-hamburger" />
                 </button>
-                {open && !mobile ? (
-                    <BrandMenuPanel id={menuId} mobile={false} onNavigate={closeMenu} />
-                ) : null}
             </div>
+            <AnimatePresence>
+                {open && !mobile ? (
+                    <BrandMenuPanel
+                        id={menuId}
+                        mobile={false}
+                        onNavigate={closeMenu}
+                        reducedMotion={reducedMotion}
+                    />
+                ) : null}
+            </AnimatePresence>
             {sheet}
         </div>
     )
