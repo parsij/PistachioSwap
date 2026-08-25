@@ -15,7 +15,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ChevronDownIcon, GitHubIcon, MenuIcon } from '../shared/components/AppIcons.jsx'
 
 const LANDING_HREF = '/landing/'
-const MOBILE_MEDIA = '(max-width: 640px)'
+// Keep in sync with the compact-header media query in src/index.css.
+const MOBILE_MEDIA = '(max-width: 1024px)'
 const HOVER_CLOSE_DELAY_MS = 160
 
 const APP_LINKS = [
@@ -71,7 +72,7 @@ const COMPANY_LINKS = [
 
 const LEGAL_LINK = {
     href: '/legal/third-party/',
-    label: 'Legal & Privacy',
+    label: 'Legal & third-party notices',
 }
 
 function readMobileViewport() {

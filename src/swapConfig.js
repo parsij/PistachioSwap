@@ -353,7 +353,7 @@ export const swapUiConfig = {
 
         size: {
             headerHeight: '72px',
-            headerLogo: '24px',
+            headerLogo: '28px',
             headerIcon: '22px',
             networkIcon: '24px',
 

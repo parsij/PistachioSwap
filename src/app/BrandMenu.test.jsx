@@ -10,7 +10,7 @@ import BrandMenu from './BrandMenu.jsx'
 
 function installMatchMedia(mobile) {
     window.matchMedia = vi.fn((query) => ({
-        matches: query === '(max-width: 640px)'
+        matches: query === '(max-width: 1024px)'
             ? mobile
             : query === '(prefers-reduced-motion)',
         media: query,
@@ -55,6 +55,9 @@ describe('brand menu', () => {
                 .toBe('/landing/')
             expect(screen.getByRole('link', { name: /FAQ/ }).getAttribute('href'))
                 .toBe('/landing/faq/')
+            expect(screen.getByRole('link', { name: 'Legal & third-party notices' }).getAttribute('href'))
+                .toBe('/legal/third-party/')
+            expect(screen.queryByRole('link', { name: 'Legal & Privacy' })).toBeNull()
         })
 
         it('closes after the pointer leaves the complete brand cluster', async () => {
@@ -112,10 +115,13 @@ describe('brand menu', () => {
         const css = readFileSync(resolve('src/index.css'), 'utf8')
         expect(css).toMatch(/\.brand-menu-hamburger\s*\{[^}]*display:\s*none/)
         expect(css).toMatch(
-            /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.brand-menu-chevron\s*\{[^}]*display:\s*none/,
+            /@media\s*\(max-width:\s*1024px\)\s*\{[\s\S]*\.header-navigation\s*\{[^}]*display:\s*none/,
         )
         expect(css).toMatch(
-            /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.brand-menu-hamburger\s*\{[^}]*display:\s*block/,
+            /@media\s*\(max-width:\s*1024px\)\s*\{[\s\S]*\.brand-menu-chevron\s*\{[^}]*display:\s*none/,
+        )
+        expect(css).toMatch(
+            /@media\s*\(max-width:\s*1024px\)\s*\{[\s\S]*\.brand-menu-hamburger\s*\{[^}]*display:\s*block/,
         )
         expect(css).toMatch(/\.brand-menu-sheet\s*\{[^}]*border-radius:\s*24px 24px 0 0/)
         expect(css).toMatch(/\.brand-menu-backdrop\s*\{[^}]*align-items:\s*end/)

@@ -229,8 +229,8 @@ button:disabled {
 }
 
 .brand-logo {
-    width: 28px;
-    height: 28px;
+    width: var(--size-header-logo);
+    height: var(--size-header-logo);
     object-fit: contain;
     user-select: none;
     -webkit-user-drag: none;
@@ -1600,7 +1600,7 @@ button:disabled {
     text-align: center;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1024px) {
     .header-navigation {
         display: none;
     }
@@ -1627,7 +1627,9 @@ button:disabled {
     .brand-menu-social {
         min-height: 44px;
     }
+}
 
+@media (max-width: 640px) {
     .header-left,
     .header-right {
         gap: 10px;
