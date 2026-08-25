@@ -549,6 +549,17 @@ button:disabled {
     gap: 4px;
 }
 
+.brand-menu-mobile-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 8px;
+    padding: 4px 0 8px;
+}
+
+.brand-menu-mobile-links .brand-menu-link {
+    min-height: 44px;
+}
+
 .brand-menu-section-trigger {
     display: flex;
     width: 100%;

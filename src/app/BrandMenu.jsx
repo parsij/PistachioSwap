@@ -4,7 +4,6 @@ import {
     ArrowLeftRight,
     CircleHelp,
     Fuel,
-    Network,
     WalletCards,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -33,35 +32,19 @@ const PRODUCT_LINKS = [
         description: 'Swap without gas',
         Icon: Fuel,
     },
-    {
-        href: '/landing/#how',
-        label: 'Smart routing',
-        description: 'Compare swap routes',
-        Icon: ArrowLeftRight,
-    },
-    {
-        href: '/landing/#networks',
-        label: 'Multi-chain',
-        description: '25 EVM networks',
-        Icon: Network,
-    },
 ]
 
 const PROTOCOL_LINKS = [
     { href: '/', label: 'Trade' },
     { href: '/landing/gas-assist/', label: 'Gas Assist' },
-    {
-        href: 'https://github.com/parsij/PistachioSwap',
-        label: 'Developers',
-        external: true,
-    },
 ]
 
 const COMPANY_LINKS = [
     { href: '/landing/', label: 'About' },
     { href: '/landing/faq/', label: 'FAQ' },
-    { href: '/landing/#risk', label: 'Safety' },
 ]
+
+const UTILITY_LINKS = [...PROTOCOL_LINKS, ...COMPANY_LINKS]
 
 const LEGAL_LINK = {
     href: '/legal/third-party/',
@@ -163,8 +146,11 @@ function BrandMenuContents({ mobile, onNavigate }) {
                 </section>
                 <div className="brand-menu-mobile-groups">
                     <MobileSection title="Products" links={PRODUCT_LINKS} onNavigate={onNavigate} />
-                    <MobileSection title="Protocol" links={PROTOCOL_LINKS} onNavigate={onNavigate} />
-                    <MobileSection title="Company" links={COMPANY_LINKS} onNavigate={onNavigate} />
+                    <div className="brand-menu-mobile-links">
+                        {UTILITY_LINKS.map((item) => (
+                            <MenuLink key={item.label} {...item} onNavigate={onNavigate} />
+                        ))}
+                    </div>
                 </div>
             </>
         )
@@ -179,14 +165,12 @@ function BrandMenuContents({ mobile, onNavigate }) {
                 ))}
             </div>
             <div className="brand-menu-columns">
-                <section>
-                    <p className="brand-menu-heading">Protocol</p>
+                <section aria-label="Trading links">
                     {PROTOCOL_LINKS.map((item) => (
                         <MenuLink key={item.label} {...item} onNavigate={onNavigate} />
                     ))}
                 </section>
-                <section>
-                    <p className="brand-menu-heading">Company</p>
+                <section aria-label="Information links">
                     {COMPANY_LINKS.map((item) => (
                         <MenuLink key={item.label} {...item} onNavigate={onNavigate} />
                     ))}
