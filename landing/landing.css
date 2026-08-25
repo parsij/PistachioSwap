@@ -325,6 +325,20 @@ p {
     background: var(--warn);
 }
 
+.hero-signature {
+    width: fit-content;
+    margin: 0 auto 20px;
+    color: var(--accent);
+    font-size: clamp(58px, 9vw, 108px);
+    font-style: italic;
+    font-weight: 700;
+    letter-spacing: -0.075em;
+    line-height: 0.84;
+    text-shadow: 0 12px 44px rgb(138 194 124 / 18%);
+    transform: rotate(-3deg);
+    transform-origin: center;
+}
+
 .hero h1 {
     max-width: 24ch;
     margin-inline: auto;
