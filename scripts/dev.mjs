@@ -82,28 +82,6 @@ async function assertPortFree(port, label) {
     }
 }
 
-function ensureDependencies(directory) {
-    if (existsSync(path.join(directory, 'node_modules'))) return
-    console.log(`[local] installing dependencies in ${directory}`)
-    run(pnpm, ['install', '--frozen-lockfile'], { cwd: directory })
-}
-
-function validateSharedGasAssistToken(publicEnvPath, gasEnvPath) {
-    const publicEnv = readDotEnv(publicEnvPath)
-    const gasEnv = readDotEnv(gasEnvPath)
-    const publicToken = publicEnv.GAS_ASSIST_INTERNAL_TOKEN?.trim() ?? ''
-    const gasToken = gasEnv.GAS_ASSIST_INTERNAL_TOKEN?.trim() ?? ''
-    if (publicToken.length < 32 || gasToken.length < 32) {
-        throw new Error(
-            'Both apps/api/.env and the Gas Assist .env must contain a GAS_ASSIST_INTERNAL_TOKEN of at least 32 characters.',
-        )
-    }
-    if (publicToken !== gasToken) {
-        throw new Error('The public API and Gas Assist GAS_ASSIST_INTERNAL_TOKEN values do not match.')
-    }
-    return { publicEnv, gasEnv }
-}
-
 async function startDefault() {
     await assertPortFree(3001, 'Public API')
     await assertPortFree(5173, 'Vite')
@@ -117,30 +95,19 @@ async function startLocal() {
     requireCommand('docker', 'Install Docker with the Compose plugin')
     run('docker', ['compose', 'version'], { stdio: 'ignore' })
 
-    const gasAssistDir = resolveSibling(
-        root,
-        process.env.GAS_ASSIST_LOCAL_DIR,
-        ['../Gas-Assist', '../GasAssist'],
-    )
     const pchainedDir = resolveSibling(
         root,
         process.env.PCHAINED_LOCAL_DIR,
         ['../Pchained'],
     )
 
-    verifyRepository(gasAssistDir, 'parsij/Gas-Assist')
     verifyRepository(pchainedDir, 'parsij/Pchained')
 
     const publicEnvPath = path.join(root, 'apps', 'api', '.env')
-    const gasEnvPath = path.join(gasAssistDir, '.env')
     if (!existsSync(publicEnvPath)) throw new Error(`Missing public API environment: ${publicEnvPath}`)
-    if (!existsSync(gasEnvPath)) throw new Error(`Missing Gas Assist environment: ${gasEnvPath}`)
-
-    const { publicEnv, gasEnv } = validateSharedGasAssistToken(publicEnvPath, gasEnvPath)
-    ensureDependencies(gasAssistDir)
+    const publicEnv = readDotEnv(publicEnvPath)
 
     await assertPortFree(3001, 'Public API')
-    await assertPortFree(3002, 'Gas Assist')
     await assertPortFree(5173, 'Vite')
 
     const pchained = await startPchained({ root, pchainedDir, argv })
@@ -151,32 +118,17 @@ async function startLocal() {
         run(pnpm, ['--filter', '@pistachio/api', 'db:migrate'], { cwd: root })
     }
 
-    if (!gasEnv.DATABASE_URL?.trim()) {
-        throw new Error('Gas Assist DATABASE_URL is required for --local mode.')
-    }
-    console.log('[local] applying pending Gas Assist migrations')
-    run(pnpm, ['db:migrate'], { cwd: gasAssistDir })
-
     const apiEnv = {
         ...process.env,
-        GAS_ASSIST_SERVICE_ENABLED: 'true',
-        GAS_ASSIST_SERVICE_URL: 'http://127.0.0.1:3002',
         UNCHAINED_ENABLED: 'true',
         UNCHAINED_HTTP_URLS_JSON: JSON.stringify(pchained.endpoints),
         HOST: '127.0.0.1',
         PORT: '3001',
     }
-    const gasProcessEnv = {
-        ...process.env,
-        HOST: '127.0.0.1',
-        PORT: '3002',
-    }
-
     console.log(
         `[local] starting full stack with ${pchained.selected.length} configured Pchained coinstack(s): ` +
         pchained.selected.map((chain) => chain.name).join(', '),
     )
-    start('gas-assist', pnpm, ['dev'], { cwd: gasAssistDir, env: gasProcessEnv })
     start('api', pnpm, ['run', 'dev:api'], { env: apiEnv })
     start('web', pnpm, ['run', 'dev:web'])
 }

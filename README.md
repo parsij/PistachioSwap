@@ -20,28 +20,19 @@
 
 PistachioSwap combines same-chain and cross-chain route comparison, wallet balances, token discovery, transaction review, an optional passkey-protected local wallet, and a BNB Chain Gas Assist flow.
 
-A wallet can hold valuable BEP-20 tokens while having no BNB to pay network gas. **Gas Assist** is designed for that failure mode. For an eligible prepaid Gas Assist swap, the backend prepares an exact three-transaction package:
-
-1. the fee-payment transfer;
-2. the exact token approval; and
-3. the exact swap transaction.
-
-For Pistachio Wallet, those three transactions are reviewed as one package and authorized through a single package-signing request. The wallet validates the package, requires one package review and one fresh passkey ceremony for an already-unlocked session, signs each exact transaction locally, validates each resulting raw transaction, and only then returns the complete package. A partial package is not submitted. A fresh Gas Assist wallet-authentication session may still require a separate message signature because that signature authenticates the wallet and does not authorize a transaction.
-
-Gas Assist is not described as free. Network cost, sponsorship cost, and PistachioSwap fees are disclosed by the applicable quote or review flow. Availability depends on token eligibility, provider support, liquidity, policy limits, and backend configuration.
+Gas Assist helps eligible BNB Chain token holders who do not have enough BNB for normal gas. Costs and availability are shown in the applicable quote or review flow.
 
 ## Major components
 
 | Area | Current role |
 | --- | --- |
 | **Pistachio Wallet** | Optional local self-custodial wallet with encrypted IndexedDB vault records, passkey/PRF protection, a worker-owned unlocked session, signing review, and account/chain invariants. |
-| **Gas Assist** | Bounded BNB Chain sponsorship flow with wallet authentication, exact package preparation, one-shot local package authorization, server-side policy checks, expiry, replay protection, and recovery. |
+| **Gas Assist** | BNB Chain sponsored-swap user experience with explicit review and authorization. |
 | **Same-chain routing** | Normalizes enabled quote providers and compares executable routes using net output and transaction cost. |
 | **Cross-chain routing** | Integrates configured bridge/route providers and validates chain, token, recipient, amount, expiry, and execution data before use. |
 | **Wallet portfolio** | Combines configured indexers, RPC fallbacks, market data, and local Pchained services to display balances and activity. |
 | **Token discovery** | Builds per-chain searchable catalogs from configured asset, market, liquidity, and token-security sources. |
-| **Public API** | Fastify API with validation, rate limits, CORS restrictions, provider timeouts, redacted logging, and an explicit allowlist of public Gas Assist proxy routes. |
-| **Private Gas Assist service** | Separate private deployment that owns sponsorship state, policy management, settlement, replay/abuse controls, database state, and recovery. Its source is not part of this public repository. |
+| **Public API** | Fastify API with validation, rate limits, CORS restrictions, provider timeouts, and redacted logging. |
 | **Licensing pipeline** | Audits dependency licenses and copies exact installed custom-license texts/notices into production legal artifacts. |
 
 ## Architecture
@@ -54,10 +45,6 @@ flowchart LR
     API --> Quotes[Configured swap providers]
     API --> CrossChain[Configured cross-chain providers]
     API --> Data[RPC / indexers / market data / Pchained]
-    API --> GasProxy[Explicit Gas Assist proxy allowlist]
-    GasProxy --> PrivateGas[Private Gas Assist service]
-    PrivateGas --> Sponsor[Paymaster / routing providers]
-    PrivateGas --> DB[(Private PostgreSQL state)]
     API --> Chain[Public blockchains]
 ```
 
@@ -67,16 +54,10 @@ Provider availability is deployment-specific. A provider named in documentation 
 
 PistachioSwap is designed to fail closed around signing and private-service boundaries:
 
-- Browser code does not contain Gas Assist private service tokens, treasury secrets, provider private credentials, private keys, or recovery phrases.
-- The public API forwards only explicitly reviewed Gas Assist route/method shapes. Adding a new private endpoint does not automatically make it public.
-- Private Gas Assist requests require a separate strong server-to-server token.
-- Gas Assist authentication challenges use cryptographically random nonces, expire, are single-use, and are tied to a configured public authentication domain rather than trusting an arbitrary request Host.
-- The prepaid package must contain exactly the fee payment, approval, and swap actions with unique intent IDs, a future package expiry, future intent expiries, BNB Chain transactions, the authenticated wallet, and consecutive nonces.
-- Pistachio Wallet package signing uses one package review. An already-unlocked wallet performs one fresh passkey reauthentication for the package; a resumed wallet does not prompt for a second passkey after the unlock ceremony.
-- Each signed transaction is locally decoded/validated against the exact backend-prepared transaction before the complete package can be submitted.
-- Partial package signing does not trigger backend submission.
+- Browser code does not contain private service credentials, private keys, or recovery phrases.
+- Gas Assist requires explicit wallet review and authorization.
 - The optional local wallet keeps unlocked secret material inside a dedicated worker-owned session and clears it on lock, timeout, account change, or disposal.
-- Public and private APIs use bounded bodies, timeouts, rate limits, restricted CORS, no-store responses for sensitive paths, and log redaction for credentials and raw signed transactions.
+- APIs use bounded bodies, timeouts, rate limits, restricted CORS, no-store responses for sensitive paths, and log redaction for credentials and raw signed transactions.
 - Public blockchain transactions remain public, generally irreversible, and outside PistachioSwap's control once broadcast.
 
 These controls reduce risk. They do **not** prove that the software is vulnerability-free, audited, or safe against every malicious token, compromised browser, wallet exploit, provider failure, smart-contract bug, supply-chain compromise, or blockchain failure.
@@ -87,15 +68,13 @@ Security-sensitive reports should not include private keys, recovery phrases, pa
 
 ```text
 .
-├── apps/api/                 Public Fastify API and bounded Gas Assist proxy
+├── apps/api/                 Public Fastify API
 ├── docs/                     Architecture, operations, security, and licensing notes
 ├── public/                   Static application assets
 ├── scripts/                  Build, deployment, catalog, licensing, and audit tooling
 ├── src/                      React application, routing, wallet, and signing features
 └── tests/                    Unit and browser integration tests
 ```
-
-The private Gas Assist backend is intentionally kept outside this public repository. See [`docs/private-gas-assist-boundary.md`](docs/private-gas-assist-boundary.md).
 
 ## Local development
 
@@ -104,7 +83,6 @@ The private Gas Assist backend is intentionally kept outside this public reposit
 - Node.js 24
 - `pnpm` 10.30.3 or the compatible version declared by the repository
 - Provider credentials only for integrations you intentionally enable
-- A separately configured private Gas Assist service only when testing Gas Assist
 
 ### Install and run
 
@@ -117,15 +95,14 @@ pnpm --filter @pistachio/api dev
 pnpm dev --host 127.0.0.1
 ```
 
-The frontend defaults to `http://127.0.0.1:5173`. The public API defaults to `http://127.0.0.1:3001`. The private Gas Assist service normally binds to `127.0.0.1:3002` and should not be exposed directly to the public internet.
+The frontend defaults to `http://127.0.0.1:5173` and the public API defaults to `http://127.0.0.1:3001`.
 
 ### Configuration boundaries
 
 - Put public API secrets in `apps/api/.env` or the production API environment.
 - Put only browser-safe public configuration in `.env.local` / `VITE_*` variables.
-- Never put `GAS_ASSIST_INTERNAL_TOKEN`, database credentials, treasury credentials, private provider keys, wallet keys, or seed phrases in browser configuration.
+- Never put private credentials, wallet keys, or seed phrases in browser configuration.
 - Enable only providers and chains actually operated by the deployment.
-- Keep Gas Assist emergency/enablement controls conservative until policy funding, token allowlists, settlement, recovery, abuse controls, and deployment monitoring have been reviewed.
 
 ## Validation
 

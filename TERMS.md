@@ -6,7 +6,7 @@
 > [!IMPORTANT]
 > **Pre-launch legal notice.** PistachioSwap is currently a project name and this repository does not yet identify the final operating legal entity. Before commercial launch, these Terms must be reviewed by qualified counsel and updated with the operator's exact legal name and address, monitored contact information, final production fees/features, supported jurisdictions, regulatory/compliance decisions, and final dispute provisions. These Terms are a repository-aligned pre-launch draft, not a claim that every launch jurisdiction has been cleared.
 
-These Terms of Use (the "Terms") govern access to and use of the PistachioSwap website, wallet interface, public API, separately deployed Gas Assist service, software, and related services (collectively, the "Service"). "PistachioSwap," "we," "us," and "our" refer to the person or entity operating the Service under the PistachioSwap name.
+These Terms of Use (the "Terms") govern access to and use of the PistachioSwap website, wallet interface, public API, software, and related services (collectively, the "Service"). "PistachioSwap," "we," "us," and "our" refer to the person or entity operating the Service under the PistachioSwap name.
 
 By accessing or using the Service, you agree to these Terms. If you do not agree, do not use the Service.
 
@@ -33,8 +33,6 @@ Depending on configuration, the Service may:
 - prepare transaction, typed-data, or message-signing requests;
 - submit or monitor transactions that you authorize; and
 - offer Gas Assist for certain eligible BNB Chain transactions when the wallet lacks native BNB.
-
-The public API exposes bounded public routes. Gas Assist state, settlement, policy management, recovery, replay/abuse controls, and administrative functions run through a separately deployed private service. Private endpoints are not intended to be public merely because they exist in the private service.
 
 PistachioSwap may change supported chains, assets, providers, transaction types, limits, fees, and eligibility rules at any time.
 
@@ -64,14 +62,14 @@ Browser encryption and passkey protection reduce risk but do not make a compromi
 
 ## 6. One-confirmation Gas Assist package authorization
 
-For the current Pistachio Wallet prepaid Gas Assist flow, the backend may prepare an exact package containing three BNB Chain transactions: a fee-payment transfer, an exact token approval, and the swap transaction.
+For the current Pistachio Wallet prepaid Gas Assist flow, the wallet may present an exact package containing three BNB Chain transactions.
 
 When the one-confirmation package flow is available:
 
 - the package must contain the expected three actions, unique intent identifiers, future expirations, the authenticated wallet, and consecutive nonces;
 - Pistachio Wallet presents one package review and, for an already-unlocked session, requires one fresh passkey reauthentication for that package;
 - a resumed session that has just been passkey-unlocked is not intentionally prompted for a second passkey for the same package;
-- each transaction is still individually signed locally and validated against the exact backend-prepared transaction;
+- each transaction is individually signed locally and validated before submission;
 - the frontend submits the package only after all required signatures have been produced and validated; and
 - rejecting or failing any part of the package prevents submission of a partial package through this flow.
 
@@ -112,7 +110,7 @@ Gas Assist:
 - may require wallet authentication, a passkey, message/transaction signatures, exact token approval, payment, simulation, liquidity/price/security checks, and rate-limit or abuse checks;
 - may be rejected because of token risk, liquidity, price impact, allowance, provider/paymaster support, policy restrictions, treasury limits, simulation, abuse controls, or network conditions;
 - may expire before signing or submission is complete; and
-- depends on a private backend and third-party infrastructure that may be paused, unavailable, or changed.
+- depends on service and third-party infrastructure that may be paused, unavailable, or changed.
 
 PistachioSwap may pause, limit, refuse, or terminate Gas Assist when reasonably necessary to protect users, the treasury, providers, or the Service.
 

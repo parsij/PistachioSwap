@@ -16,9 +16,7 @@ validates request/normalized responses; `services/quote-selector.ts` handles
 concurrency, diagnostics, and ranking; `providers/` adapts PancakeSwap,
 Uniswap, and 0x; `types/` defines the shared contract.
 
-Gas Assist pricing, signatures, sponsorship, order state, and submission are
-not owned by quote routes. Browser-facing Gas Assist and sponsorship requests
-go through the public proxy and are decided by the private Gas Assist service.
+Gas Assist is separate from same-chain quote routing.
 
 ## Data, dependencies, side effects, errors, and logs
 

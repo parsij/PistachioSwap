@@ -6,7 +6,7 @@
 > [!IMPORTANT]
 > **Pre-launch status.** The repository does not yet identify the final legal entity that will operate PistachioSwap. Before commercial launch, this Policy must be updated with that entity's exact legal name, required address/contact details, actual production vendors, final retention/deletion schedules, supported jurisdictions, and any jurisdiction-specific disclosures. A qualified privacy lawyer should review the production deployment. This document describes the current software and intended data flows; it is not a certification of legal compliance.
 
-This Privacy Policy explains how the operator of PistachioSwap ("PistachioSwap," "we," "us," or "our") may collect, use, disclose, and protect information when you use the PistachioSwap website, wallet interface, public API, separately deployed Gas Assist service, and related services (collectively, the "Service").
+This Privacy Policy explains how the operator of PistachioSwap ("PistachioSwap," "we," "us," or "our") may collect, use, disclose, and protect information when you use the PistachioSwap website, wallet interface, public API, and related services (collectively, the "Service").
 
 ## 1. Scope and public-blockchain warning
 
@@ -42,7 +42,7 @@ When you request or execute a quote, bridge, swap, or Gas Assist transaction, th
 - order/intent status, failure codes, recovery state, timestamps, idempotency values, and replay-prevention records; and
 - sponsorship limits, abuse indicators, and security events.
 
-For the current Pistachio Wallet Gas Assist package flow, the fee-payment transfer, token approval, and swap are prepared as an exact package. The wallet performs a single package review/passkey authorization for an already-unlocked session, locally signs the three exact transactions, validates the signed transactions, and returns the complete package. The private key is not sent to the public API or Gas Assist backend.
+For Gas Assist, a transaction is presented for wallet review before authorization. Private keys are not sent to PistachioSwap.
 
 ### C. Pistachio Wallet information stored on your device
 
@@ -69,8 +69,6 @@ Servers and infrastructure providers may receive or process:
 - approximate location inferred by infrastructure or security providers from an IP address; and
 - diagnostic information needed to operate or secure the Service.
 
-Gas Assist contains configurable IP-based abuse limits and secret-backed privacy controls. Production operators must verify the exact storage representation, retention, and deletion schedule used by the deployed service before launch rather than relying on a repository example.
-
 Application logging is configured to redact sensitive fields including authorization credentials, internal service tokens, raw signed transactions, signatures, private keys, recovery phrases, passwords, and similar wallet-secret material. Operators must still review production logging and provider logging because no redaction configuration is infallible.
 
 ### E. Communications
@@ -87,7 +85,7 @@ Information may come from:
 - your connected wallet or optional local Pistachio Wallet;
 - public blockchains, RPC nodes, indexers, explorers, and token registries;
 - configured swap, bridge, liquidity, sponsorship, market-data, token-security, and wallet-connection providers; and
-- PistachioSwap's public API, private Gas Assist service, databases, logs, caches, and security systems.
+- PistachioSwap's APIs, databases, logs, caches, and security systems.
 
 ## 4. Why information is used
 
@@ -153,11 +151,11 @@ Current categories include:
 - **Support communications:** may be kept while necessary to resolve and document the request.
 - **Backups:** may retain data for a limited additional period before rotation or deletion.
 
-Before production launch, the operator must adopt specific documented retention and deletion schedules for API logs, Gas Assist database records, authentication data, abuse/security records, backups, and support systems. De-identified or aggregated information may be kept where it can no longer reasonably identify a person.
+Before production launch, the operator must adopt specific documented retention and deletion schedules for logs, transaction records, authentication data, abuse/security records, backups, and support systems. De-identified or aggregated information may be kept where it can no longer reasonably identify a person.
 
 ## 10. Security
 
-The Service implements safeguards intended to reduce risk, including encrypted local vault storage, passkey-based protection, dedicated worker-held unlocked secrets, explicit transaction/package review, exact transaction validation, server-side authentication, private service tokens, explicit public proxy route allowlisting, restricted administrative routes, request validation, rate limits, expiry, idempotency/replay controls, provider restrictions, and sensitive-log redaction.
+The Service implements safeguards intended to reduce risk, including encrypted local vault storage, passkey-based protection, dedicated worker-held unlocked secrets, explicit transaction review, server-side authentication, restricted administrative routes, request validation, rate limits, expiry, replay controls, provider restrictions, and sensitive-log redaction.
 
 No wallet, browser, passkey implementation, smart contract, provider, server, database, blockchain, or transmission method is completely secure. You are responsible for securing your device, browser profile, passkeys, external wallets, backups, and recovery information.
 
