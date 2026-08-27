@@ -41,16 +41,12 @@ apps/api/data/manual-refund-candidates.jsonl
 /.env
 .unchained/
 
-# Local external/private service checkouts
+# Local infrastructure checkouts
 /.unchained/
 /Pchained/
 /Pchained-public/
-/Gas-Assist/
-/.gas-assist/
-/gas-assist-private/
 
 # Local service runtime data
-/.gas-assist-runtime/
 /.local-services/
 /runtime/
 /tmp/

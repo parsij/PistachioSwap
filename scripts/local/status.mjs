@@ -7,7 +7,6 @@ const pchainedDir = resolveSibling(root, process.env.PCHAINED_LOCAL_DIR, ['../Pc
 const services = [
     { name: 'frontend', port: 5173 },
     { name: 'public-api', port: 3001 },
-    { name: 'gas-assist', port: 3002 },
 ]
 
 try {

@@ -310,7 +310,7 @@ Quote UI shows route costs and `Calculated at confirmation` for unknown source g
 ## 7. Security and wallet findings
 
 - Exact-address, chain, recipient, owner, amount, spender, expiry, route-key, and prepared-route binding are retained across same-chain, cross-chain, Gas Assist, and sponsorship paths.
-- Gas Assist remains same-chain-only and uses backend policy, bounded approvals, idempotency, wallet binding, expiry, usage/rate controls, and signed-transaction validation.
+- Gas Assist remains same-chain-only and requires explicit wallet review and authorization.
 - Passkey code uses random AES-GCM IVs/DEKs, HKDF domain context, PRF verification, encrypted IndexedDB persistence, worker-held active signing material, explicit review, inactivity locking, and origin/RP restrictions. Private-key reveal/export is an explicit authenticated user action.
 - Cryptography and WebAuthn ceremonies were not independently validated. This wallet remains security-sensitive and requires a professional cryptography/application audit before production custody claims.
 - Logs redact signatures, signed transactions, session tokens, authorization, and API-key headers. The built artifact contained no configured backend credential value.

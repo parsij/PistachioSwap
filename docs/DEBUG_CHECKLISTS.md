@@ -109,7 +109,7 @@ Commands below are offline/mocked unless a developer intentionally changes their
 ## Gas Assist appearing during a normal swap
 
 1. Component: `GasAssistBanner`; hooks: `useSwapRouting` and `useGasAssistController`.
-2. Inspect BSC/mixed-chain flags, native balance status/value, backend Gas Assist config, routing/execution modes.
+2. Inspect BSC/mixed-chain flags, native balance status/value, Gas Assist availability, and routing/execution modes.
 3. Expect `quote.mode.selected` to identify same-chain versus Gas Assist.
 4. Confirm normal `useSwapApproval` has no Gas Assist dependency.
 5. Run Gas Assist hook tests and App normal-route fallback test.

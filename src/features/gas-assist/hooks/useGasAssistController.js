@@ -59,7 +59,7 @@ function logGasAssistDiagnostic(scope, error, fallbackCode, fallbackMessage) {
  * Owns Gas Assist quote/dialog/prepayment orchestration while keeping normal swap approval separate.
  * @param {object} config Gas Assist intent, feature configuration, and semantic callbacks.
  * @returns {object} Gas Assist hooks, active execution mode, quote/status, and dialog view models.
- * @sideEffects Calls existing Gas Assist backend hooks; explicit dialog confirmation may request sponsorship operations.
+ * @sideEffects Calls Gas Assist feature hooks; explicit dialog confirmation may request sponsorship operations.
  * @security Low-BNB execution is fail-closed into the exact prepaid flow and never falls back to a normal approval quote.
  */
 export function useGasAssistController({

@@ -17,19 +17,19 @@ Normal same-chain allowance reads/approvals, quote-provider ranking, cross-chain
 
 ## Flow
 
-`routing preference -> backend Gas Assist config -> 0x gasless quote -> optional ONCHAIN_APPROVAL_REQUIRED -> prepaid sponsorship -> Gas Assist dialog -> explicit user confirmation -> signature/provider operation -> confirmed callback -> balance refresh`.
+`routing preference -> Gas Assist availability -> 0x gasless quote -> prepaid sponsorship -> Gas Assist dialog -> explicit user confirmation -> wallet operation -> confirmed callback -> balance refresh`.
 
 ## Inputs, outputs, side effects, and errors
 
-The controller accepts the normalized intent, routing/config state, quote refresh identity, output setter, status setter, and confirmed callback. It returns `gasAssist`, `prepaidSponsorship`, `prepaidRequired`, `executionMode`, active quote/status, and `isGasless`. Underlying hooks perform backend calls and explicit wallet signatures/transactions only after confirmation. Error codes/messages remain those returned/mapped by existing hooks.
+The controller accepts the normalized intent, routing/config state, quote refresh identity, output setter, status setter, and confirmed callback. It returns `gasAssist`, `prepaidSponsorship`, `prepaidRequired`, `executionMode`, active quote/status, and `isGasless`. Underlying hooks make feature requests and explicit wallet signatures/transactions only after confirmation. Error codes/messages remain those returned/mapped by existing hooks.
 
 ## Logging and security
 
-Preserve existing Gas Assist and 0x diagnostic events. Backend configuration remains authoritative; do not expose secrets. Gasless signatures and raw transactions must remain bound to the reviewed intent and configured sponsor.
+Preserve existing Gas Assist and 0x diagnostic events. Do not expose secrets. Gasless signatures and raw transactions must remain bound to the reviewed intent.
 
 ## Tests and mocked limitations
 
-Tests beside components/hooks/services mock Wagmi, wallet clients, browser state, 0x, sponsor/backend responses, and signatures. They do not prove live 0x, MetaMask, sponsor balances, relay acceptance, or settlement.
+Tests beside components/hooks/services mock Wagmi, wallet clients, browser state, 0x, feature responses, and signatures. They do not prove live provider or wallet behavior.
 
 ## Common manual edits and debt
 

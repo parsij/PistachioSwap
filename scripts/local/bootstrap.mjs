@@ -9,26 +9,16 @@ requireCommand('git')
 requireCommand('gh', 'Install and authenticate GitHub CLI')
 run('gh', ['auth', 'status'], { stdio: 'inherit' })
 
-const gasAssistDir = resolveSibling(root, process.env.GAS_ASSIST_LOCAL_DIR, ['../Gas-Assist', '../GasAssist'])
 const pchainedDir = resolveSibling(root, process.env.PCHAINED_LOCAL_DIR, ['../Pchained'])
 
-if (!existsSync(gasAssistDir)) {
-    run('gh', ['repo', 'clone', 'parsij/Gas-Assist', gasAssistDir])
-}
 if (!existsSync(pchainedDir)) {
     run('gh', ['repo', 'clone', 'parsij/Pchained', pchainedDir])
 }
 
-verifyRepository(gasAssistDir, 'parsij/Gas-Assist')
 verifyRepository(pchainedDir, 'parsij/Pchained')
-
-if (!existsSync(path.join(gasAssistDir, 'node_modules'))) {
-    run('pnpm', ['install', '--frozen-lockfile'], { cwd: gasAssistDir })
-}
 
 const missingEnv = []
 if (!existsSync(path.join(root, 'apps', 'api', '.env'))) missingEnv.push(path.join(root, 'apps', 'api', '.env'))
-if (!existsSync(path.join(gasAssistDir, '.env'))) missingEnv.push(path.join(gasAssistDir, '.env'))
 
 const configuredChains = []
 for (const chain of PCHAINED_CHAINS) {
@@ -36,7 +26,6 @@ for (const chain of PCHAINED_CHAINS) {
     if (existsSync(paths.envPath)) configuredChains.push(chain.name)
 }
 
-console.log(`Gas Assist checkout: ${gasAssistDir}`)
 console.log(`Pchained checkout: ${pchainedDir}`)
 console.log(
     configuredChains.length > 0
