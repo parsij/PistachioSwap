@@ -819,9 +819,13 @@ export function usePrepaidSponsorship({
                         phase: phaseForOrderStatus(order.status, current.phase),
                         error: ['rejected', 'failed'].includes(order.status)
                             ? current.error ?? flowError(
-                                'SPONSORSHIP_ORDER_FAILED',
+                                order.safeErrorCode || 'SPONSORSHIP_ORDER_FAILED',
                                 'The sponsored swap could not be completed.',
-                                { stage: 'order.poll', status: order.status },
+                                {
+                                    stage: 'order.poll',
+                                    status: order.status,
+                                    ...(order.safeErrorCode ? { rejectionCode: order.safeErrorCode } : {}),
+                                },
                             )
                             : current.error,
                         lastPollError: null,

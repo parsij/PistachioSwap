@@ -136,6 +136,32 @@ describe('prepaid sponsorship async ownership', () => {
         expect(onConfirmed).toHaveBeenCalledTimes(1)
     })
 
+    it('surfaces the backend rejection code when order polling reports a failed atomic swap', async () => {
+        mocks.fetchOrder.mockResolvedValue({
+            id: 'order-1',
+            status: 'failed',
+            safeErrorCode: 'ATOMIC_RECEIPT_INVALID',
+        })
+        const { result } = setup()
+        await waitForConfig(result)
+        vi.useFakeTimers()
+
+        await act(async () => {
+            await result.current.start()
+        })
+        await act(() => vi.advanceTimersByTimeAsync(3_000))
+
+        expect(result.current.phase).toBe('failed')
+        expect(result.current.error).toMatchObject({
+            code: 'ATOMIC_RECEIPT_INVALID',
+            details: {
+                stage: 'order.poll',
+                status: 'failed',
+                rejectionCode: 'ATOMIC_RECEIPT_INVALID',
+            },
+        })
+    })
+
     it('uses a cross-chain order factory and reports the source hash before completion', async () => {
         const onSubmitted = vi.fn()
         const onConfirmed = vi.fn()

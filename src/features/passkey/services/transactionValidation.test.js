@@ -41,9 +41,15 @@ describe('Pistachio local transaction validation', () => {
                 nonce: 8,
             }],
         }
+        const authorization = await wallet.authorize({
+            address: executor,
+            nonce: 8,
+            chainId: 56,
+        })
         const signedTransaction = await wallet.signTransaction({
             ...eip7702Request,
             gasLimit: eip7702Request.gas,
+            authorizationList: [authorization],
         })
         const result = await validateLocallySignedTransaction({
             signedTransaction,
@@ -57,6 +63,39 @@ describe('Pistachio local transaction validation', () => {
         expect(result.parsed.authorizationList).toHaveLength(1)
         expect(result.parsed.authorizationList[0].address.toLowerCase()).toBe(executor)
         expect(Number(result.parsed.authorizationList[0].nonce)).toBe(8)
+        expect(BigInt(result.parsed.authorizationList[0].r)).not.toBe(0n)
+        expect(BigInt(result.parsed.authorizationList[0].s)).not.toBe(0n)
+    })
+
+    it('rejects an EIP-7702 MegaFuel transaction whose authorization was not signed', async () => {
+        const executor = '0x2222222222222222222222222222222222222222'
+        const eip7702Request = {
+            type: 4,
+            chainId: 56,
+            from: wallet.address,
+            to: wallet.address,
+            nonce: 7,
+            gas: 400_000,
+            maxFeePerGas: 0,
+            maxPriorityFeePerGas: 0,
+            value: 0,
+            data: '0x1234',
+            authorizationList: [{
+                chainId: 56,
+                address: executor,
+                nonce: 8,
+            }],
+        }
+        const signedTransaction = await wallet.signTransaction({
+            ...eip7702Request,
+            gasLimit: eip7702Request.gas,
+        })
+        await expect(validateLocallySignedTransaction({
+            signedTransaction,
+            request: eip7702Request,
+            walletAddress: wallet.address,
+            mode: 'megafuel',
+        })).rejects.toMatchObject({ code: 'UNSIGNED_EIP7702_AUTHORIZATION' })
     })
 
     it('recovers the signer and preserves exact legacy zero-gas fields', async () => {

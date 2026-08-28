@@ -211,6 +211,23 @@ function normalizeTransaction(transaction, mode) {
     return normalized
 }
 
+async function signNormalizedTransaction(activeWallet, transaction, mode) {
+    const normalized = normalizeTransaction(transaction, mode)
+    if (normalized.type === 4) {
+        const unsigned = normalized.authorizationList?.[0]
+        if (!unsigned) throw new TypeError('MegaFuel EIP-7702 transactions require exactly one authorization.')
+        if (typeof activeWallet.authorize !== 'function') {
+            throw new TypeError('This wallet cannot sign an EIP-7702 authorization.')
+        }
+        normalized.authorizationList = [await activeWallet.authorize({
+            address: unsigned.address,
+            nonce: unsigned.nonce,
+            chainId: unsigned.chainId,
+        })]
+    }
+    return activeWallet.signTransaction(normalized)
+}
+
 async function handle(operation, message) {
     if (operation === 'setSetupPasskey') {
         clearSecrets()
@@ -321,7 +338,7 @@ async function handle(operation, message) {
         return { signature: await requireWallet().signTypedData(message.domain, message.types, message.value) }
     }
     if (operation === 'signTransaction') {
-        return { signedTransaction: await requireWallet().signTransaction(normalizeTransaction(message.transaction, message.mode)) }
+        return { signedTransaction: await signNormalizedTransaction(requireWallet(), message.transaction, message.mode) }
     }
     if (operation === 'addPasskeyWrap') {
         requireWallet()
