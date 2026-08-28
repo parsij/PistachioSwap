@@ -22,6 +22,43 @@ const request = {
 }
 
 describe('Pistachio local transaction validation', () => {
+    it('recovers the signer and preserves exact EIP-7702 MegaFuel fields', async () => {
+        const executor = '0x2222222222222222222222222222222222222222'
+        const eip7702Request = {
+            type: 4,
+            chainId: 56,
+            from: wallet.address,
+            to: wallet.address,
+            nonce: 7,
+            gas: 400_000,
+            maxFeePerGas: 0,
+            maxPriorityFeePerGas: 0,
+            value: 0,
+            data: '0x1234',
+            authorizationList: [{
+                chainId: 56,
+                address: executor,
+                nonce: 8,
+            }],
+        }
+        const signedTransaction = await wallet.signTransaction({
+            ...eip7702Request,
+            gasLimit: eip7702Request.gas,
+        })
+        const result = await validateLocallySignedTransaction({
+            signedTransaction,
+            request: eip7702Request,
+            walletAddress: wallet.address,
+            mode: 'megafuel',
+        })
+        expect(result.signer).toBe(wallet.address)
+        expect(result.parsed.type).toBe('eip7702')
+        expect(result.parsed.maxFeePerGas ?? 0n).toBe(0n)
+        expect(result.parsed.authorizationList).toHaveLength(1)
+        expect(result.parsed.authorizationList[0].address.toLowerCase()).toBe(executor)
+        expect(Number(result.parsed.authorizationList[0].nonce)).toBe(8)
+    })
+
     it('recovers the signer and preserves exact legacy zero-gas fields', async () => {
         const signedTransaction = await wallet.signTransaction({ ...request, gasLimit: request.gas })
         const result = await validateLocallySignedTransaction({ signedTransaction, request, walletAddress: wallet.address, mode: 'megafuel' })

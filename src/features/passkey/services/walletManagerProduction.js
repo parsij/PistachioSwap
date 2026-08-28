@@ -182,7 +182,8 @@ function isGasAssistAuthenticationMessage(
  * A passkey authorizes the wallet-management view once per page lifetime. The
  * decrypted key normally remains loaded only while one operation needs it.
  * Gas Assist may reuse one passkey for its exact authentication messages and
- * validated three-transaction MegaFuel package inside a short, wallet-bound scope.
+ * validated atomic MegaFuel transaction, or the emergency sequential package,
+ * inside a short, wallet-bound scope.
  */
 export function hardenPistachioWalletManager(manager) {
     if (!manager || manager[HARDENED_MANAGER]) return manager
@@ -217,6 +218,7 @@ export function hardenPistachioWalletManager(manager) {
             'revealPrivateKey',
             'revealRecoveryPhrase',
             'signMegaFuelPackage',
+            'signAtomicMegaFuel',
         ].flatMap((name) => typeof manager[name] === 'function'
             ? [[name, manager[name].bind(manager)]]
             : []),
@@ -530,7 +532,7 @@ export function hardenPistachioWalletManager(manager) {
     for (const [name, operation] of originalSensitiveMethods) {
         manager[name] = wrapSensitiveAction(
             operation,
-            () => name === 'signMegaFuelPackage'
+            () => name === 'signMegaFuelPackage' || name === 'signAtomicMegaFuel'
                 ? 'gas-assist-package'
                 : 'default',
         )

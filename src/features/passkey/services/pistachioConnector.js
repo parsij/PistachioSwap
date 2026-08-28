@@ -5,6 +5,7 @@ import { PISTACHIO_CHAIN_ID, PISTACHIO_CONNECTOR_ID } from './constants.js'
 import { getPistachioWalletManager } from './walletManager.js'
 
 const MEGAFUEL_PACKAGE_SIGN_METHOD = 'pistachio_signMegaFuelPackage'
+const ATOMIC_MEGAFUEL_SIGN_METHOD = 'pistachio_signAtomicMegaFuel'
 
 function snapshotAccount(snapshot) {
     if (snapshot.phase === 'unlocked' && snapshot.address) return snapshot.address
@@ -41,6 +42,14 @@ function createProvider(manager) {
                     throw error
                 }
                 return manager.signMegaFuelPackage(request.params[0])
+            }
+            if (request?.method === ATOMIC_MEGAFUEL_SIGN_METHOD) {
+                if (!Array.isArray(request.params) || request.params.length !== 1) {
+                    const error = new Error('A single atomic Gas Assist transaction is required.')
+                    error.code = 'SPONSORSHIP_PACKAGE_INVALID'
+                    throw error
+                }
+                return manager.signAtomicMegaFuel(request.params[0])
             }
             return manager.providerRequest(request)
         },

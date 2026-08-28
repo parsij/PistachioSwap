@@ -134,7 +134,11 @@ function normalizeTransaction(transaction, mode) {
     if (mode === 'megafuel' && chainId !== PISTACHIO_CHAIN_ID) throw new TypeError('Pistachio Wallet signs MegaFuel transactions on BNB Chain only.')
     const from = transaction.from ? getAddress(transaction.from) : getAddress(requireWallet().address)
     if (from !== getAddress(requireWallet().address)) throw new TypeError('Transaction account mismatch.')
-    const type = transaction.type === undefined ? 0 : Number(transaction.type)
+    const type = transaction.type === undefined
+        ? 0
+        : Number(typeof transaction.type === 'string' && transaction.type.startsWith('0x')
+            ? BigInt(transaction.type)
+            : transaction.type)
     const normalized = {
         chainId,
         type,
@@ -146,11 +150,56 @@ function normalizeTransaction(transaction, mode) {
     }
     if (!Number.isSafeInteger(normalized.nonce)) throw new TypeError('Invalid transaction nonce.')
     if (mode === 'megafuel') {
-        if (type !== 0 || parseQuantity(transaction.gasPrice, 'gas price') !== 0n) throw new TypeError('MegaFuel requires a legacy zero-gas transaction.')
-        if (transaction.maxFeePerGas !== undefined || transaction.maxPriorityFeePerGas !== undefined || transaction.accessList !== undefined) {
-            throw new TypeError('MegaFuel transaction contains unsupported fee fields.')
+        if (type === 4) {
+            if (
+                parseQuantity(transaction.maxFeePerGas, 'maximum fee') !== 0n ||
+                parseQuantity(transaction.maxPriorityFeePerGas, 'priority fee') !== 0n
+            ) {
+                throw new TypeError('MegaFuel EIP-7702 transactions must use zero max fees.')
+            }
+            if (transaction.gasPrice !== undefined && parseQuantity(transaction.gasPrice, 'gas price') !== 0n) {
+                throw new TypeError('MegaFuel EIP-7702 transactions cannot include a nonzero gas price.')
+            }
+            if (transaction.accessList !== undefined && transaction.accessList?.length) {
+                throw new TypeError('MegaFuel transaction contains an access list.')
+            }
+            const authorizations = transaction.authorizationList
+            if (!Array.isArray(authorizations) || authorizations.length !== 1) {
+                throw new TypeError('MegaFuel EIP-7702 transactions require exactly one authorization.')
+            }
+            const authorization = authorizations[0]
+            if (!authorization || typeof authorization !== 'object') {
+                throw new TypeError('MegaFuel EIP-7702 authorization is invalid.')
+            }
+            const authorizationChainId = Number(
+                typeof authorization.chainId === 'string' && authorization.chainId.startsWith('0x')
+                    ? BigInt(authorization.chainId)
+                    : authorization.chainId,
+            )
+            if (authorizationChainId !== PISTACHIO_CHAIN_ID) {
+                throw new TypeError('MegaFuel EIP-7702 authorization must use BNB Chain.')
+            }
+            normalized.maxFeePerGas = 0n
+            normalized.maxPriorityFeePerGas = 0n
+            normalized.authorizationList = [{
+                chainId: PISTACHIO_CHAIN_ID,
+                address: getAddress(authorization.address),
+                nonce: Number(parseQuantity(authorization.nonce, 'authorization nonce')),
+            }]
+            if (!Number.isSafeInteger(normalized.authorizationList[0].nonce)) {
+                throw new TypeError('Invalid EIP-7702 authorization nonce.')
+            }
+        } else if (type === 0) {
+            if (parseQuantity(transaction.gasPrice, 'gas price') !== 0n) {
+                throw new TypeError('MegaFuel requires a legacy zero-gas transaction.')
+            }
+            if (transaction.maxFeePerGas !== undefined || transaction.maxPriorityFeePerGas !== undefined || transaction.accessList !== undefined) {
+                throw new TypeError('MegaFuel transaction contains unsupported fee fields.')
+            }
+            normalized.gasPrice = 0n
+        } else {
+            throw new TypeError('MegaFuel requires a legacy zero-gas or EIP-7702 sponsored transaction.')
         }
-        normalized.gasPrice = 0n
     } else if (type === 0) {
         normalized.gasPrice = parseQuantity(transaction.gasPrice, 'gas price')
     } else if (type === 2) {

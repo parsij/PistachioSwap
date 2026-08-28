@@ -60,20 +60,19 @@ The wallet may use WebAuthn/passkeys and a platform authenticator. Your fingerpr
 
 Browser encryption and passkey protection reduce risk but do not make a compromised device safe. Malware, malicious extensions, operating-system compromise, phishing, synchronization-provider compromise, or physical access may expose or destroy wallet information.
 
-## 6. One-confirmation Gas Assist package authorization
+## 6. One-confirmation Gas Assist authorization
 
-For the current Pistachio Wallet prepaid Gas Assist flow, the wallet may present an exact package containing three BNB Chain transactions.
+For the current Pistachio Wallet prepaid Gas Assist flow on BNB Chain, the wallet may present one sponsored transaction. That transaction pays the disclosed fee, authorizes the exact swap amount, executes the swap, and requires the reviewed minimum output. Bought tokens are sent to the same user wallet.
 
-When the one-confirmation package flow is available:
+When this atomic flow is available:
 
-- the package must contain the expected three actions, unique intent identifiers, future expirations, the authenticated wallet, and consecutive nonces;
-- Pistachio Wallet presents one package review and, for an already-unlocked session, requires one fresh passkey reauthentication for that package;
-- a resumed session that has just been passkey-unlocked is not intentionally prompted for a second passkey for the same package;
-- each transaction is individually signed locally and validated before submission;
-- the frontend submits the package only after all required signatures have been produced and validated; and
-- rejecting or failing any part of the package prevents submission of a partial package through this flow.
+- Pistachio Wallet presents one review and, for an already-unlocked session, requires one fresh passkey reauthentication;
+- a resumed session that has just been passkey-unlocked is not intentionally prompted for a second passkey for the same swap;
+- the wallet validates chain ID, destination, calldata, nonce, gas, fee recipient, recipient, and minimum output against the backend-prepared payload before returning a signature;
+- the frontend submits one signed transaction; and
+- if the on-chain transaction fails, no fee is taken.
 
-This single package confirmation authorizes only the exact reviewed package. It is not a blanket approval for future transactions, arbitrary tokens, arbitrary recipients, unlimited approvals, different networks, or unrelated Gas Assist orders.
+This confirmation authorizes only the exact reviewed transaction. It is not a blanket approval for future transactions, arbitrary tokens, arbitrary recipients, unlimited approvals, different networks, or unrelated Gas Assist orders.
 
 Gas Assist wallet authentication is separate from transaction authorization. A fresh authentication session may require a message signature proving control of the wallet. That authentication message states that it does not itself authorize a transaction.
 

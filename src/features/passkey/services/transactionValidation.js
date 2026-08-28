@@ -51,9 +51,31 @@ export async function validateLocallySignedTransaction({ signedTransaction, requ
     if ((parsed.value ?? 0n) !== quantity(request.value)) mismatch('WALLET_REWROTE_VALUE', 'The signed transaction value changed.')
     if ((parsed.data ?? '0x').toLowerCase() !== String(request.data ?? '0x').toLowerCase()) mismatch('WALLET_REWROTE_CALLDATA', 'The signed transaction calldata changed.')
     if (mode === 'megafuel') {
-        if (parsed.type !== 'legacy') mismatch('WALLET_REWROTE_TRANSACTION_TYPE', 'MegaFuel requires a legacy transaction.')
-        if ((parsed.gasPrice ?? 0n) !== 0n) mismatch('WALLET_REWROTE_GAS_PRICE', 'MegaFuel gas price changed from zero.')
-        if (parsed.maxFeePerGas != null || parsed.maxPriorityFeePerGas != null) mismatch('WALLET_ADDED_EIP1559_FIELDS', 'MegaFuel transaction gained EIP-1559 fields.')
+        const eip7702 = parsed.type === 'eip7702'
+        if (parsed.type !== 'legacy' && !eip7702) {
+            mismatch('WALLET_REWROTE_TRANSACTION_TYPE', 'MegaFuel requires a legacy or EIP-7702 transaction.')
+        }
+        if (eip7702) {
+            if ((parsed.maxFeePerGas ?? 0n) !== 0n || (parsed.maxPriorityFeePerGas ?? 0n) !== 0n) {
+                mismatch('WALLET_REWROTE_GAS_PRICE', 'MegaFuel EIP-7702 fees changed from zero.')
+            }
+            if (!parsed.authorizationList || parsed.authorizationList.length !== 1) {
+                mismatch('WALLET_REWROTE_TRANSACTION_TYPE', 'MegaFuel EIP-7702 authorization is missing.')
+            }
+            const expectedAuth = request.authorizationList?.[0]
+            const signedAuth = parsed.authorizationList[0]
+            if (
+                !expectedAuth ||
+                normalizedAddress(signedAuth.address) !== normalizedAddress(expectedAuth.address) ||
+                Number(signedAuth.chainId) !== 56 ||
+                BigInt(signedAuth.nonce) !== quantity(expectedAuth.nonce)
+            ) {
+                mismatch('WALLET_REWROTE_DESTINATION', 'The EIP-7702 authorization changed.')
+            }
+        } else {
+            if ((parsed.gasPrice ?? 0n) !== 0n) mismatch('WALLET_REWROTE_GAS_PRICE', 'MegaFuel gas price changed from zero.')
+            if (parsed.maxFeePerGas != null || parsed.maxPriorityFeePerGas != null) mismatch('WALLET_ADDED_EIP1559_FIELDS', 'MegaFuel transaction gained EIP-1559 fields.')
+        }
         if (parsed.accessList?.length) mismatch('WALLET_ADDED_ACCESS_LIST', 'MegaFuel transaction gained an access list.')
     } else if (Number(request.type ?? 0) === 0 && (parsed.gasPrice ?? 0n) !== quantity(request.gasPrice)) {
         mismatch('WALLET_REWROTE_GAS_PRICE', 'The signed transaction gas price changed.')
@@ -104,7 +126,9 @@ export function describeTransactionReview(transaction, mode) {
         destination: transaction.to ?? null,
         value: String(transaction.value ?? '0'),
         gasLimit: String(transaction.gas ?? transaction.gasLimit ?? ''),
-        gasPrice: String(transaction.gasPrice ?? ''),
+        gasPrice: String(transaction.gasPrice ?? transaction.maxFeePerGas ?? ''),
+        type: String(transaction.type ?? '0x0'),
+        authorization: transaction.authorizationList?.[0]?.address ?? null,
         calldata: data,
         calldataKnown: Boolean(tokenCall),
         token: tokenCall ? transaction.to : null,

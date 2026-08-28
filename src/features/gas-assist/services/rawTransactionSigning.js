@@ -1,5 +1,7 @@
 import {
+    normalizePreparedAtomicTransaction,
     normalizePreparedSponsoredTransaction,
+    validateSignedAtomicTransaction,
     validateSignedPreparedTransaction,
 } from './metamaskMultichain.js'
 import {
@@ -11,6 +13,7 @@ const SUPPORTED_CONNECTOR_IDS = new Set([
     'pistachio-local',
 ])
 const PACKAGE_SIGN_METHOD = 'pistachio_signMegaFuelPackage'
+const ATOMIC_SIGN_METHOD = 'pistachio_signAtomicMegaFuel'
 
 function signingError(code, message, details = {}) {
     const error = new Error(message)
@@ -42,11 +45,14 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
         rawTransactionSigningSupported: supported,
         method: supported ? 'eth_signTransaction' : null,
         packageMethod: supported ? PACKAGE_SIGN_METHOD : null,
+        atomicMethod: supported ? ATOMIC_SIGN_METHOD : null,
         transport,
         status: supported ? 'verified' : 'unsupported',
         scope: supported ? 'eip155:56' : null,
         account: null,
-        approvedMethods: supported ? ['eth_signTransaction', PACKAGE_SIGN_METHOD] : [],
+        approvedMethods: supported
+            ? ['eth_signTransaction', PACKAGE_SIGN_METHOD, ATOMIC_SIGN_METHOD]
+            : [],
         reasonCode: supported ? null : 'PISTACHIO_WALLET_REQUIRED',
     })
     gasAssistTrace('signing.capability.detected', {
@@ -389,8 +395,100 @@ export async function signPreparedSponsoredPackage({
     }
 }
 
+export async function signPreparedAtomicSponsoredTransaction({
+    transport,
+    capability,
+    walletClient,
+    prepared,
+    authenticatedWalletAddress,
+    submitSignedTransaction,
+}) {
+    if (
+        transport !== 'pistachio-local' ||
+        capability?.atomicMethod !== ATOMIC_SIGN_METHOD ||
+        typeof walletClient?.request !== 'function' ||
+        typeof submitSignedTransaction !== 'function'
+    ) {
+        throw signingError(
+            'PISTACHIO_WALLET_REQUIRED',
+            'Atomic Gas Assist requires Pistachio Wallet.',
+            { stage: 'atomic.validate' },
+        )
+    }
+    if (prepared?.execution !== 'atomic' || prepared?.action !== 'atomic-swap' ||
+        prepared?.chainId !== 56) {
+        throw signingError(
+            'ATOMIC_PATH_UNAVAILABLE',
+            'Gas Assist did not return a BNB Chain atomic sponsored transaction.',
+            { stage: 'atomic.validate' },
+        )
+    }
+    if (!Number.isFinite(Date.parse(prepared.expiresAt)) || Date.parse(prepared.expiresAt) <= Date.now()) {
+        throw signingError(
+            'INTENT_EXPIRED',
+            'The atomic Gas Assist swap expired or is malformed.',
+            { stage: 'atomic.validate' },
+        )
+    }
+    const normalizedTransaction = normalizePreparedAtomicTransaction(
+        prepared.transaction,
+        authenticatedWalletAddress,
+    )
+    if (String(prepared.recipient).toLowerCase() !== String(authenticatedWalletAddress).toLowerCase()) {
+        throw signingError(
+            'WALLET_SIGNER_MISMATCH',
+            'Atomic Gas Assist bought tokens must return to the signing wallet.',
+            { stage: 'atomic.validate' },
+        )
+    }
+
+    gasAssistTrace('signing.atomic.start', {
+        orderId: prepared.orderId,
+        mode: prepared.mode,
+        transaction: transactionSummary(normalizedTransaction),
+    })
+    let signedRawTransaction = null
+    try {
+        const response = await walletClient.request({
+            method: ATOMIC_SIGN_METHOD,
+            params: [{
+                ...prepared,
+                transaction: normalizedTransaction,
+            }],
+        })
+        signedRawTransaction = typeof response === 'string'
+            ? response
+            : response?.signedRawTransaction
+        if (typeof signedRawTransaction !== 'string' ||
+            !/^0x(?:[0-9a-f]{2})+$/i.test(signedRawTransaction)) {
+            throw signingError(
+                'WALLET_RAW_TRANSACTION_MALFORMED',
+                'Pistachio Wallet returned an invalid atomic signature.',
+                { stage: 'atomic.sign' },
+            )
+        }
+        await validateSignedAtomicTransaction({
+            signedRawTransaction,
+            normalizedTransaction,
+            authenticatedWalletAddress,
+            feeRecipient: prepared.feeRecipient,
+            minOutRaw: prepared.minOutRaw,
+            recipient: prepared.recipient,
+        })
+        const result = await submitSignedTransaction(signedRawTransaction)
+        gasAssistTrace('signing.atomic.success', { orderId: prepared.orderId })
+        return result
+    } catch (error) {
+        gasAssistTraceError('signing.atomic.error', error, { orderId: prepared?.orderId })
+        throw error
+    } finally {
+        signedRawTransaction = null
+    }
+}
+
 export const rawSigningInternals = {
     PACKAGE_SIGN_METHOD,
+    ATOMIC_SIGN_METHOD,
     supportedConnectorIds: SUPPORTED_CONNECTOR_IDS,
     orderedPackageTransactions,
     transactionSummary,

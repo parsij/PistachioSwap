@@ -107,6 +107,9 @@ function packageExecutionInFlight(phase, order) {
         'approval-submitted',
         'approval-confirmed',
         'swap-submitted',
+        'atomic-prepared',
+        'atomic-submitting',
+        'atomic-submitted',
     ].includes(order?.status)
 }
 
@@ -122,17 +125,21 @@ function statusContent({ phase, order, orderExpired }) {
         return { title: 'Loading your review', detail: 'Getting the latest route and exact Gas Assist fee.' }
     }
     if (phase === 'authenticating') {
-        return { title: 'Confirm with your passkey', detail: 'One passkey check authorizes this exact three-transaction package.' }
+        return { title: 'Confirm with your passkey', detail: 'One passkey check authorizes this exact sponsored transaction.' }
     }
     if (phase === 'package-preparing') {
-        return { title: 'Preparing your swap', detail: 'Building the exact fee, approval, and swap transactions.' }
+        return { title: 'Preparing your swap', detail: 'Building one sponsored transaction for the fee, approval, and swap.' }
     }
     if (phase === 'package-signing') {
-        return { title: 'Confirm with your passkey', detail: 'One passkey check authorizes this exact three-transaction package.' }
+        return { title: 'Confirm with your passkey', detail: 'One passkey check authorizes this exact sponsored transaction. If it fails, no fee is taken.' }
+    }
+    if (['atomic-submitting', 'atomic-submitted'].includes(order?.status) ||
+        (phase === 'swap-confirming' && order?.atomicExecution)) {
+        return { title: 'Confirming your swap', detail: 'Confirming the one sponsored transaction on BNB Chain.' }
     }
     if (['payment-confirming', 'payment-submitting'].includes(phase) ||
         ['payment-submitting', 'payment-submitted'].includes(order?.status)) {
-        return { title: 'Starting your gasless swap', detail: 'Confirming the Gas Assist fee before the approval and swap continue automatically.' }
+        return { title: 'Starting your swap', detail: 'Confirming the Gas Assist fee on BNB Chain.' }
     }
     if (phase === 'approval-confirming' || order?.status === 'approval-submitted') {
         return { title: 'Approving the token', detail: 'The backend is confirming the exact token allowance.' }
@@ -185,8 +192,26 @@ function ReviewSkeleton() {
     )
 }
 
-function TechnicalDetails({ order, sellToken, buyToken, paymentToken }) {
+function uniqueTransactionHashes(order) {
+    return [...new Set(
+        [
+            order.atomicTransactionHash,
+            order.paymentTransactionHash,
+            order.approvalTransactionHash,
+            order.swapTransactionHash,
+        ]
+            .filter(Boolean)
+            .map((value) => String(value).toLowerCase()),
+    )]
+}
+
+function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose }) {
     if (!order) return null
+    const hashes = uniqueTransactionHashes(order)
+    const atomic = purpose !== 'cross-chain-gas' && (
+        order.atomicExecution === true ||
+        hashes.length === 1
+    )
     return (
         <details className="gas-assist-technical">
             <summary>
@@ -208,13 +233,18 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken }) {
                             <div key={`${label}:${value}`}><span>{label}</span><strong>{value}</strong></div>
                         ))}
                         <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>
-                        {order.paymentTransactionHash && <div><span>Fee transaction</span><code>{order.paymentTransactionHash}</code></div>}
-                        {order.approvalTransactionHash && <div><span>Approval transaction</span><code>{order.approvalTransactionHash}</code></div>}
-                        {order.swapTransactionHash && <div><span>Swap transaction</span><code>{order.swapTransactionHash}</code></div>}
+                        {atomic && hashes[0] && (
+                            <div><span>Transaction</span><code>{hashes[0]}</code></div>
+                        )}
+                        {!atomic && order.paymentTransactionHash && <div><span>Fee transaction</span><code>{order.paymentTransactionHash}</code></div>}
+                        {!atomic && order.approvalTransactionHash && <div><span>Approval transaction</span><code>{order.approvalTransactionHash}</code></div>}
+                        {!atomic && order.swapTransactionHash && <div><span>Swap transaction</span><code>{order.swapTransactionHash}</code></div>}
                     </div>
                 )}
                 <p className="gas-assist-technical-note">
-                    Pistachio Wallet signs the exact fee transfer, exact approval, and exact swap before the backend broadcasts them in order. They are separate blockchain transactions.
+                    {purpose === 'cross-chain-gas'
+                        ? 'Cross-chain Gas Assist still uses a sponsored source package. Same-chain Gas Assist is one sponsored BNB Chain transaction; if that transaction fails, no fee is taken.'
+                        : 'Pistachio Wallet signs one sponsored BNB Chain transaction. The fee, exact approval, and swap run together. If that transaction fails, no fee is taken.'}
                 </p>
             </div>
         </details>
@@ -251,7 +281,7 @@ export default function GasAssistPrepaymentDialog({
         sponsorship.phase.endsWith('-preparing') ||
         sponsorship.phase.endsWith('-signing')
     const waitingForChain = ['payment-confirming', 'approval-confirming', 'swap-confirming'].includes(sponsorship.phase) ||
-        ['payment-submitting', 'payment-submitted', 'approval-submitted', 'swap-submitted'].includes(order?.status)
+        ['payment-submitting', 'payment-submitted', 'approval-submitted', 'swap-submitted', 'atomic-submitting', 'atomic-submitted'].includes(order?.status)
     const orderExpired = !packageExecutionInFlight(sponsorship.phase, order) &&
         (expired || Boolean(order?.expiresAt && Date.parse(order.expiresAt) <= Date.now()))
     const requiredAction = order?.currentRequiredAction
@@ -356,7 +386,9 @@ export default function GasAssistPrepaymentDialog({
                     )}
                     {primaryAction && sponsorship.signPackage && showPayment && (
                         <p className="gas-assist-one-tap-note">
-                            One tap starts the flow. Pistachio Wallet will ask you to confirm the exact fee, approval, and swap before anything is sent.
+                            {purpose === 'cross-chain-gas'
+                                ? 'One tap starts the flow. Pistachio Wallet will ask you to confirm the sponsored source swap.'
+                                : 'One tap starts the flow. Pistachio Wallet will ask you to confirm one sponsored transaction. If it fails, no fee is taken.'}
                         </p>
                     )}
                     {canRetry && retryAction && (
@@ -380,6 +412,7 @@ export default function GasAssistPrepaymentDialog({
                         sellToken={sellToken}
                         buyToken={buyToken}
                         paymentToken={paymentToken}
+                        purpose={purpose}
                     />
                 </Dialog.Content>
             </Dialog.Portal>
