@@ -61,9 +61,39 @@ const messages = {
     SLIPPAGE_INVALID: 'The slippage setting is invalid.',
 }
 
-/** Presents a concise user-safe Gas Assist error while diagnostics remain in the technical drawer and console. */
+function diagnosticLines(error) {
+    if (typeof error === 'string') return error ? [error] : []
+    const lines = []
+    const code = error?.code ? String(error.code) : ''
+    const message = error?.message ? String(error.message) : ''
+    if (code) lines.push(code)
+    if (message && message !== code) lines.push(message)
+    const extra = error?.details?.backendDetails ?? error?.details
+    if (Array.isArray(extra?.mismatches) && extra.mismatches.length > 0) {
+        lines.push(`fields: ${extra.mismatches.join(', ')}`)
+    } else if (extra && typeof extra === 'object') {
+        try {
+            const serialized = JSON.stringify(extra)
+            if (serialized && serialized !== '{}' && serialized.length < 500) lines.push(serialized)
+        } catch {
+            // Ignore details that cannot be shown.
+        }
+    }
+    if (Number.isInteger(error?.status) && error.status > 0) lines.push(`HTTP ${error.status}`)
+    return [...new Set(lines)]
+}
+
+/** Shows the friendly Gas Assist copy plus the live backend/wallet code for on-device debugging. */
 export default function GasAssistError({ error }) {
     const code = typeof error === 'string' ? error : error?.code
     const message = messages[code] ?? 'Gas Assist could not complete this swap. Try again.'
-    return <p className="gas-assist-error" role="alert">{message}</p>
+    const diagnostics = diagnosticLines(error).filter((line) => line !== message)
+    return (
+        <div className="gas-assist-error" role="alert">
+            <p>{message}</p>
+            {diagnostics.length > 0 && (
+                <pre className="gas-assist-error-diagnostics">{diagnostics.join('\n')}</pre>
+            )}
+        </div>
+    )
 }

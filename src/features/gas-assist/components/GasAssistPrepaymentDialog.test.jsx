@@ -265,6 +265,8 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
         expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
         expect(screen.getByText('Gas Assist could not complete this swap. Try again.')).toBeTruthy()
+        expect(screen.getByText(/INVALID_CHAIN/)).toBeTruthy()
+        expect(screen.getByText(/Invalid chain\./)).toBeTruthy()
         expect(document.querySelector('.gas-assist-compact-status.error')).toBeTruthy()
     })
 
@@ -282,7 +284,8 @@ describe('Gas Assist prepayment review', () => {
         />)
 
         expect(screen.getByText('This swap could not be simulated. Refresh and try again.')).toBeTruthy()
-        expect(screen.queryByText('The sponsored transaction cannot be simulated against current chain state.')).toBeNull()
+        expect(screen.getByText(/SPONSORED_ACTION_REVERTED/)).toBeTruthy()
+        expect(screen.getByText(/The sponsored transaction cannot be simulated against current chain state\./)).toBeTruthy()
         expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
     })
 
