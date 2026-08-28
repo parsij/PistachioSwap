@@ -8,6 +8,7 @@ import {
     parseTransaction,
     recoverTransactionAddress,
 } from 'viem'
+import { recoverAuthorizationAddress } from 'viem/utils'
 
 export const METAMASK_BSC_SCOPE = 'eip155:56'
 const SIGN_TRANSACTION_METHOD = 'eth_signTransaction'
@@ -565,6 +566,18 @@ export async function validateSignedAtomicTransaction({
             Number(signedAuth.chainId) !== 56 ||
             BigInt(signedAuth.nonce) !== BigInt(expectedAuth.nonce)) {
             mismatch('WALLET_REWROTE_DESTINATION', 'The wallet changed the EIP-7702 authorization.')
+        }
+        if (BigInt(signedAuth.r ?? 0) === 0n || BigInt(signedAuth.s ?? 0) === 0n) {
+            mismatch('UNSIGNED_EIP7702_AUTHORIZATION', 'The EIP-7702 authorization is not signed.')
+        }
+        let authority
+        try {
+            authority = await recoverAuthorizationAddress({ authorization: signedAuth })
+        } catch {
+            mismatch('UNSIGNED_EIP7702_AUTHORIZATION', 'The EIP-7702 authorization is not signed.')
+        }
+        if (normalizedAddress(authority) !== expectedWallet) {
+            mismatch('WALLET_SIGNER_MISMATCH', 'The EIP-7702 authorization signer does not match the connected wallet.')
         }
     } else {
         if (parsed.type !== 'legacy') mismatch('WALLET_REWROTE_TRANSACTION_TYPE', 'The wallet changed the transaction type.')

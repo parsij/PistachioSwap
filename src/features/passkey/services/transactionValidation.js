@@ -6,6 +6,7 @@ import {
     parseTransaction,
     recoverTransactionAddress,
 } from 'viem'
+import { recoverAuthorizationAddress } from 'viem/utils'
 
 import { getCuratedEvmChain, isCuratedEvmChainId } from '../../../web3/curatedEvmChains.js'
 
@@ -13,6 +14,26 @@ function mismatch(code, message) {
     const error = new Error(message)
     error.code = code
     throw error
+}
+
+function signatureComponent(value) {
+    if (value === undefined || value === null) return 0n
+    return BigInt(value)
+}
+
+async function requireSignedEip7702Authorization(authorization, walletAddress) {
+    if (signatureComponent(authorization?.r) === 0n || signatureComponent(authorization?.s) === 0n) {
+        mismatch('UNSIGNED_EIP7702_AUTHORIZATION', 'The EIP-7702 authorization is not signed.')
+    }
+    let authority
+    try {
+        authority = await recoverAuthorizationAddress({ authorization })
+    } catch {
+        mismatch('UNSIGNED_EIP7702_AUTHORIZATION', 'The EIP-7702 authorization is not signed.')
+    }
+    if (normalizedAddress(authority) !== normalizedAddress(walletAddress)) {
+        mismatch('WALLET_SIGNER_MISMATCH', 'The EIP-7702 authorization signer does not match the wallet.')
+    }
 }
 
 function quantity(value, fallback = 0n) {
@@ -72,6 +93,7 @@ export async function validateLocallySignedTransaction({ signedTransaction, requ
             ) {
                 mismatch('WALLET_REWROTE_DESTINATION', 'The EIP-7702 authorization changed.')
             }
+            await requireSignedEip7702Authorization(signedAuth, walletAddress)
         } else {
             if ((parsed.gasPrice ?? 0n) !== 0n) mismatch('WALLET_REWROTE_GAS_PRICE', 'MegaFuel gas price changed from zero.')
             if (parsed.maxFeePerGas != null || parsed.maxPriorityFeePerGas != null) mismatch('WALLET_ADDED_EIP1559_FIELDS', 'MegaFuel transaction gained EIP-1559 fields.')

@@ -26,6 +26,7 @@ import {
     subscribeMetaMaskMultichainSession,
     validatePublicBscRpcUrl,
     validateSignedPreparedTransaction,
+    validateSignedAtomicTransaction,
 } from './metamaskMultichain.js'
 
 const wallet = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d')
@@ -322,5 +323,51 @@ describe('signing request and exact post-signature validation', () => {
         const unavailable = sanitizeMetaMaskMultichainError({ code: -32601, message: 'Method not found', data: { secret: true } })
         expect(unavailable).toMatchObject({ code: 'METAMASK_MULTICHAIN_SIGN_TRANSACTION_UNAVAILABLE' })
         expect(unavailable.details).not.toHaveProperty('data')
+    })
+})
+
+describe('atomic EIP-7702 signature checks', () => {
+    const executor = '0x973731BE76BdB84B994D32eF1E9607edebfBE470'
+    const atomicPrepared = () => ({
+        type: '0x4',
+        chainId: '0x38',
+        from: wallet.address,
+        to: wallet.address,
+        nonce: '0x7',
+        gas: '0x186a0',
+        maxFeePerGas: '0x0',
+        maxPriorityFeePerGas: '0x0',
+        value: '0x0',
+        data: '0x1234',
+        authorizationList: [{
+            chainId: '0x38',
+            address: executor,
+            nonce: '0x8',
+        }],
+    })
+
+    it('rejects an atomic EIP-7702 transaction whose authorization is unsigned', async () => {
+        const authorization = await wallet.signAuthorization({
+            contractAddress: executor,
+            chainId: 56,
+            nonce: 8,
+        })
+        const signedRawTransaction = await wallet.signTransaction({
+            type: 'eip7702',
+            chainId: 56,
+            to: wallet.address,
+            nonce: 7,
+            gas: 100_000n,
+            maxFeePerGas: 0n,
+            maxPriorityFeePerGas: 0n,
+            value: 0n,
+            data: '0x1234',
+            authorizationList: [{ ...authorization, r: '0x0', s: '0x0', yParity: 0 }],
+        })
+        await expect(validateSignedAtomicTransaction({
+            signedRawTransaction,
+            normalizedTransaction: atomicPrepared(),
+            authenticatedWalletAddress: wallet.address,
+        })).rejects.toMatchObject({ code: 'UNSIGNED_EIP7702_AUTHORIZATION' })
     })
 })
