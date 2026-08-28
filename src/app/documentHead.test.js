@@ -309,7 +309,7 @@ describe('Gas Assist page', () => {
 
     it('explains the flow in HTML, not only in the wallet app', () => {
         expect(html).not.toContain('/src/main.jsx')
-        expect(html).toContain('three-transaction package')
+        expect(html).toContain('one sponsored transaction')
         expect(html).toContain('has not been independently audited')
     })
 

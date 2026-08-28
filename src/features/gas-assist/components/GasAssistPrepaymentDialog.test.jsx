@@ -80,7 +80,8 @@ describe('Gas Assist prepayment review', () => {
         expect(details?.hasAttribute('open')).toBe(false)
         expect(screen.getByText('Net swap input')).toBeTruthy()
         expect(screen.getByText('Minimum output')).toBeTruthy()
-        expect(screen.getByText(/separate blockchain transactions/)).toBeTruthy()
+        expect(screen.getAllByText(/one sponsored transaction/).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/If it fails, no fee is taken/).length).toBeGreaterThan(0)
 
         fireEvent.click(screen.getByRole('button', { name: 'Swap using Gas Assist' }))
         expect(value.signPackage).toHaveBeenCalledOnce()
@@ -120,7 +121,7 @@ describe('Gas Assist prepayment review', () => {
             />,
         )
         expect(screen.getByText('Confirm with your passkey')).toBeTruthy()
-        expect(screen.getByText(/One passkey check authorizes this exact three-transaction package/)).toBeTruthy()
+        expect(screen.getByText(/One passkey check authorizes this exact sponsored transaction/)).toBeTruthy()
 
         rerender(
             <GasAssistPrepaymentDialog
@@ -160,7 +161,7 @@ describe('Gas Assist prepayment review', () => {
             buyToken={buyToken}
         />)
 
-        expect(screen.getByText('Starting your gasless swap')).toBeTruthy()
+        expect(screen.getByText('Starting your swap')).toBeTruthy()
         expect(screen.getByText(/Confirming the Gas Assist fee/)).toBeTruthy()
         expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
         expect(document.querySelector('.gas-assist-compact-status')).toBeTruthy()
@@ -203,7 +204,7 @@ describe('Gas Assist prepayment review', () => {
             buyToken={buyToken}
         />)
 
-        expect(screen.getByText('Starting your gasless swap')).toBeTruthy()
+        expect(screen.getByText('Starting your swap')).toBeTruthy()
         expect(screen.queryByText('Quote expired')).toBeNull()
         expect(screen.queryByRole('button', { name: 'Refresh quote' })).toBeNull()
         expect(screen.getByRole('button', { name: 'Close' }).disabled).toBe(true)
@@ -304,6 +305,33 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.queryByText(
             'The quoted transaction exceeds the stablecoin BNB gas-cost cap.',
         )).toBeNull()
+    })
+
+    it('shows one atomic transaction hash and does not describe sequential fee/approval/swap hashes', () => {
+        const hash = `0x${'ab'.repeat(32)}`
+        render(<GasAssistPrepaymentDialog
+            sponsorship={sponsorship({
+                phase: 'swap-confirming',
+                order: {
+                    ...sponsorship().order,
+                    status: 'atomic-submitted',
+                    atomicExecution: true,
+                    atomicTransactionHash: hash,
+                    paymentTransactionHash: hash,
+                    approvalTransactionHash: hash,
+                    swapTransactionHash: hash,
+                },
+            })}
+            sellToken={sellToken}
+            buyToken={buyToken}
+        />)
+
+        expect(screen.getByText('Confirming your swap')).toBeTruthy()
+        expect(screen.getAllByText(/one sponsored transaction/).length).toBeGreaterThan(0)
+        expect(screen.getByText('Transaction', { selector: '.gas-assist-details span' })).toBeTruthy()
+        expect(screen.queryByText('Fee transaction')).toBeNull()
+        expect(screen.queryByText('Approval transaction')).toBeNull()
+        expect(screen.queryByText('Swap transaction')).toBeNull()
     })
 
     it('shows a simple error without exposing backend diagnostics in the interface', () => {

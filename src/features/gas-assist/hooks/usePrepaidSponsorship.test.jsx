@@ -9,8 +9,11 @@ const mocks = vi.hoisted(() => ({
     createOrder: vi.fn(),
     fetchOrder: vi.fn(),
     preparePackage: vi.fn(),
+    prepareAtomic: vi.fn(),
     submitPackage: vi.fn(),
+    submitAtomic: vi.fn(),
     signPackage: vi.fn(),
+    signAtomic: vi.fn(),
 }))
 
 vi.mock('#wallet-runtime', () => ({
@@ -27,19 +30,24 @@ vi.mock('../services/prepaidSponsorship.js', () => ({
     prepareSponsorshipContinuation: vi.fn(),
     prepareSponsorshipPayment: vi.fn(),
     prepareSponsorshipPackage: mocks.preparePackage,
+    prepareAtomicSponsorship: mocks.prepareAtomic,
     submitSponsorshipIntent: vi.fn(),
     submitSponsorshipPackage: mocks.submitPackage,
+    submitAtomicSponsorship: mocks.submitAtomic,
 }))
 
 vi.mock('../services/rawTransactionSigning.js', () => ({
     detectRawTransactionSigning: () => ({
         rawTransactionSigningSupported: true,
         method: 'eth_signTransaction',
+        packageMethod: 'pistachio_signMegaFuelPackage',
+        atomicMethod: 'pistachio_signAtomicMegaFuel',
         transport: 'pistachio-local',
         account: null,
     }),
     signPreparedSponsoredTransaction: vi.fn(),
     signPreparedSponsoredPackage: mocks.signPackage,
+    signPreparedAtomicSponsoredTransaction: mocks.signAtomic,
 }))
 
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
@@ -69,15 +77,28 @@ function setup(walletAddress = walletA, onConfirmed = vi.fn(), overrides = {}) {
 }
 
 async function waitForConfig(result) {
-    await waitFor(() => expect(result.current.config).toEqual({ enabled: true }))
+    await waitFor(() => expect(result.current.config).toEqual({
+        enabled: true,
+        atomicExecution: true,
+    }))
 }
 
 describe('prepaid sponsorship async ownership', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        mocks.fetchConfig.mockResolvedValue({ enabled: true })
+        mocks.fetchConfig.mockResolvedValue({ enabled: true, atomicExecution: true })
         mocks.authenticate.mockResolvedValue({ sessionToken: 'session' })
         mocks.createOrder.mockResolvedValue({ id: 'order-1', status: 'awaiting-payment' })
+        mocks.prepareAtomic.mockResolvedValue({
+            orderId: 'order-1',
+            execution: 'atomic',
+            action: 'atomic-swap',
+            chainId: 56,
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+            recipient: walletA,
+            transaction: {},
+        })
+        mocks.signAtomic.mockResolvedValue({ transactionHash: '0xabc' })
         mocks.preparePackage.mockResolvedValue({
             orderId: 'order-1',
             expiresAt: new Date(Date.now() + 900_000).toISOString(),
@@ -136,6 +157,7 @@ describe('prepaid sponsorship async ownership', () => {
         const { result } = setup(walletA, onConfirmed, {
             createOrder,
             onSubmitted,
+            executionPath: 'package',
         })
         await waitForConfig(result)
         vi.useFakeTimers()
@@ -191,9 +213,9 @@ describe('prepaid sponsorship async ownership', () => {
     })
 
     it('ignores duplicate package clicks while the first preparation is active', async () => {
-        let resolvePackage
-        mocks.preparePackage.mockImplementation(() => new Promise((resolve) => {
-            resolvePackage = resolve
+        let resolveAtomic
+        mocks.prepareAtomic.mockImplementation(() => new Promise((resolve) => {
+            resolveAtomic = resolve
         }))
         const { result } = setup()
         await waitForConfig(result)
@@ -207,15 +229,21 @@ describe('prepaid sponsorship async ownership', () => {
             result.current.signPackage()
             await Promise.resolve()
         })
-        expect(mocks.preparePackage).toHaveBeenCalledTimes(1)
+        expect(mocks.prepareAtomic).toHaveBeenCalledTimes(1)
+        expect(mocks.preparePackage).not.toHaveBeenCalled()
 
-        await act(async () => resolvePackage({
+        await act(async () => resolveAtomic({
             orderId: 'order-1',
+            execution: 'atomic',
+            action: 'atomic-swap',
+            chainId: 56,
             expiresAt: new Date(Date.now() + 900_000).toISOString(),
-            transactions: [],
+            recipient: walletA,
+            transaction: {},
         }))
         await act(async () => first)
-        expect(mocks.signPackage).toHaveBeenCalledTimes(1)
+        expect(mocks.signAtomic).toHaveBeenCalledTimes(1)
+        expect(mocks.signPackage).not.toHaveBeenCalled()
     })
 
     it('shows a cross-chain preview without authentication and authenticates once on confirmation', async () => {
@@ -240,6 +268,7 @@ describe('prepaid sponsorship async ownership', () => {
         const { result } = setup(walletA, vi.fn(), {
             createOrder,
             beforeAuthenticate,
+            executionPath: 'package',
         })
         await waitForConfig(result)
 
@@ -272,6 +301,7 @@ describe('prepaid sponsorship async ownership', () => {
         const { result } = setup(walletA, vi.fn(), {
             createOrder,
             beforeAuthenticate: vi.fn(),
+            executionPath: 'package',
         })
         await waitForConfig(result)
         vi.useFakeTimers()
@@ -295,5 +325,23 @@ describe('prepaid sponsorship async ownership', () => {
         await waitForConfig(result)
         expect(result.current.capability.transport).toBe('pistachio-local')
         expect(result.current.metaMaskSigner).toBeNull()
+    })
+
+    it('fails closed when the atomic path is unavailable instead of using sequential transactions', async () => {
+        mocks.fetchConfig.mockResolvedValue({ enabled: true, atomicExecution: false })
+        const { result } = setup()
+        await waitFor(() => expect(result.current.config).toEqual({
+            enabled: true,
+            atomicExecution: false,
+        }))
+
+        await act(async () => {
+            await result.current.start()
+        })
+
+        expect(result.current.phase).toBe('failed')
+        expect(result.current.error).toMatchObject({ code: 'ATOMIC_PATH_UNAVAILABLE' })
+        expect(mocks.preparePackage).not.toHaveBeenCalled()
+        expect(mocks.prepareAtomic).not.toHaveBeenCalled()
     })
 })

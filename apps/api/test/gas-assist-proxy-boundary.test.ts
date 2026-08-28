@@ -30,6 +30,8 @@ describe('Gas Assist public proxy boundary', () => {
     it('exposes only explicitly reviewed route shapes', () => {
         expect(isPublicGasAssistProxyRoute('GET', '/v1/sponsorship/config')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/package/prepare')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/prepare')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/submit')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/api/v1/sponsorship/intents/intent_123/submit')).toBe(true)
         expect(isPublicGasAssistProxyRoute('GET', '/v1/gas-assist/status/0xabc123')).toBe(true)
 

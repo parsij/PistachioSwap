@@ -6,15 +6,18 @@ import {
     createSponsorshipOrder,
     fetchSponsorshipConfig,
     fetchSponsorshipOrder,
+    prepareAtomicSponsorship,
     prepareSponsorshipApproval,
     prepareSponsorshipContinuation,
     prepareSponsorshipPayment,
     prepareSponsorshipPackage,
+    submitAtomicSponsorship,
     submitSponsorshipIntent,
     submitSponsorshipPackage,
 } from '../services/prepaidSponsorship.js'
 import {
     detectRawTransactionSigning,
+    signPreparedAtomicSponsoredTransaction,
     signPreparedSponsoredTransaction,
     signPreparedSponsoredPackage,
 } from '../services/rawTransactionSigning.js'
@@ -45,6 +48,8 @@ function phaseForOrderStatus(status, currentPhase) {
         'approval-submitted': 'approval-confirming',
         'approval-confirmed': 'approval-confirmed',
         'swap-submitted': 'swap-confirming',
+        'atomic-submitting': 'swap-confirming',
+        'atomic-submitted': 'swap-confirming',
         completed: 'completed',
         expired: 'expired',
         rejected: 'failed',
@@ -90,6 +95,7 @@ export function usePrepaidSponsorship({
     createOrder: createOrderOverride,
     beforeAuthenticate,
     previewOrder,
+    executionPath = 'atomic',
 }) {
     const connection = useConnection()
     const { data: walletClient } = useWalletClient({ chainId: 56 })
@@ -310,6 +316,13 @@ export function usePrepaidSponsorship({
                     { stage: 'flow.start' },
                 )
             }
+            if (executionPath === 'atomic' && config?.atomicExecution !== true) {
+                throw flowError(
+                    'ATOMIC_PATH_UNAVAILABLE',
+                    'Atomic Gas Assist is unavailable. Sequential transactions are not used.',
+                    { stage: 'flow.start' },
+                )
+            }
             if (!quoteEndpoint) {
                 throw flowError('SPONSORSHIP_ENDPOINT_MISSING', 'Gas Assist is not configured.', { stage: 'flow.start' })
             }
@@ -374,7 +387,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient])
+    }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, createOrderOverride, executionPath, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient])
 
     const signIntent = useCallback(async (action) => {
         const operation = `${action}-intent`
@@ -527,6 +540,74 @@ export function usePrepaidSponsorship({
                 if (!isCurrent(walletEpoch, flowEpoch)) return
                 setState((current) => ({ ...current, order }))
             }
+            if (executionPath === 'atomic') {
+                if (config?.atomicExecution !== true) {
+                    throw flowError(
+                        'ATOMIC_PATH_UNAVAILABLE',
+                        'Atomic Gas Assist is unavailable. Sequential transactions are not used.',
+                        { stage: 'atomic.prepare' },
+                    )
+                }
+                setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
+                const prepared = await gasAssistTraceStep(
+                    'flow.atomic-prepare',
+                    { orderId: order.id },
+                    () => prepareAtomicSponsorship(
+                        quoteEndpoint,
+                        sessionToken,
+                        order.id,
+                    ),
+                )
+                if (!isCurrent(walletEpoch, flowEpoch)) return
+                setState((current) => ({
+                    ...current,
+                    phase: 'package-signing',
+                    intentExpiresAt: prepared.expiresAt,
+                    order: current.order
+                        ? {
+                            ...current.order,
+                            expiresAt: prepared.expiresAt ?? current.order.expiresAt,
+                        }
+                        : current.order,
+                }))
+                await signPreparedAtomicSponsoredTransaction({
+                    transport: capability.transport,
+                    capability,
+                    walletClient,
+                    prepared,
+                    authenticatedWalletAddress: walletAddress,
+                    submitSignedTransaction: async (signedRawTransaction) => {
+                        if (!isCurrent(walletEpoch, flowEpoch)) {
+                            throw flowError(
+                                'PISTACHIO_ACCOUNT_MISMATCH',
+                                'The connected wallet changed during signing.',
+                                { stage: 'atomic.submit' },
+                            )
+                        }
+                        if (Date.parse(prepared.expiresAt) <= Date.now()) {
+                            throw flowError(
+                                'INTENT_EXPIRED',
+                                'The signed atomic transaction expired.',
+                                { stage: 'atomic.submit' },
+                            )
+                        }
+                        return submitAtomicSponsorship(
+                            quoteEndpoint,
+                            sessionToken,
+                            order.id,
+                            signedRawTransaction,
+                        )
+                    },
+                })
+                if (!isCurrent(walletEpoch, flowEpoch)) return
+                setState((current) => ({
+                    ...current,
+                    phase: 'swap-confirming',
+                    intentExpiresAt: null,
+                    order: { ...current.order, atomicExecution: true },
+                }))
+                return
+            }
             setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
             const preparedPackage = await gasAssistTraceStep(
                 'flow.package-prepare',
@@ -591,7 +672,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beforeAuthenticate, beginOperation, buyToken, capability, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
+    }, [beforeAuthenticate, beginOperation, buyToken, capability, config, createOrderOverride, executionPath, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
 
     const requestContinuation = useCallback(async () => {
         const operation = 'continuation-prepare'

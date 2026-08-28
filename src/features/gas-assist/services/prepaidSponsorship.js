@@ -292,6 +292,33 @@ export function submitSponsorshipIntent(quoteEndpoint, sessionToken, intentId, s
     })
 }
 
+/** Requests the backend-prepared atomic sponsored transaction. */
+export function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signal) {
+    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`, {}, {
+        sessionToken,
+        signal,
+        stage: 'atomic.prepare',
+    })
+}
+
+/** Submits the single signed atomic sponsored transaction. */
+export function submitAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signedRawTransaction, signal) {
+    if (typeof signedRawTransaction !== 'string' || !/^0x(?:[0-9a-f]{2})+$/i.test(signedRawTransaction)) {
+        throw sponsorshipError(
+            'WALLET_RAW_TRANSACTION_MALFORMED',
+            'The signed atomic transaction is invalid.',
+            { stage: 'atomic.submit' },
+        )
+    }
+    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/submit`, {
+        signedRawTransaction,
+    }, {
+        sessionToken,
+        signal,
+        stage: 'atomic.submit',
+    })
+}
+
 /** Requests all three exact transactions before any transaction is broadcast. */
 export function prepareSponsorshipPackage(quoteEndpoint, sessionToken, orderId, signal) {
     return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/package/prepare`, {}, {

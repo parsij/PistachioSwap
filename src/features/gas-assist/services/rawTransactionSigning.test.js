@@ -33,6 +33,8 @@ describe('private sponsored wallet compatibility', () => {
         expect(capability).toMatchObject({
             rawTransactionSigningSupported: true,
             method: 'eth_signTransaction',
+            packageMethod: 'pistachio_signMegaFuelPackage',
+            atomicMethod: 'pistachio_signAtomicMegaFuel',
             transport: 'pistachio-local',
             status: 'verified',
         })

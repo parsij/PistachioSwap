@@ -7,7 +7,7 @@
     <title>Gas Assist: swap BEP-20 tokens with no BNB for gas | Pistachio Swap</title>
     <meta
       name="description"
-      content="Gas Assist lets you swap BEP-20 tokens on BNB Chain when your wallet has no BNB for gas. See how the sponsored three-transaction package works and what it costs."
+      content="Gas Assist lets you swap BEP-20 tokens on BNB Chain when your wallet has no BNB for gas. See how one sponsored transaction works and what it costs."
     />
     <link rel="canonical" href="https://pistachioswap.com/gas-assist/" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -91,23 +91,23 @@
             "step": [
               {
                 "@type": "HowToStep",
-                "name": "The package is prepared",
-                "text": "The backend builds one exact package of three transactions: the fee payment, the token approval, and the swap."
+                "name": "One sponsored transaction is prepared",
+                "text": "The backend builds one exact sponsored transaction: the fee payment, the token approval, and the swap run together."
               },
               {
                 "@type": "HowToStep",
                 "name": "You review it once",
-                "text": "All three transactions are shown together with the exact fee and the minimum output, before any signature is requested."
+                "text": "The exact fee and the minimum output are shown before any signature is requested."
               },
               {
                 "@type": "HowToStep",
-                "name": "One authorization signs the package",
-                "text": "With Pistachio Wallet the package is authorized through one review and one fresh passkey check, then each transaction is signed on your device."
+                "name": "One authorization signs the transaction",
+                "text": "With Pistachio Wallet the swap is authorized through one review and one fresh passkey check, then the transaction is signed on your device."
               },
               {
                 "@type": "HowToStep",
-                "name": "All or nothing",
-                "text": "Each signed transaction is validated. If anything changes mid-flow, the whole package is abandoned and nothing is submitted."
+                "name": "If it fails, no fee is taken",
+                "text": "Fee payment, approval, and swap are one on-chain transaction. If any step fails, the whole transaction reverts and the treasury receives nothing."
               }
             ]
           },
@@ -152,7 +152,7 @@
                 "name": "Can Gas Assist submit only part of my swap?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. The three transactions are authorized as one package. Each signed transaction is validated, and any mismatch — a changed account, nonce, chain, expiry, or rewritten transaction — aborts the whole package. A partial package is never submitted."
+                  "text": "No. Fee payment, approval, and swap are one sponsored BNB Chain transaction. If that transaction fails, no fee is taken. A mismatch — a changed account, nonce, chain, expiry, or rewritten transaction — aborts signing and nothing is submitted."
                 }
               }
             ]
@@ -240,51 +240,52 @@
           <div class="section-head">
             <h2>How a Gas Assist swap works</h2>
             <p>
-              An eligible prepaid swap is prepared as one exact package of three
-              transactions, authorized together.
+              An eligible prepaid swap is prepared as one sponsored BNB Chain
+              transaction. The disclosed fee, exact approval, and swap run
+              together. If that transaction fails, no fee is taken.
             </p>
           </div>
 
           <div class="split">
             <ol class="steps">
               <li>
-                <strong>The package is prepared</strong>
+                <strong>One sponsored transaction is prepared</strong>
                 <span>
-                  The backend builds three exact transactions: the fee payment, the
-                  token approval, and the swap.
+                  The backend builds one exact transaction: the fee payment, the
+                  token approval, and the swap run together on BNB Chain.
                 </span>
               </li>
               <li>
                 <strong>You review it once</strong>
                 <span>
-                  All three are shown together, with the exact fee and the minimum
-                  output, before any signature is requested.
+                  The exact fee and the minimum output are shown before any
+                  signature is requested.
                 </span>
               </li>
               <li>
-                <strong>One authorization signs the package</strong>
+                <strong>One authorization signs the transaction</strong>
                 <span>
-                  With Pistachio Wallet the package needs one review and one fresh
-                  passkey check. Each transaction is then signed on your device and
+                  With Pistachio Wallet the swap needs one review and one fresh
+                  passkey check. The transaction is then signed on your device and
                   the signed result validated.
                 </span>
               </li>
               <li>
-                <strong>All or nothing</strong>
+                <strong>If it fails, no fee is taken</strong>
                 <span>
                   A changed account, nonce, chain, expiry, or rewritten transaction
-                  aborts the whole package. A partial package is never submitted.
+                  aborts signing. If the on-chain transaction reverts, the treasury
+                  receives nothing.
                 </span>
               </li>
             </ol>
 
             <aside class="callout">
-              <h3>Why one package</h3>
+              <h3>Why one transaction</h3>
               <p>
                 The fee, the approval and the swap only make sense together. Binding
-                them into a single reviewed, single-authorized package means you
-                approve exactly what runs — not three separate prompts you have to
-                reason about one at a time.
+                them into one sponsored transaction means you approve exactly what
+                runs — and a failure reverts everything, including the fee.
               </p>
               <p>
                 A fresh Gas Assist session may still ask for one message signature
@@ -410,10 +411,10 @@
               <summary>Can Gas Assist submit only part of my swap?</summary>
               <div>
                 <p>
-                  No. The three transactions are authorized as one package. Each
-                  signed transaction is validated, and any mismatch — a changed
-                  account, nonce, chain, expiry, or rewritten transaction — aborts the
-                  whole package. A partial package is never submitted.
+                  No. Fee payment, approval, and swap are one sponsored
+                  transaction. If that transaction fails, no fee is taken. A
+                  mismatch — a changed account, nonce, chain, expiry, or rewritten
+                  transaction — aborts signing and nothing is submitted.
                 </p>
               </div>
             </details>

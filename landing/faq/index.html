@@ -79,7 +79,7 @@
                 "name": "What is Gas Assist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Gas Assist is a BNB Chain flow for wallets that hold BEP-20 tokens but no BNB to pay gas. The backend prepares an exact fee, approval, and swap package. You review the cost, then sign."
+                  "text": "Gas Assist is a BNB Chain flow for wallets that hold BEP-20 tokens but no BNB to pay gas. The backend prepares one sponsored transaction for the disclosed fee, exact approval, and swap. You review the cost, then sign. If that transaction fails, no fee is taken."
                 }
               },
               {
@@ -274,8 +274,10 @@
               <div>
                 <p>
                   Gas Assist is a BNB Chain flow for wallets that hold BEP-20
-                  tokens but no BNB to pay gas. The backend prepares an exact
-                  fee, approval, and swap package. You review the cost, then sign.
+                  tokens but no BNB to pay gas. The backend prepares one sponsored
+                  transaction for the disclosed fee, exact approval, and swap.
+                  You review the cost, then sign. If that transaction fails, no
+                  fee is taken.
                 </p>
                 <p>
                   <a href="/landing/gas-assist/">How Gas Assist works</a>

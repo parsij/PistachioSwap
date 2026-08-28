@@ -72,7 +72,7 @@
           {
             "@type": "HowTo",
             "name": "Swap BEP-20 tokens without BNB using Gas Assist",
-            "description": "Review a Gas Assist quote on BNB Chain, then sign the exact fee, approval, and swap package.",
+            "description": "Review a Gas Assist quote on BNB Chain, then sign one sponsored transaction.",
             "step": [
               {
                 "@type": "HowToStep",
@@ -86,8 +86,8 @@
               },
               {
                 "@type": "HowToStep",
-                "name": "Sign the exact package",
-                "text": "The fee payment, token approval, and swap are prepared as one package. You sign only after you have seen those amounts. If anything changes, the package is abandoned."
+                "name": "Sign one sponsored transaction",
+                "text": "The fee payment, token approval, and swap run in one sponsored BNB Chain transaction. You sign only after you have seen those amounts. If the transaction fails, no fee is taken."
               }
             ]
           },
@@ -235,21 +235,22 @@
 
           <h2>What you sign</h2>
           <p>
-            For an eligible prepaid Gas Assist swap, the backend prepares an exact
-            three-transaction package:
+            For an eligible prepaid Gas Assist swap, the backend prepares one
+            sponsored transaction. Fee payment, exact token approval, and the
+            swap run together. If that transaction fails, no fee is taken.
           </p>
           <ol>
-            <li>the fee-payment transfer</li>
+            <li>the disclosed fee transfer to treasury</li>
             <li>the exact token approval</li>
-            <li>the exact swap transaction</li>
+            <li>the swap, requiring the reviewed minimum output</li>
           </ol>
           <p>
-            With Pistachio Wallet those three transactions are reviewed as one
-            package and authorized through a single package-signing request. The
-            wallet validates the package, requires a fresh passkey check for an
-            already-unlocked session, signs each exact transaction locally, and
-            only then returns the complete package. A partial package is not
-            submitted.
+            With Pistachio Wallet those steps are one user-signed sponsored
+            transaction. The wallet validates chain ID, destination, calldata,
+            nonce, gas, fee, recipient, and minimum output, requires a fresh
+            passkey check for an already-unlocked session, and returns one
+            signature. The browser does not hold NodeReal credentials or
+            broadcast MegaFuel privately.
           </p>
           <p>
             If you connect a standard EVM wallet instead, you still review the
@@ -268,8 +269,8 @@
           <h2>If something changes</h2>
           <p>
             Quotes expire. If the fee, the approval, or the swap no longer
-            matches what you reviewed, the package is abandoned. You are not
-            asked to sign a different transaction than the one you saw.
+            matches what you reviewed, signing is aborted. If the sponsored
+            transaction reverts on chain, the treasury receives nothing.
           </p>
           <p>
             Pistachio Swap is pre-release software and has not been independently audited.

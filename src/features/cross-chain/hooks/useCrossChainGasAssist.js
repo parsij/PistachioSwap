@@ -80,6 +80,7 @@ export function useCrossChainGasAssist({
         beforeAuthenticate: handleBeforeAuthenticate,
         onSubmitted: handleSubmitted,
         onConfirmed: handleConfirmed,
+        executionPath: 'package',
     })
     const available = required && sponsorshipConfig?.enabled === true &&
         typeof previewSponsorship === 'function' &&

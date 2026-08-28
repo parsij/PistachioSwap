@@ -11,6 +11,8 @@ vi.mock('./transactionValidation.js', () => ({
 vi.mock('../../gas-assist/services/metamaskMultichain.js', () => ({
     normalizePreparedSponsoredTransaction: (transaction) => ({ ...transaction }),
     validateSignedPreparedTransaction: vi.fn(async () => undefined),
+    normalizePreparedAtomicTransaction: (transaction) => ({ ...transaction }),
+    validateSignedAtomicTransaction: vi.fn(async () => undefined),
 }))
 
 import { methods } from './walletManagerMegaFuelPackage.js'
@@ -158,6 +160,64 @@ describe('Pistachio Wallet MegaFuel package signing', () => {
         ).rejects.toMatchObject({ code: 'PISTACHIO_SIGNING_CONTEXT_CHANGED' })
         expect(manager.reviewQueue.request).toHaveBeenCalledTimes(1)
         expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)
+        expect(manager.client.request).not.toHaveBeenCalled()
+    })
+})
+
+describe('Pistachio Wallet atomic MegaFuel signing', () => {
+    function preparedAtomic(overrides = {}) {
+        return {
+            orderId: 'order-1',
+            execution: 'atomic',
+            action: 'atomic-swap',
+            chainId: 56,
+            mode: 'eip7702',
+            expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+            intentId: 'intent-atomic',
+            feeRecipient: '0x2941909551c7cefd9ebeb1c5200d8b614cf887ca',
+            paymentAmountRaw: '1000',
+            minOutRaw: '50',
+            recipient: ADDRESS,
+            transaction: {
+                type: '0x4',
+                chainId: '0x38',
+                from: ADDRESS,
+                to: ADDRESS,
+                nonce: '0x1',
+                gas: '0x61a80',
+                maxFeePerGas: '0x0',
+                maxPriorityFeePerGas: '0x0',
+                value: '0x0',
+                data: '0x1234',
+                authorizationList: [{
+                    chainId: '0x38',
+                    address: '0x2222222222222222222222222222222222222222',
+                    nonce: '0x2',
+                }],
+            },
+            ...overrides,
+        }
+    }
+
+    it('reviews once, signs one transaction, and does not request a package', async () => {
+        const manager = fakeManager()
+        const result = await methods.signAtomicMegaFuel.call(manager, preparedAtomic())
+        expect(manager.reviewQueue.request).toHaveBeenCalledTimes(1)
+        expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)
+        expect(manager.client.request).toHaveBeenCalledTimes(1)
+        expect(result).toMatchObject({
+            orderId: 'order-1',
+            intentId: 'intent-atomic',
+            signedRawTransaction: '0x01',
+        })
+    })
+
+    it('rejects a non-BNB-Chain atomic payload before review', async () => {
+        const manager = fakeManager()
+        await expect(
+            methods.signAtomicMegaFuel.call(manager, preparedAtomic({ chainId: 1 })),
+        ).rejects.toMatchObject({ code: 'PISTACHIO_CHAIN_INVARIANT_FAILED' })
+        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
         expect(manager.client.request).not.toHaveBeenCalled()
     })
 })

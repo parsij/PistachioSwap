@@ -52,6 +52,8 @@ const messages = {
     SPONSORSHIP_DISABLED: 'Gas Assist is currently unavailable.',
     SPONSORSHIP_CONTEXT_MISSING: 'This Gas Assist session ended. Start again.',
     PISTACHIO_ACCOUNT_MISMATCH: 'The connected wallet changed. Start again.',
+    ATOMIC_PATH_UNAVAILABLE: 'This swap cannot run as one sponsored transaction right now.',
+    SEQUENTIAL_PACKAGE_DISABLED: 'Same-chain Gas Assist no longer uses sequential transactions.',
     PISTACHIO_WALLET_REQUIRED: 'Gas Assist requires Pistachio Wallet.',
     WALLET_NOT_CONNECTED: 'Connect Pistachio Wallet first.',
     SWAP_TOKENS_MISSING: 'Choose both swap tokens first.',

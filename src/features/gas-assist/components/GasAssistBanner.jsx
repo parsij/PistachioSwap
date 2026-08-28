@@ -16,7 +16,7 @@ export default function GasAssistBanner({ sellToken, buyToken }) {
             <span className="gas-assist-badge">Gas Assist · Prepaid sponsorship</span>
             <strong>{pair} needs Gas Assist because this wallet does not have enough BNB for normal network gas.</strong>
             <p>
-                PistachioSwap can sponsor the BNB needed for the token approval and swap instead of sending a normal transaction that the wallet cannot pay for.
+                PistachioSwap can sponsor one BNB Chain transaction for the disclosed fee, exact approval, and swap instead of sending a normal transaction that the wallet cannot pay for.
             </p>
             <p>
                 Gas-assisted swaps have a higher fee than normal swaps because the fee includes the sponsored network-gas reserve plus Gas Assist service and trade fees. The exact fee and minimum output are shown before you sign anything.
