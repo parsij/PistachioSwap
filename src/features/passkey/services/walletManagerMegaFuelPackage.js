@@ -263,7 +263,7 @@ export const methods = {
                 chainId: 56,
                 action: 'Confirm Gas Assist swap',
                 payload: {
-                    purpose: 'One sponsored BNB Chain transaction. If it fails, no fee is taken.',
+                    purpose: 'One sponsored BNB Chain transaction. The Gas Assist fee is already in the quote. If the swap fails, no fee is taken.',
                     orderId: prepared.orderId,
                     expiresAt: prepared.expiresAt,
                     feeRecipient: prepared.feeRecipient,
