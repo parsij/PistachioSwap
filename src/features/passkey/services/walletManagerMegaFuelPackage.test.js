@@ -203,6 +203,12 @@ describe('Pistachio Wallet atomic MegaFuel signing', () => {
         const manager = fakeManager()
         const result = await methods.signAtomicMegaFuel.call(manager, preparedAtomic())
         expect(manager.reviewQueue.request).toHaveBeenCalledTimes(1)
+        expect(manager.reviewQueue.request).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'Confirm Gas Assist swap',
+            payload: expect.objectContaining({
+                purpose: expect.stringMatching(/Gas Assist fee is already in the quote/i),
+            }),
+        }))
         expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)
         expect(manager.client.request).toHaveBeenCalledTimes(1)
         expect(result).toMatchObject({

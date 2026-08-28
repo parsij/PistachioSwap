@@ -164,6 +164,8 @@ function SigningReviewDialog() {
                                 {payload.completeMessage !== undefined && <div className="full"><dt>Complete message</dt><dd><ReviewValue multiline>{payload.completeMessage}</ReviewValue></dd></div>}
                                 {payload.purpose && <div><dt>Purpose</dt><dd><ReviewValue>{payload.purpose}</ReviewValue></dd></div>}
                                 {payload.orderId && <div><dt>Gas Assist order</dt><dd><ReviewValue>{payload.orderId}</ReviewValue></dd></div>}
+                                {payload.paymentAmountRaw && <div><dt>Gas Assist fee</dt><dd><ReviewValue>Already included in the quote ({payload.paymentAmountRaw} raw units)</ReviewValue></dd></div>}
+                                {payload.authorization && <div><dt>Temporary executor</dt><dd><ReviewValue>{payload.authorization}</ReviewValue></dd></div>}
                                 {payload.expiresAt && <div><dt>Package expires</dt><dd><ReviewValue>{payload.expiresAt}</ReviewValue></dd></div>}
                                 {packageTransactions.length > 0 && <div className="full"><dt>Exact package transactions</dt><dd><ReviewValue>{packageTransactions}</ReviewValue></dd></div>}
                                 {payload.domain && <div className="full"><dt>Domain</dt><dd><ReviewValue>{payload.domain}</ReviewValue></dd></div>}
@@ -181,6 +183,7 @@ function SigningReviewDialog() {
                                 {hasCalldata && <div className="full"><dt>Transaction data</dt><dd><ReviewValue>{calldata}</ReviewValue></dd></div>}
                             </dl>
                             {packageTransactions.length > 0 && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>One approval and one passkey check authorize only the exact Gas Assist transactions listed above. Any mismatch, account change, nonce change, chain change, expiry, or rewritten signed transaction aborts the package.</p></div>}
+                            {payload.authorization && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>Explorers show this as To: Self because the transaction is sent to your own wallet. For this swap it temporarily runs the Gas Assist executor in your account. BNB gas is sponsored. The Gas Assist fee is already in the quote and is taken only if this swap succeeds.</p></div>}
                             {payload.unlimitedWarning && <div className="pistachio-wallet-danger"><AlertTriangle aria-hidden="true" /><p>This request grants a spending allowance large enough to be unlimited in practice.</p></div>}
                             {hasUnknownCalldata && <div className="pistachio-wallet-warning"><ShieldAlert aria-hidden="true" /><p>This request contains contract data. Verify the destination and full transaction data before approving.</p></div>}
                             {payload.submission && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>{payload.submission}</p></div>}
