@@ -131,7 +131,7 @@ The build runs the license synchronization step. The licensing scripts retain ex
 
 ## Cold wallets
 
-- PistachioSwap: Cold Wallet 1 — `0x2941909551C7ceFd9EbEB1C5200D8B614CF887Ca`
+- PistachioSwap: Cold Wallet 1 — `0xDeb1Aff34182fb0D5F8CD87484EBB2C761547d9D`
 
 ## Legal, privacy, and third-party material
 
