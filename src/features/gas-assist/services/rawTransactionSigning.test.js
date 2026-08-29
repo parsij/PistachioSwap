@@ -33,7 +33,6 @@ describe('private sponsored wallet compatibility', () => {
         expect(capability).toMatchObject({
             rawTransactionSigningSupported: true,
             method: 'eth_signTransaction',
-            packageMethod: 'pistachio_signMegaFuelPackage',
             atomicMethod: 'pistachio_signAtomicMegaFuel',
             transport: 'pistachio-local',
             status: 'verified',
@@ -134,5 +133,6 @@ describe('private sponsored wallet compatibility', () => {
         expect(joined).not.toMatch(/localStorage|sessionStorage/)
         expect(joined).not.toMatch(/MEGAFUEL_API_KEY|MEGAFUEL_PRIVATE_POLICY_UUID|x-megafuel-policy-uuid/)
         expect(joined).not.toMatch(/console\.(?:log|debug|info|warn|error).*signedRawTransaction/)
+        expect(joined).not.toMatch(/pistachio_signMegaFuelPackage|\/package\/|\/payment\/prepare|\/approval\/prepare|\/continuation/u)
     })
 })

@@ -121,97 +121,6 @@ export function normalizeMegaFuelPackage(preparedPackage, walletAddress) {
 }
 
 export const methods = {
-    async signMegaFuelPackage(preparedPackage) {
-        const reviewWalletAddress = this.phase === 'unlocked' && this.address
-            ? this.address
-            : this.sessionActive && this.vault?.address
-                ? this.vault.address
-                : null
-        if (!reviewWalletAddress) {
-            throw packageError(
-                'PISTACHIO_WALLET_LOCKED',
-                'Connect Pistachio Wallet before signing a Gas Assist package.',
-            )
-        }
-
-        const normalizedPackage = normalizeMegaFuelPackage(
-            preparedPackage,
-            reviewWalletAddress,
-        )
-
-        const previouslyAuthorized = this.hasActiveGasAssistAuthorization?.() === true
-        if (!previouslyAuthorized) {
-            await this.reviewQueue.request({
-                walletAddress: reviewWalletAddress,
-                chainId: 56,
-                action: 'Confirm Gas Assist swap',
-                payload: {
-                    purpose: 'One-time authorization for this exact Gas Assist package',
-                    orderId: normalizedPackage.orderId,
-                    expiresAt: normalizedPackage.expiresAt,
-                    transactions: normalizedPackage.transactions.map((item) => ({
-                        action: item.action,
-                        intentId: item.intentId,
-                        ...describeTransactionReview(item.transaction, 'megafuel'),
-                    })),
-                },
-            })
-        }
-
-        // The production hardener keeps key material only for the bounded
-        // authentication-to-package handoff, then clears it after this action.
-        await this.ensureUnlockedForSigning()
-        const context = this.captureSigningContext(56)
-        if (String(context.address).toLowerCase() !== String(reviewWalletAddress).toLowerCase()) {
-            throw packageError(
-                'PISTACHIO_SIGNING_CONTEXT_CHANGED',
-                'The active wallet changed after the Gas Assist package review.',
-            )
-        }
-        this.assertSigningContext(context)
-
-        const signedTransactions = []
-        for (const intent of normalizedPackage.transactions) {
-            if (!validFutureTimestamp(intent.expiresAt) || !validFutureTimestamp(normalizedPackage.expiresAt)) {
-                throw packageError('INTENT_EXPIRED', 'The Gas Assist package expired before signing completed.')
-            }
-            this.assertSigningContext(context)
-            let signedRawTransaction = null
-            try {
-                signedRawTransaction = (
-                    await this.client.request('signTransaction', {
-                        transaction: intent.transaction,
-                        mode: 'megafuel',
-                    })
-                ).signedTransaction
-                this.assertSigningContext(context)
-                await validateLocallySignedTransaction({
-                    signedTransaction: signedRawTransaction,
-                    request: intent.transaction,
-                    walletAddress: context.address,
-                    mode: 'megafuel',
-                })
-                await validateSignedPreparedTransaction({
-                    signedRawTransaction,
-                    normalizedTransaction: intent.transaction,
-                    authenticatedWalletAddress: context.address,
-                    multichainAccount: context.address,
-                })
-                signedTransactions.push({
-                    intentId: intent.intentId,
-                    action: intent.action,
-                    signedRawTransaction,
-                })
-            } finally {
-                signedRawTransaction = null
-            }
-        }
-        await this.recordActivity()
-        return {
-            orderId: normalizedPackage.orderId,
-            signedTransactions,
-        }
-    },
     async signAtomicMegaFuel(prepared) {
         const reviewWalletAddress = this.phase === 'unlocked' && this.address
             ? this.address
@@ -227,8 +136,9 @@ export const methods = {
         if (!prepared || typeof prepared !== 'object' || Array.isArray(prepared)) {
             throw packageError('SPONSORSHIP_PACKAGE_INVALID', 'The atomic Gas Assist payload is invalid.')
         }
-        if (prepared.execution !== 'atomic' || prepared.action !== 'atomic-swap') {
-            throw packageError('SPONSORSHIP_PACKAGE_INVALID', 'The payload is not an atomic Gas Assist swap.')
+        if (prepared.execution !== 'atomic' || prepared.mode !== 'eip7702' ||
+            prepared.action !== 'atomic-swap') {
+            throw packageError('SPONSORSHIP_PACKAGE_INVALID', 'The payload is not a direct EIP-7702 Gas Assist swap.')
         }
         if (typeof prepared.orderId !== 'string' || !prepared.orderId || prepared.orderId.length > 160) {
             throw packageError('SPONSORSHIP_PACKAGE_INVALID', 'The atomic Gas Assist swap has an invalid order ID.')

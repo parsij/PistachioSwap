@@ -12,7 +12,6 @@ import {
 const SUPPORTED_CONNECTOR_IDS = new Set([
     'pistachio-local',
 ])
-const PACKAGE_SIGN_METHOD = 'pistachio_signMegaFuelPackage'
 const ATOMIC_SIGN_METHOD = 'pistachio_signAtomicMegaFuel'
 
 function signingError(code, message, details = {}) {
@@ -44,14 +43,13 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
     const result = Object.freeze({
         rawTransactionSigningSupported: supported,
         method: supported ? 'eth_signTransaction' : null,
-        packageMethod: supported ? PACKAGE_SIGN_METHOD : null,
         atomicMethod: supported ? ATOMIC_SIGN_METHOD : null,
         transport,
         status: supported ? 'verified' : 'unsupported',
         scope: supported ? 'eip155:56' : null,
         account: null,
         approvedMethods: supported
-            ? ['eth_signTransaction', PACKAGE_SIGN_METHOD, ATOMIC_SIGN_METHOD]
+            ? ['eth_signTransaction', ATOMIC_SIGN_METHOD]
             : [],
         reasonCode: supported ? null : 'PISTACHIO_WALLET_REQUIRED',
     })
@@ -184,217 +182,6 @@ export async function signPreparedSponsoredTransaction({
     }
 }
 
-function orderedPackageTransactions(preparedPackage) {
-    const expectedActions = [
-        'fee-payment-transfer',
-        'token-approval',
-        'normal-swap',
-    ]
-    if (!Array.isArray(preparedPackage?.transactions) ||
-        preparedPackage.transactions.length !== expectedActions.length) {
-        throw signingError(
-            'SPONSORSHIP_PACKAGE_INVALID',
-            'The prepared Gas Assist package is invalid.',
-            { stage: 'package.validate' },
-        )
-    }
-    if (typeof preparedPackage?.orderId !== 'string' || !preparedPackage.orderId ||
-        !Number.isFinite(Date.parse(preparedPackage.expiresAt)) ||
-        Date.parse(preparedPackage.expiresAt) <= Date.now()) {
-        throw signingError(
-            'INTENT_EXPIRED',
-            'The prepared Gas Assist package expired or is malformed.',
-            { stage: 'package.validate' },
-        )
-    }
-
-    const byAction = new Map(
-        preparedPackage.transactions.map((item) => [item.action, item]),
-    )
-    if (byAction.size !== expectedActions.length ||
-        expectedActions.some((action) => !byAction.has(action))) {
-        throw signingError(
-            'SPONSORSHIP_PACKAGE_INVALID',
-            'The prepared Gas Assist package is incomplete.',
-            { stage: 'package.validate' },
-        )
-    }
-    const ordered = expectedActions.map((action) => byAction.get(action))
-    const intentIds = new Set(ordered.map((item) => item.intentId))
-    if (intentIds.size !== expectedActions.length ||
-        ordered.some((item) => typeof item.intentId !== 'string' || !item.intentId ||
-            !Number.isFinite(Date.parse(item.expiresAt)) || Date.parse(item.expiresAt) <= Date.now())) {
-        throw signingError(
-            'SPONSORSHIP_PACKAGE_INVALID',
-            'The prepared Gas Assist package contains duplicate, missing, or expired intents.',
-            { stage: 'package.validate' },
-        )
-    }
-    if (ordered.some((item) => Date.parse(item.expiresAt) > Date.parse(preparedPackage.expiresAt))) {
-        throw signingError(
-            'SPONSORSHIP_PACKAGE_INVALID',
-            'A Gas Assist intent outlives the package expiry.',
-            { stage: 'package.validate' },
-        )
-    }
-
-    let nonces
-    try {
-        nonces = ordered.map((item) => BigInt(item.transaction?.nonce))
-    } catch {
-        throw signingError(
-            'SPONSORSHIP_PACKAGE_INVALID',
-            'The prepared Gas Assist package contains an invalid nonce.',
-            { stage: 'package.validate' },
-        )
-    }
-    if (nonces[1] !== nonces[0] + 1n || nonces[2] !== nonces[0] + 2n) {
-        throw signingError(
-            'SPONSORSHIP_PACKAGE_NONCE_MISMATCH',
-            'The prepared Gas Assist transactions do not use consecutive nonces.',
-            { stage: 'package.validate', nonces },
-        )
-    }
-    return ordered
-}
-
-function validatePackageSigningResponse(response, preparedPackage, ordered) {
-    if (!response || typeof response !== 'object' || Array.isArray(response) ||
-        response.orderId !== preparedPackage.orderId ||
-        !Array.isArray(response.signedTransactions) ||
-        response.signedTransactions.length !== ordered.length) {
-        throw signingError(
-            'SPONSORSHIP_PACKAGE_INVALID',
-            'Pistachio Wallet returned an invalid Gas Assist package signature response.',
-            { stage: 'package.sign' },
-        )
-    }
-    return response.signedTransactions.map((signed, index) => {
-        const expected = ordered[index]
-        if (!signed || typeof signed !== 'object' || Array.isArray(signed) ||
-            signed.action !== expected.action || signed.intentId !== expected.intentId ||
-            typeof signed.signedRawTransaction !== 'string' ||
-            !/^0x(?:[0-9a-f]{2})+$/iu.test(signed.signedRawTransaction)) {
-            throw signingError(
-                'SPONSORSHIP_PACKAGE_INVALID',
-                'Pistachio Wallet returned mismatched Gas Assist package signatures.',
-                { stage: 'package.sign', action: expected.action },
-            )
-        }
-        return {
-            intentId: expected.intentId,
-            action: expected.action,
-            signedRawTransaction: signed.signedRawTransaction,
-        }
-    })
-}
-
-export async function signPreparedSponsoredPackage({
-    transport,
-    capability,
-    walletClient,
-    preparedPackage,
-    authenticatedWalletAddress,
-    multichainAccount,
-    submitSignedPackage,
-}) {
-    if (
-        transport !== 'pistachio-local' ||
-        capability?.packageMethod !== PACKAGE_SIGN_METHOD ||
-        typeof walletClient?.request !== 'function' ||
-        typeof submitSignedPackage !== 'function'
-    ) {
-        throw signingError(
-            'PISTACHIO_BATCH_SIGNING_REQUIRED',
-            'Gas Assist requires the Pistachio Wallet one-confirmation package signer.',
-            { stage: 'package.validate' },
-        )
-    }
-
-    gasAssistTrace('signing.package.validate.start', {
-        orderId: preparedPackage?.orderId,
-    })
-    const ordered = orderedPackageTransactions(preparedPackage)
-    const normalizedTransactions = ordered.map((item) =>
-        normalizePreparedSponsoredTransaction(
-            item.transaction,
-            authenticatedWalletAddress,
-        ))
-    gasAssistTrace('signing.package.validate.success', {
-        orderId: preparedPackage.orderId,
-        actions: ordered.map((item) => item.action),
-        nonces: normalizedTransactions.map((item) => item.nonce),
-    })
-
-    let signedTransactions = []
-    try {
-        gasAssistTrace('signing.package.wallet-request.start', {
-            orderId: preparedPackage.orderId,
-            transactionCount: ordered.length,
-        })
-        const response = await walletClient.request({
-            method: PACKAGE_SIGN_METHOD,
-            params: [preparedPackage],
-        })
-        signedTransactions = validatePackageSigningResponse(
-            response,
-            preparedPackage,
-            ordered,
-        )
-        gasAssistTrace('signing.package.wallet-request.success', {
-            orderId: preparedPackage.orderId,
-            transactionCount: signedTransactions.length,
-        })
-
-        for (let index = 0; index < signedTransactions.length; index += 1) {
-            const signed = signedTransactions[index]
-            const normalizedTransaction = normalizedTransactions[index]
-            gasAssistTrace('signing.package.transaction.validate.start', {
-                orderId: preparedPackage.orderId,
-                action: signed.action,
-            })
-            await validateSignedPreparedTransaction({
-                signedRawTransaction: signed.signedRawTransaction,
-                normalizedTransaction,
-                authenticatedWalletAddress,
-                multichainAccount: multichainAccount ?? authenticatedWalletAddress,
-            })
-            gasAssistTrace('signing.package.transaction.validate.success', {
-                orderId: preparedPackage.orderId,
-                action: signed.action,
-            })
-        }
-
-        if (!Number.isFinite(Date.parse(preparedPackage.expiresAt)) ||
-            Date.parse(preparedPackage.expiresAt) <= Date.now()) {
-            throw signingError(
-                'INTENT_EXPIRED',
-                'The signed Gas Assist package expired before submission.',
-                { stage: 'package.submit' },
-            )
-        }
-        gasAssistTrace('signing.package.submit.start', {
-            orderId: preparedPackage.orderId,
-            transactionCount: signedTransactions.length,
-        })
-        const result = await submitSignedPackage(
-            signedTransactions.map((transaction) => ({ ...transaction })),
-        )
-        gasAssistTrace('signing.package.submit.success', {
-            orderId: preparedPackage.orderId,
-        })
-        return result
-    } catch (error) {
-        gasAssistTraceError('signing.package.error', error, {
-            orderId: preparedPackage?.orderId,
-            completedActions: signedTransactions.map((item) => item.action),
-        })
-        throw error
-    } finally {
-        signedTransactions.splice(0, signedTransactions.length)
-    }
-}
-
 export async function signPreparedAtomicSponsoredTransaction({
     transport,
     capability,
@@ -415,11 +202,12 @@ export async function signPreparedAtomicSponsoredTransaction({
             { stage: 'atomic.validate' },
         )
     }
-    if (prepared?.execution !== 'atomic' || prepared?.action !== 'atomic-swap' ||
+    if (prepared?.execution !== 'atomic' || prepared?.mode !== 'eip7702' ||
+        prepared?.action !== 'atomic-swap' ||
         prepared?.chainId !== 56) {
         throw signingError(
             'ATOMIC_PATH_UNAVAILABLE',
-            'Gas Assist did not return a BNB Chain atomic sponsored transaction.',
+            'Gas Assist did not return a direct BNB Chain EIP-7702 transaction.',
             { stage: 'atomic.validate' },
         )
     }
@@ -487,10 +275,7 @@ export async function signPreparedAtomicSponsoredTransaction({
 }
 
 export const rawSigningInternals = {
-    PACKAGE_SIGN_METHOD,
     ATOMIC_SIGN_METHOD,
     supportedConnectorIds: SUPPORTED_CONNECTOR_IDS,
-    orderedPackageTransactions,
     transactionSummary,
-    validatePackageSigningResponse,
 }

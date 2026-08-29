@@ -242,9 +242,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                     </div>
                 )}
                 <p className="gas-assist-technical-note">
-                    {purpose === 'cross-chain-gas'
-                        ? 'Cross-chain Gas Assist still uses a sponsored source package. Same-chain Gas Assist is one sponsored BNB Chain transaction; if that transaction fails, no fee is taken.'
-                        : 'Pistachio Wallet signs one sponsored BNB Chain transaction. The fee, exact approval, and swap run together. If that transaction fails, no fee is taken.'}
+                    Pistachio Wallet signs one direct EIP-7702 BNB Chain transaction. The disclosed fee goes to PistachioSwap, the swap principal goes directly through the quoted router, and everything reverts if the swap fails.
                 </p>
             </div>
         </details>

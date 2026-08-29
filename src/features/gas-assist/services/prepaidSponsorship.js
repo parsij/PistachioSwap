@@ -265,33 +265,6 @@ export function createSponsorshipOrder(quoteEndpoint, sessionToken, request, ide
     })
 }
 
-/** Requests the backend-prepared payment transaction for an existing sponsorship order. */
-export function prepareSponsorshipPayment(quoteEndpoint, sessionToken, orderId, signal) {
-    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/payment/prepare`, {}, {
-        sessionToken,
-        signal,
-        stage: 'payment.prepare',
-    })
-}
-
-/** Requests the backend-prepared token approval for an existing sponsorship order. */
-export function prepareSponsorshipApproval(quoteEndpoint, sessionToken, orderId, signal) {
-    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/approval/prepare`, { reusableApproval: false }, {
-        sessionToken,
-        signal,
-        stage: 'approval.prepare',
-    })
-}
-
-/** Submits signed transaction bytes for a specific authenticated sponsorship intent. */
-export function submitSponsorshipIntent(quoteEndpoint, sessionToken, intentId, signedRawTransaction, signal) {
-    return post(quoteEndpoint, `/v1/sponsorship/intents/${encodeURIComponent(intentId)}/submit`, { signedRawTransaction }, {
-        sessionToken,
-        signal,
-        stage: 'intent.submit',
-    })
-}
-
 /** Requests the backend-prepared atomic sponsored transaction. */
 export function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signal) {
     return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`, {}, {
@@ -319,31 +292,6 @@ export function submitAtomicSponsorship(quoteEndpoint, sessionToken, orderId, si
     })
 }
 
-/** Requests all three exact transactions before any transaction is broadcast. */
-export function prepareSponsorshipPackage(quoteEndpoint, sessionToken, orderId, signal) {
-    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/package/prepare`, {}, {
-        sessionToken,
-        signal,
-        stage: 'package.prepare',
-    })
-}
-
-/** Atomically stores all three signed raw transactions before backend execution. */
-export function submitSponsorshipPackage(quoteEndpoint, sessionToken, orderId, signedTransactions, signal) {
-    if (!Array.isArray(signedTransactions) || signedTransactions.length !== 3) {
-        throw sponsorshipError(
-            'SPONSORSHIP_PACKAGE_INVALID',
-            'Payment, approval, and swap signatures are all required.',
-            { stage: 'package.submit' },
-        )
-    }
-    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/package/submit`, { signedTransactions }, {
-        sessionToken,
-        signal,
-        stage: 'package.submit',
-    })
-}
-
 /** Fetches the current server-authoritative state of one prepaid sponsorship order. */
 export function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
     return requestJson(
@@ -351,15 +299,6 @@ export function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, sign
         { headers: { authorization: `Bearer ${sessionToken}` }, signal },
         'order.poll',
     )
-}
-
-/** Requests the next exact backend-prepared sponsored transaction. */
-export function prepareSponsorshipContinuation(quoteEndpoint, sessionToken, orderId, signal) {
-    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/continuation`, {}, {
-        sessionToken,
-        signal,
-        stage: 'continuation.prepare',
-    })
 }
 
 export const prepaidSponsorshipInternals = {

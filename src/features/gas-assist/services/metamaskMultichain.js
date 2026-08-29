@@ -430,9 +430,6 @@ export function normalizePreparedSponsoredTransaction(preparedTransaction, authe
     }
 }
 
-const ATOMIC_LEGACY_KEYS = new Set([
-    'type', 'chainId', 'from', 'to', 'nonce', 'gas', 'gasPrice', 'value', 'data',
-])
 const ATOMIC_EIP7702_KEYS = new Set([
     'type', 'chainId', 'from', 'to', 'nonce', 'gas',
     'maxFeePerGas', 'maxPriorityFeePerGas', 'value', 'data', 'authorizationList',
@@ -445,7 +442,7 @@ function requireAddress(value, field) {
     return value
 }
 
-/** Normalizes one backend-prepared atomic MegaFuel transaction (legacy pull or EIP-7702). */
+/** Normalizes one backend-prepared direct EIP-7702 MegaFuel transaction. */
 export function normalizePreparedAtomicTransaction(preparedTransaction, authenticatedWalletAddress) {
     if (!preparedTransaction || typeof preparedTransaction !== 'object' || Array.isArray(preparedTransaction)) {
         throw makeError('WALLET_SIGNED_TRANSACTION_MISMATCH', 'The backend prepared atomic transaction is invalid.')
@@ -453,8 +450,11 @@ export function normalizePreparedAtomicTransaction(preparedTransaction, authenti
     const keys = Object.keys(preparedTransaction)
     const type = preparedTransaction.type
     const eip7702 = type === '0x4' || type === 4 || type === 'eip7702'
-    const allowed = eip7702 ? ATOMIC_EIP7702_KEYS : ATOMIC_LEGACY_KEYS
-    if (keys.length !== allowed.size || keys.some((key) => !allowed.has(key))) {
+    if (!eip7702) {
+        throw makeError('WALLET_REWROTE_TRANSACTION_TYPE', 'Atomic Gas Assist requires an EIP-7702 self-transaction.')
+    }
+    if (keys.length !== ATOMIC_EIP7702_KEYS.size ||
+        keys.some((key) => !ATOMIC_EIP7702_KEYS.has(key))) {
         throw makeError('WALLET_SIGNED_TRANSACTION_MISMATCH', 'The prepared atomic transaction contains unsupported fields.')
     }
     const expectedWallet = normalizedAddress(authenticatedWalletAddress)
@@ -470,60 +470,41 @@ export function normalizePreparedAtomicTransaction(preparedTransaction, authenti
     if (typeof preparedTransaction.data !== 'string' || !/^0x(?:[0-9a-f]{2})*$/i.test(preparedTransaction.data)) {
         throw makeError('WALLET_REWROTE_CALLDATA', 'The prepared transaction calldata is invalid.')
     }
-    if (eip7702) {
-        if (BigInt(requireQuantity(preparedTransaction.maxFeePerGas, 'maximum fee')) !== 0n ||
-            BigInt(requireQuantity(preparedTransaction.maxPriorityFeePerGas, 'priority fee')) !== 0n) {
-            throw makeError('WALLET_REWROTE_GAS_PRICE', 'The prepared EIP-7702 fees must be zero.')
-        }
-        const authorizations = preparedTransaction.authorizationList
-        if (!Array.isArray(authorizations) || authorizations.length !== 1) {
-            throw makeError('WALLET_SIGNED_TRANSACTION_MISMATCH', 'The prepared EIP-7702 transaction needs exactly one authorization.')
-        }
-        const authorization = authorizations[0]
-        requireAddress(authorization?.address, 'authorization address')
-        const authorizationChainId = typeof authorization.chainId === 'number'
-            ? authorization.chainId
-            : Number(BigInt(requireQuantity(authorization.chainId, 'authorization chain ID')))
-        if (authorizationChainId !== 56) {
-            throw makeError('WALLET_REWROTE_CHAIN_ID', 'The EIP-7702 authorization is not for BNB Chain.')
-        }
-        if (normalizedAddress(preparedTransaction.to) !== expectedWallet) {
-            throw makeError('WALLET_REWROTE_DESTINATION', 'EIP-7702 atomic swaps must be self-calls from the user wallet.')
-        }
-        return {
-            type: '0x4',
-            chainId: '0x38',
-            from: preparedTransaction.from,
-            to: preparedTransaction.to,
-            nonce: requireQuantity(preparedTransaction.nonce, 'nonce'),
-            gas: requireQuantity(preparedTransaction.gas, 'gas limit'),
-            maxFeePerGas: '0x0',
-            maxPriorityFeePerGas: '0x0',
-            value: requireQuantity(preparedTransaction.value, 'value'),
-            data: preparedTransaction.data,
-            authorizationList: [{
-                chainId: '0x38',
-                address: authorization.address,
-                nonce: requireQuantity(authorization.nonce, 'authorization nonce'),
-            }],
-        }
+    if (BigInt(requireQuantity(preparedTransaction.maxFeePerGas, 'maximum fee')) !== 0n ||
+        BigInt(requireQuantity(preparedTransaction.maxPriorityFeePerGas, 'priority fee')) !== 0n) {
+        throw makeError('WALLET_REWROTE_GAS_PRICE', 'The prepared EIP-7702 fees must be zero.')
     }
-    if (!['0x0', 'legacy', 0].includes(type)) {
-        throw makeError('WALLET_REWROTE_TRANSACTION_TYPE', 'The prepared atomic transaction must be legacy type 0 or EIP-7702 type 4.')
+    const authorizations = preparedTransaction.authorizationList
+    if (!Array.isArray(authorizations) || authorizations.length !== 1) {
+        throw makeError('WALLET_SIGNED_TRANSACTION_MISMATCH', 'The prepared EIP-7702 transaction needs exactly one authorization.')
     }
-    if (BigInt(requireQuantity(preparedTransaction.gasPrice, 'gas price')) !== 0n) {
-        throw makeError('WALLET_REWROTE_GAS_PRICE', 'The prepared transaction gas price must be zero.')
+    const authorization = authorizations[0]
+    requireAddress(authorization?.address, 'authorization address')
+    const authorizationChainId = typeof authorization.chainId === 'number'
+        ? authorization.chainId
+        : Number(BigInt(requireQuantity(authorization.chainId, 'authorization chain ID')))
+    if (authorizationChainId !== 56) {
+        throw makeError('WALLET_REWROTE_CHAIN_ID', 'The EIP-7702 authorization is not for BNB Chain.')
+    }
+    if (normalizedAddress(preparedTransaction.to) !== expectedWallet) {
+        throw makeError('WALLET_REWROTE_DESTINATION', 'EIP-7702 atomic swaps must be self-calls from the user wallet.')
     }
     return {
-        type: '0x0',
+        type: '0x4',
         chainId: '0x38',
         from: preparedTransaction.from,
         to: preparedTransaction.to,
         nonce: requireQuantity(preparedTransaction.nonce, 'nonce'),
         gas: requireQuantity(preparedTransaction.gas, 'gas limit'),
-        gasPrice: '0x0',
+        maxFeePerGas: '0x0',
+        maxPriorityFeePerGas: '0x0',
         value: requireQuantity(preparedTransaction.value, 'value'),
         data: preparedTransaction.data,
+        authorizationList: [{
+            chainId: '0x38',
+            address: authorization.address,
+            nonce: requireQuantity(authorization.nonce, 'authorization nonce'),
+        }],
     }
 }
 

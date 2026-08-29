@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Owns only sponsored/gasless/prepaid swap behavior and UI. Normal ERC-20 and Permit2 approval remains in `features/approvals`.
+Owns the direct atomic sponsored-swap behavior and UI. Normal ERC-20 and Permit2 approval remains in `features/approvals`.
 
 ## Responsibilities and files
 
-- `hooks/useGasAssistController.js`: composes 0x gasless quote state and prepaid fallback, derives active gasless quote/status, synchronizes Buy output, and maps visible quote errors.
+- `hooks/useGasAssistController.js`: composes quote state and direct atomic sponsorship, derives active quote/status, synchronizes Buy output, and maps visible quote errors.
 - `hooks/useZeroXGaslessSwap.js`, `usePrepaidSponsorship.js`, `useGasAssistConfig.js`, `useMetaMaskMultichainSigner.js`: focused provider/signature/sponsorship lifecycles.
 - `services/`: Gas Assist HTTP, sponsorship, raw transaction signing, and MetaMask multichain operations.
 - `components/`: banner, approval, status/error, prepaid, and dialog composition.
@@ -17,7 +17,13 @@ Normal same-chain allowance reads/approvals, quote-provider ranking, cross-chain
 
 ## Flow
 
-`routing preference -> Gas Assist availability -> 0x gasless quote -> prepaid sponsorship -> Gas Assist dialog -> explicit user confirmation -> wallet operation -> confirmed callback -> balance refresh`.
+`routing preference -> Gas Assist availability -> quote -> explicit fee review -> direct EIP-7702 self-transaction -> paymaster submission -> confirmed callback -> balance refresh`.
+
+The old three-transaction payment/approval/swap package, pull-executor fallback,
+and cross-chain sponsorship are not supported. The fee transfers directly from
+the user's delegated EOA to the treasury, while the swap principal remains in
+that EOA and is spent directly by the independently quoted router. Both actions
+share one transaction and revert together.
 
 ## Inputs, outputs, side effects, and errors
 

@@ -7,19 +7,11 @@ import {
     fetchSponsorshipConfig,
     fetchSponsorshipOrder,
     prepareAtomicSponsorship,
-    prepareSponsorshipApproval,
-    prepareSponsorshipContinuation,
-    prepareSponsorshipPayment,
-    prepareSponsorshipPackage,
     submitAtomicSponsorship,
-    submitSponsorshipIntent,
-    submitSponsorshipPackage,
 } from '../services/prepaidSponsorship.js'
 import {
     detectRawTransactionSigning,
     signPreparedAtomicSponsoredTransaction,
-    signPreparedSponsoredTransaction,
-    signPreparedSponsoredPackage,
 } from '../services/rawTransactionSigning.js'
 import {
     gasAssistTrace,
@@ -93,9 +85,7 @@ export function usePrepaidSponsorship({
     onConfirmed,
     onSubmitted,
     createOrder: createOrderOverride,
-    beforeAuthenticate,
     previewOrder,
-    executionPath = 'atomic',
 }) {
     const connection = useConnection()
     const { data: walletClient } = useWalletClient({ chainId: 56 })
@@ -104,7 +94,6 @@ export function usePrepaidSponsorship({
     const [configError, setConfigError] = useState(null)
     const [state, setState] = useState(initial)
     const sessionTokenRef = useRef(null)
-    const submittedIntentIdsRef = useRef(new Set())
     const walletEpochRef = useRef(0)
     const flowEpochRef = useRef(0)
     const operationRef = useRef(null)
@@ -170,7 +159,6 @@ export function usePrepaidSponsorship({
         flowEpochRef.current += 1
         operationRef.current = null
         sessionTokenRef.current = null
-        submittedIntentIdsRef.current.clear()
         confirmedOrderIdsRef.current.clear()
         submittedOrderIdsRef.current.clear()
         setState(initial)
@@ -316,7 +304,7 @@ export function usePrepaidSponsorship({
                     { stage: 'flow.start' },
                 )
             }
-            if (executionPath === 'atomic' && config?.atomicExecution !== true) {
+            if (config?.atomicExecution !== true) {
                 throw flowError(
                     'ATOMIC_PATH_UNAVAILABLE',
                     'Atomic Gas Assist is unavailable. Sequential transactions are not used.',
@@ -387,93 +375,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, createOrderOverride, executionPath, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient])
-
-    const signIntent = useCallback(async (action) => {
-        const operation = `${action}-intent`
-        if (!beginOperation(operation)) return
-        const order = state.order
-        const sessionToken = sessionTokenRef.current
-        const walletEpoch = walletEpochRef.current
-        const flowEpoch = flowEpochRef.current
-        try {
-            if (!order || !sessionToken || !walletClient || !walletAddress) {
-                throw flowError(
-                    'SPONSORSHIP_CONTEXT_MISSING',
-                    'The Gas Assist session is no longer available. Start again.',
-                    { stage: `${action}.prepare` },
-                )
-            }
-            setState((current) => ({ ...current, phase: `${action}-preparing`, error: null }))
-            const intent = await gasAssistTraceStep(
-                `flow.${action}-prepare`,
-                { orderId: order.id },
-                () => action === 'payment'
-                    ? prepareSponsorshipPayment(quoteEndpoint, sessionToken, order.id)
-                    : prepareSponsorshipApproval(quoteEndpoint, sessionToken, order.id),
-            )
-            if (!isCurrent(walletEpoch, flowEpoch)) return
-            setState((current) => ({
-                ...current,
-                phase: `${action}-signing`,
-                intentExpiresAt: intent.expiresAt,
-            }))
-            await signPreparedSponsoredTransaction({
-                transport: capability.transport,
-                capability,
-                walletClient,
-                preparedTransaction: intent.transaction,
-                authenticatedWalletAddress: walletAddress,
-                multichainAccount: walletAddress,
-                action,
-                submitSignedTransaction: async (signedRawTransaction) => {
-                    if (!isCurrent(walletEpoch, flowEpoch)) {
-                        throw flowError(
-                            'PISTACHIO_ACCOUNT_MISMATCH',
-                            'The connected wallet changed during signing.',
-                            { stage: `${action}.submit` },
-                        )
-                    }
-                    if (Date.parse(intent.expiresAt) <= Date.now()) {
-                        throw flowError(
-                            'INTENT_EXPIRED',
-                            'The sponsored intent expired. Request a fresh intent.',
-                            { stage: `${action}.submit` },
-                        )
-                    }
-                    if (submittedIntentIdsRef.current.has(intent.intentId)) {
-                        throw flowError(
-                            'INTENT_ALREADY_USED',
-                            'This sponsored intent was already submitted.',
-                            { stage: `${action}.submit` },
-                        )
-                    }
-                    submittedIntentIdsRef.current.add(intent.intentId)
-                    try {
-                        return await submitSponsorshipIntent(
-                            quoteEndpoint,
-                            sessionToken,
-                            intent.intentId,
-                            signedRawTransaction,
-                        )
-                    } catch (error) {
-                        submittedIntentIdsRef.current.delete(intent.intentId)
-                        throw error
-                    }
-                },
-            })
-            if (!isCurrent(walletEpoch, flowEpoch)) return
-            setState((current) => ({
-                ...current,
-                phase: `${action}-confirming`,
-                intentExpiresAt: null,
-            }))
-        } catch (error) {
-            publishFailure(error, { walletEpoch, flowEpoch })
-        } finally {
-            finishOperation(operation)
-        }
-    }, [beginOperation, capability, finishOperation, isCurrent, publishFailure, quoteEndpoint, state.order, walletAddress, walletClient])
+    }, [beginOperation, buyToken, capability.rawTransactionSigningSupported, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient])
 
     const signPackage = useCallback(async () => {
         const operation = 'package'
@@ -492,8 +394,6 @@ export function usePrepaidSponsorship({
             }
             if (!sessionToken) {
                 setState((current) => ({ ...current, phase: 'authenticating', error: null }))
-                await beforeAuthenticate?.()
-                if (!isCurrent(walletEpoch, flowEpoch)) return
                 const session = await gasAssistTraceStep(
                     'flow.authenticate',
                     { walletAddress },
@@ -540,14 +440,13 @@ export function usePrepaidSponsorship({
                 if (!isCurrent(walletEpoch, flowEpoch)) return
                 setState((current) => ({ ...current, order }))
             }
-            if (executionPath === 'atomic') {
-                if (config?.atomicExecution !== true) {
-                    throw flowError(
-                        'ATOMIC_PATH_UNAVAILABLE',
-                        'Atomic Gas Assist is unavailable. Sequential transactions are not used.',
-                        { stage: 'atomic.prepare' },
-                    )
-                }
+            if (config?.atomicExecution !== true) {
+                throw flowError(
+                    'ATOMIC_PATH_UNAVAILABLE',
+                    'Direct atomic Gas Assist is unavailable. No legacy fallback is permitted.',
+                    { stage: 'atomic.prepare' },
+                )
+            }
                 setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
                 const prepared = await gasAssistTraceStep(
                     'flow.atomic-prepare',
@@ -606,185 +505,12 @@ export function usePrepaidSponsorship({
                     intentExpiresAt: null,
                     order: { ...current.order, atomicExecution: true },
                 }))
-                return
-            }
-            setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
-            const preparedPackage = await gasAssistTraceStep(
-                'flow.package-prepare',
-                { orderId: order.id },
-                () => prepareSponsorshipPackage(
-                    quoteEndpoint,
-                    sessionToken,
-                    order.id,
-                ),
-            )
-            if (!isCurrent(walletEpoch, flowEpoch)) return
-            setState((current) => ({
-                ...current,
-                phase: 'package-signing',
-                intentExpiresAt: preparedPackage.expiresAt,
-                order: current.order
-                    ? {
-                        ...current.order,
-                        expiresAt: preparedPackage.expiresAt ?? current.order.expiresAt,
-                    }
-                    : current.order,
-            }))
-            await signPreparedSponsoredPackage({
-                transport: capability.transport,
-                capability,
-                walletClient,
-                preparedPackage,
-                authenticatedWalletAddress: walletAddress,
-                multichainAccount: walletAddress,
-                submitSignedPackage: async (signedTransactions) => {
-                    if (!isCurrent(walletEpoch, flowEpoch)) {
-                        throw flowError(
-                            'PISTACHIO_ACCOUNT_MISMATCH',
-                            'The connected wallet changed during package signing.',
-                            { stage: 'package.submit' },
-                        )
-                    }
-                    if (Date.parse(preparedPackage.expiresAt) <= Date.now()) {
-                        throw flowError(
-                            'INTENT_EXPIRED',
-                            'The signed transaction package expired.',
-                            { stage: 'package.submit' },
-                        )
-                    }
-                    return submitSponsorshipPackage(
-                        quoteEndpoint,
-                        sessionToken,
-                        order.id,
-                        signedTransactions,
-                    )
-                },
-            })
-            if (!isCurrent(walletEpoch, flowEpoch)) return
-            setState((current) => ({
-                ...current,
-                phase: 'payment-confirming',
-                intentExpiresAt: null,
-                order: { ...current.order, preSignedPackage: true },
-            }))
         } catch (error) {
             publishFailure(error, { walletEpoch, flowEpoch })
         } finally {
             finishOperation(operation)
         }
-    }, [beforeAuthenticate, beginOperation, buyToken, capability, config, createOrderOverride, executionPath, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
-
-    const requestContinuation = useCallback(async () => {
-        const operation = 'continuation-prepare'
-        if (!beginOperation(operation)) return
-        const sessionToken = sessionTokenRef.current
-        const walletEpoch = walletEpochRef.current
-        const flowEpoch = flowEpochRef.current
-        const order = state.order
-        try {
-            if (!order || !sessionToken) {
-                throw flowError(
-                    'SPONSORSHIP_CONTEXT_MISSING',
-                    'The Gas Assist session is no longer available. Start again.',
-                    { stage: 'continuation.prepare' },
-                )
-            }
-            setState((current) => ({ ...current, phase: 'continuation-loading', error: null }))
-            const continuation = await gasAssistTraceStep(
-                'flow.continuation-prepare',
-                { orderId: order.id },
-                () => prepareSponsorshipContinuation(
-                    quoteEndpoint,
-                    sessionToken,
-                    order.id,
-                ),
-            )
-            if (!isCurrent(walletEpoch, flowEpoch)) return
-            setState((current) => ({ ...current, phase: 'continuation-ready', continuation }))
-        } catch (error) {
-            publishFailure(error, { walletEpoch, flowEpoch })
-        } finally {
-            finishOperation(operation)
-        }
-    }, [beginOperation, finishOperation, isCurrent, publishFailure, quoteEndpoint, state.order])
-
-    const signContinuation = useCallback(async () => {
-        const operation = 'continuation-sign'
-        if (!beginOperation(operation)) return
-        const intent = state.continuation
-        const sessionToken = sessionTokenRef.current
-        const walletEpoch = walletEpochRef.current
-        const flowEpoch = flowEpochRef.current
-        try {
-            if (!intent || !sessionToken || !walletClient || !walletAddress) {
-                throw flowError(
-                    'SPONSORSHIP_CONTEXT_MISSING',
-                    'The sponsored swap is no longer available. Prepare it again.',
-                    { stage: 'continuation.sign' },
-                )
-            }
-            setState((current) => ({
-                ...current,
-                phase: 'swap-signing',
-                error: null,
-                intentExpiresAt: intent.expiresAt,
-            }))
-            await signPreparedSponsoredTransaction({
-                transport: capability.transport,
-                capability,
-                walletClient,
-                preparedTransaction: intent.transaction,
-                authenticatedWalletAddress: walletAddress,
-                multichainAccount: walletAddress,
-                action: 'normal-swap',
-                submitSignedTransaction: async (signedRawTransaction) => {
-                    if (!isCurrent(walletEpoch, flowEpoch)) {
-                        throw flowError(
-                            'PISTACHIO_ACCOUNT_MISMATCH',
-                            'The connected wallet changed during signing.',
-                            { stage: 'continuation.submit' },
-                        )
-                    }
-                    if (Date.parse(intent.expiresAt) <= Date.now()) {
-                        throw flowError(
-                            'INTENT_EXPIRED',
-                            'The sponsored swap intent expired. Request a fresh intent.',
-                            { stage: 'continuation.submit' },
-                        )
-                    }
-                    if (submittedIntentIdsRef.current.has(intent.intentId)) {
-                        throw flowError(
-                            'INTENT_ALREADY_USED',
-                            'This sponsored swap intent was already submitted.',
-                            { stage: 'continuation.submit' },
-                        )
-                    }
-                    submittedIntentIdsRef.current.add(intent.intentId)
-                    try {
-                        return await submitSponsorshipIntent(
-                            quoteEndpoint,
-                            sessionToken,
-                            intent.intentId,
-                            signedRawTransaction,
-                        )
-                    } catch (error) {
-                        submittedIntentIdsRef.current.delete(intent.intentId)
-                        throw error
-                    }
-                },
-            })
-            if (!isCurrent(walletEpoch, flowEpoch)) return
-            setState((current) => ({
-                ...current,
-                phase: 'swap-confirming',
-                intentExpiresAt: null,
-            }))
-        } catch (error) {
-            publishFailure(error, { walletEpoch, flowEpoch })
-        } finally {
-            finishOperation(operation)
-        }
-    }, [beginOperation, capability, finishOperation, isCurrent, publishFailure, quoteEndpoint, state.continuation, walletAddress, walletClient])
+    }, [beginOperation, buyToken, capability, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
 
     useEffect(() => {
         const sessionToken = sessionTokenRef.current
@@ -905,9 +631,5 @@ export function usePrepaidSponsorship({
         failPreview,
         close,
         signPackage,
-        signPayment: () => signIntent('payment'),
-        signApproval: () => signIntent('approval'),
-        requestContinuation,
-        signContinuation,
     }
 }

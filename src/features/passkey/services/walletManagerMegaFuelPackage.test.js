@@ -19,35 +19,6 @@ import { methods } from './walletManagerMegaFuelPackage.js'
 
 const ADDRESS = '0x1111111111111111111111111111111111111111'
 
-function preparedPackage(overrides = {}) {
-    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString()
-    return {
-        orderId: 'order-1',
-        expiresAt,
-        transactions: [
-            'fee-payment-transfer',
-            'token-approval',
-            'normal-swap',
-        ].map((action, index) => ({
-            action,
-            intentId: `intent-${index}`,
-            expiresAt,
-            transaction: {
-                from: ADDRESS,
-                to: '0x2222222222222222222222222222222222222222',
-                chainId: '0x38',
-                nonce: `0x${index.toString(16)}`,
-                gas: '0x5208',
-                gasPrice: '0x0',
-                type: '0x0',
-                value: '0x0',
-                data: '0x1234',
-            },
-        })),
-        ...overrides,
-    }
-}
-
 function fakeManager({ phase = 'unlocked' } = {}) {
     let signed = 0
     return {
@@ -77,92 +48,6 @@ function fakeManager({ phase = 'unlocked' } = {}) {
 }
 
 beforeEach(() => vi.restoreAllMocks())
-
-describe('Pistachio Wallet MegaFuel package signing', () => {
-    it('reviews the exact package once before invoking the one passkey gate', async () => {
-        const manager = fakeManager({ phase: 'unlocked' })
-        const result = await methods.signMegaFuelPackage.call(manager, preparedPackage())
-
-        expect(manager.reviewQueue.request).toHaveBeenCalledTimes(1)
-        expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)
-        expect(manager.reauthenticate).not.toHaveBeenCalled()
-        expect(manager.reviewQueue.request.mock.invocationCallOrder[0])
-            .toBeLessThan(manager.ensureUnlockedForSigning.mock.invocationCallOrder[0])
-        expect(manager.client.request).toHaveBeenCalledTimes(3)
-        expect(result.signedTransactions.map((item) => item.action)).toEqual([
-            'fee-payment-transfer',
-            'token-approval',
-            'normal-swap',
-        ])
-    })
-
-    it('uses the saved session address for review before a resumed-session passkey unlock', async () => {
-        const manager = fakeManager({ phase: 'locked' })
-        await methods.signMegaFuelPackage.call(manager, preparedPackage())
-
-        expect(manager.reviewQueue.request).toHaveBeenCalledWith(expect.objectContaining({
-            walletAddress: ADDRESS,
-            action: 'Confirm Gas Assist swap',
-        }))
-        expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)
-        expect(manager.reauthenticate).not.toHaveBeenCalled()
-        expect(manager.reviewQueue.request.mock.invocationCallOrder[0])
-            .toBeLessThan(manager.ensureUnlockedForSigning.mock.invocationCallOrder[0])
-    })
-
-    it('uses the preceding bounded Gas Assist authorization without a second approval', async () => {
-        const manager = fakeManager({ phase: 'unlocked' })
-        manager.hasActiveGasAssistAuthorization = vi.fn(() => true)
-
-        await methods.signMegaFuelPackage.call(manager, preparedPackage())
-
-        expect(manager.hasActiveGasAssistAuthorization).toHaveBeenCalledOnce()
-        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
-        expect(manager.ensureUnlockedForSigning).toHaveBeenCalledOnce()
-        expect(manager.client.request).toHaveBeenCalledTimes(3)
-    })
-
-    it('rejects malformed package nonces before review or passkey prompting', async () => {
-        const manager = fakeManager({ phase: 'unlocked' })
-        const pkg = preparedPackage()
-        pkg.transactions[2].transaction.nonce = '0x7'
-
-        await expect(
-            methods.signMegaFuelPackage.call(manager, pkg),
-        ).rejects.toMatchObject({ code: 'SPONSORSHIP_PACKAGE_NONCE_MISMATCH' })
-        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
-        expect(manager.ensureUnlockedForSigning).not.toHaveBeenCalled()
-        expect(manager.client.request).not.toHaveBeenCalled()
-    })
-
-    it('rejects oversized packages before review or passkey prompting', async () => {
-        const manager = fakeManager({ phase: 'unlocked' })
-        const pkg = preparedPackage()
-        pkg.transactions[2].transaction.data = `0x${'aa'.repeat(300_000)}`
-
-        await expect(
-            methods.signMegaFuelPackage.call(manager, pkg),
-        ).rejects.toMatchObject({ code: 'PISTACHIO_REQUEST_TOO_LARGE' })
-        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
-        expect(manager.ensureUnlockedForSigning).not.toHaveBeenCalled()
-    })
-
-    it('aborts if the active wallet changes after review and passkey authorization', async () => {
-        const manager = fakeManager({ phase: 'unlocked' })
-        manager.captureSigningContext.mockReturnValue({
-            address: '0x9999999999999999999999999999999999999999',
-            chainId: 56,
-            generation: 2,
-        })
-
-        await expect(
-            methods.signMegaFuelPackage.call(manager, preparedPackage()),
-        ).rejects.toMatchObject({ code: 'PISTACHIO_SIGNING_CONTEXT_CHANGED' })
-        expect(manager.reviewQueue.request).toHaveBeenCalledTimes(1)
-        expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)
-        expect(manager.client.request).not.toHaveBeenCalled()
-    })
-})
 
 describe('Pistachio Wallet atomic MegaFuel signing', () => {
     function preparedAtomic(overrides = {}) {
@@ -223,6 +108,15 @@ describe('Pistachio Wallet atomic MegaFuel signing', () => {
         await expect(
             methods.signAtomicMegaFuel.call(manager, preparedAtomic({ chainId: 1 })),
         ).rejects.toMatchObject({ code: 'PISTACHIO_CHAIN_INVARIANT_FAILED' })
+        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
+        expect(manager.client.request).not.toHaveBeenCalled()
+    })
+
+    it('rejects the removed pull-executor mode before review', async () => {
+        const manager = fakeManager()
+        await expect(
+            methods.signAtomicMegaFuel.call(manager, preparedAtomic({ mode: 'pull-executor' })),
+        ).rejects.toMatchObject({ code: 'SPONSORSHIP_PACKAGE_INVALID' })
         expect(manager.reviewQueue.request).not.toHaveBeenCalled()
         expect(manager.client.request).not.toHaveBeenCalled()
     })

@@ -162,49 +162,6 @@ describe('prepaid sponsorship async ownership', () => {
         })
     })
 
-    it('uses a cross-chain order factory and reports the source hash before completion', async () => {
-        const onSubmitted = vi.fn()
-        const onConfirmed = vi.fn()
-        const createOrder = vi.fn().mockResolvedValue({
-            id: 'cross-order',
-            status: 'quoted',
-        })
-        mocks.fetchOrder
-            .mockResolvedValueOnce({
-                id: 'cross-order',
-                status: 'swap-submitted',
-                swapTransactionHash: `0x${'12'.repeat(32)}`,
-            })
-            .mockResolvedValueOnce({
-                id: 'cross-order',
-                status: 'completed',
-                swapTransactionHash: `0x${'12'.repeat(32)}`,
-            })
-        const { result } = setup(walletA, onConfirmed, {
-            createOrder,
-            onSubmitted,
-            executionPath: 'package',
-        })
-        await waitForConfig(result)
-        vi.useFakeTimers()
-
-        await act(async () => result.current.start())
-        expect(createOrder).toHaveBeenCalledOnce()
-        expect(mocks.createOrder).not.toHaveBeenCalled()
-
-        await act(() => vi.advanceTimersByTimeAsync(3_000))
-        expect(onSubmitted).toHaveBeenCalledWith(expect.objectContaining({
-            status: 'swap-submitted',
-        }))
-        expect(onConfirmed).not.toHaveBeenCalled()
-
-        await act(() => vi.advanceTimersByTimeAsync(3_000))
-        expect(onSubmitted).toHaveBeenCalledTimes(1)
-        expect(onConfirmed).toHaveBeenCalledWith(expect.objectContaining({
-            status: 'completed',
-        }))
-    })
-
     it('does not publish an order authenticated for a disconnected wallet', async () => {
         let resolveAuthentication
         mocks.authenticate.mockImplementation(() => new Promise((resolve) => {
@@ -270,80 +227,6 @@ describe('prepaid sponsorship async ownership', () => {
         await act(async () => first)
         expect(mocks.signAtomic).toHaveBeenCalledTimes(1)
         expect(mocks.signPackage).not.toHaveBeenCalled()
-    })
-
-    it('shows a cross-chain preview without authentication and authenticates once on confirmation', async () => {
-        const events = []
-        const beforeAuthenticate = vi.fn(async () => events.push('cross-chain-auth'))
-        mocks.authenticate.mockImplementation(async () => {
-            events.push('sponsorship-auth')
-            return { sessionToken: 'session' }
-        })
-        const createOrder = vi.fn(async () => {
-            events.push('create-order')
-            return { id: 'exact-order', status: 'quoted' }
-        })
-        mocks.preparePackage.mockImplementation(async () => {
-            events.push('prepare-package')
-            return {
-                orderId: 'exact-order',
-                expiresAt: new Date(Date.now() + 900_000).toISOString(),
-                transactions: [],
-            }
-        })
-        const { result } = setup(walletA, vi.fn(), {
-            createOrder,
-            beforeAuthenticate,
-            executionPath: 'package',
-        })
-        await waitForConfig(result)
-
-        act(() => result.current.reviewOrder({
-            id: 'preview:route-1',
-            isPreview: true,
-            walletAddress: walletA,
-            status: 'preview',
-        }))
-
-        expect(result.current.phase).toBe('review')
-        expect(mocks.authenticate).not.toHaveBeenCalled()
-        expect(createOrder).not.toHaveBeenCalled()
-
-        await act(async () => result.current.signPackage())
-
-        expect(events).toEqual([
-            'cross-chain-auth',
-            'sponsorship-auth',
-            'create-order',
-            'prepare-package',
-        ])
-        expect(mocks.authenticate).toHaveBeenCalledOnce()
-        expect(createOrder).toHaveBeenCalledOnce()
-        expect(mocks.signPackage).toHaveBeenCalledOnce()
-    })
-
-    it('never polls a temporary cross-chain preview when exact order creation fails', async () => {
-        const createOrder = vi.fn().mockRejectedValue(new Error('prepare failed'))
-        const { result } = setup(walletA, vi.fn(), {
-            createOrder,
-            beforeAuthenticate: vi.fn(),
-            executionPath: 'package',
-        })
-        await waitForConfig(result)
-        vi.useFakeTimers()
-
-        act(() => result.current.reviewOrder({
-            id: 'preview:route-1',
-            isPreview: true,
-            walletAddress: walletA,
-            status: 'preview',
-        }))
-
-        await act(async () => result.current.signPackage())
-        expect(result.current.phase).toBe('failed')
-
-        await act(() => vi.advanceTimersByTimeAsync(10_000))
-        expect(mocks.fetchOrder).not.toHaveBeenCalled()
     })
 
     it('exposes no external wallet signer state', async () => {

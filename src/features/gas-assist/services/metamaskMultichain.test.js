@@ -19,6 +19,7 @@ import {
     isMetaMaskConnectorMetadata,
     METAMASK_BSC_SCOPE,
     metamaskMultichainInternals,
+    normalizePreparedAtomicTransaction,
     normalizePreparedSponsoredTransaction,
     parseBscCaipAccount,
     sanitizeMetaMaskMultichainError,
@@ -344,6 +345,20 @@ describe('atomic EIP-7702 signature checks', () => {
             address: executor,
             nonce: '0x8',
         }],
+    })
+
+    it('rejects the removed legacy pull transaction shape', () => {
+        expect(() => normalizePreparedAtomicTransaction({
+            type: '0x0',
+            chainId: '0x38',
+            from: wallet.address,
+            to: executor,
+            nonce: '0x7',
+            gas: '0x186a0',
+            gasPrice: '0x0',
+            value: '0x0',
+            data: '0x1234',
+        }, wallet.address)).toThrow(/requires an EIP-7702 self-transaction/i)
     })
 
     it('rejects an atomic EIP-7702 transaction whose authorization is unsigned', async () => {
