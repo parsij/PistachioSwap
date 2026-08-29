@@ -3,7 +3,7 @@
 ## Purpose
 
 Owns paid same-chain ERC-20 and Permit2 authorization. It is intentionally
-separate from Gas Assist and its gasless/prepaid paths.
+separate from Gas Assist sponsored swaps.
 
 ## Flow
 
@@ -25,9 +25,9 @@ token, spender, transaction target, and amount, then obtain readiness.
 
 ## Not here
 
-Sponsored approvals, typed-data signatures, prepaid sponsorship, 0x gasless
-submission, and Gas Assist UI belong to `src/features/gas-assist/` and the
-Gas Assist hooks.
+Sponsored EIP-7702 authorization and Gas Assist UI belong to
+`src/features/gas-assist/` and the Gas Assist hooks. 0x Gasless submission is
+not a live path.
 
 ## Important files and exports
 

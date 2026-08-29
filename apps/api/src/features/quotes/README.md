@@ -13,8 +13,9 @@ HTTP request -> schema validation -> concurrent provider quotes
 
 `routes/quote-routes.ts` registers HTTP endpoints; `schemas/quote-utils.ts`
 validates request/normalized responses; `services/quote-selector.ts` handles
-concurrency, diagnostics, and ranking; `providers/` adapts PancakeSwap,
-Uniswap, and 0x; `types/` defines the shared contract.
+concurrency, diagnostics, and ranking; `providers/` adapts KyberSwap,
+Uniswap, and 0x; `types/` defines the shared contract. Those 0x quotes are
+ordinary gas-paid swaps, not 0x Gasless.
 
 Gas Assist is separate from same-chain quote routing.
 
@@ -29,7 +30,7 @@ diagnostics. Validation/provider failures are mapped with `getSafeError`.
 ## Testing and manual edits
 
 `apps/api/test/quotes.test.ts` is mocked API/provider coverage. It does not
-prove live PancakeSwap, Uniswap, 0x, RPC, or fee behavior. Preserve provider
+prove live KyberSwap, Uniswap, 0x, RPC, or fee behavior. Preserve provider
 order, native-token normalization, exact spender binding, Permit2 policy, and
 all route JSON fields when editing.
 

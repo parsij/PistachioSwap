@@ -2,7 +2,7 @@
 
 ## GasAssistBanner
 
-Presentation-only notice shown inside the swap card when gasless execution is active. Props are `quote`, `sellToken`, and `buyToken`; it formats existing fee/minimum data and has no callbacks or direct side effects. Preserve `gas-assist-banner`, visible 0x attribution, fee copy, and accessible aside label. Test: `GasAssistBanner.test.jsx`.
+Presentation-only notice shown inside the swap card when prepaid Gas Assist is active. Props are `sellToken` and `buyToken`. It explains why the swap needs sponsorship and has no callbacks or direct side effects. Preserve `gas-assist-banner`, fee copy, and accessible aside label. Do not restore 0x Gasless attribution. Test: `GasAssistBanner.test.jsx`.
 
 ## GasAssistApprovalDialog
 

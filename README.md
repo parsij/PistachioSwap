@@ -27,44 +27,39 @@
 
 ## What PistachioSwap does
 
-PistachioSwap combines same-chain and cross-chain route comparison, wallet balances, token discovery, transaction review, an optional passkey-protected local wallet, and a BNB Chain Gas Assist flow.
+PistachioSwap is a self-custodial wallet and swap interface. Users keep their keys. Ordinary send, same-chain swap, and cross-chain swap work across **25 curated EVM networks**. Users pay their own gas on those ordinary paths.
 
-Gas Assist helps eligible BNB Chain token holders who do not have enough BNB for normal gas. Costs and availability are shown in the applicable quote or review flow.
+**Gas Assist** is separate and **BNB Smart Chain only** (chain ID 56). It is for eligible BEP-20 holders who do not have enough BNB to pay network gas. It is not free. The review UI shows the fee and the minimum output before signing.
+
+Gas Assist is **one sponsored BNB Chain EIP-7702 self-transaction**. The disclosed fee goes from the user's EOA to the treasury, the quoted router receives an exact allowance, and the router spends the swap principal from that same EOA. Those steps share one transaction and revert together. Sequential prepaid packages, pull-executor fallback, cross-chain Gas Assist, and public 0x Gasless routes are not available.
+
+The optional Pistachio Wallet is a browser passkey wallet. It is BSC-only. External wallets still work for ordinary swaps.
+
+Provider availability is deployment-specific. A provider named in documentation is not necessarily enabled in every environment.
 
 ## Major components
 
 | Area | Current role |
 | --- | --- |
-| **Pistachio Wallet** | Optional local self-custodial wallet with encrypted IndexedDB vault records, passkey/PRF protection, a worker-owned unlocked session, signing review, and account/chain invariants. |
-| **Gas Assist** | BNB Chain sponsored-swap user experience with explicit review and authorization. |
-| **Same-chain routing** | Normalizes enabled quote providers and compares executable routes using net output and transaction cost. |
-| **Cross-chain routing** | Integrates configured bridge/route providers and validates chain, token, recipient, amount, expiry, and execution data before use. |
-| **Wallet portfolio** | Combines configured indexers, RPC fallbacks, market data, and local Pchained services to display balances and activity. |
-| **Token discovery** | Builds per-chain searchable catalogs from configured asset, market, liquidity, and token-security sources. |
-| **Public API** | Fastify API with validation, rate limits, CORS restrictions, provider timeouts, and redacted logging. |
+| **Pistachio Wallet** | Optional local self-custodial BSC wallet: encrypted IndexedDB vault, passkey/PRF, worker-owned unlocked session, signing review, and account/chain checks. |
+| **Gas Assist** | BSC-only sponsored swaps when BNB is insufficient. Production path: one user-signed EIP-7702 self-call to `pistachio-atomic-v2-direct`. Fee, exact approval, and swap revert together. |
+| **Same-chain routing** | Compares enabled quote providers (currently Uniswap, KyberSwap, and 0x) by net output and transaction cost. Those 0x quotes are ordinary gas-paid swaps, not 0x Gasless. |
+| **Cross-chain routing** | Uses configured bridge/route providers and validates chain, token, recipient, amount, expiry, and execution data before use. Cross-chain swaps are not Gas Assist. |
+| **Wallet portfolio** | Combines configured indexers, RPC fallbacks, market data, and local Pchained services for balances and activity. |
+| **Token discovery** | Builds per-chain searchable catalogs from configured asset, market, liquidity, and token-security sources. Polygon zkEVM is curated for swapping but excluded from token discovery. |
+| **Public API** | Fastify API with validation, rate limits, CORS restrictions, provider timeouts, and redacted logging. Private Gas Assist/MegaFuel work stays behind an internal proxy. Public `/v1/gas-assist/*` 0x Gasless paths are not allowlisted. |
 | **Licensing pipeline** | Audits dependency licenses and copies exact installed custom-license texts/notices into production legal artifacts. |
 
-## Architecture
+## How the pieces connect
 
-```mermaid
-flowchart LR
-    User[User wallet] --> UI[React + Vite interface]
-    UI --> Vault[Encrypted local Pistachio Wallet]
-    UI --> API[Public Fastify API]
-    API --> Quotes[Configured swap providers]
-    API --> CrossChain[Configured cross-chain providers]
-    API --> Data[RPC / indexers / market data / Pchained]
-    API --> Chain[Public blockchains]
-```
-
-Provider availability is deployment-specific. A provider named in documentation is not necessarily enabled in every environment.
+The React app talks to the public Fastify API. The API quotes swaps, prepares cross-chain routes, and loads wallet/token data from RPC, indexers, market sources, and Pchained. Ordinary transactions are signed in the user’s wallet (AppKit or Pistachio Wallet) and sent to public RPCs. Gas Assist requests go through the public API to a private sponsorship service; the browser signs one EIP-7702 self-transaction, and that service submits it. The private sponsorship service is not part of this repository.
 
 ## Security model
 
 PistachioSwap is designed to fail closed around signing and private-service boundaries:
 
 - Browser code does not contain private service credentials, private keys, or recovery phrases.
-- Gas Assist requires explicit wallet review and authorization.
+- Gas Assist requires explicit wallet review and authorization. It submits one sponsored EIP-7702 transaction and does not fall back to a normal gas-paid swap the wallet cannot fund, a sequential package, a pull executor, or 0x Gasless.
 - The optional local wallet keeps unlocked secret material inside a dedicated worker-owned session and clears it on lock, timeout, account change, or disposal.
 - APIs use bounded bodies, timeouts, rate limits, restricted CORS, no-store responses for sensitive paths, and log redaction for credentials and raw signed transactions.
 - Public blockchain transactions remain public, generally irreversible, and outside PistachioSwap's control once broadcast.

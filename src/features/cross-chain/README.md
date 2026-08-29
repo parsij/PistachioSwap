@@ -14,7 +14,7 @@ Owns cross-chain quote requests, route selection/sorting, review preparation/cos
 
 ## What does not belong here
 
-Normal same-chain approvals/simulation, token catalog loading, passkey vault internals, or backend provider adapters. The one Gas Assist integration owned here is the BNB-source top-up: after a prepared route proves a native-gas shortfall, it delegates an exact, whitelisted sell-token-to-BNB slice to the existing prepaid sponsorship flow and then requotes the remaining cross-chain input.
+Normal same-chain approvals/simulation, token catalog loading, passkey vault internals, or backend provider adapters. Cross-chain Gas Assist was retired with sequential sponsorship packages. `useCrossChainGasAssist` stays as an unavailable stub so ordinary cross-chain swaps continue without sponsorship.
 
 ## Flow
 
