@@ -134,9 +134,6 @@ export function isPublicGasAssistProxyRoute(method: string, pathname: string) {
 
 function disabledResponse(pathname: string) {
     const normalizedPath = publicPathname(pathname)
-    if (normalizedPath === '/v1/gas-assist/config') {
-        return { enabled: false, mode: 'disabled' }
-    }
     if (normalizedPath === '/v1/sponsorship/config') {
         return { enabled: false, chainId: 56 }
     }

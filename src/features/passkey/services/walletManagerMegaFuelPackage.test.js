@@ -91,7 +91,7 @@ describe('Pistachio Wallet atomic MegaFuel signing', () => {
         expect(manager.reviewQueue.request).toHaveBeenCalledWith(expect.objectContaining({
             action: 'Confirm Gas Assist swap',
             payload: expect.objectContaining({
-                purpose: expect.stringMatching(/Gas Assist fee is already in the quote/i),
+                purpose: expect.stringMatching(/fee is paid directly to PistachioSwap/i),
             }),
         }))
         expect(manager.ensureUnlockedForSigning).toHaveBeenCalledTimes(1)

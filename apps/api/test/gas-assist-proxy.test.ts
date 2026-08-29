@@ -45,10 +45,10 @@ describe('private Gas Assist proxy', () => {
         try {
             const response = await app.inject({
                 method: 'GET',
-                url: '/v1/gas-assist/config',
+                url: '/v1/sponsorship/config',
             })
             expect(response.statusCode).toBe(200)
-            expect(response.json()).toEqual({ enabled: false, mode: 'disabled' })
+            expect(response.json()).toEqual({ enabled: false, chainId: 56 })
             expect(fetchMock).not.toHaveBeenCalled()
         } finally {
             await app.close()
@@ -84,7 +84,7 @@ describe('private Gas Assist proxy', () => {
         process.env.GAS_ASSIST_SERVICE_URL = 'http://127.0.0.1:3002'
         process.env.GAS_ASSIST_INTERNAL_TOKEN = TOKEN
         const fetchMock = vi.fn(async () => new Response(
-            JSON.stringify({ enabled: true, mode: 'zero-x-gasless' }),
+            JSON.stringify({ enabled: true, chainId: 56, atomicExecution: true }),
             {
                 status: 200,
                 headers: { 'content-type': 'application/json' },
@@ -97,7 +97,7 @@ describe('private Gas Assist proxy', () => {
         try {
             const response = await app.inject({
                 method: 'GET',
-                url: '/v1/gas-assist/config?source=ui',
+                url: '/v1/sponsorship/config?source=ui',
                 headers: {
                     authorization: 'Bearer wallet-session',
                     'x-api-key': 'must-not-forward',
@@ -106,13 +106,14 @@ describe('private Gas Assist proxy', () => {
             expect(response.statusCode).toBe(200)
             expect(response.json()).toEqual({
                 enabled: true,
-                mode: 'zero-x-gasless',
+                chainId: 56,
+                atomicExecution: true,
             })
             expect(fetchMock).toHaveBeenCalledOnce()
 
             const [target, init] = fetchMock.mock.calls[0]
             expect(String(target)).toBe(
-                'http://127.0.0.1:3002/v1/gas-assist/config?source=ui',
+                'http://127.0.0.1:3002/v1/sponsorship/config?source=ui',
             )
             const headers = init?.headers as Headers
             expect(headers.get('x-pistachio-internal-token')).toBe(TOKEN)
@@ -175,7 +176,7 @@ describe('private Gas Assist proxy', () => {
         try {
             const response = await app.inject({
                 method: 'GET',
-                url: '/v1/gas-assist/config',
+                url: '/v1/sponsorship/config',
             })
             expect(response.statusCode).toBe(503)
             expect(response.json().error.code).toBe('GAS_ASSIST_UNAVAILABLE')
@@ -226,7 +227,7 @@ describe('private Gas Assist proxy', () => {
         try {
             const response = await app.inject({
                 method: 'POST',
-                url: '/v1/gas-assist/quote',
+                url: '/v1/sponsorship/preview',
                 payload: { test: true },
             })
             expect(response.statusCode).toBe(503)

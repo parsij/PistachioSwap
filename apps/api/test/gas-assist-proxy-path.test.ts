@@ -75,9 +75,9 @@ describe('Gas Assist proxy path confinement', () => {
     it('forwards an in-scope path to the private service', async () => {
         const { app, port, forwarded } = await startProxy()
         try {
-            const response = await rawRequest(port, '/v1/gas-assist/config')
+            const response = await rawRequest(port, '/v1/sponsorship/config')
             expect(response).toContain('200 OK')
-            expect(forwarded).toEqual(['http://127.0.0.1:3002/v1/gas-assist/config'])
+            expect(forwarded).toEqual(['http://127.0.0.1:3002/v1/sponsorship/config'])
         } finally {
             await app.close()
         }
