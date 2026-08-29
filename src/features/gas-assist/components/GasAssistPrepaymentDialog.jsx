@@ -257,7 +257,7 @@ export default function GasAssistPrepaymentDialog({
     purpose = 'swap',
 }) {
     const [expired, setExpired] = useState(false)
-    const order = sponsorship.order
+    const order = sponsorship?.order
     const paymentToken = useMemo(() => {
         if (!order) return null
         if (order.paymentToken?.toLowerCase() === sellToken?.address?.toLowerCase()) return sellToken
@@ -271,7 +271,7 @@ export default function GasAssistPrepaymentDialog({
 
     useEffect(() => setExpired(false), [order?.expiresAt, order?.id])
 
-    if (!sponsorship.open) return null
+    if (!sponsorship?.open) return null
 
     const walletBusy = sponsorship.phase === 'preview-loading' ||
         sponsorship.phase === 'authenticating' ||

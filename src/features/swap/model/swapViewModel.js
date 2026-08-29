@@ -565,9 +565,9 @@ export function createSwapViewModel(context) {
                     onConfirm: gasAssist.gasAssist.confirm,
                 },
                 prepayment: {
-                    key: crossChainGasAssist?.sponsorship.order?.id ??
-                        gasAssist.prepaidSponsorship.order?.id ?? 'prepaid-sponsorship',
-                    props: crossChainGasAssist?.sponsorship.open
+                    key: crossChainGasAssist?.sponsorship?.order?.id ??
+                        gasAssist.prepaidSponsorship?.order?.id ?? 'prepaid-sponsorship',
+                    props: crossChainGasAssist?.sponsorship?.open
                         ? {
                             sponsorship: crossChainGasAssist.sponsorship,
                             sellToken,
@@ -597,7 +597,7 @@ export function createSwapViewModel(context) {
                 onConfirm: callbacks.onConfirmSameChainSwap,
             },
             crossChainReview: {
-                open: Boolean(crossChain.review.route) && !crossChainGasAssist?.sponsorship.open,
+                open: Boolean(crossChain.review.route) && !crossChainGasAssist?.sponsorship?.open,
                 route: crossChain.review.route,
                 reducedMotion,
                 activeAmountSide: inputs.activeAmountSide,

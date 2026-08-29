@@ -65,6 +65,13 @@ function sponsorship(overrides = {}) {
 }
 
 describe('Gas Assist prepayment review', () => {
+    it('renders nothing when sponsorship is missing', () => {
+        const { container } = render(
+            <GasAssistPrepaymentDialog sponsorship={null} sellToken={sellToken} buyToken={buyToken} />,
+        )
+        expect(container.innerHTML).toBe('')
+    })
+
     it('shows one simple no-BNB action and keeps technical details collapsed by default', () => {
         const value = sponsorship()
         render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)

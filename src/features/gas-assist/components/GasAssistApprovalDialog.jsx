@@ -31,7 +31,7 @@ function feeRows(fees = {}) {
  */
 export default function GasAssistApprovalDialog({ dialog, token, buyToken, amount, onClose, onConfirm }) {
     const [remaining, setRemaining] = useState(0)
-    const quote = dialog.quote
+    const quote = dialog?.quote
     useEffect(() => {
         if (!quote?.expiresAt) return undefined
         const update = () => setRemaining(Math.max(0, Math.ceil((Date.parse(quote.expiresAt) - Date.now()) / 1000)))
@@ -39,7 +39,7 @@ export default function GasAssistApprovalDialog({ dialog, token, buyToken, amoun
         const id = window.setInterval(update, 1000)
         return () => window.clearInterval(id)
     }, [quote?.expiresAt])
-    if (!dialog.open || !token) return null
+    if (!dialog?.open || !token) return null
     const busy = ['quote-loading', 'signing-approval', 'signing-trade', 'submitting'].includes(dialog.state)
     const canConfirm = dialog.state === 'ready' && remaining > 0
     const buyDecimals = Number(buyToken?.decimals ?? 18)
