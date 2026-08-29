@@ -356,9 +356,11 @@ describe('App wallet integration', () => {
         mocks.gasAssistOptions = []
         mocks.crossChainGasAssistState = {
             required: false,
+            expected: false,
             available: false,
-            status: 'idle',
-            sponsorship: { open: false, order: null },
+            status: 'unavailable',
+            error: null,
+            sponsorship: null,
             start: vi.fn(),
         }
         mocks.authenticateCrossChainWallet.mockResolvedValue({
@@ -386,6 +388,11 @@ describe('App wallet integration', () => {
 
     afterEach(() => {
         cleanup()
+    })
+
+    it('renders when retired cross-chain Gas Assist has a null sponsorship', () => {
+        const { getByRole } = render(<App />)
+        expect(getByRole('button', { name: 'Connect' })).toBeTruthy()
     })
 
     it('keeps the official Reown connection flow while disconnected', () => {

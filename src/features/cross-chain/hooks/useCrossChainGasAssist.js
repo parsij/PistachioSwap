@@ -13,7 +13,7 @@ export function useCrossChainGasAssist() {
         preview: null,
         status: 'unavailable',
         error: null,
-        sponsorship: null,
+        sponsorship: { open: false, order: null },
         start: async () => false,
     }), [])
 }
