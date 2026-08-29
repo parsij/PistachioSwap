@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ fetchConfig: vi.fn() }))
 
-vi.mock('../services/gasAssist.js', () => ({
-    fetchGasAssistConfig: mocks.fetchConfig,
+vi.mock('../services/prepaidSponsorship.js', () => ({
+    fetchSponsorshipConfig: mocks.fetchConfig,
 }))
 
 import { gasAssistConfigInternals, useGasAssistConfig } from './useGasAssistConfig.js'
@@ -17,18 +17,24 @@ const options = {
     enabled: true,
 }
 
-describe('useGasAssistConfig', () => {
+const sponsorshipConfig = {
+    enabled: true,
+    executionModel: 'atomic-prepaid',
+}
+
+describe('useGasAssistConfig compatibility alias', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         gasAssistConfigInternals.clearCache()
-        mocks.fetchConfig.mockResolvedValue({ enabled: true, mode: 'zero-x-gasless' })
+        mocks.fetchConfig.mockResolvedValue(sponsorshipConfig)
     })
 
-    it('fetches config independently of quote eligibility and deduplicates Strict Mode', async () => {
+    it('loads atomic sponsorship config and deduplicates Strict Mode', async () => {
         const { result } = renderHook(() => useGasAssistConfig(options), { wrapper: StrictMode })
         await waitFor(() => expect(result.current.status).toBe('success'))
-        expect(result.current.config.mode).toBe('zero-x-gasless')
+        expect(result.current.config).toEqual(sponsorshipConfig)
         expect(mocks.fetchConfig).toHaveBeenCalledOnce()
+        expect(mocks.fetchConfig).toHaveBeenCalledWith(options.quoteEndpoint)
     })
 
     it('stays idle without wallet context and loads after context becomes available', async () => {

@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from 'react'
 import { formatUnits } from 'viem'
-import { useZeroXGaslessSwap } from './useZeroXGaslessSwap.js'
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
 import { useSponsorshipPreview } from './useSponsorshipPreview.js'
 
@@ -55,12 +54,28 @@ function logGasAssistDiagnostic(scope, error, fallbackCode, fallbackMessage) {
     console.error('[pistachio-swap] Gas Assist diagnostic', diagnostic)
 }
 
+function removedLegacyGaslessState(quoteStatus) {
+    const removed = () => {
+        throw new Error('Legacy 0x Gasless execution has been removed. Use atomic Gas Assist.')
+    }
+    return Object.freeze({
+        quote: null,
+        quoteStatus,
+        quoteError: null,
+        available: false,
+        dialog: Object.freeze({ open: false, state: 'removed' }),
+        open: removed,
+        close: () => undefined,
+        confirm: removed,
+    })
+}
+
 /**
- * Owns Gas Assist quote/dialog/prepayment orchestration while keeping normal swap approval separate.
+ * Owns atomic/prepaid Gas Assist orchestration while keeping normal swap approval separate.
  * @param {object} config Gas Assist intent, feature configuration, and semantic callbacks.
- * @returns {object} Gas Assist hooks, active execution mode, quote/status, and dialog view models.
- * @sideEffects Calls Gas Assist feature hooks; explicit dialog confirmation may request sponsorship operations.
- * @security Low-BNB execution is fail-closed into the exact prepaid flow and never falls back to a normal approval quote.
+ * @returns {object} Atomic Gas Assist state, active execution mode, quote/status, and dialog view models.
+ * @sideEffects Calls sponsorship feature hooks; explicit confirmation may request sponsorship operations.
+ * @security Low-BNB execution is fail-closed into the exact atomic prepaid flow and never falls back to retired 0x Gasless execution.
  */
 export function useGasAssistController({
     routingMode,
@@ -71,13 +86,9 @@ export function useGasAssistController({
     account,
     sellToken,
     buyToken,
-    sellChainId,
-    buyChainId,
     activeAmountIn,
     activeAmountSide,
     configuredSlippageBps,
-    gasAssistConfig,
-    refreshIndex,
     normalQuote,
     normalQuoteStatus,
     buyInputDenomination,
@@ -108,21 +119,6 @@ export function useGasAssistController({
         slippageBps: Math.max(30, configuredSlippageBps),
         required: gasAssistRequested,
         enabled: prepaidEnabled && activeAmountSide === 'sell',
-    })
-
-    const gasAssist = useZeroXGaslessSwap({
-        quoteEndpoint,
-        walletAddress: account,
-        sellToken,
-        buyToken,
-        sourceChainId: sellChainId,
-        destinationChainId: buyChainId,
-        sellAmount: activeAmountIn,
-        slippageBps: Math.max(30, configuredSlippageBps),
-        config: gasAssistConfig.config,
-        quoteEnabled: false,
-        refreshIndex,
-        onConfirmed,
     })
 
     const previewQuote = useMemo(() => {
@@ -163,6 +159,10 @@ export function useGasAssistController({
                     ? 'error'
                     : previewState.status
         : normalQuoteStatus
+    const compatibilityGasAssist = useMemo(
+        () => removedLegacyGaslessState(gasAssistRequested ? activeQuoteStatus : 'idle'),
+        [activeQuoteStatus, gasAssistRequested],
+    )
     const reviewPreview = useMemo(
         () => previewReviewOrder(previewState.preview, account),
         [account, previewState.preview],
@@ -233,7 +233,9 @@ export function useGasAssistController({
     ])
 
     return {
-        gasAssist,
+        // Retained only as a fail-closed shape for older view-model callers. No
+        // 0x Gasless network, signing, submission, or polling logic remains.
+        gasAssist: compatibilityGasAssist,
         prepaidSponsorship: prepaidSponsorshipView,
         prepaidRequired,
         preview: prepaidEnabled ? previewState.preview : null,

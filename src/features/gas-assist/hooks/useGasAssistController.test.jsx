@@ -4,20 +4,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-    gasAssist: null,
     prepaid: null,
     preview: null,
-    gasAssistArgs: null,
     prepaidArgs: null,
     previewArgs: null,
 }))
 
-vi.mock('./useZeroXGaslessSwap.js', () => ({
-    useZeroXGaslessSwap: (args) => {
-        mocks.gasAssistArgs = args
-        return mocks.gasAssist
-    },
-}))
 vi.mock('./usePrepaidSponsorship.js', () => ({
     usePrepaidSponsorship: (args) => {
         mocks.prepaidArgs = args
@@ -73,7 +65,6 @@ const preview = {
 
 describe('exact prepaid Gas Assist route ownership', () => {
     beforeEach(() => {
-        mocks.gasAssist = { quote: null, quoteStatus: 'idle', quoteError: null }
         mocks.prepaid = {
             config: { enabled: true },
             configStatus: 'success',
@@ -86,7 +77,6 @@ describe('exact prepaid Gas Assist route ownership', () => {
             status: 'success',
             error: null,
         }
-        mocks.gasAssistArgs = null
         mocks.prepaidArgs = null
         mocks.previewArgs = null
         baseProps.setBuyAmount.mockReset()
@@ -97,7 +87,7 @@ describe('exact prepaid Gas Assist route ownership', () => {
         vi.restoreAllMocks()
     })
 
-    it('uses the exact prepaid preview and never calls the provider-integrator quote path', async () => {
+    it('uses the exact prepaid preview and keeps retired Gasless execution fail-closed', async () => {
         const { result } = renderHook(() => useGasAssistController(baseProps))
         expect(mocks.prepaidArgs.required).toBe(true)
         expect(mocks.previewArgs).toMatchObject({
@@ -105,9 +95,17 @@ describe('exact prepaid Gas Assist route ownership', () => {
             enabled: true,
             grossInputAmount: '51000000',
         })
-        expect(mocks.gasAssistArgs.quoteEnabled).toBe(false)
         expect(result.current.executionMode).toBe('zero-x-gasless')
         expect(result.current.prepaidRequired).toBe(true)
+        expect(result.current.gasAssist).toMatchObject({
+            quote: null,
+            quoteStatus: 'success',
+            available: false,
+            dialog: { open: false, state: 'removed' },
+        })
+        expect(() => result.current.gasAssist.open()).toThrow(
+            'Legacy 0x Gasless execution has been removed. Use atomic Gas Assist.',
+        )
         expect(result.current.activeQuote).toMatchObject({
             prepaidSponsorshipRequired: true,
             selectedQuote: {
@@ -142,10 +140,11 @@ describe('exact prepaid Gas Assist route ownership', () => {
         mocks.prepaid = { config: { enabled: false }, configStatus: 'success', configError: null }
 
         const { result } = renderHook(() => useGasAssistController(baseProps))
-        expect(mocks.gasAssistArgs.quoteEnabled).toBe(false)
         expect(result.current.executionMode).toBe('zero-x-gasless')
         expect(result.current.activeQuote).toBeNull()
         expect(result.current.activeQuoteStatus).toBe('error')
+        expect(result.current.gasAssist.available).toBe(false)
+        expect(result.current.gasAssist.dialog.state).toBe('removed')
 
         await waitFor(() => {
             expect(consoleError).toHaveBeenCalledWith(
