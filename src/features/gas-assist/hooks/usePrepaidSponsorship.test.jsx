@@ -40,7 +40,6 @@ vi.mock('../services/rawTransactionSigning.js', () => ({
     detectRawTransactionSigning: () => ({
         rawTransactionSigningSupported: true,
         method: 'eth_signTransaction',
-        packageMethod: 'pistachio_signMegaFuelPackage',
         atomicMethod: 'pistachio_signAtomicMegaFuel',
         transport: 'pistachio-local',
         account: null,
