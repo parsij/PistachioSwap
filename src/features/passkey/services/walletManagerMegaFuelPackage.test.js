@@ -59,7 +59,7 @@ describe('Pistachio Wallet atomic MegaFuel signing', () => {
             mode: 'eip7702',
             expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
             intentId: 'intent-atomic',
-            feeRecipient: '0x2941909551c7cefd9ebeb1c5200d8b614cf887ca',
+            feeRecipient: '0xdeb1aff34182fb0d5f8cd87484ebb2c761547d9d',
             paymentAmountRaw: '1000',
             minOutRaw: '50',
             recipient: ADDRESS,
