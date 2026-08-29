@@ -4,7 +4,6 @@ import { getCuratedEvmChain, isCuratedEvmChainId } from '../../../web3/curatedEv
 import { PISTACHIO_CHAIN_ID, PISTACHIO_CONNECTOR_ID } from './constants.js'
 import { getPistachioWalletManager } from './walletManager.js'
 
-const MEGAFUEL_PACKAGE_SIGN_METHOD = 'pistachio_signMegaFuelPackage'
 const ATOMIC_MEGAFUEL_SIGN_METHOD = 'pistachio_signAtomicMegaFuel'
 
 function snapshotAccount(snapshot) {
@@ -35,14 +34,6 @@ function createProvider(manager) {
     })
     return Object.freeze({
         request: (request) => {
-            if (request?.method === MEGAFUEL_PACKAGE_SIGN_METHOD) {
-                if (!Array.isArray(request.params) || request.params.length !== 1) {
-                    const error = new Error('A single Gas Assist package is required.')
-                    error.code = 'SPONSORSHIP_PACKAGE_INVALID'
-                    throw error
-                }
-                return manager.signMegaFuelPackage(request.params[0])
-            }
             if (request?.method === ATOMIC_MEGAFUEL_SIGN_METHOD) {
                 if (!Array.isArray(request.params) || request.params.length !== 1) {
                     const error = new Error('A single atomic Gas Assist transaction is required.')
@@ -176,7 +167,6 @@ export function pistachioWalletConnector(appKitModal = {}) {
 }
 
 export const pistachioConnectorInternals = {
-    MEGAFUEL_PACKAGE_SIGN_METHOD,
     createConnectorConfig,
     createProvider,
     snapshotAccount,

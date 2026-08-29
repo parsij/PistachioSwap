@@ -20,16 +20,12 @@ const FORWARDED_RESPONSE_HEADERS = [
 ] as const
 const SAFE_PATH_SEGMENT = '[A-Za-z0-9_-]{1,160}'
 const PUBLIC_PROXY_ROUTES = Object.freeze([
-    ['GET', /^\/v1\/gas-assist\/config$/u],
-    ['POST', /^\/v1\/gas-assist\/(?:price|quote|submit)$/u],
-    ['GET', new RegExp(`^/v1/gas-assist/status/${SAFE_PATH_SEGMENT}$`, 'u')],
     ['GET', /^\/v1\/sponsorship\/config$/u],
     ['POST', /^\/v1\/sponsorship\/preview$/u],
     ['POST', /^\/v1\/sponsorship\/auth\/(?:challenge|verify)$/u],
     ['POST', /^\/v1\/sponsorship\/orders$/u],
     ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/(?:atomic/(?:prepare|submit)|package/(?:prepare|submit)|payment/prepare|approval/prepare|continuation)$`, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/intents/${SAFE_PATH_SEGMENT}/submit$`, 'u')],
+    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/(?:prepare|submit)$`, 'u')],
 ] as const)
 
 type ProxyConfig = {
@@ -138,9 +134,6 @@ export function isPublicGasAssistProxyRoute(method: string, pathname: string) {
 
 function disabledResponse(pathname: string) {
     const normalizedPath = publicPathname(pathname)
-    if (normalizedPath === '/v1/gas-assist/config') {
-        return { enabled: false, mode: 'disabled' }
-    }
     if (normalizedPath === '/v1/sponsorship/config') {
         return { enabled: false, chainId: 56 }
     }
