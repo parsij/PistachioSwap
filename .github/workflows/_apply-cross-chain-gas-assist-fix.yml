@@ -1,0 +1,223 @@
+name: Restore cross-chain Gas Assist frontend wiring
+
+on:
+  push:
+    branches:
+      - fix/atomic-cross-chain-gas-assist
+    paths:
+      - .github/workflows/_apply-cross-chain-gas-assist-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/atomic-cross-chain-gas-assist
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - name: Restore atomic cross-chain Gas Assist
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          hook = r'''import { useCallback, useRef, useState } from 'react'
+
+import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
+
+/**
+ * Sponsors the exact BNB Chain source transaction through the direct atomic
+ * EIP-7702 Gas Assist flow. Cross-chain route mutation authentication remains
+ * scoped to the prepared route; no sequential payment/approval package is used.
+ */
+export function useCrossChainGasAssist({
+    quoteEndpoint,
+    account,
+    sellToken,
+    buyToken,
+    totalInputRaw,
+    slippageBps,
+    route,
+    expected,
+    preparation,
+    sponsorshipConfig,
+    previewSponsorship,
+    authenticateSponsorship,
+    prepareSponsorship,
+    completeSponsorship,
+    onConfirmed,
+}) {
+    const preparedResponseRef = useRef(null)
+    const previewOperationRef = useRef(false)
+    const contextRef = useRef(null)
+    contextRef.current = {
+        account: String(account ?? '').toLowerCase(),
+        routeId: route?.publicRouteId ?? null,
+        grossInputAmount: String(totalInputRaw ?? ''),
+    }
+    const [previewStatus, setPreviewStatus] = useState('idle')
+    const [previewError, setPreviewError] = useState(null)
+    const required = Boolean(
+        (expected === true || (
+            preparation?.status === 'ready' &&
+            preparation?.insufficientNativeGas
+        )) &&
+        Number(sellToken?.chainId) === 56 &&
+        sellToken?.isNative !== true,
+    )
+
+    const createOrder = useCallback(async ({ idempotencyKey }) => {
+        const preparedRoute = preparedResponseRef.current?.preparedRoute
+        if (!preparedRoute) {
+            throw new Error('The cross-chain Gas Assist preview expired. Start again.')
+        }
+        await authenticateSponsorship(preparedRoute)
+        const result = await prepareSponsorship(idempotencyKey)
+        preparedResponseRef.current = result
+        return result.order
+    }, [authenticateSponsorship, prepareSponsorship])
+
+    const handleSubmitted = useCallback(async (order) => {
+        const prepared = preparedResponseRef.current
+        if (!prepared?.preparedRoute || !order?.swapTransactionHash) {
+            throw new Error('The sponsored cross-chain transaction is incomplete.')
+        }
+        await completeSponsorship({
+            preparedRoute: prepared.preparedRoute,
+            transactionHash: order.swapTransactionHash,
+        })
+    }, [completeSponsorship])
+
+    const handleConfirmed = useCallback(async (order) => {
+        await onConfirmed?.(order, preparedResponseRef.current?.preparedRoute)
+    }, [onConfirmed])
+
+    const sponsorship = usePrepaidSponsorship({
+        quoteEndpoint,
+        walletAddress: account,
+        sellToken,
+        buyToken,
+        grossInputAmount: totalInputRaw,
+        slippageBps: Math.max(30, slippageBps),
+        required,
+        createOrder,
+        onSubmitted: handleSubmitted,
+        onConfirmed: handleConfirmed,
+    })
+    const available = required && sponsorshipConfig?.enabled === true &&
+        sponsorshipConfig?.atomicExecution === true &&
+        typeof previewSponsorship === 'function' &&
+        typeof authenticateSponsorship === 'function' &&
+        typeof prepareSponsorship === 'function' &&
+        typeof completeSponsorship === 'function'
+
+    async function start() {
+        if (!available || previewOperationRef.current) return false
+        previewOperationRef.current = true
+        sponsorship.openPreviewLoading()
+        const contextAtStart = { ...contextRef.current }
+        preparedResponseRef.current = null
+        setPreviewStatus('loading')
+        setPreviewError(null)
+        try {
+            const preview = await previewSponsorship(route)
+            if (
+                contextRef.current.account !== contextAtStart.account ||
+                contextRef.current.routeId !== contextAtStart.routeId ||
+                contextRef.current.grossInputAmount !== contextAtStart.grossInputAmount
+            ) return false
+            preparedResponseRef.current = preview
+            sponsorship.reviewOrder(preview.order)
+            setPreviewStatus('success')
+            return true
+        } catch (error) {
+            setPreviewStatus('error')
+            setPreviewError(error)
+            sponsorship.failPreview(error)
+            console.error('[pistachio-swap] Cross-chain Gas Assist preview failed', {
+                code: error?.code ?? 'CROSS_CHAIN_GAS_ASSIST_PREVIEW_FAILED',
+                message: error?.message ?? 'Gas Assist preview failed.',
+                requestId: error?.requestId ?? null,
+            })
+            throw error
+        } finally {
+            previewOperationRef.current = false
+        }
+    }
+
+    const reviewSponsorship = {
+        ...sponsorship,
+        error: previewStatus === 'error' ? previewError : sponsorship.error,
+        refreshing: previewStatus === 'loading' && sponsorship.open,
+        refreshQuote: start,
+    }
+
+    return {
+        required,
+        expected: expected === true,
+        available,
+        grossInputAmount: totalInputRaw,
+        preview: null,
+        status: !required
+            ? 'idle'
+            : previewStatus === 'loading'
+                ? 'loading'
+                : previewStatus === 'error'
+                    ? 'error'
+                    : sponsorship.configStatus === 'loading'
+                        ? 'loading'
+                        : available ? 'success' : 'unavailable',
+        error: previewError ?? sponsorship.configError ?? sponsorship.error,
+        sponsorship: reviewSponsorship,
+        start,
+    }
+}
+'''
+          Path('src/features/cross-chain/hooks/useCrossChainGasAssist.js').write_text(hook)
+
+          path = Path('src/features/swap/hooks/useSwapController.js')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import { deriveSwapEligibility } from '../model/swapEligibility.js'",
+              "import { deriveSwapEligibility, expectsCrossChainGasAssist } from '../model/swapEligibility.js'",
+              'cross-chain eligibility import',
+          )
+          text = replace_once(
+              text,
+              '    const crossChainGasAssist = useCrossChainGasAssist()\n',
+              '''    async function handleCrossChainGasAssistConfirmed() {\n        try {\n            crossChain.review.close()\n            receipt.setTransactionStatus('submitted')\n            setStatusMessage('Cross-chain swap submitted with Gas Assist.')\n            await catalog.refreshWalletBalances()\n        } catch (error) {\n            console.error('[pistachio-swap] Cross-chain Gas Assist status update failed', error)\n            setStatusMessage('The sponsored cross-chain transaction was sent. Refresh activity to follow its status.')\n        }\n    }\n    const crossChainGasAssistExpected = expectsCrossChainGasAssist({\n        prepaidEnabled: routing.sponsorshipConfig.config?.enabled,\n        routingMode: routing.routingMode,\n        crossChainMode: routing.modes.CROSS_CHAIN,\n        nativeBalanceValue: catalog.nativeBalance.value,\n        nativeGasReserve: walletConfig.nativeGasReserve,\n        sellChainId: routing.sellChainId,\n        sellToken: inputs.sellToken,\n    })\n    const crossChainGasAssist = useCrossChainGasAssist({\n        quoteEndpoint: quoteConfig.endpoint,\n        account: walletState.address,\n        sellToken: inputs.sellToken,\n        buyToken: inputs.buyToken,\n        totalInputRaw: inputs.activeAmountIn,\n        slippageBps: configuredSlippageBps,\n        route: crossChain.currentRoute,\n        expected: crossChainGasAssistExpected,\n        preparation: crossChain.review.preparation,\n        sponsorshipConfig: routing.sponsorshipConfig.config,\n        previewSponsorship: crossChain.routes.previewSponsorship,\n        authenticateSponsorship: crossChain.routes.authenticateSponsorship,\n        prepareSponsorship: crossChain.routes.prepareSponsorship,\n        completeSponsorship: crossChain.routes.completeSponsorship,\n        onConfirmed: handleCrossChainGasAssistConfirmed,\n    })\n''',
+              'cross-chain Gas Assist controller wiring',
+          )
+          path.write_text(text)
+          PY
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Cross-chain regression tests
+        run: pnpm exec vitest run src/App.wallet.test.jsx src/features/cross-chain/services/crossChainRoutes.test.js src/features/swap/model/swapEligibility.test.js
+      - name: Build
+        run: pnpm build
+      - name: Commit validated fix
+        shell: bash
+        run: |
+          git rm .github/workflows/_apply-cross-chain-gas-assist-fix.yml
+          git config user.name 'ChatGPT Fix Bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Restore atomic cross-chain Gas Assist frontend'
+          git push origin HEAD:fix/atomic-cross-chain-gas-assist
