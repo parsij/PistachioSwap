@@ -23,7 +23,7 @@ import { useCrossChainController } from '../../cross-chain/hooks/useCrossChainCo
 import { useCrossChainGasAssist } from '../../cross-chain/hooks/useCrossChainGasAssist.js'
 import { useSwapApproval } from '../../approvals/hooks/useSwapApproval.js'
 import { useSwapPrimaryAction } from './useSwapPrimaryAction.js'
-import { deriveSwapEligibility } from '../model/swapEligibility.js'
+import { deriveSwapEligibility, expectsCrossChainGasAssist } from '../model/swapEligibility.js'
 import { createSwapViewModel } from '../model/swapViewModel.js'
 import { decimalToUnits } from '../model/amountMath.js'
 import { getEffectiveSlippageBps } from '../../settings/services/swapSettings.js'
@@ -232,7 +232,43 @@ export function useSwapController() {
         nativeBalance: catalog.nativeBalance,
         nativeToken,
     })
-    const crossChainGasAssist = useCrossChainGasAssist()
+    async function handleCrossChainGasAssistConfirmed() {
+        try {
+            crossChain.review.close()
+            receipt.setTransactionStatus('submitted')
+            setStatusMessage('Cross-chain swap submitted with Gas Assist.')
+            await catalog.refreshWalletBalances()
+        } catch (error) {
+            console.error('[pistachio-swap] Cross-chain Gas Assist status update failed', error)
+            setStatusMessage('The sponsored cross-chain transaction was sent. Refresh activity to follow its status.')
+        }
+    }
+    const crossChainGasAssistExpected = expectsCrossChainGasAssist({
+        prepaidEnabled: routing.sponsorshipConfig.config?.enabled,
+        routingMode: routing.routingMode,
+        crossChainMode: routing.modes.CROSS_CHAIN,
+        nativeBalanceValue: catalog.nativeBalance.value,
+        nativeGasReserve: walletConfig.nativeGasReserve,
+        sellChainId: routing.sellChainId,
+        sellToken: inputs.sellToken,
+    })
+    const crossChainGasAssist = useCrossChainGasAssist({
+        quoteEndpoint: quoteConfig.endpoint,
+        account: walletState.address,
+        sellToken: inputs.sellToken,
+        buyToken: inputs.buyToken,
+        totalInputRaw: inputs.activeAmountIn,
+        slippageBps: configuredSlippageBps,
+        route: crossChain.currentRoute,
+        expected: crossChainGasAssistExpected,
+        preparation: crossChain.review.preparation,
+        sponsorshipConfig: routing.sponsorshipConfig.config,
+        previewSponsorship: crossChain.routes.previewSponsorship,
+        authenticateSponsorship: crossChain.routes.authenticateSponsorship,
+        prepareSponsorship: crossChain.routes.prepareSponsorship,
+        completeSponsorship: crossChain.routes.completeSponsorship,
+        onConfirmed: handleCrossChainGasAssistConfirmed,
+    })
     const activeQuote = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.currentRoute : gasAssist.activeQuote
     const activeQuoteStatus = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.quoteStatus : gasAssist.activeQuoteStatus
     const eligibility = deriveSwapEligibility({
