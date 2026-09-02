@@ -23,7 +23,11 @@ import { useCrossChainController } from '../../cross-chain/hooks/useCrossChainCo
 import { useCrossChainGasAssist } from '../../cross-chain/hooks/useCrossChainGasAssist.js'
 import { useSwapApproval } from '../../approvals/hooks/useSwapApproval.js'
 import { useSwapPrimaryAction } from './useSwapPrimaryAction.js'
-import { deriveSwapEligibility, expectsCrossChainGasAssist } from '../model/swapEligibility.js'
+import {
+    deriveSwapEligibility,
+    expectsCrossChainGasAssist,
+    requiresDirectCrossChainGasAssist,
+} from '../model/swapEligibility.js'
 import { createSwapViewModel } from '../model/swapViewModel.js'
 import { decimalToUnits } from '../model/amountMath.js'
 import { getEffectiveSlippageBps } from '../../settings/services/swapSettings.js'
@@ -252,6 +256,13 @@ export function useSwapController() {
         sellChainId: routing.sellChainId,
         sellToken: inputs.sellToken,
     })
+    const crossChainGasAssistDirect = requiresDirectCrossChainGasAssist({
+        routingMode: routing.routingMode,
+        crossChainMode: routing.modes.CROSS_CHAIN,
+        nativeBalanceValue: catalog.nativeBalance.value,
+        sellChainId: routing.sellChainId,
+        sellToken: inputs.sellToken,
+    })
     const crossChainGasAssist = useCrossChainGasAssist({
         quoteEndpoint: quoteConfig.endpoint,
         account: walletState.address,
@@ -389,6 +400,8 @@ export function useSwapController() {
         openAppKit,
         switchNetwork,
         crossChain,
+        crossChainGasAssist,
+        crossChainGasAssistDirect,
         gasAssist: gasAssist.gasAssist,
         prepaid: {
             required: gasAssist.prepaidRequired,
@@ -488,6 +501,7 @@ export function useSwapController() {
         quote,
         gasAssist,
         crossChainGasAssist,
+        crossChainGasAssistDirect,
         crossChain,
         receipt,
         eligibility,

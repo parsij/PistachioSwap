@@ -44,6 +44,28 @@ export function expectsCrossChainGasAssist({
         hasInsufficientNativeGas
 }
 
+export function requiresDirectCrossChainGasAssist({
+    routingMode,
+    crossChainMode,
+    nativeBalanceValue,
+    sellChainId,
+    sellToken,
+}) {
+    if (
+        routingMode !== crossChainMode ||
+        Number(sellChainId) !== 56 ||
+        isNativeEvmToken(sellToken) ||
+        nativeBalanceValue === null ||
+        nativeBalanceValue === undefined
+    ) return false
+
+    try {
+        return BigInt(nativeBalanceValue) === 0n
+    } catch {
+        return false
+    }
+}
+
 export function getCrossChainGasAssistTier({
     routingMode,
     crossChainMode,
@@ -65,6 +87,7 @@ export function getCrossChainGasAssistTier({
 
     try {
         const balance = BigInt(nativeBalanceValue)
+        if (balance === 0n) return 'required'
         let recommendedReserve = DEFAULT_NATIVE_GAS_RESERVE_WEI
         try {
             recommendedReserve = parseEther(String(nativeGasReserve))
@@ -90,7 +113,8 @@ export function getCrossChainGasAssistTier({
 
 export function getSwapReviewLabel(input) {
     const isGasAssistedReview = input.prepaidRequired && input.prepaidEnabled ||
-        input.executionMode === input.gaslessMode
+        input.executionMode === input.gaslessMode ||
+        requiresDirectCrossChainGasAssist(input)
 
     return isGasAssistedReview
         ? GAS_ASSIST_REVIEW_TITLE

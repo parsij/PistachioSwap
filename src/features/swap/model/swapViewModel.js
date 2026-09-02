@@ -16,7 +16,10 @@ import {
 } from '../../cross-chain/services/crossChainRoutes.js'
 import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 import { formatCompactRate, formatCostUsd } from './swapDisplay.js'
-import { expectsCrossChainGasAssist, getCrossChainGasAssistTier } from './swapEligibility.js'
+import {
+    expectsCrossChainGasAssist,
+    getCrossChainGasAssistTier,
+} from './swapEligibility.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
 
 function formatUsdMicros(value) {
@@ -149,7 +152,25 @@ export function getWalletBalanceNotice({
 
 export function getPrimaryActionPresentation({
     action,
+    crossChainGasAssistDirect = false,
+    crossChainGasAssistStatus = 'idle',
 }) {
+    if (crossChainGasAssistDirect && ['idle', 'loading'].includes(crossChainGasAssistStatus)) {
+        return {
+            type: 'gas-assist-loading',
+            label: 'Preparing Gas Assist…',
+            enabled: false,
+            loading: true,
+        }
+    }
+    if (crossChainGasAssistDirect && crossChainGasAssistStatus !== 'success') {
+        return {
+            type: 'gas-assist-unavailable',
+            label: 'Gas Assist unavailable',
+            enabled: false,
+            loading: false,
+        }
+    }
     return action
 }
 
@@ -168,7 +189,7 @@ export function formatTokenDisplayAmount(amount, token) {
 export function createSwapViewModel(context) {
     const {
         config, reducedMotion, walletState, swapSettings, catalog, inputs, routing, quote,
-        gasAssist, crossChainGasAssist, crossChain, receipt, eligibility, review, execution, effectiveSlippageBps,
+        gasAssist, crossChainGasAssist, crossChainGasAssistDirect, crossChain, receipt, eligibility, review, execution, effectiveSlippageBps,
         statusMessage, quoteDetailsOpen, setQuoteDetailsOpen, callbacks,
     } = context
     const { brand, navigation, copy, quote: quoteConfig, wallet: walletConfig, tabs, motion: motionConfig } = config
@@ -395,6 +416,8 @@ export function createSwapViewModel(context) {
     const reviewAppFee = reviewCosts?.appFeeUsd === '0' ? 'Free' : formatCostUsd(reviewCosts?.appFeeUsd)
     const primaryActionPresentation = getPrimaryActionPresentation({
         action: eligibility.action,
+        crossChainGasAssistDirect,
+        crossChainGasAssistStatus: crossChainGasAssist?.status,
     })
     const crossChainGasAssistTier = getCrossChainGasAssistTier({
         routingMode: routing.routingMode,

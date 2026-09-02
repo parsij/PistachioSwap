@@ -46,12 +46,17 @@ describe('getPrimaryActionPresentation', () => {
         enabled: true,
     }
 
-    it('keeps review available while the optional Gas Assist quote is loading', () => {
+    it('shows progress while a zero-BNB direct Gas Assist quote is loading', () => {
         expect(getPrimaryActionPresentation({
             action: reviewAction,
-            crossChainGasAssistExpected: true,
+            crossChainGasAssistDirect: true,
             crossChainGasAssistStatus: 'loading',
-        })).toBe(reviewAction)
+        })).toEqual({
+            type: 'gas-assist-loading',
+            label: 'Preparing Gas Assist…',
+            enabled: false,
+            loading: true,
+        })
     })
 
     it('preserves the normal action outside cross-chain Gas Assist loading', () => {
@@ -62,12 +67,17 @@ describe('getPrimaryActionPresentation', () => {
         })).toBe(reviewAction)
     })
 
-    it('keeps review available so an unavailable Gas Assist quote can be explained', () => {
+    it('fails closed when zero-BNB direct Gas Assist is unavailable', () => {
         expect(getPrimaryActionPresentation({
             action: reviewAction,
-            crossChainGasAssistExpected: true,
+            crossChainGasAssistDirect: true,
             crossChainGasAssistStatus: 'error',
-        })).toBe(reviewAction)
+        })).toEqual({
+            type: 'gas-assist-unavailable',
+            label: 'Gas Assist unavailable',
+            enabled: false,
+            loading: false,
+        })
     })
 })
 

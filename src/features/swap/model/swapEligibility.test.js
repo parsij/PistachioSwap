@@ -4,6 +4,7 @@ import {
     deriveSwapEligibility,
     getCrossChainGasAssistTier,
     getSwapReviewLabel,
+    requiresDirectCrossChainGasAssist,
 } from './swapEligibility.js'
 
 const erc20Token = {
@@ -40,6 +41,13 @@ describe('getSwapReviewLabel', () => {
         })).toBe('Review swap')
     })
 
+    it('uses the Gas Assist wording immediately for a confirmed zero BNB balance', () => {
+        expect(reviewLabel({
+            routingMode: 'cross-chain',
+            nativeBalanceValue: 0n,
+        })).toBe('Review Gas Assisted Swap')
+    })
+
     it('keeps the normal wording when cross-chain Gas Assist is not required', () => {
         expect(reviewLabel({ routingMode: 'cross-chain' })).toBe('Review swap')
         expect(reviewLabel({
@@ -67,6 +75,15 @@ describe('getCrossChainGasAssistTier', () => {
         expect(getCrossChainGasAssistTier(input)).toBe('required')
     })
 
+    it('requires Gas Assist for zero BNB even when the live estimate is unavailable', () => {
+        expect(getCrossChainGasAssistTier({
+            ...input,
+            nativeBalanceValue: 0n,
+            requiredNativeGasWei: null,
+            gasEstimateUnavailable: true,
+        })).toBe('required')
+    })
+
     it('offers both paths above the minimum but below the recommended reserve', () => {
         expect(getCrossChainGasAssistTier({
             ...input,
@@ -88,6 +105,24 @@ describe('getCrossChainGasAssistTier', () => {
             gasEstimateUnavailable: true,
             nativeBalanceValue: 60n,
         })).toBe('choice')
+    })
+})
+
+describe('requiresDirectCrossChainGasAssist', () => {
+    const input = {
+        routingMode: 'cross-chain',
+        crossChainMode: 'cross-chain',
+        nativeBalanceValue: 0n,
+        sellChainId: 56,
+        sellToken: erc20Token,
+    }
+
+    it('selects the direct assisted flow only for a confirmed zero BNB balance', () => {
+        expect(requiresDirectCrossChainGasAssist(input)).toBe(true)
+        expect(requiresDirectCrossChainGasAssist({
+            ...input,
+            nativeBalanceValue: 1n,
+        })).toBe(false)
     })
 })
 
