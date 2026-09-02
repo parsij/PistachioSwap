@@ -7,7 +7,7 @@ import {
     usePublicClient,
     useSendTransaction,
 } from '#wallet-runtime'
-import { parseEther } from 'viem'
+import { formatUnits, parseEther } from 'viem'
 import { useSwapSettings } from '../../settings/hooks/useSwapSettings.js'
 import { useWalletState } from '../../wallet/hooks/useWalletState.js'
 import { useTokenCatalogController } from '../../tokens/hooks/useTokenCatalogController.js'
@@ -269,6 +269,35 @@ export function useSwapController() {
         completeSponsorship: crossChain.routes.completeSponsorship,
         onConfirmed: handleCrossChainGasAssistConfirmed,
     })
+    const crossChainPreview = crossChainGasAssist.preview
+    const activeAmountSide = inputs.activeAmountSide
+    const buyInputDenomination = inputs.buyInputDenomination
+    const selectedBuyToken = inputs.buyToken
+    const setBuyAmount = inputs.setBuyAmount
+    useEffect(() => {
+        if (
+            !crossChainGasAssistExpected ||
+            !crossChainPreview ||
+            activeAmountSide !== 'sell' ||
+            buyInputDenomination !== 'TOKEN' ||
+            !selectedBuyToken
+        ) return
+        try {
+            setBuyAmount(formatUnits(
+                BigInt(crossChainPreview.expectedOutputRaw),
+                Number(selectedBuyToken.decimals),
+            ))
+        } catch {
+            setBuyAmount('0')
+        }
+    }, [
+        activeAmountSide,
+        buyInputDenomination,
+        crossChainPreview,
+        crossChainGasAssistExpected,
+        selectedBuyToken,
+        setBuyAmount,
+    ])
     const activeQuote = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.currentRoute : gasAssist.activeQuote
     const activeQuoteStatus = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.quoteStatus : gasAssist.activeQuoteStatus
     const eligibility = deriveSwapEligibility({

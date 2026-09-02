@@ -1,4 +1,5 @@
 import { getGasAssistBaseUrl } from './gasAssist.js'
+import { requireGasAssistFeeBreakdown } from '../model/gasAssistFee.js'
 
 function previewError(code, message, details = {}) {
     const error = new Error(message)
@@ -76,5 +77,6 @@ export async function fetchSponsorshipPreview(
             'Gas Assist returned an invalid preview.',
         )
     }
+    requireGasAssistFeeBreakdown(payload)
     return payload
 }

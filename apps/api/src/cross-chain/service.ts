@@ -405,11 +405,7 @@ export function nextSponsoredNetAmount({
     const gross = BigInt(grossInputAmount)
     const current = BigInt(currentRouteAmount)
     if (next >= gross) return null
-    // A net quote that is already at or below the latest expected net is
-    // conservative enough. Chasing a higher net (fee estimate dropped) or
-    // dust-level jitter loops until the gateway times out.
-    if (current < gross && next >= current) return null
-    return expectedNetSwapAmount
+    return next === current ? null : expectedNetSwapAmount
 }
 
 function exactSponsoredRoute(
@@ -447,6 +443,7 @@ function exactSponsoredRoute(
         outputAmount: route.outputAmount,
         minimumOutputAmount: route.minimumOutputAmount,
         expiresAt: quote.expiresAt,
+        costs: route.costs,
         transaction,
     }
 }

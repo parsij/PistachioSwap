@@ -57,8 +57,10 @@ const preview = {
     minimumOutputRaw: '1900000000000000000',
     expiresAt: '2999-01-01T00:00:00.000Z',
     amountsUsd: {
+        tradeNotional: '51',
         commercialFee: '0.7',
         gasReserve: '0.3',
+        estimatedSponsoredGas: '0.2',
         totalPrepayment: '1',
     },
 }
@@ -112,10 +114,17 @@ describe('exact prepaid Gas Assist route ownership', () => {
                 sellAmount: '50000000',
                 buyAmount: '2000000000000000000',
                 minimumBuyAmount: '1900000000000000000',
-                estimatedGasUsd: '0.3',
+                estimatedGasUsd: '0.2',
                 platformFee: {
-                    amount: '700000',
+                    amount: '1000000',
                     bps: 0,
+                },
+                gasAssistFee: {
+                    totalAmountRaw: '1000000',
+                    commercialAmountRaw: '700000',
+                    totalUsdMicros: '1000000',
+                    networkReserveUsdMicros: '300000',
+                    estimatedSponsoredGasUsdMicros: '200000',
                 },
             },
         })

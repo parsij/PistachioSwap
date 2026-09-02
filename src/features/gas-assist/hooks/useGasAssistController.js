@@ -2,18 +2,16 @@ import { useEffect, useMemo } from 'react'
 import { formatUnits } from 'viem'
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
 import { useSponsorshipPreview } from './useSponsorshipPreview.js'
-
-function usdMicros(value) {
-    const normalized = String(value ?? '').trim()
-    if (!/^\d+(?:\.\d+)?$/u.test(normalized)) return null
-    const [whole, fraction = ''] = normalized.split('.')
-    if (fraction.length > 6) return null
-    return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0') || '0')
-}
+import {
+    getGasAssistFeeBreakdown,
+    usdDecimalToMicros,
+} from '../model/gasAssistFee.js'
 
 function previewReviewOrder(preview, walletAddress) {
     if (!preview) return null
-    const micros = (value) => usdMicros(value)?.toString() ?? '0'
+    const fees = getGasAssistFeeBreakdown(preview)
+    if (!fees) return null
+    const micros = (value) => value?.toString() ?? '0'
     return {
         ...preview,
         id: `preview:${preview.expiresAt}`,
@@ -21,20 +19,23 @@ function previewReviewOrder(preview, walletAddress) {
         walletAddress,
         status: 'preview',
         currentRequiredAction: 'prepare-payment',
-        fixedServiceFeeUsdMicros: micros(preview.amountsUsd?.fixedServiceFee),
-        platformFeeUsdMicros: micros(preview.amountsUsd?.platformFee),
-        gasReserveUsdMicros: micros(preview.amountsUsd?.gasReserve),
-        totalPrepaymentUsdMicros: micros(preview.amountsUsd?.totalPrepayment),
+        fixedServiceFeeUsdMicros: micros(usdDecimalToMicros(preview.amountsUsd?.fixedServiceFee)),
+        platformFeeUsdMicros: micros(usdDecimalToMicros(preview.amountsUsd?.platformFee)),
+        commercialFeeUsdMicros: micros(fees.commercialFeeUsdMicros),
+        gasReserveUsdMicros: micros(fees.networkReserveUsdMicros),
+        estimatedSponsoredGasUsdMicros: micros(fees.estimatedSponsoredGasUsdMicros),
+        totalPrepaymentUsdMicros: fees.totalFeeUsdMicros.toString(),
+        routeCostUsdMicros: micros(fees.routeCostUsdMicros),
+        allInCostUsdMicros: fees.allInCostUsdMicros?.toString() ?? fees.totalFeeUsdMicros.toString(),
     }
 }
 
-function commercialFeeRaw(preview) {
+function commercialFeeRaw(preview, fees = getGasAssistFeeBreakdown(preview)) {
     try {
-        const totalRaw = BigInt(preview.paymentAmountRaw)
-        const commercialUsd = usdMicros(preview.amountsUsd?.commercialFee)
-        const totalUsd = usdMicros(preview.amountsUsd?.totalPrepayment)
-        if (commercialUsd === null || totalUsd === null || totalUsd <= 0n) return 0n
-        return (totalRaw * commercialUsd + totalUsd - 1n) / totalUsd
+        if (!fees || fees.commercialFeeUsdMicros === null) return 0n
+        return (
+            fees.totalFeeRaw * fees.commercialFeeUsdMicros + fees.totalFeeUsdMicros - 1n
+        ) / fees.totalFeeUsdMicros
     } catch {
         return 0n
     }
@@ -124,7 +125,9 @@ export function useGasAssistController({
     const previewQuote = useMemo(() => {
         const preview = previewState.preview
         if (!prepaidEnabled || !preview || !sellToken?.address || !buyToken) return null
-        const commercialRaw = commercialFeeRaw(preview)
+        const fees = getGasAssistFeeBreakdown(preview)
+        if (!fees) return null
+        const commercialRaw = commercialFeeRaw(preview, fees)
         return {
             prepaidSponsorshipRequired: true,
             selectedQuote: {
@@ -137,12 +140,26 @@ export function useGasAssistController({
                 buyAmount: preview.expectedOutputRaw,
                 minimumBuyAmount: preview.minimumOutputRaw,
                 expiresAt: preview.expiresAt,
-                estimatedGasUsd: preview.amountsUsd?.gasReserve ?? null,
+                estimatedGasUsd:
+                    preview.amountsUsd?.estimatedSponsoredGas ??
+                    preview.amountsUsd?.gasReserve ??
+                    null,
                 platformFee: {
-                    amount: commercialRaw.toString(),
+                    amount: fees.totalFeeRaw.toString(),
                     bps: 0,
                     effectiveBps: 0,
                     token: sellToken.address,
+                },
+                gasAssistFee: {
+                    totalAmountRaw: fees.totalFeeRaw.toString(),
+                    commercialAmountRaw: commercialRaw.toString(),
+                    totalUsdMicros: fees.totalFeeUsdMicros.toString(),
+                    commercialUsdMicros: fees.commercialFeeUsdMicros?.toString() ?? null,
+                    networkReserveUsdMicros: fees.networkReserveUsdMicros?.toString() ?? null,
+                    estimatedSponsoredGasUsdMicros:
+                        fees.estimatedSponsoredGasUsdMicros?.toString() ?? null,
+                    routeCostUsdMicros: fees.routeCostUsdMicros?.toString() ?? null,
+                    allInCostUsdMicros: fees.allInCostUsdMicros?.toString() ?? null,
                 },
             },
         }
@@ -252,5 +269,5 @@ export const gasAssistControllerInternals = {
     commercialFeeRaw,
     logGasAssistDiagnostic,
     previewReviewOrder,
-    usdMicros,
+    usdMicros: usdDecimalToMicros,
 }

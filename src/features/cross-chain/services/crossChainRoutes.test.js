@@ -392,7 +392,23 @@ describe('cross-chain route normalization', () => {
         const fetchMock = vi.fn().mockResolvedValueOnce({
             ok: true,
             json: async () => ({
-                order: { id: 'preview:route-id', isPreview: true },
+                order: {
+                    id: 'preview:route-id',
+                    isPreview: true,
+                    grossInputAmountRaw: '1000',
+                    netSwapAmountRaw: '900',
+                    paymentAmountRaw: '100',
+                    expectedOutputRaw: '850',
+                    minimumOutputRaw: '840',
+                    amountsUsd: {
+                        tradeNotional: '10',
+                        totalPrepayment: '1',
+                        gasReserve: '0.3',
+                        commercialFee: '0.7',
+                        routeCost: '0.5',
+                        allInCost: '1.5',
+                    },
+                },
                 preparedRoute: {
                     publicRouteId: 'route-id',
                     provider: 'relay',

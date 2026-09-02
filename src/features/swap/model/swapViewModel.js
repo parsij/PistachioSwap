@@ -17,6 +17,32 @@ import {
 import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 import { formatCompactRate, formatCostUsd } from './swapDisplay.js'
 import { expectsCrossChainGasAssist } from './swapEligibility.js'
+import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
+
+function formatUsdMicros(value) {
+    if (value === null || value === undefined || value < 0n) return null
+    const whole = value / 1_000_000n
+    const fraction = (value % 1_000_000n).toString().padStart(6, '0').replace(/0+$/u, '')
+    return formatCostUsd(fraction ? `${whole}.${fraction}` : whole.toString())
+}
+
+function gasAssistFeeView(order, sellToken) {
+    const fees = getGasAssistFeeBreakdown(order)
+    if (!fees || !sellToken) return null
+    return {
+        totalToken: formatTokenDisplayAmount(
+            formatTokenAmount(fees.totalFeeRaw.toString(), sellToken.decimals),
+            sellToken,
+        ),
+        totalUsd: formatUsdMicros(fees.totalFeeUsdMicros),
+        commercialUsd: formatUsdMicros(fees.commercialFeeUsdMicros),
+        networkReserveUsd: formatUsdMicros(fees.networkReserveUsdMicros),
+        estimatedSponsoredGasUsd: formatUsdMicros(fees.estimatedSponsoredGasUsdMicros),
+        routeCostUsd: formatUsdMicros(fees.routeCostUsdMicros),
+        allInCostUsd: formatUsdMicros(fees.allInCostUsdMicros),
+    }
+}
+
 function positiveBigInt(value) {
     if (
         typeof value !== 'string' &&
@@ -311,20 +337,39 @@ export function createSwapViewModel(context) {
                 minimumNativeGasBufferWei,
             })
             : '0'
+    const crossChainGasAssistExpected = expectsCrossChainGasAssist({
+        prepaidEnabled: gasAssist.prepaidSponsorship.config?.enabled,
+        routingMode: routing.routingMode,
+        crossChainMode: routing.modes.CROSS_CHAIN,
+        nativeBalanceValue: catalog.nativeBalance.value,
+        nativeGasReserve: walletConfig.nativeGasReserve,
+        sellChainId: routing.sellChainId,
+        sellToken,
+    })
+    const sponsoredCrossChainRoute = crossChainGasAssist?.previewRoute ?? null
+    const crossChainDisplayRoute = crossChainGasAssistExpected && sponsoredCrossChainRoute
+        ? sponsoredCrossChainRoute
+        : crossChain.currentRoute
     const quoteProvider = routing.routingMode === routing.modes.CROSS_CHAIN
-        ? crossChain.currentRoute ? getProviderDisplayName(crossChain.currentRoute.provider) : null
+        ? crossChainDisplayRoute ? getProviderDisplayName(crossChainDisplayRoute.provider) : null
         : activeQuote?.selectedQuote?.provider ?? null
-    const crossChainCosts = crossChain.currentRoute?.costs ?? null
+    const crossChainCosts = crossChainDisplayRoute?.costs ?? null
     const estimatedTotalCost = formatCostUsd(crossChainCosts?.totalEstimatedUsd, true)
     const estimatedRouteCost = formatCostUsd(crossChainCosts?.routeCostUsd, true)
     const sourceGasCost = formatCostUsd(crossChainCosts?.sourceGasUsd, true)
     const sameChainNetworkCost = activeQuote?.selectedQuote?.estimatedGasUsd
         ? formatCostUsd(activeQuote.selectedQuote.estimatedGasUsd)
         : activeQuote?.selectedQuote ? 'Included' : null
+    const sameChainGasAssistFee = gasAssistFeeView(gasAssist.preview, sellToken)
+    const crossChainGasAssistFee = gasAssistFeeView(crossChainGasAssist?.preview, sellToken)
     const minimumReceived = routing.routingMode === routing.modes.CROSS_CHAIN
-        ? crossChain.currentRoute && buyToken
+        ? crossChainDisplayRoute && buyToken
             ? formatTokenDisplayAmount(
-                formatTokenAmount(crossChain.currentRoute.minimumOutputAmount, buyToken.decimals),
+                formatTokenAmount(
+                    crossChainGasAssist?.preview?.minimumOutputRaw ??
+                    crossChainDisplayRoute.minimumOutputAmount,
+                    buyToken.decimals,
+                ),
                 buyToken,
             )
             : null
@@ -358,15 +403,6 @@ export function createSwapViewModel(context) {
     const reviewSourceGas = formatCostUsd(reviewCosts?.sourceGasUsd, true) ??
         (reviewCosts?.sourceGasNative ? `~${reviewCosts.sourceGasNative} ${reviewNativeSymbol}` : null)
     const reviewAppFee = reviewCosts?.appFeeUsd === '0' ? 'Free' : formatCostUsd(reviewCosts?.appFeeUsd)
-    const crossChainGasAssistExpected = expectsCrossChainGasAssist({
-        prepaidEnabled: gasAssist.prepaidSponsorship.config?.enabled,
-        routingMode: routing.routingMode,
-        crossChainMode: routing.modes.CROSS_CHAIN,
-        nativeBalanceValue: catalog.nativeBalance.value,
-        nativeGasReserve: walletConfig.nativeGasReserve,
-        sellChainId: routing.sellChainId,
-        sellToken,
-    })
     const primaryActionPresentation = getPrimaryActionPresentation({
         action: eligibility.action,
         crossChainGasAssistExpected,
@@ -500,9 +536,14 @@ export function createSwapViewModel(context) {
                     onOpenChange: setQuoteDetailsOpen,
                     rate: compactRate,
                     mode: routing.routingMode === routing.modes.CROSS_CHAIN ? 'cross-chain' : 'same-chain',
-                    sameChain: { visible: activeQuoteStatus === 'success' && Boolean(sellToken && buyToken), serviceFee, networkCost: sameChainNetworkCost },
-                    crossChain: crossChain.currentRoute ? {
-                        route: crossChain.currentRoute,
+                    sameChain: {
+                        visible: activeQuoteStatus === 'success' && Boolean(sellToken && buyToken),
+                        serviceFee,
+                        networkCost: sameChainNetworkCost,
+                        gasAssistFee: sameChainGasAssistFee,
+                    },
+                    crossChain: crossChainDisplayRoute ? {
+                        route: crossChainDisplayRoute,
                         routes: crossChain.routes.routes,
                         sort: crossChain.routes.sort,
                         onSortChange: crossChain.routes.setSort,
@@ -513,6 +554,7 @@ export function createSwapViewModel(context) {
                         estimatedRouteCost,
                         sourceGasCost,
                         appFee: crossChainAppFee,
+                        gasAssistFee: crossChainGasAssistFee,
                         minimumReceived,
                     } : null,
                     slippage: { auto: swapSettings.slippageMode === 'auto', label: formatSlippageBps(effectiveSlippageBps) },

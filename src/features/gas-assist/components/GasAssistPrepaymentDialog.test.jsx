@@ -80,7 +80,7 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByText('No BNB needed')).toBeTruthy()
         expect(screen.getByText('You pay')).toBeTruthy()
         expect(screen.getByText('You receive')).toBeTruthy()
-        expect(screen.getByText('Gas Assist fee')).toBeTruthy()
+        expect(screen.getByText('Gas Assist fee (all-in)')).toBeTruthy()
         expect(screen.getByText(/One tap starts the flow/)).toBeTruthy()
 
         const details = screen.getByText('Transaction details').closest('details')
@@ -97,7 +97,17 @@ describe('Gas Assist prepayment review', () => {
 
     it('explains that cross-chain MegaFuel sponsorship does not top up the wallet', () => {
         render(<GasAssistPrepaymentDialog
-            sponsorship={sponsorship()}
+            sponsorship={sponsorship({
+                order: {
+                    ...sponsorship().order,
+                    amountsUsd: {
+                        tradeNotional: '100',
+                        totalPrepayment: '3.202',
+                        routeCost: '0.5',
+                        allInCost: '3.702',
+                    },
+                },
+            })}
             sellToken={sellToken}
             buyToken={buyToken}
             purpose="cross-chain-gas"
@@ -105,6 +115,9 @@ describe('Gas Assist prepayment review', () => {
 
         expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
         expect(screen.getByText(/No BNB is sent to your wallet/)).toBeTruthy()
+        expect(screen.getByText('Gas Assist fee (included)')).toBeTruthy()
+        expect(screen.getAllByText('Total cross-chain cost (all-in)').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('$3.702').length).toBeGreaterThan(0)
         expect(screen.queryByText(/converts only/i)).toBeNull()
     })
 

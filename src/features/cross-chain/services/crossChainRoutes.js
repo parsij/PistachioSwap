@@ -6,6 +6,7 @@ import {
     getCanonicalTokenAddress,
     isCuratedEvmChainId,
 } from '../../../web3/curatedEvmChains.js'
+import { requireGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
 
 export const CROSS_CHAIN_SORTS = Object.freeze({
     RETURN: 'return',
@@ -709,6 +710,10 @@ export async function previewCrossChainSponsorship({
     if (!payload?.order?.id || payload.order.isPreview !== true || !payload?.preparedRoute) {
         throw new Error('Gas Assist returned an incomplete cross-chain preview.')
     }
+    requireGasAssistFeeBreakdown(payload.order, {
+        code: 'CROSS_CHAIN_SPONSORSHIP_PREVIEW_INVALID',
+        message: 'Gas Assist returned inconsistent cross-chain fee or quote amounts.',
+    })
     return {
         order: payload.order,
         preparedRoute: normalizePreparedCrossChainRoute(payload.preparedRoute),

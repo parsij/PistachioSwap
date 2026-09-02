@@ -1509,7 +1509,7 @@ describe('cross-chain backend', () => {
         expect(result.order).toMatchObject({ id: 'sponsorship-order' })
     })
 
-    it('does not chase a higher net after the first sponsored requote', () => {
+    it('requotes both directions until the route matches the exact sponsored net', () => {
         expect(nextSponsoredNetAmount({
             grossInputAmount: '367000000000000000',
             currentRouteAmount: '367000000000000000',
@@ -1524,11 +1524,16 @@ describe('cross-chain backend', () => {
             grossInputAmount: '367000000000000000',
             currentRouteAmount: '299912025778818537',
             expectedNetSwapAmount: '299915027970418405',
-        })).toBeNull()
+        })).toBe('299915027970418405')
         expect(nextSponsoredNetAmount({
             grossInputAmount: '367000000000000000',
             currentRouteAmount: '294616159796651555',
             expectedNetSwapAmount: '306692975872386842',
+        })).toBe('306692975872386842')
+        expect(nextSponsoredNetAmount({
+            grossInputAmount: '367000000000000000',
+            currentRouteAmount: '299915027970418405',
+            expectedNetSwapAmount: '299915027970418405',
         })).toBeNull()
     })
 
@@ -1609,7 +1614,7 @@ describe('cross-chain backend', () => {
         })).rejects.toMatchObject({
             code: 'CROSS_CHAIN_SPONSORSHIP_UNSTABLE',
         })
-        expect(privateRequest).toHaveBeenCalledTimes(2)
+        expect(privateRequest).toHaveBeenCalledTimes(3)
     })
 
     it('prefers the lower-gas route when destination output is equal', async () => {

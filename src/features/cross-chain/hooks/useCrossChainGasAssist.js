@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
 
@@ -25,15 +25,17 @@ export function useCrossChainGasAssist({
     onConfirmed,
 }) {
     const preparedResponseRef = useRef(null)
-    const previewOperationRef = useRef(false)
+    const previewOperationRef = useRef(null)
+    const previewResultRef = useRef(null)
     const contextRef = useRef(null)
-    contextRef.current = {
+    const currentContext = {
         account: String(account ?? '').toLowerCase(),
         routeId: route?.publicRouteId ?? null,
         grossInputAmount: String(totalInputRaw ?? ''),
     }
     const [previewStatus, setPreviewStatus] = useState('idle')
     const [previewError, setPreviewError] = useState(null)
+    const [previewResult, setPreviewResult] = useState(null)
     const required = Boolean(
         (expected === true || (
             preparation?.status === 'ready' &&
@@ -87,38 +89,91 @@ export function useCrossChainGasAssist({
         typeof authenticateSponsorship === 'function' &&
         typeof prepareSponsorship === 'function' &&
         typeof completeSponsorship === 'function'
+    currentContext.key = [
+        currentContext.account,
+        currentContext.routeId,
+        currentContext.grossInputAmount,
+        available ? 'available' : 'unavailable',
+    ].join(':')
+    contextRef.current = currentContext
 
-    async function start() {
-        if (!available || previewOperationRef.current) return false
-        previewOperationRef.current = true
-        sponsorship.openPreviewLoading()
+    const loadPreview = useCallback(async ({ minimumValidityMs = 0 } = {}) => {
+        if (!available) return null
         const contextAtStart = { ...contextRef.current }
-        preparedResponseRef.current = null
+        const cached = previewResultRef.current
+        const cachedExpiry = Date.parse(cached?.response?.order?.expiresAt ?? '')
+        if (
+            cached?.key === contextAtStart.key &&
+            Number.isFinite(cachedExpiry) &&
+            cachedExpiry > Date.now() + minimumValidityMs
+        ) return cached.response
+
+        const inFlight = previewOperationRef.current
+        if (inFlight?.key === contextAtStart.key) return inFlight.promise
+
         setPreviewStatus('loading')
         setPreviewError(null)
-        try {
-            const preview = await previewSponsorship(route)
+        const promise = (async () => {
+            const nextPreview = await previewSponsorship(route)
             if (
-                contextRef.current.account !== contextAtStart.account ||
-                contextRef.current.routeId !== contextAtStart.routeId ||
-                contextRef.current.grossInputAmount !== contextAtStart.grossInputAmount
-            ) return false
-            preparedResponseRef.current = preview
-            sponsorship.reviewOrder(preview.order)
+                contextRef.current.key !== contextAtStart.key ||
+                nextPreview?.order?.grossInputAmountRaw !== contextAtStart.grossInputAmount
+            ) return null
+            const stored = { key: contextAtStart.key, response: nextPreview }
+            previewResultRef.current = stored
+            preparedResponseRef.current = nextPreview
+            setPreviewResult(stored)
             setPreviewStatus('success')
-            return true
+            return nextPreview
+        })()
+        previewOperationRef.current = { key: contextAtStart.key, promise }
+
+        try {
+            return await promise
         } catch (error) {
-            setPreviewStatus('error')
-            setPreviewError(error)
-            sponsorship.failPreview(error)
-            console.error('[pistachio-swap] Cross-chain Gas Assist preview failed', {
-                code: error?.code ?? 'CROSS_CHAIN_GAS_ASSIST_PREVIEW_FAILED',
-                message: error?.message ?? 'Gas Assist preview failed.',
-                requestId: error?.requestId ?? null,
-            })
+            if (contextRef.current.key === contextAtStart.key) {
+                previewResultRef.current = null
+                preparedResponseRef.current = null
+                setPreviewResult(null)
+                setPreviewStatus('error')
+                setPreviewError(error)
+                console.error('[pistachio-swap] Cross-chain Gas Assist preview failed', {
+                    code: error?.code ?? 'CROSS_CHAIN_GAS_ASSIST_PREVIEW_FAILED',
+                    message: error?.message ?? 'Gas Assist preview failed.',
+                    requestId: error?.requestId ?? null,
+                })
+            }
             throw error
         } finally {
-            previewOperationRef.current = false
+            if (previewOperationRef.current?.promise === promise) {
+                previewOperationRef.current = null
+            }
+        }
+    }, [available, previewSponsorship, route])
+
+    useEffect(() => {
+        if (!available) {
+            previewResultRef.current = null
+            preparedResponseRef.current = null
+            setPreviewResult(null)
+            setPreviewStatus('idle')
+            setPreviewError(null)
+            return
+        }
+        void loadPreview().catch(() => undefined)
+    }, [available, currentContext.key, loadPreview])
+
+    async function start() {
+        if (!available) return false
+        sponsorship.openPreviewLoading()
+        try {
+            const nextPreview = await loadPreview({ minimumValidityMs: 15_000 })
+            if (!nextPreview) return false
+            sponsorship.reviewOrder(nextPreview.order)
+            return true
+        } catch (error) {
+            sponsorship.failPreview(error)
+            throw error
         }
     }
 
@@ -134,7 +189,12 @@ export function useCrossChainGasAssist({
         expected: expected === true,
         available,
         grossInputAmount: totalInputRaw,
-        preview: null,
+        preview: previewResult?.key === currentContext.key
+            ? previewResult.response.order
+            : null,
+        previewRoute: previewResult?.key === currentContext.key
+            ? previewResult.response.preparedRoute
+            : null,
         status: !required
             ? 'idle'
             : previewStatus === 'loading'
