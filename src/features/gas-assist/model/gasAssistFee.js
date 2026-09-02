@@ -14,6 +14,16 @@ export function usdDecimalToMicros(value) {
     return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0') || '0')
 }
 
+export function usdMicrosToDecimal(value) {
+    if (typeof value !== 'bigint' || value < 0n) return null
+    const whole = value / 1_000_000n
+    const fraction = (value % 1_000_000n)
+        .toString()
+        .padStart(6, '0')
+        .replace(/0+$/u, '')
+    return fraction ? `${whole}.${fraction}` : whole.toString()
+}
+
 function usdMicros(order, directKey, decimalKey) {
     const direct = rawAmount(order?.[directKey])
     return direct ?? usdDecimalToMicros(order?.amountsUsd?.[decimalKey])

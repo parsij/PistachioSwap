@@ -9,6 +9,10 @@ import { getSwapActionState } from '../../../services/swapAction.js'
 import { deriveSameChainReviewEligibility } from './sameChainReviewEligibility.js'
 import { compareDecimalStrings, decimalRatioBps, multiplyUnitsByDecimal } from './amountMath.js'
 import { GAS_ASSIST_REVIEW_TITLE } from '../../gas-assist/model/gasAssistCopy.js'
+import {
+    getGasAssistFeeBreakdown,
+    usdMicrosToDecimal,
+} from '../../gas-assist/model/gasAssistFee.js'
 
 export function expectsCrossChainGasAssist({
     prepaidEnabled,
@@ -63,7 +67,7 @@ export function deriveSwapEligibility(input) {
         quote, activeQuote, activeQuoteStatus, currentCrossChainRoute, crossChainRouteExpired,
         crossChainExactOutputUnsupported, transactionStatus, nativeBalanceValue, nativeGasReserve,
         maxCostToInputBps, swapChainId, sellChainId, buyChainId, quoteSnapshot, quoteInputKey,
-        prepaidRequired, prepaidEnabled,
+        prepaidRequired, prepaidEnabled, crossChainGasAssistExpected, crossChainGasAssistPreview,
     } = input
     const hasActiveAmount = activeAmountSide === 'buy'
         ? Boolean(input.buyAmount) && activeBuyAmountIn !== null && activeBuyAmountIn !== '0'
@@ -99,14 +103,31 @@ export function deriveSwapEligibility(input) {
     const outputValueUsd = outputRawAmount && buyToken
         ? multiplyUnitsByDecimal(outputRawAmount, Number(buyToken.decimals ?? 18), buyDisplayPrice)
         : null
-    const sourceGasUsd = routingMode === crossChainMode ? null : activeQuote?.selectedQuote?.estimatedGasUsd ?? null
-    const totalKnownCostsUsd = sourceGasUsd
+    const isCrossChain = routingMode === crossChainMode
+    const sourceGasUsd = isCrossChain ? null : activeQuote?.selectedQuote?.estimatedGasUsd ?? null
+    const sponsoredFee = isCrossChain && crossChainGasAssistPreview
+        ? getGasAssistFeeBreakdown(crossChainGasAssistPreview)
+        : null
+    const sponsoredAllInCostUsd = usdMicrosToDecimal(sponsoredFee?.allInCostUsdMicros)
+    const routeCostUsd = currentCrossChainRoute?.costs?.totalEstimatedUsd ??
+        currentCrossChainRoute?.costs?.routeCostUsd ?? null
+    const totalKnownCostsUsd = isCrossChain
+        ? sponsoredAllInCostUsd ?? routeCostUsd
+        : sourceGasUsd
     const costToInputRatio = inputValueUsd && totalKnownCostsUsd
         ? decimalRatioBps(totalKnownCostsUsd, inputValueUsd)
         : null
     const reasons = []
-    if (outputValueUsd && totalKnownCostsUsd && compareDecimalStrings(totalKnownCostsUsd, outputValueUsd) >= 0) {
+    if (
+        totalKnownCostsUsd && (
+            inputValueUsd && compareDecimalStrings(totalKnownCostsUsd, inputValueUsd) >= 0 ||
+            outputValueUsd && compareDecimalStrings(totalKnownCostsUsd, outputValueUsd) >= 0
+        )
+    ) {
         reasons.push('costs-exceed-output')
+    }
+    if (isCrossChain && crossChainGasAssistExpected && crossChainGasAssistPreview && !sponsoredFee) {
+        reasons.push('invalid-sponsored-quote')
     }
     const warnings = []
     if (Number.isFinite(costToInputRatio) && Number.isFinite(maxCostToInputBps) && costToInputRatio > maxCostToInputBps) {
@@ -117,6 +138,8 @@ export function deriveSwapEligibility(input) {
         inputValueUsd,
         outputValueUsd,
         sourceGasUsd,
+        routeCostUsd,
+        sponsoredAllInCostUsd,
         totalKnownCostsUsd,
         costToInputRatio,
         reasons,

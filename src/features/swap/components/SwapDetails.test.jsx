@@ -70,4 +70,23 @@ describe('all-in Gas Assist quote details', () => {
         expect(screen.queryByText('Source network gas')).toBeNull()
         expect(screen.queryByText('$4')).toBeNull()
     })
+
+    it('does not display a meaningless zero sponsored amount', () => {
+        render(<SwapDetails
+            {...baseProps}
+            mode="cross-chain"
+            sameChain={{ visible: false }}
+            crossChain={{
+                route: { feeIncluded: true, durationSeconds: 30 },
+                costs: { routeCostUsd: '0.23', sponsoredUsd: '0' },
+                estimatedRouteCost: '$0.23',
+                sourceGasCost: null,
+                appFee: null,
+                minimumReceived: '0.37 BUY',
+                gasAssistFee: null,
+            }}
+        />)
+
+        expect(screen.queryByText('Sponsored amount')).toBeNull()
+    })
 })

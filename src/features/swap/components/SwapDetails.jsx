@@ -71,7 +71,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                         {crossChain.costs?.destinationGasUsd != null && <DetailRow label="Destination execution cost" ariaLabel="Explain destination execution cost" help="Estimated execution cost on the destination network." value={formatCostUsd(crossChain.costs.destinationGasUsd)} />}
                         {crossChain.costs?.swapImpactUsd != null && <DetailRow label="Swap/route impact" ariaLabel="Explain route impact" help="Estimated value impact from swaps and routing." value={formatCostUsd(crossChain.costs.swapImpactUsd)} />}
                         {crossChain.appFee !== null && <DetailRow label="PistachioSwap fee" ariaLabel="Explain PistachioSwap fee" help="Application fee charged by PistachioSwap." value={crossChain.appFee} />}
-                        {crossChain.costs?.sponsoredUsd != null && <DetailRow label="Sponsored amount" ariaLabel="Explain sponsored amount" help="Amount of transaction cost covered by sponsorship." value={`-${formatCostUsd(crossChain.costs.sponsoredUsd)}`} />}
+                        {crossChain.costs?.sponsoredUsd != null && crossChain.costs.sponsoredUsd !== '0' && <DetailRow label="Sponsored amount" ariaLabel="Explain sponsored amount" help="Amount of transaction cost covered by sponsorship." value={`-${formatCostUsd(crossChain.costs.sponsoredUsd)}`} />}
                     </>
                 )}
                 <DetailRow

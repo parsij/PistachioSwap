@@ -197,7 +197,7 @@ export function useCrossChainGasAssist({
             : null,
         status: !required
             ? 'idle'
-            : previewStatus === 'loading'
+            : previewStatus === 'loading' || available && previewStatus === 'idle'
                 ? 'loading'
                 : previewStatus === 'error'
                     ? 'error'

@@ -152,12 +152,20 @@ export function getPrimaryActionPresentation({
     crossChainGasAssistExpected = false,
     crossChainGasAssistStatus = 'idle',
 }) {
-    if (crossChainGasAssistExpected && crossChainGasAssistStatus === 'loading') {
+    if (crossChainGasAssistExpected && ['idle', 'loading'].includes(crossChainGasAssistStatus)) {
         return {
             type: 'gas-assist-loading',
             label: 'Preparing Gas Assist…',
             enabled: false,
             loading: true,
+        }
+    }
+    if (crossChainGasAssistExpected && crossChainGasAssistStatus !== 'success') {
+        return {
+            type: 'gas-assist-unavailable',
+            label: 'Gas Assist unavailable',
+            enabled: false,
+            loading: false,
         }
     }
     return action

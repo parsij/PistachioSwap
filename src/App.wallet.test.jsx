@@ -2022,7 +2022,7 @@ describe('App wallet integration', () => {
                 buyToken: '0x0000000000000000000000000000000000000000',
                 buyAmount: '800000000000000000',
                 minimumBuyAmount: '790000000000000000',
-                estimatedGasUsd: '10',
+                estimatedGasUsd: '0.10',
                 expiresAt: '2999-01-01T00:00:00.000Z',
                 transaction: {
                     to: '0x00000000000000000000000000000000000000aa',

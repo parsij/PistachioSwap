@@ -319,7 +319,11 @@ export function useSwapController() {
         quote: quote.quote,
         activeQuote,
         activeQuoteStatus,
-        currentCrossChainRoute: crossChain.currentRoute,
+        currentCrossChainRoute: crossChainGasAssistExpected
+            ? crossChainGasAssist.previewRoute ?? crossChain.currentRoute
+            : crossChain.currentRoute,
+        crossChainGasAssistExpected,
+        crossChainGasAssistPreview: crossChainPreview,
         crossChainRouteExpired: crossChain.routeExpired,
         crossChainExactOutputUnsupported: crossChain.exactOutputUnsupported,
         transactionStatus: receipt.transactionStatus,

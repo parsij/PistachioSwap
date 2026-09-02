@@ -66,6 +66,19 @@ describe('getPrimaryActionPresentation', () => {
             crossChainGasAssistStatus: 'success',
         })).toBe(reviewAction)
     })
+
+    it('fails closed when the required Gas Assist preview is unavailable', () => {
+        expect(getPrimaryActionPresentation({
+            action: reviewAction,
+            crossChainGasAssistExpected: true,
+            crossChainGasAssistStatus: 'error',
+        })).toEqual({
+            type: 'gas-assist-unavailable',
+            label: 'Gas Assist unavailable',
+            enabled: false,
+            loading: false,
+        })
+    })
 })
 
 

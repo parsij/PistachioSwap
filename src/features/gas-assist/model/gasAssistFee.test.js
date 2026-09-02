@@ -4,6 +4,7 @@ import {
     getGasAssistFeeBreakdown,
     requireGasAssistFeeBreakdown,
     usdDecimalToMicros,
+    usdMicrosToDecimal,
 } from './gasAssistFee.js'
 
 function quote(overrides = {}) {
@@ -39,6 +40,8 @@ describe('Gas Assist fee safety', () => {
         expect(usdDecimalToMicros('12.345678')).toBe(12_345_678n)
         expect(usdDecimalToMicros('12.3456789')).toBeNull()
         expect(usdDecimalToMicros('-1')).toBeNull()
+        expect(usdMicrosToDecimal(12_345_678n)).toBe('12.345678')
+        expect(usdMicrosToDecimal(1_000_000n)).toBe('1')
     })
 
     it('accepts an exact fee plus net-input identity and exposes all-in costs', () => {
