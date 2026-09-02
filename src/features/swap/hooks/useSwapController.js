@@ -389,7 +389,6 @@ export function useSwapController() {
         openAppKit,
         switchNetwork,
         crossChain,
-        crossChainGasAssist,
         gasAssist: gasAssist.gasAssist,
         prepaid: {
             required: gasAssist.prepaidRequired,

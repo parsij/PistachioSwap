@@ -29,6 +29,7 @@ function renderDialog(gasAssist) {
     const shell = document.createElement('main')
     shell.className = 'app-shell'
     document.body.append(shell)
+    const onConfirm = vi.fn(() => calls.push('confirm'))
     render(<CrossChainReviewDialog
         open
         route={route}
@@ -43,9 +44,9 @@ function renderDialog(gasAssist) {
         confirmDisabled={false}
         gasAssist={gasAssist ? { ...gasAssist, onStart } : null}
         onClose={onClose}
-        onConfirm={vi.fn()}
+        onConfirm={onConfirm}
     />)
-    return { calls, onClose, onStart, shell }
+    return { calls, onClose, onStart, onConfirm, shell }
 }
 
 describe('CrossChainReviewDialog', () => {
@@ -79,9 +80,27 @@ describe('CrossChainReviewDialog', () => {
         shell.remove()
     })
 
-    it('uses the Gas Assist review title while exact source gas is still being prepared', () => {
+    it('keeps neutral review wording while exact source gas is still being prepared', () => {
         const { shell } = renderDialog({ expected: true, required: false, available: false, status: 'loading' })
-        expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
+        expect(screen.getByText('Review cross-chain swap')).toBeTruthy()
+        shell.remove()
+    })
+
+    it('offers Gas Assist and normal execution between minimum and recommended gas', () => {
+        const { calls, onStart, onConfirm, shell } = renderDialog({
+            expected: true,
+            required: false,
+            choice: true,
+            available: true,
+            status: 'success',
+        })
+
+        expect(screen.getByText('Choose how to pay network gas')).toBeTruthy()
+        expect(screen.getByText(/covers the current estimate/i)).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Try normal swap' }))
+        expect(onConfirm).toHaveBeenCalledOnce()
+        expect(onStart).not.toHaveBeenCalled()
+        expect(calls).toEqual(['confirm'])
         shell.remove()
     })
 

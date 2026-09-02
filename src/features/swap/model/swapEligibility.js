@@ -44,10 +44,53 @@ export function expectsCrossChainGasAssist({
         hasInsufficientNativeGas
 }
 
+export function getCrossChainGasAssistTier({
+    routingMode,
+    crossChainMode,
+    nativeBalanceValue,
+    nativeGasReserve,
+    requiredNativeGasWei,
+    gasEstimateUnavailable = false,
+    preparationStatus,
+    sellChainId,
+    sellToken,
+}) {
+    if (
+        routingMode !== crossChainMode ||
+        Number(sellChainId) !== 56 ||
+        isNativeEvmToken(sellToken) ||
+        nativeBalanceValue === null ||
+        nativeBalanceValue === undefined
+    ) return 'normal'
+
+    try {
+        const balance = BigInt(nativeBalanceValue)
+        let recommendedReserve = DEFAULT_NATIVE_GAS_RESERVE_WEI
+        try {
+            recommendedReserve = parseEther(String(nativeGasReserve))
+        } catch {
+            // Use the audited fallback when deployment configuration is invalid.
+        }
+
+        if (preparationStatus !== 'ready') {
+            return balance < recommendedReserve ? 'pending' : 'normal'
+        }
+        if (requiredNativeGasWei !== null && requiredNativeGasWei !== undefined) {
+            const minimumRequired = BigInt(requiredNativeGasWei)
+            if (balance < minimumRequired) return 'required'
+        } else if (!gasEstimateUnavailable) {
+            return balance < recommendedReserve ? 'pending' : 'normal'
+        }
+
+        return balance < recommendedReserve ? 'choice' : 'normal'
+    } catch {
+        return 'normal'
+    }
+}
+
 export function getSwapReviewLabel(input) {
     const isGasAssistedReview = input.prepaidRequired && input.prepaidEnabled ||
-        input.executionMode === input.gaslessMode ||
-        expectsCrossChainGasAssist(input)
+        input.executionMode === input.gaslessMode
 
     return isGasAssistedReview
         ? GAS_ASSIST_REVIEW_TITLE

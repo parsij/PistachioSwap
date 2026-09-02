@@ -34,12 +34,14 @@ export default function CrossChainReviewDialog({
     if (!open || !route) return null
     const gasAssistState = gasAssist ?? {
         required: false,
+        choice: false,
+        pending: false,
         expected: false,
         available: false,
         status: 'idle',
         onStart: null,
     }
-    const showGasAssistCopy = gasAssistState.required === true || gasAssistState.expected === true
+    const showGasAssistCopy = gasAssistState.required === true
     const portalContainer = typeof document === 'undefined'
         ? undefined
         : document.querySelector('.app-shell') ?? undefined
@@ -75,7 +77,9 @@ export default function CrossChainReviewDialog({
                     >
                         <header>
                             <Dialog.Title>
-                                {showGasAssistCopy ? GAS_ASSIST_REVIEW_TITLE : 'Review cross-chain swap'}
+                                {gasAssistState.choice
+                                    ? 'Choose how to pay network gas'
+                                    : showGasAssistCopy ? GAS_ASSIST_REVIEW_TITLE : 'Review cross-chain swap'}
                             </Dialog.Title>
                             <Dialog.Close asChild>
                                 <button type="button" aria-label="Close review"><X aria-hidden="true" /></button>
@@ -136,26 +140,52 @@ export default function CrossChainReviewDialog({
                                     {gasAssistState.required && ' Gas Assist can sponsor this exact source transaction without adding BNB to your wallet.'}
                                 </p>
                             )}
+                            {gasAssistState.choice && (
+                                <p className="cross-chain-gas-choice" role="status">
+                                    Your BNB balance covers the current estimate, but it is below the recommended gas reserve. Use Gas Assist with its fee included in the quote, or try a normal swap and let your wallet verify the final network fee.
+                                </p>
+                            )}
                             {routeError && <p className="cross-chain-error" role="status">{routeError}</p>}
                             {executionError && !routeError && <p className="cross-chain-error" role="status">{executionError}</p>}
                         </div>
                         <div className="cross-chain-review-actions">
-                            <button type="button" onClick={onClose}>Cancel</button>
-                            {gasAssistState.required ? (
-                                <button
-                                    type="button"
-                                    className="primary"
-                                    disabled={!gasAssistState.available}
-                                    onClick={startGasAssist}
-                                >
-                                    {gasAssistState.status === 'loading'
-                                        ? 'Checking Gas Assist…'
-                                        : gasAssistState.available ? GAS_ASSIST_SWAP_ACTION : 'Gas Assist unavailable'}
-                                </button>
+                            {gasAssistState.choice ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        className="primary"
+                                        disabled={!gasAssistState.available}
+                                        onClick={startGasAssist}
+                                    >
+                                        {gasAssistState.status === 'loading'
+                                            ? 'Checking Gas Assist…'
+                                            : gasAssistState.available ? 'Use Gas Assist' : 'Gas Assist unavailable'}
+                                    </button>
+                                    <button type="button" disabled={confirmDisabled} onClick={onConfirm}>
+                                        Try normal swap
+                                    </button>
+                                </>
+                            ) : gasAssistState.required ? (
+                                <>
+                                    <button type="button" onClick={onClose}>Cancel</button>
+                                    <button
+                                        type="button"
+                                        className="primary"
+                                        disabled={!gasAssistState.available}
+                                        onClick={startGasAssist}
+                                    >
+                                        {gasAssistState.status === 'loading'
+                                            ? 'Checking Gas Assist…'
+                                            : gasAssistState.available ? GAS_ASSIST_SWAP_ACTION : 'Gas Assist unavailable'}
+                                    </button>
+                                </>
                             ) : (
-                                <button type="button" className="primary" disabled={confirmDisabled} onClick={onConfirm}>
-                                    {confirmLabel}
-                                </button>
+                                <>
+                                    <button type="button" onClick={onClose}>Cancel</button>
+                                    <button type="button" className="primary" disabled={confirmDisabled} onClick={onConfirm}>
+                                        {confirmLabel}
+                                    </button>
+                                </>
                             )}
                         </div>
                     </motion.section>

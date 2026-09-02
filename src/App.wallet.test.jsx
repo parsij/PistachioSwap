@@ -766,7 +766,7 @@ describe('App wallet integration', () => {
         expect(mocks.markCrossChainRouteSubmitted).not.toHaveBeenCalled()
     })
 
-    it('opens cross-chain Gas Assist preview before wallet authentication when BNB is empty', async () => {
+    it('requires cross-chain Gas Assist after the live estimate when BNB is below minimum', async () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.network.chainId = 56
@@ -852,8 +852,12 @@ describe('App wallet integration', () => {
         await waitFor(() => expect(mocks.fetchCrossChainRoutes).toHaveBeenCalledOnce())
         fireEvent.click(container.querySelector('.primary-action'))
 
+        const gasAssistButton = await waitFor(() => getByRole('button', { name: 'Swap using Gas Assist' }))
+        expect(getByRole('heading', { name: 'Review Gas Assisted Swap' })).toBeTruthy()
+        expect(queryByRole('button', { name: 'Confirm swap' })).toBeNull()
+        fireEvent.click(gasAssistButton)
         await waitFor(() => expect(mocks.crossChainGasAssistState.start).toHaveBeenCalledOnce())
-        expect(mocks.authenticateCrossChainWallet).not.toHaveBeenCalled()
+        expect(mocks.authenticateCrossChainWallet).toHaveBeenCalled()
         expect(queryByRole('heading', { name: 'Review Gas Assisted Swap' })).toBeNull()
         expect(document.querySelector('.cross-chain-review-dialog')).toBeNull()
         expect(mocks.sendPreparedCrossChainTransaction).not.toHaveBeenCalled()

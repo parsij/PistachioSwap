@@ -169,6 +169,17 @@
     color: var(--color-muted, #a9a9a9);
 }
 
+.cross-chain-gas-choice {
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid rgb(138 201 123 / 24%);
+    border-radius: 12px;
+    background: rgb(138 201 123 / 9%);
+    color: var(--color-text, #f5f5f5);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .cross-chain-review dd {
     color: var(--color-text, #f5f5f5);
     font-weight: 500;

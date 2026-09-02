@@ -46,17 +46,12 @@ describe('getPrimaryActionPresentation', () => {
         enabled: true,
     }
 
-    it('shows a disabled progress action while the Gas Assist review is opening', () => {
+    it('keeps review available while the optional Gas Assist quote is loading', () => {
         expect(getPrimaryActionPresentation({
             action: reviewAction,
             crossChainGasAssistExpected: true,
             crossChainGasAssistStatus: 'loading',
-        })).toEqual({
-            type: 'gas-assist-loading',
-            label: 'Preparing Gas Assist…',
-            enabled: false,
-            loading: true,
-        })
+        })).toBe(reviewAction)
     })
 
     it('preserves the normal action outside cross-chain Gas Assist loading', () => {
@@ -67,17 +62,12 @@ describe('getPrimaryActionPresentation', () => {
         })).toBe(reviewAction)
     })
 
-    it('fails closed when the required Gas Assist preview is unavailable', () => {
+    it('keeps review available so an unavailable Gas Assist quote can be explained', () => {
         expect(getPrimaryActionPresentation({
             action: reviewAction,
             crossChainGasAssistExpected: true,
             crossChainGasAssistStatus: 'error',
-        })).toEqual({
-            type: 'gas-assist-unavailable',
-            label: 'Gas Assist unavailable',
-            enabled: false,
-            loading: false,
-        })
+        })).toBe(reviewAction)
     })
 })
 

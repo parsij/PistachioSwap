@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { deriveSwapEligibility, getSwapReviewLabel } from './swapEligibility.js'
+import {
+    deriveSwapEligibility,
+    getCrossChainGasAssistTier,
+    getSwapReviewLabel,
+} from './swapEligibility.js'
 
 const erc20Token = {
     address: '0x1111111111111111111111111111111111111111',
@@ -29,11 +33,11 @@ describe('getSwapReviewLabel', () => {
         expect(reviewLabel({ prepaidRequired: true })).toBe('Review Gas Assisted Swap')
     })
 
-    it('uses Gas Assist wording for BNB Chain cross-chain swaps below the gas reserve', () => {
+    it('keeps neutral review wording until the live gas estimate selects the tier', () => {
         expect(reviewLabel({
             routingMode: 'cross-chain',
             nativeBalanceValue: 1n,
-        })).toBe('Review Gas Assisted Swap')
+        })).toBe('Review swap')
     })
 
     it('keeps the normal wording when cross-chain Gas Assist is not required', () => {
@@ -43,6 +47,47 @@ describe('getSwapReviewLabel', () => {
             nativeBalanceValue: 0n,
             sellToken: { ...erc20Token, isNative: true },
         })).toBe('Review swap')
+    })
+})
+
+describe('getCrossChainGasAssistTier', () => {
+    const input = {
+        routingMode: 'cross-chain',
+        crossChainMode: 'cross-chain',
+        nativeBalanceValue: 40n,
+        nativeGasReserve: '0.0000000000000001',
+        requiredNativeGasWei: '50',
+        gasEstimateUnavailable: false,
+        preparationStatus: 'ready',
+        sellChainId: 56,
+        sellToken: erc20Token,
+    }
+
+    it('requires Gas Assist below the live minimum gas requirement', () => {
+        expect(getCrossChainGasAssistTier(input)).toBe('required')
+    })
+
+    it('offers both paths above the minimum but below the recommended reserve', () => {
+        expect(getCrossChainGasAssistTier({
+            ...input,
+            nativeBalanceValue: 60n,
+        })).toBe('choice')
+    })
+
+    it('uses the normal path at or above the recommended reserve', () => {
+        expect(getCrossChainGasAssistTier({
+            ...input,
+            nativeBalanceValue: 100n,
+        })).toBe('normal')
+    })
+
+    it('offers both paths when the live estimate is unavailable below the reserve', () => {
+        expect(getCrossChainGasAssistTier({
+            ...input,
+            requiredNativeGasWei: null,
+            gasEstimateUnavailable: true,
+            nativeBalanceValue: 60n,
+        })).toBe('choice')
     })
 })
 

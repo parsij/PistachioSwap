@@ -36,11 +36,17 @@ export function useCrossChainGasAssist({
     const [previewStatus, setPreviewStatus] = useState('idle')
     const [previewError, setPreviewError] = useState(null)
     const [previewResult, setPreviewResult] = useState(null)
-    const required = Boolean(
+    const eligible = Boolean(
         (expected === true || (
             preparation?.status === 'ready' &&
             preparation?.insufficientNativeGas
         )) &&
+        Number(sellToken?.chainId) === 56 &&
+        sellToken?.isNative !== true,
+    )
+    const required = Boolean(
+        preparation?.status === 'ready' &&
+        preparation?.insufficientNativeGas &&
         Number(sellToken?.chainId) === 56 &&
         sellToken?.isNative !== true,
     )
@@ -78,12 +84,12 @@ export function useCrossChainGasAssist({
         buyToken,
         grossInputAmount: totalInputRaw,
         slippageBps: Math.max(30, slippageBps),
-        required,
+        required: eligible,
         createOrder,
         onSubmitted: handleSubmitted,
         onConfirmed: handleConfirmed,
     })
-    const available = required && sponsorshipConfig?.enabled === true &&
+    const available = eligible && sponsorshipConfig?.enabled === true &&
         sponsorshipConfig?.atomicExecution === true &&
         typeof previewSponsorship === 'function' &&
         typeof authenticateSponsorship === 'function' &&
@@ -185,6 +191,7 @@ export function useCrossChainGasAssist({
     }
 
     return {
+        eligible,
         required,
         expected: expected === true,
         available,
@@ -195,7 +202,7 @@ export function useCrossChainGasAssist({
         previewRoute: previewResult?.key === currentContext.key
             ? previewResult.response.preparedRoute
             : null,
-        status: !required
+        status: !eligible
             ? 'idle'
             : previewStatus === 'loading' || available && previewStatus === 'idle'
                 ? 'loading'
