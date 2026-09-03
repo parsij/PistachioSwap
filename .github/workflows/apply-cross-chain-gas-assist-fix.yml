@@ -1,0 +1,85 @@
+name: Apply cross-chain Gas Assist fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-cross-chain-gas-assist-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.30.3
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Apply Gas Assist patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import base64
+          import re
+
+          workflow = Path('.github/workflows/fix-cross-chain-gas-assist-quote.yml').read_text()
+          match = re.search(r'^\s*PATCH_SCRIPT_B64:\s*(\S+)\s*$', workflow, re.MULTILINE)
+          if not match:
+              raise SystemExit('PATCH_SCRIPT_B64 not found')
+          Path('/tmp/patch-gas-assist.js').write_bytes(base64.b64decode(match.group(1)))
+          PY
+          node /tmp/patch-gas-assist.js
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('src/features/cross-chain/hooks/useCrossChainGasAssist.js')
+          content = path.read_text()
+          old = "const routeReady = candidateRoutes.length > 0 && /^[1-9]d*$/.test(grossInputAmount)"
+          new = r"const routeReady = candidateRoutes.length > 0 && /^[1-9]\d*$/.test(grossInputAmount)"
+          if old not in content:
+              raise SystemExit('generated routeReady guard was not found')
+          path.write_text(content.replace(old, new, 1))
+          PY
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run focused tests
+        run: pnpm vitest run src/features/swap/model/swapEligibility.test.js src/features/cross-chain/hooks/useCrossChainGasAssist.test.jsx
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/features/swap/model/swapEligibility.js \
+            src/features/swap/model/swapEligibility.test.js \
+            src/features/swap/hooks/useSwapController.js \
+            src/features/cross-chain/hooks/useCrossChainGasAssist.js \
+            src/features/cross-chain/hooks/useCrossChainGasAssist.test.jsx \
+            src/features/swap/components/SwapDetails.jsx
+          git commit -m 'Fix cross-chain Gas Assist quote economics and loading state'
+          git push origin HEAD:main
