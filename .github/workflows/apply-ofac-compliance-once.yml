@@ -29,6 +29,22 @@ jobs:
           cache: pnpm
       - name: Apply integration
         run: node scripts/apply-ofac-compliance-integration.mjs
+      - name: Match repository test-runtime detection
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = 'apps/api/src/compliance/service.ts'
+          let source = fs.readFileSync(path, 'utf8')
+          source = source.replace(
+            "enabled: boolEnv('COMPLIANCE_ENABLED', process.env.NODE_ENV !== 'test'),",
+            "enabled: boolEnv('COMPLIANCE_ENABLED', !(process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.argv.some((argument) => argument.includes('vitest')))),",
+          )
+          source = source.replace(
+            "trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', true),",
+            "trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false),",
+          )
+          fs.writeFileSync(path, source)
+          NODE
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Focused validation
