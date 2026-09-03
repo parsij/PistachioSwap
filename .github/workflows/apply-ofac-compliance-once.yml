@@ -1,20 +1,18 @@
-name: Apply OFAC compliance integration once
+name: Finalize OFAC compliance once
 
 on:
   push:
     branches:
       - feature/ofac-compliance
     paths:
-      - scripts/apply-ofac-compliance-integration.mjs
-      - scripts/fix-ofac-crosschain-injection.mjs
-      - apps/api/test/compliance.test.ts
+      - apps/api/test/gas-assist-proxy-geo.test.ts
       - .github/workflows/apply-ofac-compliance-once.yml
 
 permissions:
   contents: write
 
 jobs:
-  patch:
+  finalize:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -29,51 +27,62 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: Apply integration
-        run: |
-          node scripts/apply-ofac-compliance-integration.mjs
-          node scripts/fix-ofac-crosschain-injection.mjs
-      - name: Harden test/runtime defaults
+      - name: Harden Cloudflare geo forwarding
         run: |
           node <<'NODE'
           const fs = require('node:fs')
-          const path = 'apps/api/src/compliance/service.ts'
+          const path = 'apps/api/src/modules/gas-assist-proxy.ts'
           let source = fs.readFileSync(path, 'utf8')
+          const before = `    const country = request.headers['cf-ipcountry']
+    if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {
+        headers.set('x-pistachio-client-country', country.toUpperCase())
+    }
+    const region = request.headers['cf-region-code']
+    if (typeof region === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(region)) {
+        headers.set('x-pistachio-client-region', region.toUpperCase())
+    }
+`
+          const after = `    if (readBoolean('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false)) {
+        const connectingIp = request.headers['cf-connecting-ip']
+        const ray = request.headers['cf-ray']
+        const trustedCloudflareRequest =
+            typeof connectingIp === 'string' &&
+            connectingIp.trim() === request.ip &&
+            typeof ray === 'string' &&
+            /^[A-Za-z0-9-]{8,64}$/.test(ray.trim())
+
+        if (trustedCloudflareRequest) {
+            const country = request.headers['cf-ipcountry']
+            if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {
+                headers.set('x-pistachio-client-country', country.toUpperCase())
+            }
+            const region = request.headers['cf-region-code']
+            if (typeof region === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(region)) {
+                headers.set('x-pistachio-client-region', region.toUpperCase())
+            }
+        }
+    }
+`
+          if (!source.includes(before)) throw new Error('geo forwarding block not found')
+          source = source.replace(before, after)
           source = source.replace(
-            "        enabled: boolEnv('COMPLIANCE_ENABLED', process.env.NODE_ENV !== 'test'),",
-            "        enabled: (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.argv.some((argument) => argument.includes('vitest'))) ? boolEnv('COMPLIANCE_TEST_ENABLED', false) : boolEnv('COMPLIANCE_ENABLED', true),",
-          )
-          source = source.replace(
-            "        trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', true),",
-            "        trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false),",
-          )
-          source = source.replace(
-            "export function createComplianceService(database: Pool = getPool()) {",
-            "export function createComplianceService(database?: Pool) {",
-          )
-          source = source.replace(
-            "        const inserted = await database.query<{ id: string }>(",
-            "        const complianceDatabase = database ?? getPool()\n        const inserted = await complianceDatabase.query<{ id: string }>(",
-          )
-          source = source.replace(
-            "            await database.query(\n                `INSERT INTO compliance_cases",
-            "            await complianceDatabase.query(\n                `INSERT INTO compliance_cases",
+            '    readBoundedResponse,\n}',
+            '    readBoundedResponse,\n    proxyHeaders,\n}',
           )
           fs.writeFileSync(path, source)
           NODE
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Focused validation
+      - name: Validate
         run: |
           pnpm --filter @pistachio/api typecheck
           pnpm --filter @pistachio/api test
-          pnpm exec vitest run src/features/swap/hooks/useSwapPrimaryAction.test.jsx src/features/gas-assist/hooks/useGasAssistController.test.jsx || true
-      - name: Commit integrated files
+          pnpm exec vitest run apps/api/test/gas-assist-proxy-geo.test.ts
+      - name: Commit final code
         run: |
-          rm -f scripts/apply-ofac-compliance-integration.mjs scripts/fix-ofac-crosschain-injection.mjs
           git checkout -- .github/workflows/apply-ofac-compliance-once.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m "feat: enforce OFAC compliance across swap flows"
+          git add apps/api/src/modules/gas-assist-proxy.ts apps/api/test/gas-assist-proxy-geo.test.ts
+          git commit -m "fix: harden compliance geo forwarding"
           git push origin HEAD:feature/ofac-compliance
