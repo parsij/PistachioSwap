@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/apply-ofac-compliance-integration.mjs
       - scripts/fix-ofac-crosschain-injection.mjs
+      - apps/api/test/compliance.test.ts
       - .github/workflows/apply-ofac-compliance-once.yml
 
 permissions:
@@ -39,12 +40,24 @@ jobs:
           const path = 'apps/api/src/compliance/service.ts'
           let source = fs.readFileSync(path, 'utf8')
           source = source.replace(
-            "enabled: boolEnv('COMPLIANCE_ENABLED', process.env.NODE_ENV !== 'test'),",
-            "enabled: (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.argv.some((argument) => argument.includes('vitest'))) ? false : boolEnv('COMPLIANCE_ENABLED', true),",
+            "        enabled: boolEnv('COMPLIANCE_ENABLED', process.env.NODE_ENV !== 'test'),",
+            "        enabled: (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.argv.some((argument) => argument.includes('vitest'))) ? boolEnv('COMPLIANCE_TEST_ENABLED', false) : boolEnv('COMPLIANCE_ENABLED', true),",
           )
           source = source.replace(
-            "trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', true),",
-            "trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false),",
+            "        trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', true),",
+            "        trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false),",
+          )
+          source = source.replace(
+            "export function createComplianceService(database: Pool = getPool()) {",
+            "export function createComplianceService(database?: Pool) {",
+          )
+          source = source.replace(
+            "        const inserted = await database.query<{ id: string }>(",
+            "        const complianceDatabase = database ?? getPool()\n        const inserted = await complianceDatabase.query<{ id: string }>(",
+          )
+          source = source.replace(
+            "            await database.query(\n                `INSERT INTO compliance_cases",
+            "            await complianceDatabase.query(\n                `INSERT INTO compliance_cases",
           )
           fs.writeFileSync(path, source)
           NODE
