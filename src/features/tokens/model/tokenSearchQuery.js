@@ -31,12 +31,14 @@ const EXTRA_CHAIN_ALIASES = Object.freeze({
 })
 
 /*
- * Some short native symbols are shared by many chains (most notably ETH).
- * When a user qualifies another token with one of these, use the conventional
- * network meaning rather than letting an arbitrary chain win an alias tie.
+ * Some short native symbols are shared by many chains (most notably ETH and
+ * BNB). When a user qualifies another token with one of these, use the
+ * conventional network meaning rather than letting an arbitrary chain win an
+ * alias tie. More specific names such as "opbnb" still resolve independently.
  */
 const PREFERRED_AMBIGUOUS_CHAIN_ALIASES = Object.freeze({
     eth: 1,
+    bnb: 56,
 })
 
 /*
