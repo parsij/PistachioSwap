@@ -13,6 +13,7 @@ import {
 import {
     isWrappedNativeTokenAddress,
 } from '../../../web3/curatedEvmChains.js'
+import { interpretTokenSearchQuery } from './tokenSearchQuery.js'
 
 const CORE_CURATED_REASONS = new Set([
     'native-token',
@@ -33,15 +34,33 @@ export function normalizeAddress(address) {
     return String(address ?? '').trim().toLowerCase()
 }
 
-/** Returns whether a token matches a name, symbol, or address query locally. */
+/** Returns whether a token matches a name, symbol, alias, or address query locally. */
 export function tokenMatchesSearch(token, query) {
-    const normalizedQuery = String(query ?? '').trim().toLowerCase()
+    const interpreted = interpretTokenSearchQuery({
+        chainId: 'all',
+        query,
+    })
+    const normalizedQuery = interpreted.query
     if (!normalizedQuery) return true
+
+    if (
+        interpreted.chainQualified &&
+        Number(token?.chainId) !== Number(interpreted.chainId)
+    ) {
+        return false
+    }
+
+    const searchAliases = Array.isArray(token?.searchAliases)
+        ? token.searchAliases
+        : []
 
     return [
         token?.name,
         token?.symbol,
         token?.address,
+        token?.sourceName,
+        token?.sourceSymbol,
+        ...searchAliases,
     ].some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery))
 }
 
