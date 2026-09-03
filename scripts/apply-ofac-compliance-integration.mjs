@@ -13,6 +13,70 @@ function once(text, needle, replacement, path) {
   return text.replace(needle, replacement)
 }
 
+await patch('apps/api/src/compliance/service.ts', (input) => {
+  let out = once(input,
+    "        enabled: boolEnv('COMPLIANCE_ENABLED', true),\n",
+    "        enabled: boolEnv('COMPLIANCE_ENABLED', process.env.NODE_ENV !== 'test'),\n",
+    'compliance test default')
+  out = once(out,
+    "                'user-agent': 'PistachioSwap-OFAC-Screener/1.0 compliance@pistachioswap.com',\n",
+    "                'user-agent': 'PistachioSwap-OFAC-Screener/1.0',\n",
+    'compliance user agent')
+  return out
+})
+
+await patch('apps/api/src/modules/compliance.ts', (input) => {
+  let out = once(input,
+    "    const allowed = new Set(['walletAddress', 'chainId'])\n",
+    "    const allowed = new Set(['walletAddress', 'chainId', 'purpose'])\n",
+    'compliance body fields')
+  out = once(out,
+    "    const chainId = body.chainId == null ? null : Number(body.chainId)\n    if (!walletAddress || (chainId != null && (!Number.isSafeInteger(chainId) || chainId <= 0))) {\n",
+    "    const chainId = body.chainId == null ? null : Number(body.chainId)\n    const purpose = body.purpose == null ? 'background' : String(body.purpose)\n    if (!['background', 'transaction'].includes(purpose)) {\n        throw new ComplianceError('COMPLIANCE_INVALID_REQUEST', 'The compliance purpose is invalid.', 400)\n    }\n    if (!walletAddress || (chainId != null && (!Number.isSafeInteger(chainId) || chainId <= 0))) {\n",
+    'compliance purpose validation')
+  out = once(out,
+    "    return { walletAddress, chainId }\n",
+    "    return { walletAddress, chainId, purpose }\n",
+    'compliance body return')
+  out = once(out,
+    "                    action: 'client-screen',\n",
+    "                    action: body.purpose === 'transaction' ? 'client-transaction-gate' : 'client-screen',\n",
+    'compliance action')
+  out = once(out,
+    "                    persist: false,\n                    useExternalProvider: true,\n",
+    "                    persist: body.purpose === 'transaction',\n                    useExternalProvider: true,\n",
+    'compliance persistence')
+  return out
+})
+
+await patch('src/features/compliance/services/compliance.js', (input) => {
+  let out = once(input,
+    "export async function screenComplianceAccess({ endpoint, walletAddress, chainId, signal }) {\n",
+    "export async function screenComplianceAccess({ endpoint, walletAddress, chainId, purpose = 'background', signal }) {\n",
+    'frontend compliance args')
+  out = once(out,
+    "        body: JSON.stringify({ walletAddress, chainId }),\n",
+    "        body: JSON.stringify({ walletAddress, chainId, purpose }),\n",
+    'frontend compliance body')
+  return out
+})
+
+await patch('src/features/compliance/hooks/useComplianceAccess.js', (input) => {
+  let out = once(input,
+    "    const check = useCallback(async ({ force = false } = {}) => {\n",
+    "    const check = useCallback(async ({ force = false, purpose = 'background' } = {}) => {\n",
+    'compliance hook check args')
+  out = once(out,
+    "                chainId,\n                signal: controller.signal,\n",
+    "                chainId,\n                purpose,\n                signal: controller.signal,\n",
+    'compliance hook purpose')
+  out = once(out,
+    "        const result = await check({ force: true })\n",
+    "        const result = await check({ force: true, purpose: 'transaction' })\n",
+    'compliance transaction persistence')
+  return out
+})
+
 await patch('apps/api/src/app.ts', (input) => {
   let out = once(input,
     "import { gasAssistProxyRoutes } from './modules/gas-assist-proxy.js'\n",
@@ -98,10 +162,6 @@ await patch('src/features/swap/hooks/useSwapPrimaryAction.js', (input) => {
     "        setReviewOperation, setVisibleStatus, confirmExecution, diagnostic, compliance,\n",
     'primary destructure')
   out = once(out,
-    "        if (action.type !== 'swap' && !String(action.type).startsWith('review-blocked:')) {\n",
-    "        if (action.type !== 'swap' && !String(action.type).startsWith('review-blocked:')) {\n",
-    'primary marker')
-  out = once(out,
     "        if (transactionStatus === 'pending' || transactionStatus === 'submitted') {\n",
     "        try {\n            await compliance?.ensureAllowed?.()\n        } catch (error) {\n            const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500\n            setVisibleStatus(unavailable\n                ? 'Compliance screening is temporarily unavailable. Please try again later.'\n                : 'This wallet cannot use PistachioSwap transaction services.')\n            diagnostic('primary-action.blocked', { reason: unavailable ? 'compliance-unavailable' : 'compliance-restricted' }, 'warn')\n            return\n        }\n        if (transactionStatus === 'pending' || transactionStatus === 'submitted') {\n",
     'primary gate')
@@ -113,12 +173,12 @@ await patch('src/features/swap/hooks/useSwapPrimaryAction.js', (input) => {
 })
 
 for (const path of ['apps/api/.env.example', 'apps/api/.env.production.example']) {
-  await patch(path, (input) => input + `\n# OFAC/sanctions screening. Official list matching is exact-address only.\nCOMPLIANCE_ENABLED=true\nCOMPLIANCE_FAIL_CLOSED=true\nCOMPLIANCE_TRUST_CLOUDFLARE_GEO=true\nCOMPLIANCE_BLOCKED_COUNTRY_CODES=CU,IR,KP\n# Optional entries formatted COUNTRY:REGION and reviewed by counsel.\nCOMPLIANCE_BLOCKED_REGION_CODES=\nCOMPLIANCE_SCREEN_CACHE_MS=300000\nOFAC_SDN_URL=https://sanctionslistservice.ofac.treas.gov/api/download/sdn.xml\nOFAC_CONSOLIDATED_URL=https://sanctionslistservice.ofac.treas.gov/api/download/consolidated.xml\nOFAC_REFRESH_INTERVAL_MS=900000\nOFAC_MAX_LIST_AGE_MS=86400000\n# Optional third-party sanctions exposure screening. Store auth only in the server env.\nTRM_SANCTIONS_ENABLED=false\nTRM_SANCTIONS_URL=https://api.trmlabs.com/public/v1/sanctions/screening\nTRM_SANCTIONS_AUTHORIZATION=\n`)
+  await patch(path, (input) => input + `\n# OFAC/sanctions screening. Official list matching is exact-address only.\nCOMPLIANCE_ENABLED=true\nCOMPLIANCE_FAIL_CLOSED=true\n# Enable only when the origin accepts these headers exclusively from Cloudflare.\nCOMPLIANCE_TRUST_CLOUDFLARE_GEO=false\nCOMPLIANCE_BLOCKED_COUNTRY_CODES=CU,IR,KP\n# Optional entries formatted COUNTRY:REGION and reviewed by counsel. Do not block all of Ukraine.\nCOMPLIANCE_BLOCKED_REGION_CODES=\nCOMPLIANCE_SCREEN_CACHE_MS=300000\nOFAC_SDN_URL=https://sanctionslistservice.ofac.treas.gov/api/download/sdn.xml\nOFAC_CONSOLIDATED_URL=https://sanctionslistservice.ofac.treas.gov/api/download/consolidated.xml\nOFAC_REFRESH_INTERVAL_MS=900000\nOFAC_MAX_LIST_AGE_MS=86400000\n# Optional third-party sanctions exposure screening. Store auth only in the server env.\nTRM_SANCTIONS_ENABLED=false\nTRM_SANCTIONS_URL=https://api.trmlabs.com/public/v1/sanctions/screening\nTRM_SANCTIONS_AUTHORIZATION=\n`)
 }
 
 await patch('TERMS.md', (input) => once(input,
   "## 16. Intellectual property and source license\n",
-  `## 16. Sanctions and restricted access\n\nPistachioSwap may screen public wallet addresses and request location signals against applicable sanctions restrictions, official government sanctions data, and configured blockchain-intelligence providers. The hosted website, APIs, routing, Gas Assist, transaction preparation, and other state-changing services may be refused or disabled when a request is prohibited, presents a sanctions match, or cannot be screened reliably.\n\nPistachioSwap does not control public blockchains or independent smart contracts and cannot prevent a user from interacting with them through other software. A restriction by the hosted Service is not a representation about the legal status of an address, asset, person, or transaction outside the specific Service decision. Screening can produce false positives or incomplete results. Users who believe a restriction is erroneous may contact the legal/compliance contact listed below without sending a private key, recovery phrase, or signed raw transaction.\n\nSanctions programs and geographic restrictions change. Availability from a location or to a wallet at one time does not guarantee future availability.\n\n## 17. Intellectual property and source license\n`,
+  `## 16. Sanctions and restricted access\n\nPistachioSwap may screen public wallet addresses and request location signals against applicable sanctions restrictions, official government sanctions data, and configured blockchain-intelligence providers. The hosted website, APIs, routing, Gas Assist, transaction preparation, and other state-changing services may be refused or disabled when a request is prohibited, presents a sanctions match, or cannot be screened reliably.\n\nPistachioSwap does not control public blockchains or independent smart contracts and cannot prevent a user from interacting with them through other software. A restriction by the hosted Service is not a representation about the legal status of an address, asset, person, or transaction outside the specific Service decision. Screening can produce false positives or incomplete results. Users who believe a restriction is erroneous may contact legal@pistachioswap.com without sending a private key, recovery phrase, or signed raw transaction.\n\nSanctions programs and geographic restrictions change. Availability from a location or to a wallet at one time does not guarantee future availability.\n\n## 17. Intellectual property and source license\n`,
   'terms sanctions').replaceAll('## 17. Feedback and contributions', '## 18. Feedback and contributions')
     .replaceAll('## 18. Privacy', '## 19. Privacy')
     .replaceAll('## 19. Availability, changes, suspension, and termination', '## 20. Availability, changes, suspension, and termination')
