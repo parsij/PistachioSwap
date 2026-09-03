@@ -1,0 +1,129 @@
+name: Fix cross-chain sponsorship stabilization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-cross-chain-stabilization.yml'
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '10.30.3'
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Patch same-provider stabilization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          registry = Path('apps/api/src/cross-chain/registry.ts')
+          text = registry.read_text()
+          old = '''        const result = await this.quote({ ...previous.request, amount }, signal)
+        const selected = result.quotes.find((quote) =>
+            quote.executionModel === 'evm-transaction' &&
+            quote.transaction &&
+            quote.request.amount === amount &&
+            quote.request.ownerAddress === previous.request.ownerAddress &&
+            quote.request.recipient === previous.request.recipient &&
+            Date.parse(quote.expiresAt) > Date.now(),
+        ) ?? (result.selectedQuote.executionModel === 'evm-transaction' &&
+            result.selectedQuote.transaction
+            ? result.selectedQuote
+            : null)
+        if (!selected) {
+            throw new Error('Provider returned a mismatched sponsored route.')
+        }
+        const quote = {
+            ...selected,
+            sponsoredGrossInputAmount: grossInputAmount,
+        }
+        this.quotes.set(quote.quoteId, quote)
+        this.pruneQuotes()
+        return quote
+'''
+          new = '''        const request = { ...previous.request, amount }
+        const capabilities = await this.getCapabilities(previous.provider, signal)
+        if (!capabilities.available || !routeSupportsRequest(capabilities, request)) {
+            throw new Error('The selected provider no longer supports the sponsored route.')
+        }
+        const adapter = this.requireAdapter(previous.provider)
+        const selected = await this.run(previous.provider, () =>
+            adapter.getQuote(request, capabilities, signal),
+        )
+        if (
+            selected.provider !== previous.provider ||
+            selected.executionModel !== 'evm-transaction' ||
+            !selected.transaction ||
+            selected.request.amount !== amount ||
+            selected.request.ownerAddress !== previous.request.ownerAddress ||
+            selected.request.recipient !== previous.request.recipient ||
+            selected.request.sourceAsset.chainId !== previous.request.sourceAsset.chainId ||
+            selected.request.sourceAsset.address !== previous.request.sourceAsset.address ||
+            selected.request.destinationAsset.chainId !== previous.request.destinationAsset.chainId ||
+            selected.request.destinationAsset.address !== previous.request.destinationAsset.address ||
+            BigInt(selected.minimumBuyAmount) <= 0n ||
+            Date.parse(selected.expiresAt) <= Date.now()
+        ) {
+            throw new Error('Provider returned a mismatched sponsored route.')
+        }
+        const quote = {
+            ...selected,
+            sponsoredGrossInputAmount: grossInputAmount,
+        }
+        this.quotes.set(quote.quoteId, quote)
+        this.pruneQuotes()
+        return quote
+'''
+          if text.count(old) != 1:
+              raise SystemExit('requoteProvider target not found exactly once')
+          registry.write_text(text.replace(old, new, 1))
+
+          service = Path('apps/api/src/cross-chain/service.ts')
+          text = service.read_text()
+          old = 'const CROSS_CHAIN_SPONSORSHIP_STABILIZE_ATTEMPTS = 5'
+          new = 'const CROSS_CHAIN_SPONSORSHIP_STABILIZE_ATTEMPTS = 8'
+          if text.count(old) != 1:
+              raise SystemExit('stabilization attempt constant not found exactly once')
+          service.write_text(text.replace(old, new, 1))
+
+          test = Path('apps/api/test/cross-chain-requote-provider.test.ts')
+          if test.exists():
+              raise SystemExit('cross-chain requote regression test already exists')
+          test.write_text('''import { describe, expect, it, vi } from 'vitest'\n\nimport { CrossChainRegistry } from '../src/cross-chain/registry.js'\nimport type {\n    CrossChainAdapter,\n    CrossChainProviderName,\n    CrossChainQuote,\n    CrossChainRequest,\n    ProviderCapabilities,\n} from '../src/cross-chain/types.js'\n\nconst owner = '0x0000000000000000000000000000000000000001'\nconst sourceToken = '0x0000000000000000000000000000000000000011'\nconst destinationToken = '0x0000000000000000000000000000000000000022'\nconst target = '0x0000000000000000000000000000000000000033'\nconst spender = '0x0000000000000000000000000000000000000044'\n\nconst request: CrossChainRequest = {\n    mode: 'exactIn',\n    sourceAsset: { chainId: 56, address: sourceToken, symbol: 'SRC', decimals: 18 },\n    destinationAsset: { chainId: 137, address: destinationToken, symbol: 'DST', decimals: 18 },\n    amount: '1000',\n    ownerAddress: owner,\n    recipient: owner,\n    slippageBps: 50,\n    walletCapabilities: {\n        evmTransaction: true,\n        depositChannel: false,\n        vaultSwap: false,\n    },\n}\n\nfunction adapter(\n    name: CrossChainProviderName,\n    buyAmount: (amount: string) => string,\n    quoteSpy: ReturnType<typeof vi.fn>,\n): CrossChainAdapter {\n    const capabilities: ProviderCapabilities = {\n        provider: name,\n        available: true,\n        fetchedAt: new Date().toISOString(),\n        routes: [{\n            sourceChainId: 56,\n            destinationChainId: 137,\n            transactionTargets: [target],\n            approvalSpenders: [spender],\n        }],\n    }\n    return {\n        name,\n        async getCapabilities() {\n            return capabilities\n        },\n        async getQuote(nextRequest) {\n            quoteSpy(nextRequest.amount)\n            return {\n                provider: name,\n                quoteId: `${name}:${nextRequest.amount}:${quoteSpy.mock.calls.length}`,\n                request: nextRequest,\n                buyAmount: buyAmount(nextRequest.amount),\n                minimumBuyAmount: '1',\n                fees: [],\n                estimatedDurationSeconds: 60,\n                executionModel: 'evm-transaction',\n                steps: [],\n                transaction: {\n                    chainId: 56,\n                    to: target,\n                    data: '0x1234',\n                    value: '0',\n                    allowanceTarget: spender,\n                },\n                deposit: null,\n                statusId: null,\n                expiresAt: new Date(Date.now() + 60_000).toISOString(),\n            } satisfies CrossChainQuote\n        },\n        async getStatus(statusId) {\n            return {\n                provider: name,\n                statusId,\n                status: 'unknown',\n                sourceTransactionHash: null,\n                destinationTransactionHash: null,\n            }\n        },\n    }\n}\n\ndescribe('CrossChainRegistry.requoteProvider', () => {\n    it('keeps sponsorship stabilization on the originally selected provider', async () => {\n        const acrossQuote = vi.fn()\n        const relayQuote = vi.fn()\n        const registry = new CrossChainRegistry([\n            adapter('across', (amount) => amount === '1000' ? '950' : '940', acrossQuote),\n            adapter('relay', (amount) => amount === '1000' ? '900' : '999', relayQuote),\n        ])\n\n        const initial = await registry.quote(request)\n        expect(initial.selectedQuote.provider).toBe('across')\n        expect(acrossQuote).toHaveBeenCalledTimes(1)\n        expect(relayQuote).toHaveBeenCalledTimes(1)\n\n        const requoted = await registry.requoteProvider(\n            initial.selectedQuote.quoteId,\n            '800',\n            undefined,\n            '1000',\n        )\n\n        expect(requoted.provider).toBe('across')\n        expect(requoted.request.amount).toBe('800')\n        expect(requoted.sponsoredGrossInputAmount).toBe('1000')\n        expect(acrossQuote).toHaveBeenCalledTimes(2)\n        expect(relayQuote).toHaveBeenCalledTimes(1)\n    })\n})\n''')
+          PY
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Focused tests
+        run: pnpm vitest run apps/api/test/cross-chain-requote-provider.test.ts apps/api/test/cross-chain.test.ts
+      - name: Lint
+        run: pnpm lint
+      - name: API typecheck
+        run: pnpm --filter @pistachio/api typecheck
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/cross-chain/registry.ts apps/api/src/cross-chain/service.ts apps/api/test/cross-chain-requote-provider.test.ts
+          git commit -m 'Fix cross-chain Gas Assist route stabilization'
+          git push origin HEAD:main
