@@ -35,9 +35,9 @@ export function normalizeAddress(address) {
 }
 
 /** Returns whether a token matches a name, symbol, alias, or address query locally. */
-export function tokenMatchesSearch(token, query) {
+export function tokenMatchesSearch(token, query, chainId = token?.chainId ?? 'all') {
     const interpreted = interpretTokenSearchQuery({
-        chainId: 'all',
+        chainId,
         query,
     })
     const normalizedQuery = interpreted.query
