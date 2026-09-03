@@ -20,7 +20,7 @@ import {
 
 type PrivateGasAssistRequest = typeof requestPrivateGasAssist
 
-const CROSS_CHAIN_SPONSORSHIP_STABILIZE_ATTEMPTS = 5
+const CROSS_CHAIN_SPONSORSHIP_STABILIZE_ATTEMPTS = 8
 
 export class CrossChainRouteService {
     constructor(

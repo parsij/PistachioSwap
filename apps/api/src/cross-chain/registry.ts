@@ -333,19 +333,29 @@ export class CrossChainRegistry {
         if (!/^[1-9]\d*$/.test(amount) || !/^[1-9]\d*$/.test(grossInputAmount)) {
             throw new Error('Invalid cross-chain amount.')
         }
-        const result = await this.quote({ ...previous.request, amount }, signal)
-        const selected = result.quotes.find((quote) =>
-            quote.executionModel === 'evm-transaction' &&
-            quote.transaction &&
-            quote.request.amount === amount &&
-            quote.request.ownerAddress === previous.request.ownerAddress &&
-            quote.request.recipient === previous.request.recipient &&
-            Date.parse(quote.expiresAt) > Date.now(),
-        ) ?? (result.selectedQuote.executionModel === 'evm-transaction' &&
-            result.selectedQuote.transaction
-            ? result.selectedQuote
-            : null)
-        if (!selected) {
+        const request = { ...previous.request, amount }
+        const capabilities = await this.getCapabilities(previous.provider, signal)
+        if (!capabilities.available || !routeSupportsRequest(capabilities, request)) {
+            throw new Error('The selected provider no longer supports the sponsored route.')
+        }
+        const adapter = this.requireAdapter(previous.provider)
+        const selected = await this.run(previous.provider, () =>
+            adapter.getQuote(request, capabilities, signal),
+        )
+        if (
+            selected.provider !== previous.provider ||
+            selected.executionModel !== 'evm-transaction' ||
+            !selected.transaction ||
+            selected.request.amount !== amount ||
+            selected.request.ownerAddress !== previous.request.ownerAddress ||
+            selected.request.recipient !== previous.request.recipient ||
+            selected.request.sourceAsset.chainId !== previous.request.sourceAsset.chainId ||
+            selected.request.sourceAsset.address !== previous.request.sourceAsset.address ||
+            selected.request.destinationAsset.chainId !== previous.request.destinationAsset.chainId ||
+            selected.request.destinationAsset.address !== previous.request.destinationAsset.address ||
+            BigInt(selected.minimumBuyAmount) <= 0n ||
+            Date.parse(selected.expiresAt) <= Date.now()
+        ) {
             throw new Error('Provider returned a mismatched sponsored route.')
         }
         const quote = {
