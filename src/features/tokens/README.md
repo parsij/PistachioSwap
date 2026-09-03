@@ -34,6 +34,8 @@ Hooks call existing backend market/wallet-token routes, read native balance thro
 
 `active chain/account -> market preload + selected catalog + wallet tokens + native RPC balance -> exact identity merge -> useSwapInputs resolves selected tokens -> TokenSelectorOverlay -> TokenSelector -> useTokenSelectorState -> TokenSelectorSections/TokenRow -> onSelect`.
 
+Polygon PoS uses the registry-native POL identity, including the `0x0000000000000000000000000000000000001010` system-token alias. Text search merges provider results with the reviewed per-chain fallback-address directory so a temporary provider miss does not make known Polygon tokens disappear from the selector.
+
 ## Selector contract and flow
 
 `TokenSelector` is controlled by `chainId`, catalog arrays, `search`, current/opposite tokens, and semantic callbacks. Search input emits the raw string through `onSearchChange`; chain changes clear search before calling `onChainChange`; selecting a row confirms risky tokens, persists a sanitized recent record when searching, then calls `onSelect(token)`. The hook returns section arrays, loading/error branches, context-menu actions, and visibility toggles. No selector component calls quote, RPC, wallet, approval, or transaction services.
