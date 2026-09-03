@@ -29,6 +29,13 @@ export const ALCHEMY_PORTFOLIO_MAX_NETWORKS_PER_REQUEST = 5 as const
 const byChainId = new Map<number, AlchemyPortfolioNetwork>()
 const byNetwork = new Map<AlchemyPortfolioNetwork, number>()
 
+// Portfolio requests use polygon-mainnet, while Alchemy's Tokens By Wallet
+// response currently labels Polygon rows as matic-mainnet. Keep request IDs
+// canonical and accept documented response aliases only when decoding rows.
+const responseNetworkAliases: ReadonlyMap<string, number> = new Map([
+    ['matic-mainnet', 137],
+])
+
 for (const [chainId, network] of PORTFOLIO_NETWORK_ENTRIES) {
     if (byChainId.has(chainId)) {
         throw new Error(`Duplicate Alchemy Portfolio chain ID: ${chainId}.`)
@@ -49,7 +56,9 @@ export function getAlchemyPortfolioNetwork(chainId: number) {
 }
 
 export function getChainIdForAlchemyPortfolioNetwork(network: string) {
-    return byNetwork.get(network as AlchemyPortfolioNetwork) ?? null
+    return byNetwork.get(network as AlchemyPortfolioNetwork) ??
+        responseNetworkAliases.get(network) ??
+        null
 }
 
 export function getAlchemyPortfolioChainIds(): readonly number[] {

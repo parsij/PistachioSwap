@@ -60,6 +60,8 @@ describe('Alchemy Portfolio network mapping', () => {
         })
         expect(new Set(networks).size).toBe(networks.length)
         expect(getAlchemyPortfolioNetwork(56)).toBe('bnb-mainnet')
+        expect(getAlchemyPortfolioNetwork(137)).toBe('polygon-mainnet')
+        expect(getChainIdForAlchemyPortfolioNetwork('matic-mainnet')).toBe(137)
     })
 
     it('reports unsupported chains without guessing a network', () => {
@@ -143,6 +145,38 @@ describe('Alchemy Portfolio token provider', () => {
                 rawBalance: '42',
             }),
         ]))
+    })
+
+    it('accepts Alchemy Polygon response aliases without weakening batch isolation', async () => {
+        const fetchImpl = vi.fn(async (_url, options) => {
+            const body = JSON.parse(String(options?.body))
+            expect(body.addresses[0].networks).toEqual(['polygon-mainnet'])
+            return response([record({
+                network: 'matic-mainnet',
+                tokenAddress: null,
+                tokenBalance: '0x2a',
+                tokenMetadata: {
+                    decimals: 18,
+                    logo: 'https://static.alchemy.example/pol.png',
+                    name: 'Polygon',
+                    symbol: 'POL',
+                },
+                tokenPrices: [{ currency: 'usd', value: '0.25' }],
+            })])
+        })
+        const result = await fetchAlchemyPortfolioTokens({
+            walletAddress: wallet,
+            chainIds: [137],
+        }, { fetchImpl, config })
+
+        expect(result.tokens).toEqual([expect.objectContaining({
+            chainId: 137,
+            address: NATIVE_TOKEN_ADDRESS,
+            isNative: true,
+            rawBalance: '42',
+        })])
+        expect(result.successfulChainIds).toEqual([137])
+        expect(result.skippedRecordCount).toBe(0)
     })
 
     it.each([

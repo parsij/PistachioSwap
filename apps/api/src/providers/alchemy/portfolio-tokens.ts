@@ -364,7 +364,7 @@ export async function fetchAlchemyPortfolioNetworkBatch({
     const chainIds = networkBatch.map((network) =>
         getChainIdForAlchemyPortfolioNetwork(network)!,
     )
-    const allowedNetworks = new Set(networkBatch)
+    const allowedChainIds = new Set(chainIds)
     const url = new URL(
         `https://api.g.alchemy.com/data/v1/${encodeURIComponent(config.apiKey)}/assets/tokens/by-address`,
     )
@@ -413,8 +413,11 @@ export async function fetchAlchemyPortfolioNetworkBatch({
             const returnedNetwork = typeof value.network === 'string'
                 ? value.network
                 : ''
-            const chainId = allowedNetworks.has(returnedNetwork as AlchemyPortfolioNetwork)
-                ? getChainIdForAlchemyPortfolioNetwork(returnedNetwork)
+            const returnedChainId =
+                getChainIdForAlchemyPortfolioNetwork(returnedNetwork)
+            const chainId = returnedChainId !== null &&
+                allowedChainIds.has(returnedChainId)
+                ? returnedChainId
                 : null
             const responseWallet = normalizeAddress(value.address)
             const balance = parseRawBalance(value.tokenBalance)
