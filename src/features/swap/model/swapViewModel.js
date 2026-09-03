@@ -155,6 +155,16 @@ export function getPrimaryActionPresentation({
     crossChainGasAssistDirect = false,
     crossChainGasAssistStatus = 'idle',
 }) {
+    if ([
+        'connect',
+        'switch-network',
+        'select-token',
+        'enter-amount',
+        'transaction-pending',
+        'transaction-submitted',
+    ].includes(action?.type)) {
+        return action
+    }
     if (crossChainGasAssistDirect && ['idle', 'loading'].includes(crossChainGasAssistStatus)) {
         return {
             type: 'gas-assist-loading',
@@ -419,6 +429,11 @@ export function createSwapViewModel(context) {
         crossChainGasAssistDirect,
         crossChainGasAssistStatus: crossChainGasAssist?.status,
     })
+    const crossChainGasAssistErrorMessage =
+        crossChainGasAssistDirect && crossChainGasAssist?.status === 'error'
+            ? crossChainGasAssist?.error?.message ??
+              'An error happened on our side. Please try again later.'
+            : null
     const crossChainGasAssistTier = getCrossChainGasAssistTier({
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
@@ -593,7 +608,7 @@ export function createSwapViewModel(context) {
                     nativeSymbol,
                     executionMessage: context.executionMessage,
                     showExecutionMessage: catalog.nativeBalance.value === 0n,
-                    statusMessage,
+                    statusMessage: statusMessage ?? crossChainGasAssistErrorMessage,
                 },
             },
             tokenSelector: {

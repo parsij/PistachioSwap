@@ -63,7 +63,15 @@ function registerApiRoutes(app: FastifyInstance, prefix = '') {
 
 function readTrustProxy() {
     const raw = process.env.TRUST_PROXY_HOPS?.trim()
-    if (!raw || raw === '0') return false
+    if (!raw) {
+        const host = process.env.HOST?.trim().toLowerCase()
+        if (
+            process.env.NODE_ENV === 'production' &&
+            ['127.0.0.1', '::1', 'localhost'].includes(host ?? '')
+        ) return 1
+        return false
+    }
+    if (raw === '0') return false
     const hops = Number(raw)
     if (!Number.isSafeInteger(hops) || hops < 1 || hops > 4) {
         throw new Error('TRUST_PROXY_HOPS must be an integer from 0 through 4.')
@@ -306,8 +314,10 @@ export function createApp() {
                         : 'REQUEST_FAILED',
                 message:
                     statusCode === 429
-                        ? 'Too many requests.'
-                        : 'The request could not be completed.',
+                        ? 'Too many requests were sent in a short time. Please wait and try again.'
+                        : statusCode >= 500
+                          ? 'An error happened on our side. Please try again later.'
+                          : 'The request could not be completed.',
             },
         })
     })

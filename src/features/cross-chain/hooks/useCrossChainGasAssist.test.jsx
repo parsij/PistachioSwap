@@ -90,6 +90,16 @@ describe('useCrossChainGasAssist', () => {
         expect(sponsorship.reviewOrder).toHaveBeenCalledWith(result.current.preview)
     })
 
+    it('stays idle and does not preview Gas Assist before a positive amount exists', () => {
+        const input = props({ totalInputRaw: '0' })
+        const { result } = renderHook((value) => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+
+        expect(result.current.status).toBe('idle')
+        expect(input.previewSponsorship).not.toHaveBeenCalled()
+    })
+
     it('keeps the direct Gas Assist CTA loading until a cross-chain route exists', async () => {
         const input = props({ route: null, routes: [] })
         const { result, rerender } = renderHook((value) => useCrossChainGasAssist(value), {

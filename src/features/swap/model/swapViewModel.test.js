@@ -46,6 +46,19 @@ describe('getPrimaryActionPresentation', () => {
         enabled: true,
     }
 
+    it('keeps the enter-amount action before Gas Assist has a positive input', () => {
+        const enterAmountAction = {
+            type: 'enter-amount',
+            label: 'Enter an amount',
+            enabled: false,
+        }
+        expect(getPrimaryActionPresentation({
+            action: enterAmountAction,
+            crossChainGasAssistDirect: true,
+            crossChainGasAssistStatus: 'loading',
+        })).toBe(enterAmountAction)
+    })
+
     it('shows progress while a zero-BNB direct Gas Assist quote is loading', () => {
         expect(getPrimaryActionPresentation({
             action: reviewAction,

@@ -427,7 +427,17 @@ export function createCrossChainRouteRequest({
 }
 
 async function requestJson(url, options = {}) {
-    const response = await fetch(url, options)
+    let response
+    try {
+        response = await fetch(url, options)
+    } catch (cause) {
+        if (cause?.name === 'AbortError') throw cause
+        const error = new Error(
+            'Could not reach PistachioSwap. Check your connection and try again.',
+        )
+        error.code = 'NETWORK_ERROR'
+        throw error
+    }
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
         const gatewayTimeout = response.status === 502 ||
@@ -437,12 +447,15 @@ async function requestJson(url, options = {}) {
             ? 'CROSS_CHAIN_GATEWAY_TIMEOUT'
             : null)
         const messages = {
-            CROSS_CHAIN_NOT_CONFIGURED: 'Cross-chain routing is not configured.',
+            CROSS_CHAIN_NOT_CONFIGURED: 'An error happened on our side. Please try again later.',
+            RATE_LIMITED: 'Too many swap requests were sent in a short time. Wait a moment and try again.',
+            CROSS_CHAIN_PROVIDER_RATE_LIMITED: 'Swap providers are temporarily busy. Wait a moment and try again.',
+            REQUEST_FAILED: 'An error happened on our side. Please try again later.',
             CROSS_CHAIN_UNSUPPORTED_CHAIN_PAIR: 'This network pair is not currently supported.',
             CROSS_CHAIN_UNSUPPORTED_TOKEN_PAIR: 'This token pair is not currently supported across these networks.',
             CROSS_CHAIN_AMOUNT_TOO_LOW: 'Enter a larger amount.',
             CROSS_CHAIN_NO_LIQUIDITY: 'No cross-chain liquidity is currently available for this token pair.',
-            CROSS_CHAIN_PROVIDER_UNAVAILABLE: 'Cross-chain routes are temporarily unavailable.',
+            CROSS_CHAIN_PROVIDER_UNAVAILABLE: 'An error happened on our side. Please try again later.',
             RELAY_AUTHORITY_UNAVAILABLE: 'Relay authority metadata is temporarily unavailable.',
             RELAY_APPROVAL_TARGET_INVALID: 'Relay returned an unauthorized approval target.',
             RELAY_APPROVAL_AMOUNT_INVALID: 'Relay returned an invalid approval amount.',
@@ -450,8 +463,14 @@ async function requestJson(url, options = {}) {
             CROSS_CHAIN_NO_EXECUTABLE_ROUTE: 'No executable route is currently available.',
             CROSS_CHAIN_GATEWAY_TIMEOUT: 'Gas Assist took too long to confirm this route. Try again.',
         }
-        const error = new Error(messages[code] ?? payload?.error?.message ??
-            payload?.message ?? 'Cross-chain service is unavailable.')
+        const error = new Error(
+            messages[code] ??
+            (response.status >= 500
+                ? 'An error happened on our side. Please try again later.'
+                : payload?.error?.message ??
+                  payload?.message ??
+                  'The request could not be completed.'),
+        )
         error.code = code
         error.status = response.status
         throw error

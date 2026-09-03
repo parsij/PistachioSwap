@@ -78,6 +78,7 @@ else
 NODE_ENV=production
 PORT=3006
 HOST=127.0.0.1
+TRUST_PROXY_HOPS=1
 CORS_ORIGINS=https://pistachioswap.com,https://www.pistachioswap.com
 
 GAS_ASSIST_SERVICE_ENABLED=false

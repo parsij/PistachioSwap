@@ -41,10 +41,11 @@ export function useCrossChainGasAssist({
     }
     candidateRoutesRef.current = candidateRoutes
     const grossInputAmount = String(totalInputRaw ?? '')
+    const amountReady = /^[1-9]\d*$/.test(grossInputAmount)
     const routeSetKey = candidateRoutes
         .map((candidate) => String(candidate.publicRouteId))
         .join(',')
-    const routeReady = candidateRoutes.length > 0 && /^[1-9]\d*$/.test(grossInputAmount)
+    const routeReady = candidateRoutes.length > 0 && amountReady
     const currentContext = {
         account: String(account ?? '').toLowerCase(),
         routeSetKey,
@@ -242,7 +243,7 @@ export function useCrossChainGasAssist({
         previewRoute: previewResult?.key === currentContext.key
             ? previewResult.response.preparedRoute
             : null,
-        status: !eligible
+        status: !eligible || !amountReady
             ? 'idle'
             : previewStatus === 'loading' || available && previewStatus === 'idle'
                 ? 'loading'

@@ -53,17 +53,22 @@ export async function fetchSponsorshipPreview(
         if (cause?.name === 'AbortError') throw cause
         throw previewError(
             'SPONSORSHIP_PREVIEW_NETWORK_ERROR',
-            'Could not load the Gas Assist preview.',
+            'Could not reach PistachioSwap. Check your connection and try again.',
         )
     }
 
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
-        throw previewError(
-            payload?.error?.code ?? 'SPONSORSHIP_PREVIEW_FAILED',
-            payload?.error?.message ?? 'Gas Assist could not preview this swap.',
-            payload?.error?.details ?? {},
-        )
+        const code = payload?.error?.code ?? 'SPONSORSHIP_PREVIEW_FAILED'
+        const message = code === 'RATE_LIMITED'
+            ? 'Too many swap requests were sent in a short time. Wait a moment and try again.'
+            : response.status >= 500
+                ? 'An error happened on our side. Please try again later.'
+                : payload?.error?.message ?? 'Gas Assist could not preview this swap.'
+        throw previewError(code, message, {
+            ...(payload?.error?.details ?? {}),
+            status: response.status,
+        })
     }
     if (
         !payload ||

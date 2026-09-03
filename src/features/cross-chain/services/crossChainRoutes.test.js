@@ -260,7 +260,26 @@ describe('cross-chain route normalization', () => {
             account: '0x0000000000000000000000000000000000000003',
         })
         await expect(fetchCrossChainRoutes({ endpoint: 'https://api.example', request }))
-            .rejects.toThrow('Cross-chain routing is not configured.')
+            .rejects.toThrow('An error happened on our side. Please try again later.')
+        vi.unstubAllGlobals()
+    })
+
+    it('maps API rate limits to an actionable wait message', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: false,
+            status: 429,
+            json: async () => ({ error: { code: 'RATE_LIMITED', message: 'Too many requests.' } }),
+        }))
+        const request = createCrossChainRouteRequest({
+            sourceChainId: 56,
+            destinationChainId: 1,
+            sourceToken: '0x0000000000000000000000000000000000000001',
+            destinationToken: '0x0000000000000000000000000000000000000002',
+            amount: '100',
+            account: '0x0000000000000000000000000000000000000003',
+        })
+        await expect(fetchCrossChainRoutes({ endpoint: 'https://api.example', request }))
+            .rejects.toThrow('Too many swap requests were sent in a short time. Wait a moment and try again.')
         vi.unstubAllGlobals()
     })
 

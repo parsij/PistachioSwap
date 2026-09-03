@@ -1,4 +1,9 @@
 const messages = {
+    RATE_LIMITED: 'Too many swap requests were sent in a short time. Wait a moment and try again.',
+    CROSS_CHAIN_PROVIDER_RATE_LIMITED: 'Swap providers are temporarily busy. Wait a moment and try again.',
+    REQUEST_FAILED: 'An error happened on our side. Please try again later.',
+    SPONSORSHIP_FAILED: 'An error happened on our side. Please try again later.',
+    SPONSORSHIP_PREVIEW_FAILED: 'An error happened on our side. Please try again later.',
     BELOW_SPONSOR_MINIMUM: 'The amount is too small for Gas Assist.',
     ABOVE_SPONSOR_MAXIMUM: 'The amount is above the Gas Assist limit.',
     GAS_ASSIST_RULE_NOT_FOUND: 'Gas Assist is not available for this token yet.',
