@@ -6,6 +6,7 @@ import {
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/
 const MAX_CHAIN_QUALIFIER_WORDS = 5
+const MAX_PREFIX_TICKER_LENGTH = 6
 
 /*
  * Fuse handles the actual matching for every enabled network. This table is
@@ -63,6 +64,14 @@ function compactTickerFragments(value) {
         return normalized
     }
     return parts.join('')
+}
+
+function looksLikePrefixTicker(value) {
+    const compact = compactTickerFragments(value)
+    return Boolean(compact) &&
+        !compact.includes(' ') &&
+        compact.length <= MAX_PREFIX_TICKER_LENGTH &&
+        /^[a-z0-9.$-]+$/.test(compact)
 }
 
 function inferredChainAliases(chain) {
@@ -176,12 +185,13 @@ function chainQualifierCandidates(query) {
 
         const prefixPhrase = words.slice(0, length).join(' ')
         const prefixMatch = resolveChainPhrase(prefixPhrase)
-        if (prefixMatch) {
+        const prefixRemainder = words.slice(length).join(' ')
+        if (prefixMatch && looksLikePrefixTicker(prefixRemainder)) {
             candidates.push({
                 ...prefixMatch,
                 position: 'prefix',
                 phraseWords: length,
-                tokenQuery: compactTickerFragments(words.slice(length).join(' ')),
+                tokenQuery: compactTickerFragments(prefixRemainder),
             })
         }
     }
