@@ -1,0 +1,63 @@
+name: Fuse token search upgrade once
+
+on:
+  push:
+    branches:
+      - fix/fuse-token-search-all-networks
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fuse-token-search-upgrade-once
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/fuse-token-search-all-networks
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Apply source upgrade
+        run: node scripts/apply-fuse-search-upgrade.mjs
+
+      - name: Add Fuse.js
+        run: |
+          pnpm add -w fuse.js@^7.5.0
+          pnpm --filter @pistachio/api add fuse.js@^7.5.0
+
+      - name: Validate token search
+        run: |
+          pnpm exec vitest run src/features/tokens/model/tokenSelectorState.search.test.js src/features/tokens/hooks/useTokenCatalog.test.jsx
+          pnpm --filter @pistachio/api exec vitest run test/token-catalog-ranking.test.ts test/token-catalog-query.test.ts
+          pnpm --filter @pistachio/api typecheck
+          pnpm exec oxlint src/features/tokens/model/tokenSearchQuery.js src/features/tokens/model/tokenSelectorState.js apps/api/src/modules/token-catalog.ts
+          pnpm licenses:sync
+          pnpm licenses:audit
+          pnpm build
+
+      - name: Remove one-time upgrade machinery
+        run: |
+          rm scripts/apply-fuse-search-upgrade.mjs
+          rm .github/workflows/fuse-token-search-upgrade-once.yml
+
+      - name: Commit validated upgrade
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'feat: use Fuse for all-network token search'
+          git push origin HEAD:fix/fuse-token-search-all-networks
