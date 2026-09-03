@@ -12,7 +12,7 @@ function endpointBase(quoteEndpoint) {
     }
 }
 
-export async function screenComplianceAccess({ endpoint, walletAddress, chainId, signal }) {
+export async function screenComplianceAccess({ endpoint, walletAddress, chainId, purpose = 'background', signal }) {
     if (!walletAddress) return {
         allowed: true,
         decision: 'allow',
@@ -21,7 +21,7 @@ export async function screenComplianceAccess({ endpoint, walletAddress, chainId,
     const response = await fetch(`${endpointBase(endpoint)}/v1/compliance/screen`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ walletAddress, chainId }),
+        body: JSON.stringify({ walletAddress, chainId, purpose }),
         signal,
     })
     const payload = await response.json().catch(() => null)

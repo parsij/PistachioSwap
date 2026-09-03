@@ -9,6 +9,8 @@ import { validateStartupConfig } from './config.js'
 import { closeDatabase } from './db/client.js'
 import { crossChainRoutes } from './modules/cross-chain.js'
 import { gasAssistProxyRoutes } from './modules/gas-assist-proxy.js'
+import { complianceRoutes } from './modules/compliance.js'
+import { getComplianceService } from './compliance/service.js'
 import {
     marketCatalogService,
     marketTokenRoutes,
@@ -40,6 +42,7 @@ const SENSITIVE_API_PREFIXES = [
     '/v1/gas-assist',
     '/v1/sponsorship',
     '/v1/cross-chain',
+    '/v1/compliance',
     '/v1/wallet-activity',
     '/v1/wallet-token',
 ]
@@ -59,6 +62,7 @@ function registerApiRoutes(app: FastifyInstance, prefix = '') {
     app.register(crossChainRoutes, { prefix })
     app.register(tokenDetailsRoutes, { prefix })
     app.register(gasAssistProxyRoutes, { prefix })
+    app.register(complianceRoutes, { prefix })
 }
 
 function readTrustProxy() {
@@ -229,6 +233,13 @@ export function createApp() {
 
     app.addHook('onReady', async () => {
         if (process.env.NODE_ENV !== 'test') {
+            if (getComplianceService().status().enabled) {
+                try {
+                    await getComplianceService().refreshOfacSnapshot()
+                } catch (error) {
+                    app.log.error({ subsystem: 'compliance', err: error }, 'Initial OFAC list refresh failed; transaction screening will fail closed')
+                }
+            }
             marketCatalogService.setPersistenceWarningHandler((code) => {
                 app.log.warn({
                     subsystem: 'market-catalog-persistence',

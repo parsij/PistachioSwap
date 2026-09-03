@@ -11,7 +11,7 @@ export function useComplianceAccess({ endpoint, walletAddress, chainId }) {
     })
     const cacheRef = useRef(null)
 
-    const check = useCallback(async ({ force = false } = {}) => {
+    const check = useCallback(async ({ force = false, purpose = 'background' } = {}) => {
         if (!walletAddress) {
             const clear = { status: 'idle', allowed: true, expiresAt: null, error: null }
             setState(clear)
@@ -32,6 +32,7 @@ export function useComplianceAccess({ endpoint, walletAddress, chainId }) {
                 endpoint,
                 walletAddress,
                 chainId,
+                purpose,
                 signal: controller.signal,
             })
             cacheRef.current = { key, result }
@@ -63,7 +64,7 @@ export function useComplianceAccess({ endpoint, walletAddress, chainId }) {
     }, [check, walletAddress])
 
     const ensureAllowed = useCallback(async () => {
-        const result = await check({ force: true })
+        const result = await check({ force: true, purpose: 'transaction' })
         if (!result.allowed) {
             const error = new Error('PistachioSwap cannot provide transaction services for this wallet.')
             error.code = 'COMPLIANCE_RESTRICTED'

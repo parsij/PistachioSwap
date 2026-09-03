@@ -157,7 +157,15 @@ You may not use the Service to:
 
 We may investigate suspected abuse and cooperate with lawful requests.
 
-## 16. Intellectual property and source license
+## 16. Sanctions and restricted access
+
+PistachioSwap may screen public wallet addresses and request location signals against applicable sanctions restrictions, official government sanctions data, and configured blockchain-intelligence providers. The hosted website, APIs, routing, Gas Assist, transaction preparation, and other state-changing services may be refused or disabled when a request is prohibited, presents a sanctions match, or cannot be screened reliably.
+
+PistachioSwap does not control public blockchains or independent smart contracts and cannot prevent a user from interacting with them through other software. A restriction by the hosted Service is not a representation about the legal status of an address, asset, person, or transaction outside the specific Service decision. Screening can produce false positives or incomplete results. Users who believe a restriction is erroneous may contact legal@pistachioswap.com without sending a private key, recovery phrase, or signed raw transaction.
+
+Sanctions programs and geographic restrictions change. Availability from a location or to a wallet at one time does not guarantee future availability.
+
+## 17. Intellectual property and source license
 
 Owner-controlled PistachioSwap source code is source-available under the PolyForm Noncommercial License 1.0.0 unless a file states otherwise. Commercial use of owner-controlled code requires a separate written license from the project owner.
 
@@ -165,19 +173,19 @@ Third-party packages, components, fonts, SDKs, data, token lists, and copied/gen
 
 These Terms govern use of the hosted Service. They do not expand the source-code license or transfer ownership of names, logos, domains, designs, or other intellectual property.
 
-## 17. Feedback and contributions
+## 18. Feedback and contributions
 
 If you submit non-confidential feedback or suggestions, you grant PistachioSwap a worldwide, perpetual, irrevocable, royalty-free right to use, modify, reproduce, publish, and incorporate that feedback without compensation or attribution, to the extent permitted by law.
 
 Code contributions are governed by the repository license, `CONTRIBUTING.md`, the Contributor Assignment Agreement where accepted, and any separate written agreement. Do not contribute code or content you do not have the right to provide.
 
-## 18. Privacy
+## 19. Privacy
 
 The [Privacy Policy](PRIVACY.md) explains current repository-aligned data practices and the information that must still be finalized before launch.
 
 Do not submit wallet secrets through support channels, analytics, issue trackers, pull requests, or other public channels.
 
-## 19. Availability, changes, suspension, and termination
+## 20. Availability, changes, suspension, and termination
 
 We may modify, suspend, restrict, or discontinue any part of the Service at any time. We may block or limit access when reasonably necessary for security, maintenance, legal compliance, provider requirements, suspected abuse, or treasury protection.
 
@@ -185,7 +193,7 @@ You may stop using the Service at any time. Stopping use does not reverse blockc
 
 Provisions that by their nature should survive termination survive, including ownership, risk allocation, disclaimers, limitations of liability, indemnity, and dispute provisions.
 
-## 20. Disclaimers
+## 21. Disclaimers
 
 TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE," WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, SECURITY, ACCURACY, AVAILABILITY, OR QUIET ENJOYMENT.
 
@@ -193,7 +201,7 @@ PISTACHIOSWAP DOES NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FRE
 
 Nothing in these Terms excludes a warranty or right that cannot lawfully be excluded.
 
-## 21. Limitation of liability
+## 22. Limitation of liability
 
 TO THE MAXIMUM EXTENT PERMITTED BY LAW, PISTACHIOSWAP AND ITS OWNER, FUTURE OPERATING ENTITY, CONTRIBUTORS, CONTRACTORS, AND SERVICE PROVIDERS WILL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, CONSEQUENTIAL, OR PUNITIVE DAMAGES; LOST PROFITS, REVENUE, DATA, GOODWILL, KEYS, TOKENS, OR OPPORTUNITIES; OR LOSSES ARISING FROM MARKET MOVEMENT, SMART CONTRACTS, TOKENS, BRIDGES, WALLETS, PROVIDERS, BLOCKCHAINS, SECURITY INCIDENTS, USER ERROR, OR UNAUTHORIZED ACCESS.
 
@@ -201,13 +209,13 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, TOTAL LIABILITY ARISING OUT OF OR RELATI
 
 Some jurisdictions do not allow certain exclusions or limits. Mandatory rights remain unaffected.
 
-## 22. Indemnification
+## 23. Indemnification
 
 To the maximum extent permitted by law, you agree to defend, indemnify, and hold harmless PistachioSwap, its owner, future operating entity, contributors, contractors, and service providers from claims, damages, obligations, losses, liabilities, costs, and expenses arising from your unlawful use of the Service, violation of these Terms, violation of another person's rights, or transactions you authorize.
 
 This section does not require indemnification for conduct that cannot lawfully be indemnified.
 
-## 23. Governing law and dispute venue
+## 24. Governing law and dispute venue
 
 Unless mandatory law requires otherwise, these Terms are intended to be governed by California law, without regard to conflict-of-laws principles.
 
@@ -215,19 +223,19 @@ Unless mandatory law requires otherwise, these Terms are intended to be governed
 
 Nothing in this draft waives a mandatory consumer right or statutory forum that cannot lawfully be waived.
 
-## 24. Changes to these Terms
+## 25. Changes to these Terms
 
 We may update these Terms as the Service, operator, fees, providers, law, or risk profile changes. We will post the revised Terms and update the "Last updated" date. Additional notice will be provided where required by law.
 
 Continued use after revised Terms become effective constitutes acceptance only to the extent permitted by applicable law. If you do not agree to revised Terms, stop using the Service.
 
-## 25. General terms
+## 26. General terms
 
 If any provision is found unenforceable, it will be enforced to the maximum lawful extent and the remaining provisions will remain effective. Failure to enforce a provision is not a waiver. You may not assign these Terms without written consent; PistachioSwap may assign them as part of company formation, financing, reorganization, or transfer of the Service, subject to applicable law.
 
 These Terms, the Privacy Policy, the applicable software license, transaction-specific disclosures, and any separate written agreement form the relevant agreement concerning the Service.
 
-## 26. Contact
+## 27. Contact
 
 Legal questions: **legal@pistachioswap.com**  
 Privacy questions: **privacy@pistachioswap.com**

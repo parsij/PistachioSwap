@@ -22,7 +22,7 @@ export function useSwapPrimaryAction(config) {
         activeChain, activeChainName, openAppKit, switchNetwork, crossChain, crossChainGasAssist,
         crossChainGasAssistDirect, gasAssist, prepaid,
         refreshSameChainQuote, clearSameChainQuoteForRefresh, openSameChainReview, setReviewError,
-        setReviewOperation, setVisibleStatus, confirmExecution, diagnostic,
+        setReviewOperation, setVisibleStatus, confirmExecution, diagnostic, compliance,
     } = config
 
     useEffect(() => {
@@ -101,6 +101,16 @@ export function useSwapPrimaryAction(config) {
         }
         if (action.type !== 'swap' && !String(action.type).startsWith('review-blocked:')) {
             diagnostic('primary-action.blocked', { reason: 'unsupported-action-type', actionType: action.type, label: action.label }, 'warn')
+            return
+        }
+        try {
+            await compliance?.ensureAllowed?.()
+        } catch (error) {
+            const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500
+            setVisibleStatus(unavailable
+                ? 'Compliance screening is temporarily unavailable. Please try again later.'
+                : 'This wallet cannot use PistachioSwap transaction services.')
+            diagnostic('primary-action.blocked', { reason: unavailable ? 'compliance-unavailable' : 'compliance-restricted' }, 'warn')
             return
         }
         if (transactionStatus === 'pending' || transactionStatus === 'submitted') {
@@ -190,6 +200,18 @@ export function useSwapPrimaryAction(config) {
             setVisibleStatus(message)
             setReviewError(message)
             diagnostic('review.confirm.blocked', { reason: 'gas-assist-required' }, 'warn')
+            return null
+        }
+        try {
+            await compliance?.ensureAllowed?.()
+        } catch (error) {
+            const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500
+            const message = unavailable
+                ? 'Compliance screening is temporarily unavailable. Please try again later.'
+                : 'This wallet cannot use PistachioSwap transaction services.'
+            setVisibleStatus(message)
+            setReviewError(message)
+            diagnostic('review.confirm.blocked', { reason: unavailable ? 'compliance-unavailable' : 'compliance-restricted' }, 'warn')
             return null
         }
         diagnostic('review.confirm.clicked', {

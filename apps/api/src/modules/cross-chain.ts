@@ -17,6 +17,7 @@ import {
 } from '../cross-chain/types.js'
 import { validateCrossChainRequest } from '../cross-chain/validation.js'
 import { getApiConfig } from '../config.js'
+import { ComplianceError, complianceRequestGeo, getComplianceService } from '../compliance/service.js'
 import { isRecord } from '../lib/http.js'
 
 function providerName(value: unknown): CrossChainProviderName {
@@ -36,6 +37,7 @@ function abortSignal(request: FastifyRequest) {
 export function createCrossChainRoutes(
     service = new CrossChainRouteService(),
     auth: CrossChainAuthService = getCrossChainAuthService(),
+    compliance: ReturnType<typeof getComplianceService> | null = null,
 ): FastifyPluginAsync {
     return async (app) => {
         app.post<{ Body: unknown }>(
@@ -104,6 +106,29 @@ export function createCrossChainRoutes(
                 return sendError(reply, error)
             }
             try {
+                const location = complianceRequestGeo(request.headers as Record<string, unknown>)
+                await compliance?.enforce({
+                    walletAddress: normalized.ownerAddress,
+                    chainId: normalized.sourceAsset.chainId,
+                    action: 'cross-chain-quote-owner',
+                    countryCode: location.countryCode,
+                    regionCode: location.regionCode,
+                    clientIp: request.ip,
+                    persist: false,
+                    useExternalProvider: true,
+                })
+                if (normalized.recipient !== normalized.ownerAddress) {
+                    await compliance?.enforce({
+                        walletAddress: normalized.recipient,
+                        chainId: normalized.destinationAsset.chainId,
+                        action: 'cross-chain-quote-recipient',
+                        countryCode: location.countryCode,
+                        regionCode: location.regionCode,
+                        clientIp: request.ip,
+                        persist: false,
+                        useExternalProvider: true,
+                    })
+                }
                 const result = await service.quote(normalized, abortSignal(request))
                 request.log.info({
                     requestId: request.id,
@@ -188,6 +213,17 @@ export function createCrossChainRoutes(
                 try {
                     exactBody(request.body, [], [])
                     const session = await auth.authenticate(request.headers.authorization)
+                    const location = complianceRequestGeo(request.headers as Record<string, unknown>)
+                    await compliance?.enforce({
+                        walletAddress: session.walletAddress,
+                        chainId: session.chainId,
+                        action: 'cross-chain-sponsorship-prepare',
+                        countryCode: location.countryCode,
+                        regionCode: location.regionCode,
+                        clientIp: request.ip,
+                        persist: true,
+                        useExternalProvider: true,
+                    })
                     const idempotencyHeader = request.headers['idempotency-key']
                     const idempotencyKey = typeof idempotencyHeader === 'string'
                         ? idempotencyHeader
@@ -362,6 +398,9 @@ function sendError(
     fallbackStatus = 400,
     fallbackCode = 'INVALID_CROSS_CHAIN_REQUEST',
 ) {
+    if (error instanceof ComplianceError) {
+        return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } })
+    }
     const explicitStatus =
         typeof error === 'object' && error !== null && 'statusCode' in error &&
         typeof error.statusCode === 'number'
@@ -387,4 +426,4 @@ function sendError(
     })
 }
 
-export const crossChainRoutes = createCrossChainRoutes()
+export const crossChainRoutes = createCrossChainRoutes(undefined, undefined, getComplianceService())

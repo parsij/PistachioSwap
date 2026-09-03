@@ -166,6 +166,15 @@ function proxyHeaders(request: FastifyRequest, config: ProxyConfig) {
         'x-pistachio-client-proto': request.protocol,
     })
 
+    const country = request.headers['cf-ipcountry']
+    if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {
+        headers.set('x-pistachio-client-country', country.toUpperCase())
+    }
+    const region = request.headers['cf-region-code']
+    if (typeof region === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(region)) {
+        headers.set('x-pistachio-client-region', region.toUpperCase())
+    }
+
     const authorization = request.headers.authorization
     if (typeof authorization === 'string') {
         headers.set('authorization', authorization)

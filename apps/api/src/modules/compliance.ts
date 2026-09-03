@@ -12,16 +12,20 @@ function exactBody(value: unknown) {
         throw new ComplianceError('COMPLIANCE_INVALID_REQUEST', 'A JSON request body is required.', 400)
     }
     const body = value as Record<string, unknown>
-    const allowed = new Set(['walletAddress', 'chainId'])
+    const allowed = new Set(['walletAddress', 'chainId', 'purpose'])
     if (Object.keys(body).some((key) => !allowed.has(key)) || !('walletAddress' in body)) {
         throw new ComplianceError('COMPLIANCE_INVALID_REQUEST', 'The request contains unsupported or missing fields.', 400)
     }
     const walletAddress = normalizeAddress(body.walletAddress)
     const chainId = body.chainId == null ? null : Number(body.chainId)
+    const purpose = body.purpose == null ? 'background' : String(body.purpose)
+    if (!['background', 'transaction'].includes(purpose)) {
+        throw new ComplianceError('COMPLIANCE_INVALID_REQUEST', 'The compliance purpose is invalid.', 400)
+    }
     if (!walletAddress || (chainId != null && (!Number.isSafeInteger(chainId) || chainId <= 0))) {
         throw new ComplianceError('COMPLIANCE_INVALID_REQUEST', 'A valid wallet and optional chain ID are required.', 400)
     }
-    return { walletAddress, chainId }
+    return { walletAddress, chainId, purpose }
 }
 
 function geo(request: FastifyRequest) {
@@ -39,11 +43,11 @@ export const complianceRoutes: FastifyPluginAsync = async (app) => {
                 const result = await getComplianceService().screen({
                     walletAddress: body.walletAddress,
                     chainId: body.chainId,
-                    action: 'client-screen',
+                    action: body.purpose === 'transaction' ? 'client-transaction-gate' : 'client-screen',
                     countryCode: location.countryCode,
                     regionCode: location.regionCode,
                     clientIp: request.ip,
-                    persist: false,
+                    persist: body.purpose === 'transaction',
                     useExternalProvider: true,
                 })
                 return reply.send({

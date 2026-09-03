@@ -5,6 +5,7 @@ import type {
 } from 'fastify'
 
 import { getSafeError } from '../../../lib/errors.js'
+import { ComplianceError, complianceRequestGeo, getComplianceService } from '../../../compliance/service.js'
 import { createQuoteSelector } from '../services/quote-selector.js'
 import { validateQuoteRequest } from '../schemas/quote-utils.js'
 
@@ -24,6 +25,17 @@ async function handleQuote(
 
     try {
         const normalized = validateQuoteRequest(request.body)
+        const location = complianceRequestGeo(request.headers as Record<string, unknown>)
+        await getComplianceService().enforce({
+            walletAddress: normalized.takerAddress,
+            chainId: normalized.chainId,
+            action: 'same-chain-quote',
+            countryCode: location.countryCode,
+            regionCode: location.regionCode,
+            clientIp: request.ip,
+            persist: false,
+            useExternalProvider: true,
+        })
         const selection = await selectQuotes(normalized, controller.signal)
         const selected = selection.selectedQuote
         const approval = selected.approval
@@ -43,6 +55,9 @@ async function handleQuote(
     } catch (error) {
         if (controller.signal.aborted || reply.raw.destroyed) {
             return reply
+        }
+        if (error instanceof ComplianceError) {
+            return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } })
         }
         const safe = getSafeError(error)
         if (

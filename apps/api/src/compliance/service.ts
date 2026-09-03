@@ -89,9 +89,9 @@ function csvSet(name: string, fallback: string) {
 
 function config() {
     return {
-        enabled: boolEnv('COMPLIANCE_ENABLED', true),
+        enabled: (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.argv.some((argument) => argument.includes('vitest'))) ? boolEnv('COMPLIANCE_TEST_ENABLED', false) : boolEnv('COMPLIANCE_ENABLED', true),
         failClosed: boolEnv('COMPLIANCE_FAIL_CLOSED', true),
-        trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', true),
+        trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false),
         sdnUrl: process.env.OFAC_SDN_URL?.trim() || DEFAULT_SDN_URL,
         consolidatedUrl: process.env.OFAC_CONSOLIDATED_URL?.trim() || DEFAULT_CONSOLIDATED_URL,
         refreshMs: integerEnv('OFAC_REFRESH_INTERVAL_MS', DEFAULT_REFRESH_MS, 60_000, 24 * 60 * 60 * 1_000),
@@ -169,7 +169,7 @@ async function downloadOfacXml(url: string) {
         const response = await fetch(url, {
             headers: {
                 accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
-                'user-agent': 'PistachioSwap-OFAC-Screener/1.0 compliance@pistachioswap.com',
+                'user-agent': 'PistachioSwap-OFAC-Screener/1.0',
             },
             redirect: 'follow',
             signal: controller.signal,
@@ -207,7 +207,7 @@ function publicResult(
     }
 }
 
-export function createComplianceService(database: Pool = getPool()) {
+export function createComplianceService(database?: Pool) {
     let snapshot: OfacSnapshot | null = null
     let refreshPromise: Promise<OfacSnapshot> | null = null
     const trmCache = new Map<string, TrmCacheValue>()
@@ -301,7 +301,8 @@ export function createComplianceService(database: Pool = getPool()) {
         const txHash = typeof input.transactionHash === 'string' && /^0x[0-9a-f]{64}$/i.test(input.transactionHash)
             ? input.transactionHash.toLowerCase()
             : null
-        const inserted = await database.query<{ id: string }>(
+        const complianceDatabase = database ?? getPool()
+        const inserted = await complianceDatabase.query<{ id: string }>(
             `INSERT INTO compliance_checks
                 (wallet_address,chain_id,action,decision,reason_code,country_code,region_code,list_version,transaction_hash)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -320,7 +321,7 @@ export function createComplianceService(database: Pool = getPool()) {
         )
         if (result.decision === 'block') {
             const rawIp = input.clientIp && isIP(input.clientIp) ? input.clientIp : null
-            await database.query(
+            await complianceDatabase.query(
                 `INSERT INTO compliance_cases
                     (check_id,wallet_address,country_code,region_code,client_ip,reason_code,evidence)
                  VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
