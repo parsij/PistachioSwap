@@ -15,6 +15,8 @@ import {
     requestMoreTokenCatalog,
     useTokenCatalog,
 } from './useTokenCatalog.js'
+import { tokenMatchesSearch } from '../model/tokenSelectorState.js'
+import { interpretTokenSearchQuery } from '../model/tokenSearchQuery.js'
 
 const featuredPayload = {
     schemaVersion: 1,
@@ -47,6 +49,23 @@ const allSearchPayload = {
     nextCursor: null,
     hasMore: false,
     diagnostics: { totalForChain: 3 },
+}
+
+const polygonSearchPayload = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    tokens: [
+        {
+            chainId: 137,
+            address: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+            name: 'USD Coin',
+            symbol: 'USDC',
+            rank: 0,
+        },
+    ],
+    nextCursor: null,
+    hasMore: false,
+    diagnostics: { totalForChain: 1 },
 }
 
 const firstPagePayload = {
@@ -217,6 +236,78 @@ describe('useTokenCatalog', () => {
         const searchUrl = fetch.mock.calls.find((call) => call[0].toString().includes('search=xaut'))?.[0].toString()
         expect(searchUrl).toContain('chainId=all')
         expect(searchUrl).toContain(`limit=${TOKEN_CATALOG_SEARCH_LIMIT}`)
+    })
+
+    it('interprets token and network qualifiers conservatively', () => {
+        expect(interpretTokenSearchQuery({ chainId: 'all', query: 'USDC Polygon' }))
+            .toMatchObject({ chainId: 137, query: 'usdc', chainQualified: true })
+        expect(interpretTokenSearchQuery({ chainId: 'all', query: 'polygon usdc' }))
+            .toMatchObject({ chainId: 137, query: 'usdc', chainQualified: true })
+        expect(interpretTokenSearchQuery({ chainId: 'all', query: 'usd t bnb' }))
+            .toMatchObject({ chainId: 56, query: 'usdt', chainQualified: true })
+        expect(interpretTokenSearchQuery({ chainId: 'all', query: 'MATIC' }))
+            .toMatchObject({ chainId: 137, query: 'pol', chainQualified: true })
+        expect(interpretTokenSearchQuery({ chainId: 56, query: 'usdc polygon' }))
+            .toMatchObject({ chainId: 56, query: 'usdc polygon', chainQualified: false })
+        expect(interpretTokenSearchQuery({ chainId: 'all', query: 'base protocol' }))
+            .toMatchObject({ chainId: 'all', query: 'base protocol', chainQualified: false })
+    })
+
+    it('scopes a compound all-chain catalog search to the inferred network', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (url) => {
+            const text = url.toString()
+            if (text.includes('chainId=137') && text.includes('search=usdc')) {
+                return response(polygonSearchPayload)
+            }
+            return response(allFeaturedPayload)
+        }))
+
+        const { result } = renderHook(() => useTokenCatalog({
+            chainId: 'all',
+            search: 'USDC Polygon',
+            apiBaseUrl: 'http://127.0.0.1:3001',
+        }))
+
+        await waitFor(() => expect(result.current.tokens[0]?.chainId).toBe(137))
+        const searchUrl = fetch.mock.calls
+            .map((call) => call[0].toString())
+            .find((url) => url.includes('search=usdc'))
+        expect(searchUrl).toContain('chainId=137')
+        expect(searchUrl).toContain(`limit=${TOKEN_CATALOG_SEARCH_LIMIT}`)
+        expect(searchUrl).not.toContain('search=usdc+polygon')
+    })
+
+    it('keeps local token filtering aligned with interpreted network searches', () => {
+        const polygonUsdc = {
+            chainId: 137,
+            address: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+            name: 'USD Coin',
+            symbol: 'USDC',
+        }
+        const ethereumUsdc = {
+            chainId: 1,
+            address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+            name: 'USD Coin',
+            symbol: 'USDC',
+        }
+        const polygonPol = {
+            chainId: 137,
+            address: '0x0000000000000000000000000000000000000000',
+            name: 'POL',
+            symbol: 'POL',
+        }
+        const bnbUsdt = {
+            chainId: 56,
+            address: '0x55d398326f99059ff775485246999027b3197955',
+            name: 'Tether USD',
+            symbol: 'USDT',
+        }
+
+        expect(tokenMatchesSearch(polygonUsdc, 'usdc polygon')).toBe(true)
+        expect(tokenMatchesSearch(ethereumUsdc, 'usdc polygon')).toBe(false)
+        expect(tokenMatchesSearch(polygonPol, 'matic')).toBe(true)
+        expect(tokenMatchesSearch(polygonUsdc, 'matic')).toBe(false)
+        expect(tokenMatchesSearch(bnbUsdt, 'usd t bnb')).toBe(true)
     })
 
     it('ignores the previous cache version', () => {
