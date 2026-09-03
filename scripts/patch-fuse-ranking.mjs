@@ -15,6 +15,10 @@ const scoreAfter = `    }).map((result) => {
         const displaySymbol = String(result.item.displaySymbol)
         const symbolLengthDelta = Math.abs(displaySymbol.length - query.length)
         const decoratedSymbol = /[^a-z0-9]/i.test(displaySymbol)
+        const featuredRank = getTokenCatalogOverride(
+            result.item.token.chainId,
+            result.item.token.address,
+        )?.featuredRank ?? null
         return {
             token: result.item.token,
             index: result.item.index,
@@ -22,7 +26,8 @@ const scoreAfter = `    }).map((result) => {
             fuzzyScore: Number(result.score ?? 1) +
                 symbolLengthDelta * 0.04 +
                 (decoratedSymbol ? 0.18 : 0) +
-                (poolLike ? 0.12 : 0),`
+                (poolLike ? 0.12 : 0) +
+                (featuredRank === null ? 0.12 : Math.min(featuredRank, 10) * 0.002),`
 
 if (!source.includes(scoreBefore)) {
     throw new Error('Fuse score patch target was not found')
