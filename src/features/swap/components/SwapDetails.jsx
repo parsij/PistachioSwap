@@ -2,6 +2,12 @@ import { ChevronDownIcon } from '../../../shared/components/AppIcons.jsx'
 import SwapInfoTooltip from './SwapInfoTooltip.jsx'
 import { formatCostUsd } from '../model/swapDisplay.js'
 
+function formatEstimatedArrival(value) {
+    const seconds = Number(value)
+    if (!Number.isFinite(seconds) || seconds <= 0) return 'Unavailable'
+    return `~${Math.round(seconds)} seconds`
+}
+
 function DetailRow({ label, ariaLabel, help, value }) {
     return (
         <div>
@@ -83,7 +89,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                 {isCrossChain && crossChain?.route && (
                     <>
                         <DetailRow label="Minimum received" ariaLabel="Explain minimum received" help="Minimum output protected by the selected best route and slippage settings." value={crossChain.minimumReceived ?? 'Unavailable'} />
-                        <DetailRow label="Estimated arrival" ariaLabel="Explain estimated arrival" help="Estimated time for destination settlement." value={`~${crossChain.route.durationSeconds} seconds`} />
+                        <DetailRow label="Estimated arrival" ariaLabel="Explain estimated arrival" help="Estimated time for destination settlement." value={formatEstimatedArrival(crossChain.route.durationSeconds)} />
                     </>
                 )}
                 {!isCrossChain && exactOutputMaximum && (

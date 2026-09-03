@@ -271,6 +271,7 @@ export function useSwapController() {
         totalInputRaw: inputs.activeAmountIn,
         slippageBps: configuredSlippageBps,
         route: crossChain.currentRoute,
+        routes: crossChain.routes.routes,
         expected: crossChainGasAssistExpected,
         preparation: crossChain.review.preparation,
         sponsorshipConfig: routing.sponsorshipConfig.config,

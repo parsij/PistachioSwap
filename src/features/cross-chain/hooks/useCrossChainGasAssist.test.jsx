@@ -19,15 +19,26 @@ vi.mock('../../gas-assist/hooks/usePrepaidSponsorship.js', () => ({
     usePrepaidSponsorship: () => sponsorship,
 }))
 
-function preview() {
+function preview(routeId = 'route-1', overrides = {}) {
     return {
         order: {
-            id: 'preview:route-1',
+            id: `preview:${routeId}`,
             grossInputAmountRaw: '1000',
+            netSwapAmountRaw: '900',
+            paymentAmountRaw: '100',
+            expectedOutputRaw: '850',
+            minimumOutputRaw: '840',
+            amountsUsd: {
+                tradeNotional: '1',
+                totalPrepayment: '0.10',
+                routeCost: '0.05',
+                allInCost: '0.15',
+            },
             expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            ...overrides,
         },
         preparedRoute: {
-            publicRouteId: 'route-1',
+            publicRouteId: routeId,
             inputAmount: '900',
             outputAmount: '850',
         },
@@ -77,6 +88,55 @@ describe('useCrossChainGasAssist', () => {
         expect(input.previewSponsorship).toHaveBeenCalledOnce()
         expect(sponsorship.openPreviewLoading).toHaveBeenCalledOnce()
         expect(sponsorship.reviewOrder).toHaveBeenCalledWith(result.current.preview)
+    })
+
+    it('keeps the direct Gas Assist CTA loading until a cross-chain route exists', async () => {
+        const input = props({ route: null, routes: [] })
+        const { result, rerender } = renderHook((value) => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+
+        expect(result.current.status).toBe('loading')
+        expect(input.previewSponsorship).not.toHaveBeenCalled()
+
+        rerender({
+            ...input,
+            route: { publicRouteId: 'route-1' },
+            routes: [{ publicRouteId: 'route-1' }],
+        })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        expect(input.previewSponsorship).toHaveBeenCalledOnce()
+    })
+
+    it('tries the next quoted provider route when the first sponsored quote is uneconomic', async () => {
+        const firstRoute = { publicRouteId: 'route-1' }
+        const secondRoute = { publicRouteId: 'route-2' }
+        const input = props({
+            route: firstRoute,
+            routes: [firstRoute, secondRoute],
+            previewSponsorship: vi.fn().mockImplementation(async (candidate) => {
+                if (candidate.publicRouteId === 'route-1') {
+                    return preview('route-1', {
+                        amountsUsd: {
+                            tradeNotional: '1',
+                            totalPrepayment: '0.10',
+                            routeCost: '0.95',
+                            allInCost: '1.05',
+                        },
+                    })
+                }
+                return preview('route-2')
+            }),
+        })
+        const { result } = renderHook((value) => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        expect(input.previewSponsorship).toHaveBeenNthCalledWith(1, firstRoute)
+        expect(input.previewSponsorship).toHaveBeenNthCalledWith(2, secondRoute)
+        expect(result.current.preview).toMatchObject({ id: 'preview:route-2' })
+        expect(result.current.previewRoute).toMatchObject({ publicRouteId: 'route-2' })
     })
 
     it('discards an in-flight preview when Gas Assist becomes unavailable', async () => {

@@ -178,6 +178,38 @@ describe('cross-chain economic safety', () => {
         })
     })
 
+    it('allows a sponsored route when all-in costs stay below the sell value even if they exceed the destination output value', () => {
+        const result = crossChainEligibility({
+            sellDisplayPrice: '1',
+            buyDisplayPrice: '1',
+            currentCrossChainRoute: {
+                outputAmount: '100000',
+                costs: { routeCostUsd: '0.01' },
+            },
+            crossChainGasAssistPreview: {
+                grossInputAmountRaw: '270078',
+                netSwapAmountRaw: '170078',
+                paymentAmountRaw: '100000',
+                expectedOutputRaw: '100000',
+                minimumOutputRaw: '99000',
+                amountsUsd: {
+                    tradeNotional: '0.270078',
+                    totalPrepayment: '0.10',
+                    routeCost: '0.01',
+                    allInCost: '0.11',
+                },
+            },
+        })
+
+        expect(result.economicViability).toMatchObject({
+            viable: true,
+            inputValueUsd: '0.270078',
+            outputValueUsd: '0.1',
+            totalKnownCostsUsd: '0.11',
+        })
+        expect(result.action.type).not.toBe('economically-invalid')
+    })
+
     it('uses the sponsored all-in cost instead of the unsponsored route estimate', () => {
         const result = crossChainEligibility({
             sellDisplayPrice: '10',

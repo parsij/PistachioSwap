@@ -185,13 +185,15 @@ export function deriveSwapEligibility(input) {
         ? decimalRatioBps(totalKnownCostsUsd, inputValueUsd)
         : null
     const reasons = []
+    // Route and Gas Assist costs are funded from the sell-side notional. Comparing
+    // them with the already-reduced destination output double-counts the cost and
+    // incorrectly rejects small but still fundable swaps.
     if (
-        totalKnownCostsUsd && (
-            inputValueUsd && compareDecimalStrings(totalKnownCostsUsd, inputValueUsd) >= 0 ||
-            outputValueUsd && compareDecimalStrings(totalKnownCostsUsd, outputValueUsd) >= 0
-        )
+        totalKnownCostsUsd &&
+        inputValueUsd &&
+        compareDecimalStrings(totalKnownCostsUsd, inputValueUsd) >= 0
     ) {
-        reasons.push('costs-exceed-output')
+        reasons.push('costs-exceed-input')
     }
     if (isCrossChain && crossChainGasAssistExpected && crossChainGasAssistPreview && !sponsoredFee) {
         reasons.push('invalid-sponsored-quote')

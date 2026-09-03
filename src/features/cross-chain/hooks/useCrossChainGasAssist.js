@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
+import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
 
 /**
  * Sponsors the exact BNB Chain source transaction through the direct atomic
@@ -15,6 +16,7 @@ export function useCrossChainGasAssist({
     totalInputRaw,
     slippageBps,
     route,
+    routes = [],
     expected,
     preparation,
     sponsorshipConfig,
@@ -28,10 +30,25 @@ export function useCrossChainGasAssist({
     const previewOperationRef = useRef(null)
     const previewResultRef = useRef(null)
     const contextRef = useRef(null)
+    const candidateRoutesRef = useRef([])
+    const candidateRoutes = []
+    const seenRouteIds = new Set()
+    for (const candidate of [route, ...(Array.isArray(routes) ? routes : [])]) {
+        const routeId = String(candidate?.publicRouteId ?? '')
+        if (!routeId || seenRouteIds.has(routeId)) continue
+        seenRouteIds.add(routeId)
+        candidateRoutes.push(candidate)
+    }
+    candidateRoutesRef.current = candidateRoutes
+    const grossInputAmount = String(totalInputRaw ?? '')
+    const routeSetKey = candidateRoutes
+        .map((candidate) => String(candidate.publicRouteId))
+        .join(',')
+    const routeReady = candidateRoutes.length > 0 && /^[1-9]\d*$/.test(grossInputAmount)
     const currentContext = {
         account: String(account ?? '').toLowerCase(),
-        routeId: route?.publicRouteId ?? null,
-        grossInputAmount: String(totalInputRaw ?? ''),
+        routeSetKey,
+        grossInputAmount,
     }
     const [previewStatus, setPreviewStatus] = useState('idle')
     const [previewError, setPreviewError] = useState(null)
@@ -97,14 +114,14 @@ export function useCrossChainGasAssist({
         typeof completeSponsorship === 'function'
     currentContext.key = [
         currentContext.account,
-        currentContext.routeId,
+        currentContext.routeSetKey,
         currentContext.grossInputAmount,
         available ? 'available' : 'unavailable',
     ].join(':')
     contextRef.current = currentContext
 
     const loadPreview = useCallback(async ({ minimumValidityMs = 0 } = {}) => {
-        if (!available) return null
+        if (!available || !routeReady) return null
         const contextAtStart = { ...contextRef.current }
         const cached = previewResultRef.current
         const cachedExpiry = Date.parse(cached?.response?.order?.expiresAt ?? '')
@@ -120,17 +137,40 @@ export function useCrossChainGasAssist({
         setPreviewStatus('loading')
         setPreviewError(null)
         const promise = (async () => {
-            const nextPreview = await previewSponsorship(route)
-            if (
-                contextRef.current.key !== contextAtStart.key ||
-                nextPreview?.order?.grossInputAmountRaw !== contextAtStart.grossInputAmount
-            ) return null
-            const stored = { key: contextAtStart.key, response: nextPreview }
-            previewResultRef.current = stored
-            preparedResponseRef.current = nextPreview
-            setPreviewResult(stored)
-            setPreviewStatus('success')
-            return nextPreview
+            let lastError = null
+            for (const candidateRoute of candidateRoutesRef.current) {
+                if (contextRef.current.key !== contextAtStart.key) return null
+                try {
+                    const nextPreview = await previewSponsorship(candidateRoute)
+                    if (contextRef.current.key !== contextAtStart.key) return null
+                    if (nextPreview?.order?.grossInputAmountRaw !== contextAtStart.grossInputAmount) {
+                        lastError = Object.assign(
+                            new Error('Gas Assist returned a quote for a different gross input.'),
+                            { code: 'CROSS_CHAIN_GAS_ASSIST_INPUT_MISMATCH' },
+                        )
+                        continue
+                    }
+                    if (!getGasAssistFeeBreakdown(nextPreview?.order)) {
+                        lastError = Object.assign(
+                            new Error('Gas Assist route costs are not economically valid for this amount.'),
+                            { code: 'CROSS_CHAIN_GAS_ASSIST_QUOTE_UNECONOMIC' },
+                        )
+                        continue
+                    }
+                    const stored = { key: contextAtStart.key, response: nextPreview }
+                    previewResultRef.current = stored
+                    preparedResponseRef.current = nextPreview
+                    setPreviewResult(stored)
+                    setPreviewStatus('success')
+                    return nextPreview
+                } catch (error) {
+                    lastError = error
+                }
+            }
+            throw lastError ?? Object.assign(
+                new Error('No economically valid Gas Assist route is available for this amount.'),
+                { code: 'CROSS_CHAIN_GAS_ASSIST_NO_ECONOMIC_ROUTE' },
+            )
         })()
         previewOperationRef.current = { key: contextAtStart.key, promise }
 
@@ -155,7 +195,7 @@ export function useCrossChainGasAssist({
                 previewOperationRef.current = null
             }
         }
-    }, [available, previewSponsorship, route])
+    }, [available, previewSponsorship, routeReady])
 
     useEffect(() => {
         if (!available) {
