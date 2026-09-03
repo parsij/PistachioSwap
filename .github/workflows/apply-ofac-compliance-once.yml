@@ -6,6 +6,7 @@ on:
       - feature/ofac-compliance
     paths:
       - scripts/apply-ofac-compliance-integration.mjs
+      - scripts/fix-ofac-crosschain-injection.mjs
       - .github/workflows/apply-ofac-compliance-once.yml
 
 permissions:
@@ -28,8 +29,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - name: Apply integration
-        run: node scripts/apply-ofac-compliance-integration.mjs
-      - name: Match repository test-runtime detection
+        run: |
+          node scripts/apply-ofac-compliance-integration.mjs
+          node scripts/fix-ofac-crosschain-injection.mjs
+      - name: Harden test/runtime defaults
         run: |
           node <<'NODE'
           const fs = require('node:fs')
@@ -54,7 +57,7 @@ jobs:
           pnpm exec vitest run src/features/swap/hooks/useSwapPrimaryAction.test.jsx src/features/gas-assist/hooks/useGasAssistController.test.jsx || true
       - name: Commit integrated files
         run: |
-          rm -f scripts/apply-ofac-compliance-integration.mjs
+          rm -f scripts/apply-ofac-compliance-integration.mjs scripts/fix-ofac-crosschain-injection.mjs
           git checkout -- .github/workflows/apply-ofac-compliance-once.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
