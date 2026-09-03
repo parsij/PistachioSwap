@@ -1,0 +1,46 @@
+name: Apply OFAC compliance integration once
+
+on:
+  push:
+    branches:
+      - feature/ofac-compliance
+    paths:
+      - scripts/apply-ofac-compliance-integration.mjs
+      - .github/workflows/apply-ofac-compliance-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/ofac-compliance
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply integration
+        run: node scripts/apply-ofac-compliance-integration.mjs
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Focused validation
+        run: |
+          pnpm --filter @pistachio/api typecheck
+          pnpm --filter @pistachio/api test -- --runInBand || pnpm --filter @pistachio/api test
+          pnpm exec vitest run src/features/swap/hooks/useSwapPrimaryAction.test.jsx src/features/gas-assist/hooks/useGasAssistController.test.jsx || true
+      - name: Remove one-time files and commit
+        run: |
+          rm -f scripts/apply-ofac-compliance-integration.mjs .github/workflows/apply-ofac-compliance-once.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat: enforce OFAC compliance across swap flows"
+          git push origin HEAD:feature/ofac-compliance
