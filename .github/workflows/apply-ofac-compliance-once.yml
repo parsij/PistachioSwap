@@ -33,36 +33,40 @@ jobs:
           const fs = require('node:fs')
           const path = 'apps/api/src/modules/gas-assist-proxy.ts'
           let source = fs.readFileSync(path, 'utf8')
-          const before = `    const country = request.headers['cf-ipcountry']
-    if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {
-        headers.set('x-pistachio-client-country', country.toUpperCase())
-    }
-    const region = request.headers['cf-region-code']
-    if (typeof region === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(region)) {
-        headers.set('x-pistachio-client-region', region.toUpperCase())
-    }
-`
-          const after = `    if (readBoolean('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false)) {
-        const connectingIp = request.headers['cf-connecting-ip']
-        const ray = request.headers['cf-ray']
-        const trustedCloudflareRequest =
-            typeof connectingIp === 'string' &&
-            connectingIp.trim() === request.ip &&
-            typeof ray === 'string' &&
-            /^[A-Za-z0-9-]{8,64}$/.test(ray.trim())
-
-        if (trustedCloudflareRequest) {
-            const country = request.headers['cf-ipcountry']
-            if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {
-                headers.set('x-pistachio-client-country', country.toUpperCase())
-            }
-            const region = request.headers['cf-region-code']
-            if (typeof region === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(region)) {
-                headers.set('x-pistachio-client-region', region.toUpperCase())
-            }
-        }
-    }
-`
+          const before = [
+            "    const country = request.headers['cf-ipcountry']",
+            "    if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {",
+            "        headers.set('x-pistachio-client-country', country.toUpperCase())",
+            "    }",
+            "    const region = request.headers['cf-region-code']",
+            "    if (typeof region === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(region)) {",
+            "        headers.set('x-pistachio-client-region', region.toUpperCase())",
+            "    }",
+            "",
+          ].join('\n')
+          const after = [
+            "    if (readBoolean('COMPLIANCE_TRUST_CLOUDFLARE_GEO', false)) {",
+            "        const connectingIp = request.headers['cf-connecting-ip']",
+            "        const ray = request.headers['cf-ray']",
+            "        const trustedCloudflareRequest =",
+            "            typeof connectingIp === 'string' &&",
+            "            connectingIp.trim() === request.ip &&",
+            "            typeof ray === 'string' &&",
+            "            /^[A-Za-z0-9-]{8,64}$/.test(ray.trim())",
+            "",
+            "        if (trustedCloudflareRequest) {",
+            "            const country = request.headers['cf-ipcountry']",
+            "            if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {",
+            "                headers.set('x-pistachio-client-country', country.toUpperCase())",
+            "            }",
+            "            const region = request.headers['cf-region-code']",
+            "            if (typeof region === 'string' && /^[A-Za-z0-9-]{1,16}$/.test(region)) {",
+            "                headers.set('x-pistachio-client-region', region.toUpperCase())",
+            "            }",
+            "        }",
+            "    }",
+            "",
+          ].join('\n')
           if (!source.includes(before)) throw new Error('geo forwarding block not found')
           source = source.replace(before, after)
           source = source.replace(
