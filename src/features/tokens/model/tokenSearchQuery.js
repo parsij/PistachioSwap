@@ -86,6 +86,7 @@ function inferredChainAliases(chain) {
 
     return [
         normalizedName,
+        normalizedName.replace(/\s+/g, ''),
         simplifiedName,
         withoutChainSuffix,
         String(chain.id),
@@ -206,7 +207,7 @@ function findCompoundChainQualifier(query) {
     candidates.sort((left, right) =>
         right.phraseWords - left.phraseWords ||
         left.score - right.score ||
-        Number(left.position === 'suffix') - Number(right.position === 'suffix'))
+        Number(right.position === 'suffix') - Number(left.position === 'suffix'))
 
     return candidates[0]
 }
