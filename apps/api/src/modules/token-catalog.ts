@@ -538,8 +538,39 @@ export async function getTokenCatalog({
         nextCursor = hasMore ? encodeCursor(chainScope, nextOffset) : null
     }
 
-    const publicTokens: PublicCatalogToken[] = tokens ?? selected.map(({ token, index }) =>
+    let publicTokens: PublicCatalogToken[] = tokens ?? selected.map(({ token, index }) =>
         publicToken(token, index, identityIndex, chainScope === 'all'))
+
+    // ShapeShift native CAIP IDs are not guaranteed to use slip44:60 on every
+    // EVM chain. The active-chain registry is authoritative for native assets,
+    // so a missing upstream native record must never make POL/ETH/etc.
+    // undiscoverable in a chain-specific selector.
+    if (chainScope !== 'all') {
+        const chain = getTokenDiscoveryChain(chainScope)!
+        const nativeTerms = [
+            NATIVE_TOKEN_ADDRESS,
+            chain.native.symbol,
+            chain.native.name,
+            chain.name,
+            `native ${chain.native.symbol}`,
+        ].map((value) => value.toLowerCase())
+        const nativeMatches = normalizedSearch
+            ? nativeTerms.some((value) =>
+                  value === normalizedSearch || value.includes(normalizedSearch))
+            : catalogMode === 'featured'
+        const hasNative = publicTokens.some((token) =>
+            token.address === NATIVE_TOKEN_ADDRESS)
+        if (nativeMatches && !hasNative) {
+            publicTokens = [
+                publicRegistryNativeToken(chain, -1),
+                ...publicTokens,
+            ].slice(0, Math.min(
+                requestedLimit,
+                normalizedSearch ? MAX_SEARCH_RESULTS : requestedLimit,
+            ))
+        }
+    }
+
     return {
         statusCode: 200,
         body: {

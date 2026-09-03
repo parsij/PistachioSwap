@@ -90,6 +90,23 @@ describe('token catalog ranking', () => {
         ).toBe(true)
     })
 
+    it('keeps Polygon POL discoverable from the active-chain registry', async () => {
+        const app = createApp()
+        const response = await app.inject({
+            method: 'GET',
+            url: '/v1/token-catalog?chainId=137&mode=all&search=POL&limit=20',
+        })
+        await app.close()
+
+        expect(response.statusCode).toBe(200)
+        expect(response.json().tokens[0]).toMatchObject({
+            chainId: 137,
+            address: '0x0000000000000000000000000000000000000000',
+            symbol: 'POL',
+            isNative: true,
+        })
+    })
+
     it('gives wrapped native tokens shared and chain-logo icon fallbacks', async () => {
         const app = createApp()
         const response = await app.inject({

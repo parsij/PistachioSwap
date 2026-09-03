@@ -75,6 +75,9 @@ import {
     getFallbackTokensForChain,
     loadFallbackTokenCatalog,
 } from '../token-discovery/fallback-token-catalog.js'
+import {
+    searchFallbackTokenAddressDirectory,
+} from '../token-discovery/fallback-token-addresses.js'
 
 type TokenCandidate =
     | CoinGeckoToken
@@ -2120,38 +2123,63 @@ export function createMarketCatalogService(
     }
 
     async function getTextSearch(chainId: number, query: string) {
-        let candidates: TokenCandidate[] = []
-        let markets = new Map<string, TokenMarket>()
+        // Search providers independently and merge them with the reviewed local
+        // fallback-address directory. A provider outage or incomplete Polygon
+        // index must not turn a known token search into an empty result.
+        const [candidateResult, marketSearchResult, fallbackResult] =
+            await Promise.allSettled([
+                resolved.searchCandidates(query, undefined, chainId),
+                resolved.searchMarkets(query, undefined, chainId),
+                searchFallbackTokenAddressDirectory(query),
+            ])
 
+        const providerCandidates = candidateResult.status === 'fulfilled'
+            ? candidateResult.value
+            : []
+        const marketValues = marketSearchResult.status === 'fulfilled'
+            ? marketSearchResult.value
+            : []
+        const localCandidates: TokenCandidate[] = fallbackResult.status === 'fulfilled'
+            ? fallbackResult.value
+                  .filter((entry) => entry.chainId === chainId)
+                  .slice(0, 20)
+                  .map((entry) => ({
+                      address: entry.address,
+                      name: entry.name,
+                      symbol: entry.symbol,
+                      decimals: null,
+                      imageUrl: null,
+                      coinGeckoId: null,
+                      priceUSD: null,
+                      imageSource: null,
+                  }))
+            : []
+        const candidates = uniqueCandidates([
+            ...providerCandidates,
+            ...marketValues.map(candidateFromMarket),
+            ...localCandidates,
+        ]).slice(0, 20)
+        if (candidates.length === 0) return []
+
+        let markets = new Map(
+            marketValues.map((market) => [market.address, market]),
+        )
         try {
-            candidates = await resolved.searchCandidates(query, undefined, chainId)
-        } catch {}
-        if (candidates.length > 0) {
-            try {
-                markets = asMarketResult(
-                    await resolved.fetchMarkets(
-                        candidates.map((candidate) => candidate.address),
-                        undefined,
-                        chainId,
-                    ),
-                ).markets
-            } catch {}
-        } else {
-            try {
-                const fallbackMarkets = await resolved.searchMarkets(query, undefined, chainId)
-                markets = new Map(
-                    fallbackMarkets.map((market) => [market.address, market]),
-                )
-                candidates = fallbackMarkets.map(candidateFromMarket)
-            } catch {}
+            const directMarkets = asMarketResult(
+                await resolved.fetchMarkets(
+                    candidates.map((candidate) => candidate.address),
+                    undefined,
+                    chainId,
+                ),
+            ).markets
+            markets = new Map([...markets, ...directMarkets])
+        } catch {
+            // Search remains useful from local metadata + RPC/Alchemy metadata.
         }
 
-        if (candidates.length === 0) {
-            return []
-        }
         const tokens = await enrichSearchCandidates({
             chainId,
-            candidates: candidates.slice(0, 20),
+            candidates,
             markets,
             dependencies: resolved,
         })

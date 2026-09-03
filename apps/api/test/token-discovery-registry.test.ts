@@ -10,6 +10,7 @@ import {
     ACTIVE_TOKEN_DISCOVERY_WALLET_CAPABILITIES,
     TOKEN_DISCOVERY_CHAINS,
     UNCHAINED_EVM_COINSTACKS_BY_CHAIN_ID,
+    canonicalTokenAddress,
     getTokenDiscoveryChain,
 } from '../src/token-discovery/registry.js'
 
@@ -120,6 +121,14 @@ describe('token-discovery registry', () => {
             .toBe('polygon')
         expect(getTokenDiscoveryChain(137)?.providers.coinGeckoNetwork)
             .toBe('polygon_pos')
+        expect(getTokenDiscoveryChain(137)?.native).toMatchObject({
+            symbol: 'POL',
+            coinGeckoId: 'polygon-ecosystem-token',
+        })
+        expect(canonicalTokenAddress(
+            137,
+            '0x0000000000000000000000000000000000001010',
+        )).toBe(NATIVE_TOKEN_ADDRESS)
     })
 
     it('exposes unsupported security coverage as unavailable capabilities', () => {

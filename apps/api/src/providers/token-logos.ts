@@ -51,6 +51,7 @@ const TRUSTED_NATIVE_ASSET_IMAGES: Readonly<Record<string, string>> = Object.fre
     ethereum: 'https://coin-images.coingecko.com/coins/images/279/large/ethereum.png?1696501628',
     binancecoin: 'https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png?1696501970',
     'matic-network': 'https://coin-images.coingecko.com/coins/images/4713/large/polygon.png?1698233745',
+    'polygon-ecosystem-token': 'https://coin-images.coingecko.com/coins/images/4713/large/polygon.png?1698233745',
     'avalanche-2': 'https://coin-images.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png?1696512369',
     celo: 'https://coin-images.coingecko.com/coins/images/11090/large/InjXBNx9_400x400.jpg?1696511031',
     xdai: 'https://coin-images.coingecko.com/coins/images/11062/large/Identity-Primary-DarkBG.png?1696511004',
