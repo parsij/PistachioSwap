@@ -1,0 +1,395 @@
+name: Fix cross-chain Gas Assist quote flow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-cross-chain-gas-assist-quote.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.30.3
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Patch Gas Assist quote flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs')
+
+          function patch(path, replacements) {
+            let content = fs.readFileSync(path, 'utf8')
+            for (const [before, after] of replacements) {
+              const first = content.indexOf(before)
+              if (first < 0) throw new Error(`Patch target not found in ${path}: ${before.slice(0, 100)}`)
+              if (content.indexOf(before, first + before.length) >= 0) {
+                throw new Error(`Patch target is ambiguous in ${path}: ${before.slice(0, 100)}`)
+              }
+              content = content.slice(0, first) + after + content.slice(first + before.length)
+            }
+            fs.writeFileSync(path, content)
+          }
+
+          patch('src/features/swap/model/swapEligibility.js', [[
+`    if (
+        totalKnownCostsUsd && (
+            inputValueUsd && compareDecimalStrings(totalKnownCostsUsd, inputValueUsd) >= 0 ||
+            outputValueUsd && compareDecimalStrings(totalKnownCostsUsd, outputValueUsd) >= 0
+        )
+    ) {
+        reasons.push('costs-exceed-output')
+    }`,
+`    // Route and Gas Assist costs are funded from the sell-side notional. Comparing
+    // them with the already-reduced destination output double-counts the cost and
+    // incorrectly rejects small but still fundable swaps.
+    if (
+        totalKnownCostsUsd &&
+        inputValueUsd &&
+        compareDecimalStrings(totalKnownCostsUsd, inputValueUsd) >= 0
+    ) {
+        reasons.push('costs-exceed-input')
+    }`
+          ]])
+
+          patch('src/features/swap/model/swapEligibility.test.js', [[
+`    it('uses the sponsored all-in cost instead of the unsponsored route estimate', () => {`,
+`    it('allows a sponsored route when all-in costs stay below the sell value even if they exceed the destination output value', () => {
+        const result = crossChainEligibility({
+            sellDisplayPrice: '1',
+            buyDisplayPrice: '1',
+            currentCrossChainRoute: {
+                outputAmount: '100000',
+                costs: { routeCostUsd: '0.01' },
+            },
+            crossChainGasAssistPreview: {
+                grossInputAmountRaw: '270078',
+                netSwapAmountRaw: '170078',
+                paymentAmountRaw: '100000',
+                expectedOutputRaw: '100000',
+                minimumOutputRaw: '99000',
+                amountsUsd: {
+                    tradeNotional: '0.270078',
+                    totalPrepayment: '0.10',
+                    routeCost: '0.01',
+                    allInCost: '0.11',
+                },
+            },
+        })
+
+        expect(result.economicViability).toMatchObject({
+            viable: true,
+            inputValueUsd: '0.270078',
+            outputValueUsd: '0.1',
+            totalKnownCostsUsd: '0.11',
+        })
+        expect(result.action.type).not.toBe('economically-invalid')
+    })
+
+    it('uses the sponsored all-in cost instead of the unsponsored route estimate', () => {`
+          ]])
+
+          patch('src/features/swap/hooks/useSwapController.js', [[
+`        route: crossChain.currentRoute,
+        expected: crossChainGasAssistExpected,`,
+`        route: crossChain.currentRoute,
+        routes: crossChain.routes.routes,
+        expected: crossChainGasAssistExpected,`
+          ]])
+
+          patch('src/features/cross-chain/hooks/useCrossChainGasAssist.js', [
+            [
+`import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'`,
+`import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
+import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'`
+            ],
+            [
+`    route,
+    expected,`,
+`    route,
+    routes = [],
+    expected,`
+            ],
+            [
+`    const previewResultRef = useRef(null)
+    const contextRef = useRef(null)
+    const currentContext = {
+        account: String(account ?? '').toLowerCase(),
+        routeId: route?.publicRouteId ?? null,
+        grossInputAmount: String(totalInputRaw ?? ''),
+    }`,
+`    const previewResultRef = useRef(null)
+    const contextRef = useRef(null)
+    const candidateRoutesRef = useRef([])
+    const candidateRoutes = []
+    const seenRouteIds = new Set()
+    for (const candidate of [route, ...(Array.isArray(routes) ? routes : [])]) {
+        const routeId = String(candidate?.publicRouteId ?? '')
+        if (!routeId || seenRouteIds.has(routeId)) continue
+        seenRouteIds.add(routeId)
+        candidateRoutes.push(candidate)
+    }
+    candidateRoutesRef.current = candidateRoutes
+    const grossInputAmount = String(totalInputRaw ?? '')
+    const routeSetKey = candidateRoutes
+        .map((candidate) => String(candidate.publicRouteId))
+        .join(',')
+    const routeReady = candidateRoutes.length > 0 && /^[1-9]\\d*$/.test(grossInputAmount)
+    const currentContext = {
+        account: String(account ?? '').toLowerCase(),
+        routeSetKey,
+        grossInputAmount,
+    }`
+            ],
+            [
+`    const available = eligible && sponsorshipConfig?.enabled === true &&
+        sponsorshipConfig?.atomicExecution === true &&`,
+`    const available = eligible && routeReady && sponsorshipConfig?.enabled === true &&
+        sponsorshipConfig?.atomicExecution === true &&`
+            ],
+            [
+`        currentContext.account,
+        currentContext.routeId,
+        currentContext.grossInputAmount,`,
+`        currentContext.account,
+        currentContext.routeSetKey,
+        currentContext.grossInputAmount,`
+            ],
+            [
+`        const promise = (async () => {
+            const nextPreview = await previewSponsorship(route)
+            if (
+                contextRef.current.key !== contextAtStart.key ||
+                nextPreview?.order?.grossInputAmountRaw !== contextAtStart.grossInputAmount
+            ) return null
+            const stored = { key: contextAtStart.key, response: nextPreview }
+            previewResultRef.current = stored
+            preparedResponseRef.current = nextPreview
+            setPreviewResult(stored)
+            setPreviewStatus('success')
+            return nextPreview
+        })()`,
+`        const promise = (async () => {
+            let lastError = null
+            for (const candidateRoute of candidateRoutesRef.current) {
+                if (contextRef.current.key !== contextAtStart.key) return null
+                try {
+                    const nextPreview = await previewSponsorship(candidateRoute)
+                    if (contextRef.current.key !== contextAtStart.key) return null
+                    if (nextPreview?.order?.grossInputAmountRaw !== contextAtStart.grossInputAmount) {
+                        lastError = Object.assign(
+                            new Error('Gas Assist returned a quote for a different gross input.'),
+                            { code: 'CROSS_CHAIN_GAS_ASSIST_INPUT_MISMATCH' },
+                        )
+                        continue
+                    }
+                    if (!getGasAssistFeeBreakdown(nextPreview?.order)) {
+                        lastError = Object.assign(
+                            new Error('Gas Assist route costs are not economically valid for this amount.'),
+                            { code: 'CROSS_CHAIN_GAS_ASSIST_QUOTE_UNECONOMIC' },
+                        )
+                        continue
+                    }
+                    const stored = { key: contextAtStart.key, response: nextPreview }
+                    previewResultRef.current = stored
+                    preparedResponseRef.current = nextPreview
+                    setPreviewResult(stored)
+                    setPreviewStatus('success')
+                    return nextPreview
+                } catch (error) {
+                    lastError = error
+                }
+            }
+            throw lastError ?? Object.assign(
+                new Error('No economically valid Gas Assist route is available for this amount.'),
+                { code: 'CROSS_CHAIN_GAS_ASSIST_NO_ECONOMIC_ROUTE' },
+            )
+        })()`
+            ],
+            [
+`    }, [available, previewSponsorship, route])`,
+`    }, [available, previewSponsorship])`
+            ],
+            [
+`        status: !eligible
+            ? 'idle'
+            : previewStatus === 'loading' || available && previewStatus === 'idle'
+                ? 'loading'
+                : previewStatus === 'error'
+                    ? 'error'
+                    : sponsorship.configStatus === 'loading'
+                        ? 'loading'
+                        : available ? 'success' : 'unavailable',`,
+`        status: !eligible
+            ? 'idle'
+            : !routeReady || sponsorship.configStatus === 'loading'
+                ? 'loading'
+                : previewStatus === 'loading' || available && previewStatus === 'idle'
+                    ? 'loading'
+                    : previewStatus === 'error'
+                        ? 'error'
+                        : available ? 'success' : 'unavailable',`
+            ],
+          ])
+
+          patch('src/features/cross-chain/hooks/useCrossChainGasAssist.test.jsx', [
+            [
+`function preview() {
+    return {
+        order: {
+            id: 'preview:route-1',
+            grossInputAmountRaw: '1000',
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        preparedRoute: {
+            publicRouteId: 'route-1',
+            inputAmount: '900',
+            outputAmount: '850',
+        },
+    }
+}`,
+`function preview(routeId = 'route-1', overrides = {}) {
+    return {
+        order: {
+            id: \`preview:\${routeId}\`,
+            grossInputAmountRaw: '1000',
+            netSwapAmountRaw: '900',
+            paymentAmountRaw: '100',
+            expectedOutputRaw: '850',
+            minimumOutputRaw: '840',
+            amountsUsd: {
+                tradeNotional: '1',
+                totalPrepayment: '0.10',
+                routeCost: '0.05',
+                allInCost: '0.15',
+            },
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            ...overrides,
+        },
+        preparedRoute: {
+            publicRouteId: routeId,
+            inputAmount: '900',
+            outputAmount: '850',
+        },
+    }
+}`
+            ],
+            [
+`    it('discards an in-flight preview when Gas Assist becomes unavailable', async () => {`,
+`    it('keeps the direct Gas Assist CTA loading until a cross-chain route exists', async () => {
+        const input = props({ route: null, routes: [] })
+        const { result, rerender } = renderHook((value) => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+
+        expect(result.current.status).toBe('loading')
+        expect(input.previewSponsorship).not.toHaveBeenCalled()
+
+        rerender({
+            ...input,
+            route: { publicRouteId: 'route-1' },
+            routes: [{ publicRouteId: 'route-1' }],
+        })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        expect(input.previewSponsorship).toHaveBeenCalledOnce()
+    })
+
+    it('tries the next quoted provider route when the first sponsored quote is uneconomic', async () => {
+        const firstRoute = { publicRouteId: 'route-1' }
+        const secondRoute = { publicRouteId: 'route-2' }
+        const input = props({
+            route: firstRoute,
+            routes: [firstRoute, secondRoute],
+            previewSponsorship: vi.fn().mockImplementation(async (candidate) => {
+                if (candidate.publicRouteId === 'route-1') {
+                    return preview('route-1', {
+                        amountsUsd: {
+                            tradeNotional: '1',
+                            totalPrepayment: '0.10',
+                            routeCost: '0.95',
+                            allInCost: '1.05',
+                        },
+                    })
+                }
+                return preview('route-2')
+            }),
+        })
+        const { result } = renderHook((value) => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        expect(input.previewSponsorship).toHaveBeenNthCalledWith(1, firstRoute)
+        expect(input.previewSponsorship).toHaveBeenNthCalledWith(2, secondRoute)
+        expect(result.current.preview).toMatchObject({ id: 'preview:route-2' })
+        expect(result.current.previewRoute).toMatchObject({ publicRouteId: 'route-2' })
+    })
+
+    it('discards an in-flight preview when Gas Assist becomes unavailable', async () => {`
+            ],
+          ])
+
+          patch('src/features/swap/components/SwapDetails.jsx', [
+            [
+`function DetailRow({ label, ariaLabel, help, value }) {
+    return (`,
+`function formatEstimatedArrival(value) {
+    const seconds = Number(value)
+    if (!Number.isFinite(seconds) || seconds <= 0) return 'Unavailable'
+    return \`~\${Math.round(seconds)} seconds\`
+}
+
+function DetailRow({ label, ariaLabel, help, value }) {
+    return (`
+            ],
+            [
+`                        <DetailRow label="Estimated arrival" ariaLabel="Explain estimated arrival" help="Estimated time for destination settlement." value={\`~\${crossChain.route.durationSeconds} seconds\`} />`,
+`                        <DetailRow label="Estimated arrival" ariaLabel="Explain estimated arrival" help="Estimated time for destination settlement." value={formatEstimatedArrival(crossChain.route.durationSeconds)} />`
+            ],
+          ])
+          NODE
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run focused tests
+        run: pnpm vitest run src/features/swap/model/swapEligibility.test.js src/features/cross-chain/hooks/useCrossChainGasAssist.test.jsx
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/features/swap/model/swapEligibility.js \
+            src/features/swap/model/swapEligibility.test.js \
+            src/features/swap/hooks/useSwapController.js \
+            src/features/cross-chain/hooks/useCrossChainGasAssist.js \
+            src/features/cross-chain/hooks/useCrossChainGasAssist.test.jsx \
+            src/features/swap/components/SwapDetails.jsx
+          git commit -m 'Fix cross-chain Gas Assist quote economics and loading state'
+          git push origin HEAD:main
