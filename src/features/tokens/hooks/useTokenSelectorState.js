@@ -112,10 +112,11 @@ export function useTokenSelectorState({
             : filterSelectableCatalogTokens(tokens),
     ).filter(tokenIsInScope).filter((token) =>
         !shouldHideCatalogWrappedNativeToken(token, { exactAddressSearch, walletTokensByKey }) &&
-        tokenMatchesSearch(token, normalizedSearch) &&
+        tokenMatchesSearch(token, normalizedSearch, chainScope) &&
         (token?.isNative === true ||
             String(getTokenKey(token)).endsWith(NATIVE_TOKEN_KEY_SUFFIX) ||
             !walletTokensByKey.has(getTokenKey(token)))), [
+        chainScope,
         exactAddressSearch,
         normalizedSearch,
         tokenIsInScope,
@@ -138,11 +139,11 @@ export function useTokenSelectorState({
                 compareDecimalStrings(displayValue, '0.20') !== -1)
     })), [hideSmallBalances, hideUnknownTokens, walletPartitions.primaryTokens])
     const matchingPrimaryWalletTokens = useMemo(() => normalizedSearch
-        ? primaryWalletTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
-        : primaryWalletTokens, [normalizedSearch, primaryWalletTokens])
+        ? primaryWalletTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch, chainScope))
+        : primaryWalletTokens, [chainScope, normalizedSearch, primaryWalletTokens])
     const matchingCommonMarketTokens = useMemo(() => normalizedSearch
-        ? scopedFallbackMarketTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch))
-        : EMPTY_TOKENS, [normalizedSearch, scopedFallbackMarketTokens])
+        ? scopedFallbackMarketTokens.filter((token) => tokenMatchesSearch(token, normalizedSearch, chainScope))
+        : EMPTY_TOKENS, [chainScope, normalizedSearch, scopedFallbackMarketTokens])
     const sortedGlobalMarketTokens = useMemo(() => sortGlobalMarketTokens(safeMarketTokens), [safeMarketTokens])
     const riskyWalletTokens = useMemo(() => walletPartitions.hiddenTokens, [walletPartitions.hiddenTokens])
     const unverifiedWalletTokens = useMemo(() => EMPTY_TOKENS, [])
