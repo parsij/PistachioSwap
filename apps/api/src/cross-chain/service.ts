@@ -443,7 +443,6 @@ function exactSponsoredRoute(
         outputAmount: route.outputAmount,
         minimumOutputAmount: route.minimumOutputAmount,
         expiresAt: quote.expiresAt,
-        costs: route.costs,
         transaction,
     }
 }
