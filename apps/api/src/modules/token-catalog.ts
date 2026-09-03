@@ -1,3 +1,4 @@
+import Fuse from 'fuse.js'
 import type { FastifyInstance } from 'fastify'
 
 import { NATIVE_TOKEN_ADDRESS, createTokenId } from '../lib/address.js'
@@ -74,6 +75,7 @@ type CatalogRankedEntry = {
     token: CatalogToken
     index: number
     category: number
+    fuzzyScore: number
     featuredRank: number | null
     poolLike: boolean
 }
@@ -177,8 +179,83 @@ function tokenSearchCategory(token: CatalogToken, query: string) {
     return -1
 }
 
+function chainSearchAliases(chainId: number) {
+    const chain = getTokenDiscoveryChain(chainId)
+    if (!chain) return []
+    return [
+        chain.name,
+        chain.native.name,
+        chain.native.symbol,
+        String(chain.chainId),
+        ...Object.values(chain.providers).filter((value): value is string =>
+            typeof value === 'string' && value.length > 0),
+    ]
+}
+
+function fuzzySearchRankedEntries(
+    entries: readonly { token: CatalogToken; index: number }[],
+    query: string,
+) {
+    const documents = entries.map(({ token, index }) => {
+        const override = getTokenCatalogOverride(token.chainId, token.address)
+        return {
+            token,
+            index,
+            displaySymbol: override?.displaySymbol ?? token.symbol,
+            upstreamSymbol: token.symbol,
+            displayName: override?.displayName ?? token.name,
+            aliases: tokenAliases(token),
+            chainAliases: chainSearchAliases(token.chainId),
+        }
+    })
+    const fuse = new Fuse(documents, {
+        includeScore: true,
+        ignoreLocation: true,
+        threshold: 0.32,
+        minMatchCharLength: 2,
+        useTokenSearch: true,
+        tokenMatch: 'all',
+        keys: [
+            { name: 'displaySymbol', weight: 1 },
+            { name: 'aliases', weight: 0.95 },
+            { name: 'upstreamSymbol', weight: 0.85 },
+            { name: 'displayName', weight: 0.8 },
+            { name: 'chainAliases', weight: 0.2 },
+        ],
+    })
+
+    return fuse.search(query, {
+        limit: Math.max(MAX_SEARCH_RESULTS * 8, 120),
+    }).map((result) => {
+        const poolLike = isPoolVaultOrReceiptToken(result.item.token)
+        const displaySymbol = String(result.item.displaySymbol)
+        const symbolLengthDelta = Math.abs(displaySymbol.length - query.length)
+        const decoratedSymbol = /[^a-z0-9]/i.test(displaySymbol)
+        const featuredRank = getTokenCatalogOverride(
+            result.item.token.chainId,
+            result.item.token.address,
+        )?.featuredRank ?? null
+        return {
+            token: result.item.token,
+            index: result.item.index,
+            category: poolLike ? 10 : 9,
+            fuzzyScore: Number(result.score ?? 1) +
+                symbolLengthDelta * 0.04 +
+                (decoratedSymbol ? 0.18 : 0) +
+                (poolLike ? 0.12 : 0) +
+                (featuredRank === null ? 0.12 : Math.min(featuredRank, 10) * 0.002),
+            featuredRank: getTokenCatalogOverride(
+                result.item.token.chainId,
+                result.item.token.address,
+            )?.featuredRank ?? null,
+            poolLike,
+        } satisfies CatalogRankedEntry
+    })
+}
+
 function compareRankedEntries(left: CatalogRankedEntry, right: CatalogRankedEntry) {
     return left.category - right.category ||
+        left.fuzzyScore - right.fuzzyScore ||
         Number(left.featuredRank ?? 9999) - Number(right.featuredRank ?? 9999) ||
         Number(left.poolLike) - Number(right.poolLike) ||
         left.index - right.index
@@ -339,17 +416,27 @@ async function legacyFallbackCatalog(chainScope: number | 'all', limit: number, 
     const chainIds = chainScope === 'all'
         ? ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => chain.chainId)
         : [chainScope]
-    const tokens = chainIds.flatMap((chainId) =>
-        getFallbackTokensForChain(chainId).then((chainTokens) =>
-            chainTokens.filter((token) => {
-                if (!search) return true
-                return [token.address, token.symbol, token.name].some((value) =>
-                    String(value ?? '').toLowerCase().includes(search))
-            }),
-        ),
-    )
+    const tokens = chainIds.map((chainId) => getFallbackTokensForChain(chainId))
     const resolvedTokens = (await Promise.all(tokens)).flat()
-    const selected = resolvedTokens.slice(0, Math.min(limit, search ? MAX_SEARCH_RESULTS : limit))
+    let searchedTokens = resolvedTokens
+    if (search) {
+        if (/^0x[a-f0-9]{40}$/.test(search)) {
+            searchedTokens = resolvedTokens.filter((token) => token.address.toLowerCase() === search)
+        } else {
+            searchedTokens = new Fuse(resolvedTokens, {
+                ignoreLocation: true,
+                threshold: 0.32,
+                minMatchCharLength: 2,
+                useTokenSearch: true,
+                tokenMatch: 'all',
+                keys: [
+                    { name: 'symbol', weight: 1 },
+                    { name: 'name', weight: 0.85 },
+                ],
+            }).search(search, { limit: MAX_SEARCH_RESULTS }).map((result) => result.item)
+        }
+    }
+    const selected = searchedTokens.slice(0, Math.min(limit, search ? MAX_SEARCH_RESULTS : limit))
     return {
         schemaVersion: 1,
         generatedAt: null,
@@ -487,17 +574,29 @@ export async function getTokenCatalog({
     })
     const catalogTokens: CatalogToken[] = [...baseTokens, ...supplements]
     const identityIndex = catalogIdentityIndex(catalogTokens)
-    const ranked: CatalogRankedEntry[] = catalogTokens
+    const scopedEntries = catalogTokens
         .map((token, index) => ({ token, index }))
         .filter(({ token }) => chainScope === 'all' || token.chainId === chainScope)
+    const deterministicRanked: CatalogRankedEntry[] = scopedEntries
         .map((entry) => ({
             ...entry,
-            category: tokenSearchCategory(entry.token, normalizedSearch),
+            category: normalizedSearch ? tokenSearchCategory(entry.token, normalizedSearch) : 0,
+            fuzzyScore: 0,
             featuredRank: getTokenCatalogOverride(entry.token.chainId, entry.token.address)?.featuredRank ?? null,
             poolLike: isPoolVaultOrReceiptToken(entry.token),
         }))
         .filter(({ category }) => normalizedSearch ? category >= 0 : true)
-        .sort(compareRankedEntries)
+
+    let ranked = deterministicRanked
+    const exactAddressSearch = /^0x[a-f0-9]{40}$/.test(normalizedSearch)
+    if (
+        normalizedSearch &&
+        !exactAddressSearch &&
+        deterministicRanked.length === 0
+    ) {
+        ranked = fuzzySearchRankedEntries(scopedEntries, normalizedSearch)
+    }
+    ranked.sort(compareRankedEntries)
     if (ranked.length === 0 && chainScope !== 'all') {
         return {
             statusCode: 200,

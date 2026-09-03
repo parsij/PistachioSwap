@@ -144,6 +144,21 @@ describe('token catalog ranking', () => {
         expect(poolIndex).toBeGreaterThan(0)
     })
 
+    it('finds canonical tokens through Fuse when the ticker contains a typo', async () => {
+        const app = createApp()
+        const response = await app.inject({
+            method: 'GET',
+            url: '/v1/token-catalog?chainId=56&mode=all&search=USDTT&limit=20',
+        })
+        await app.close()
+
+        expect(response.statusCode).toBe(200)
+        expect(response.json().tokens[0]).toMatchObject({
+            address: bnbUsdt,
+            symbol: 'USDT',
+        })
+    })
+
     it('keeps exact-address search ahead of canonical symbol ranking', async () => {
         const app = createApp()
         const response = await app.inject({

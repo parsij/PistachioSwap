@@ -1,3 +1,5 @@
+import Fuse from 'fuse.js'
+
 import {
     compareDecimalStrings,
 } from '../services/portfolio.js'
@@ -34,6 +36,39 @@ export function normalizeAddress(address) {
     return String(address ?? '').trim().toLowerCase()
 }
 
+const tokenFuseCache = new WeakMap()
+
+function getTokenFuse(token) {
+    if (!token || typeof token !== 'object') return null
+    const cached = tokenFuseCache.get(token)
+    if (cached) return cached
+
+    const document = {
+        name: String(token?.name ?? ''),
+        symbol: String(token?.symbol ?? ''),
+        sourceName: String(token?.sourceName ?? ''),
+        sourceSymbol: String(token?.sourceSymbol ?? ''),
+        aliases: Array.isArray(token?.searchAliases) ? token.searchAliases : [],
+    }
+    const fuse = new Fuse([document], {
+        includeScore: true,
+        ignoreLocation: true,
+        threshold: 0.3,
+        minMatchCharLength: 2,
+        useTokenSearch: true,
+        tokenMatch: 'all',
+        keys: [
+            { name: 'symbol', weight: 1 },
+            { name: 'aliases', weight: 0.95 },
+            { name: 'name', weight: 0.85 },
+            { name: 'sourceSymbol', weight: 0.75 },
+            { name: 'sourceName', weight: 0.65 },
+        ],
+    })
+    tokenFuseCache.set(token, fuse)
+    return fuse
+}
+
 /** Returns whether a token matches a name, symbol, alias, or address query locally. */
 export function tokenMatchesSearch(token, query, chainId = token?.chainId ?? 'all') {
     const interpreted = interpretTokenSearchQuery({
@@ -50,18 +85,11 @@ export function tokenMatchesSearch(token, query, chainId = token?.chainId ?? 'al
         return false
     }
 
-    const searchAliases = Array.isArray(token?.searchAliases)
-        ? token.searchAliases
-        : []
+    if (/^0x[a-f0-9]{40}$/.test(normalizedQuery)) {
+        return normalizeAddress(token?.address) === normalizedQuery
+    }
 
-    return [
-        token?.name,
-        token?.symbol,
-        token?.address,
-        token?.sourceName,
-        token?.sourceSymbol,
-        ...searchAliases,
-    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery))
+    return Boolean(getTokenFuse(token)?.search(normalizedQuery, { limit: 1 }).length)
 }
 
 /** Returns whether a token is the configured wrapped-native contract for its chain. */

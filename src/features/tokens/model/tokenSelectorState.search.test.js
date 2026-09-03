@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { TOKEN_DISCOVERY_CHAINS } from '../../../web3/curatedEvmChains.js'
 import { tokenMatchesSearch } from './tokenSelectorState.js'
 
 describe('tokenMatchesSearch scoped query interpretation', () => {
@@ -45,5 +46,31 @@ describe('tokenMatchesSearch scoped query interpretation', () => {
 
     it('uses the token chain as the safe fallback scope when a caller omits scope', () => {
         expect(tokenMatchesSearch(bnbMatic, 'matic')).toBe(true)
+    })
+
+    it('recognizes every enabled network name without a per-network parser branch', () => {
+        for (const chain of TOKEN_DISCOVERY_CHAINS) {
+            const token = {
+                chainId: chain.id,
+                address: '0x2222222222222222222222222222222222222222',
+                name: 'USD Coin',
+                symbol: 'USDC',
+            }
+            expect(
+                tokenMatchesSearch(token, `usdc ${chain.name}`, 'all'),
+                `Expected ${chain.name} to work as a network qualifier`,
+            ).toBe(true)
+        }
+    })
+
+    it('uses fuzzy token and network matching for common typos and split tickers', () => {
+        const arbitrumUsdc = {
+            chainId: 42161,
+            address: '0x3333333333333333333333333333333333333333',
+            name: 'USD Coin',
+            symbol: 'USDC',
+        }
+        expect(tokenMatchesSearch(arbitrumUsdc, 'usdcc arbitum', 'all')).toBe(true)
+        expect(tokenMatchesSearch(arbitrumUsdc, 'usd c arbitrum', 'all')).toBe(true)
     })
 })
