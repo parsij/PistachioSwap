@@ -33,7 +33,9 @@ jobs:
           cache: pnpm
 
       - name: Apply source upgrade
-        run: node scripts/apply-fuse-search-upgrade.mjs
+        run: |
+          node scripts/apply-fuse-search-upgrade.mjs
+          node scripts/patch-fuse-ranking.mjs
 
       - name: Add Fuse.js
         run: |
@@ -53,6 +55,7 @@ jobs:
       - name: Remove one-time upgrade machinery
         run: |
           rm scripts/apply-fuse-search-upgrade.mjs
+          rm scripts/patch-fuse-ranking.mjs
           rm .github/workflows/fuse-token-search-upgrade-once.yml
 
       - name: Commit validated upgrade
