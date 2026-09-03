@@ -12,15 +12,16 @@ const scoreBefore = `    }).map((result) => {
             fuzzyScore: Number(result.score ?? 1),`
 const scoreAfter = `    }).map((result) => {
         const poolLike = isPoolVaultOrReceiptToken(result.item.token)
-        const symbolLengthDelta = Math.abs(
-            String(result.item.displaySymbol).length - query.length,
-        )
+        const displaySymbol = String(result.item.displaySymbol)
+        const symbolLengthDelta = Math.abs(displaySymbol.length - query.length)
+        const decoratedSymbol = /[^a-z0-9]/i.test(displaySymbol)
         return {
             token: result.item.token,
             index: result.item.index,
             category: poolLike ? 10 : 9,
             fuzzyScore: Number(result.score ?? 1) +
                 symbolLengthDelta * 0.04 +
+                (decoratedSymbol ? 0.18 : 0) +
                 (poolLike ? 0.12 : 0),`
 
 if (!source.includes(scoreBefore)) {
