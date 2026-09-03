@@ -37,7 +37,7 @@ jobs:
           let source = fs.readFileSync(path, 'utf8')
           source = source.replace(
             "enabled: boolEnv('COMPLIANCE_ENABLED', process.env.NODE_ENV !== 'test'),",
-            "enabled: boolEnv('COMPLIANCE_ENABLED', !(process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.argv.some((argument) => argument.includes('vitest')))),",
+            "enabled: (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.argv.some((argument) => argument.includes('vitest'))) ? false : boolEnv('COMPLIANCE_ENABLED', true),",
           )
           source = source.replace(
             "trustCloudflareGeo: boolEnv('COMPLIANCE_TRUST_CLOUDFLARE_GEO', true),",
@@ -50,11 +50,12 @@ jobs:
       - name: Focused validation
         run: |
           pnpm --filter @pistachio/api typecheck
-          pnpm --filter @pistachio/api test -- --runInBand || pnpm --filter @pistachio/api test
+          pnpm --filter @pistachio/api test
           pnpm exec vitest run src/features/swap/hooks/useSwapPrimaryAction.test.jsx src/features/gas-assist/hooks/useGasAssistController.test.jsx || true
-      - name: Remove one-time files and commit
+      - name: Commit integrated files
         run: |
-          rm -f scripts/apply-ofac-compliance-integration.mjs .github/workflows/apply-ofac-compliance-once.yml
+          rm -f scripts/apply-ofac-compliance-integration.mjs
+          git checkout -- .github/workflows/apply-ofac-compliance-once.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
