@@ -79,6 +79,16 @@ function readTrustProxy() {
     return hops
 }
 
+function readApiRateLimitMax() {
+    const raw = process.env.API_RATE_LIMIT_MAX?.trim()
+    if (!raw) return 300
+    const max = Number(raw)
+    if (!Number.isSafeInteger(max) || max < 60 || max > 10_000) {
+        throw new Error('API_RATE_LIMIT_MAX must be an integer from 60 through 10000.')
+    }
+    return max
+}
+
 function failClosedWalletPrices(tokens: WalletToken[]) {
     return tokens.map((token) => ({
         ...token,
@@ -164,7 +174,7 @@ export function createApp() {
         },
     })
     app.register(rateLimit, {
-        max: 90,
+        max: readApiRateLimitMax(),
         timeWindow: '1 minute',
     })
 

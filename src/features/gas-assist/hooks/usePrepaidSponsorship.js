@@ -100,6 +100,8 @@ export function usePrepaidSponsorship({
     const confirmedOrderIdsRef = useRef(new Set())
     const submittedOrderIdsRef = useRef(new Set())
     const forceImmediatePollRef = useRef(false)
+    const onConfirmedRef = useRef(onConfirmed)
+    const onSubmittedRef = useRef(onSubmitted)
     const localCapability = useMemo(
         () => detectRawTransactionSigning({ connector: connection.connector, walletClient }),
         [connection.connector, walletClient],
@@ -153,6 +155,14 @@ export function usePrepaidSponsorship({
             error,
         }))
     }, [config, isCurrent, state.order?.id, walletAddress])
+
+    useEffect(() => {
+        onConfirmedRef.current = onConfirmed
+    }, [onConfirmed])
+
+    useEffect(() => {
+        onSubmittedRef.current = onSubmitted
+    }, [onSubmitted])
 
     useEffect(() => {
         walletEpochRef.current += 1
@@ -512,13 +522,17 @@ export function usePrepaidSponsorship({
         }
     }, [beginOperation, buyToken, capability, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
 
+    const pollOrderId = state.order?.id ?? null
+    const pollOrderIsPreview = state.order?.isPreview === true
+    const pollOrderStatus = state.order?.status ?? null
+
     useEffect(() => {
         const sessionToken = sessionTokenRef.current
-        const orderId = state.order?.id
+        const orderId = pollOrderId
         const walletEpoch = walletEpochRef.current
         const flowEpoch = flowEpochRef.current
-        if (!state.open || !orderId || state.order?.isPreview === true || !sessionToken ||
-            ['completed', 'expired', 'rejected', 'failed'].includes(state.order.status)) return undefined
+        if (!state.open || !orderId || pollOrderIsPreview || !sessionToken ||
+            ['completed', 'expired', 'rejected', 'failed'].includes(pollOrderStatus)) return undefined
         const controller = new AbortController()
         const delay = forceImmediatePollRef.current ? 0 : 3_000
         forceImmediatePollRef.current = false
@@ -534,7 +548,7 @@ export function usePrepaidSponsorship({
                 if (controller.signal.aborted || !isCurrent(walletEpoch, flowEpoch)) return
                 if (order.swapTransactionHash &&
                     !submittedOrderIdsRef.current.has(orderId)) {
-                    await onSubmitted?.(order)
+                    await onSubmittedRef.current?.(order)
                     submittedOrderIdsRef.current.add(orderId)
                 }
                 setState((current) => {
@@ -564,7 +578,7 @@ export function usePrepaidSponsorship({
                     requiredAction: order.currentRequiredAction,
                 })
                 if (order.status === 'completed' && !confirmedOrderIdsRef.current.has(orderId)) {
-                    await onConfirmed?.(order)
+                    await onConfirmedRef.current?.(order)
                     confirmedOrderIdsRef.current.add(orderId)
                 }
             } catch (error) {
@@ -585,7 +599,15 @@ export function usePrepaidSponsorship({
             controller.abort()
             window.clearTimeout(timer)
         }
-    }, [isCurrent, onConfirmed, onSubmitted, quoteEndpoint, state.open, state.order, state.pollRevision])
+    }, [
+        isCurrent,
+        pollOrderId,
+        pollOrderIsPreview,
+        pollOrderStatus,
+        quoteEndpoint,
+        state.open,
+        state.pollRevision,
+    ])
 
     useEffect(() => {
         if (!state.open) return undefined
