@@ -164,6 +164,21 @@ function crossChainEligibility(overrides = {}) {
     })
 }
 
+describe('cross-chain network handling', () => {
+    it('does not expose a manual switch-network action before cross-chain review', () => {
+        const result = crossChainEligibility({
+            walletState: { isConnected: true, isCorrectNetwork: false },
+            currentCrossChainRoute: {
+                outputAmount: '378420',
+                costs: { routeCostUsd: '0.01' },
+            },
+        })
+
+        expect(result.action.type).toBe('swap')
+        expect(result.action.type).not.toBe('switch-network')
+    })
+})
+
 describe('cross-chain economic safety', () => {
     it('blocks review when route costs consume the displayed sell value', () => {
         const result = crossChainEligibility()

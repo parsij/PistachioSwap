@@ -191,7 +191,6 @@ export function useCrossChainController({
 
     function routeBindingError(route) {
         if (!walletState.isConnected || !account) return 'Connect wallet to continue.'
-        if (!walletState.isCorrectNetwork) return 'Switch to the source network to continue.'
         if (!request || !route) return 'Cross-chain route is not ready.'
         if (isCrossChainRouteExpired(route)) return 'Quote expired. Refresh the quote.'
         if (

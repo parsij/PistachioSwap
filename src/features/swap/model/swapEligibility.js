@@ -238,7 +238,11 @@ export function deriveSwapEligibility(input) {
         : { canReview: true, blockingReason: null, blockingMessage: null }
     const baseAction = getSwapActionState({
         isConnected: walletState.isConnected,
-        isCorrectNetwork: walletState.isCorrectNetwork,
+        // Cross-chain execution already switches the connected wallet to the
+        // source chain immediately before authentication/submission. Do not
+        // expose a manual network-switch CTA just because the wallet is
+        // currently displaying another supported chain.
+        isCorrectNetwork: isCrossChain ? true : walletState.isCorrectNetwork,
         hasSellToken: Boolean(sellToken),
         hasBuyToken: Boolean(buyToken),
         hasAmount: hasActiveAmount,
