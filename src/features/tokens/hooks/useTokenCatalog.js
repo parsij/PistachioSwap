@@ -7,6 +7,7 @@ import {
 } from 'react'
 
 import { apiBaseUrl as defaultApiBaseUrl } from '../../../lib/apiBaseUrl.js'
+import { interpretTokenSearchQuery } from '../model/tokenSearchQuery.js'
 
 export const TOKEN_CATALOG_CACHE_VERSION = 'pistachio-token-catalog-v5'
 export const TOKEN_CATALOG_FEATURED_CACHE_PREFIX =
@@ -190,6 +191,12 @@ export function useTokenCatalog({
     apiBaseUrl = defaultApiBaseUrl,
 } = {}) {
     const scope = normalizeScope(chainId)
+    const interpretedSearch = useMemo(() => interpretTokenSearchQuery({
+        chainId: scope ?? chainId,
+        query: search,
+    }), [chainId, scope, search])
+    const searchScope = interpretedSearch.chainId
+    const normalizedSearch = interpretedSearch.query
     const canBrowsePages = typeof scope === 'number'
     const storedFeatured = useMemo(() =>
         enabled && scope !== null
@@ -356,7 +363,6 @@ export function useTokenCatalog({
         }
     }, [apiBaseUrl, appendPage, canBrowsePages, enabled, scope])
 
-    const normalizedSearch = search.trim().toLowerCase()
     useEffect(() => {
         if (!enabled || scope === null || !normalizedSearch) {
             setState((current) => ({ ...current, searchTokens: [], searchLoading: false }))
@@ -365,7 +371,7 @@ export function useTokenCatalog({
         const controller = new AbortController()
         const timeout = setTimeout(() => {
             setState((current) => ({ ...current, searchLoading: true }))
-            fetchCatalogSearch(apiBaseUrl, scope, normalizedSearch, controller.signal)
+            fetchCatalogSearch(apiBaseUrl, searchScope, normalizedSearch, controller.signal)
                 .then((payload) => {
                     if (controller.signal.aborted || !sameScope(activeScopeRef.current, scope)) return
                     setState((current) => ({
@@ -383,7 +389,7 @@ export function useTokenCatalog({
             clearTimeout(timeout)
             controller.abort()
         }
-    }, [apiBaseUrl, enabled, normalizedSearch, scope])
+    }, [apiBaseUrl, enabled, normalizedSearch, scope, searchScope])
 
     const browseTokens = useMemo(() => mergeTokens(
         state.featuredTokens,
