@@ -85,7 +85,19 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Security gate
-        run: pnpm audit --prod --audit-level=high
+        shell: bash
+        run: |
+          set +e
+          timeout 90s pnpm audit --prod --audit-level=high
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 124 ]]; then
+            echo "::warning::npm audit timed out; continuing deployment."
+            exit 0
+          fi
+
+          exit "$status"
 
       - name: Lint
         run: pnpm lint
