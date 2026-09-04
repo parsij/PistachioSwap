@@ -9,9 +9,8 @@ module.exports = {
         {
             name: 'pistachioswap-api',
             cwd: appRoot,
-            script: 'pnpm',
-            args: '--filter @pistachio/api start',
-            interpreter: 'none',
+            script: path.join(appRoot, 'scripts/deploy/start-api-with-env-sync.sh'),
+            interpreter: 'bash',
             exec_mode: 'fork',
             instances: 1,
             autorestart: true,
