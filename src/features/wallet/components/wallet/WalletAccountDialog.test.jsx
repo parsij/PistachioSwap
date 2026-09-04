@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
     activity: [],
     disconnect: vi.fn(),
+    switchNetwork: vi.fn(),
     publicClient: {
         getGasPrice: vi.fn(),
         estimateGas: vi.fn(),
@@ -23,6 +24,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('#wallet-runtime', () => ({
+    useAppKitNetwork: () => ({
+        chainId: 56,
+        switchNetwork: mocks.switchNetwork,
+    }),
     useDisconnect: () => ({ mutateAsync: mocks.disconnect }),
     usePublicClient: () => mocks.publicClient,
     useSendTransaction: () => ({ mutateAsync: vi.fn() }),
