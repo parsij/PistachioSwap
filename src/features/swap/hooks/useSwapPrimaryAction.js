@@ -207,9 +207,15 @@ export function useSwapPrimaryAction(config) {
             diagnostic('review.confirm.blocked', { reason: 'gas-assist-required' }, 'warn')
             return null
         }
+
+        // Mark the review as busy before awaiting the fresh transaction-time
+        // compliance gate. This prevents rapid confirm clicks from scheduling
+        // duplicate confirmation work while preserving the fail-closed check.
+        setReviewOperation('checking-approval')
         try {
             await compliance?.ensureAllowed?.()
         } catch (error) {
+            setReviewOperation('idle')
             const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500
             const message = unavailable
                 ? 'Compliance screening is temporarily unavailable. Please try again later.'
