@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
   const devApiTarget =
     env.PISTACHIO_DEV_API_TARGET?.trim() ||
     'http://localhost:3001'
+  const isFrontendTestRun = resolve(process.cwd()) === resolve(import.meta.dirname)
 
   return {
     plugins: [
@@ -83,7 +84,11 @@ export default defineConfig(({ mode }) => {
     test: {
       // Browser integration tests use a deterministic hosted-compliance response
       // unless a specific test overrides fetch to exercise restricted/unavailable cases.
-      setupFiles: ['./src/test/setupComplianceFetch.js'],
+      // Package-local API Vitest invocations must not resolve this frontend-only setup
+      // relative to apps/api.
+      setupFiles: isFrontendTestRun
+        ? [resolve(import.meta.dirname, 'src/test/setupComplianceFetch.js')]
+        : [],
       // Keep collection anchored to workspace test locations while still
       // supporting package-local Vitest invocations such as `pnpm --filter
       // @pistachio/api exec vitest run test/...`.
