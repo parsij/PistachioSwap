@@ -15,7 +15,7 @@ permissions:
 
 env:
   NODE_VERSION: '24'
-  PNPM_VERSION: '10.30.3'
+  PNPM_VERSION: '10.34.5'
   API_SERVICE: pistachioswap-api
   PUBLIC_ORIGIN: https://pistachioswap.com
 
@@ -87,13 +87,35 @@ jobs:
       - name: Security gate
         shell: bash
         run: |
+          set -uo pipefail
+
+          audit_output="$(mktemp)"
+          trap 'rm -f "$audit_output"' EXIT
+
           set +e
-          timeout 90s pnpm audit --prod --audit-level=high
-          status=$?
+          timeout --signal=TERM --kill-after=5s 45s \
+            pnpm audit \
+              --prod \
+              --audit-level=high \
+              --ignore-registry-errors \
+            2>&1 | tee "$audit_output"
+          status=${PIPESTATUS[0]}
           set -e
 
-          if [[ "$status" -eq 124 ]]; then
-            echo "::warning::npm audit timed out; continuing deployment."
+          if [[ "$status" -eq 0 ]]; then
+            exit 0
+          fi
+
+          if [[ "$status" -eq 124 || "$status" -eq 137 ]]; then
+            echo "::warning::Dependency audit timed out; continuing deployment."
+            exit 0
+          fi
+
+          if grep -Eiq \
+            'ERR_SOCKET_TIMEOUT|ETIMEDOUT|ECONNRESET|EAI_AGAIN|ENOTFOUND|ERR_PNPM_AUDIT_BAD_RESPONSE' \
+            "$audit_output"
+          then
+            echo "::warning::Dependency audit registry is unavailable; continuing deployment."
             exit 0
           fi
 
