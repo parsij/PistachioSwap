@@ -3,7 +3,6 @@ import * as Dialog from '@radix-ui/react-dialog'
 import {
     ArrowLeft,
     ClipboardPaste,
-    Search,
     X,
 } from 'lucide-react'
 import {
@@ -12,14 +11,15 @@ import {
     isAddress,
 } from 'viem'
 import {
+    useAppKitNetwork,
     usePublicClient,
     useSendTransaction,
     useWriteContract,
 } from '#wallet-runtime'
 
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
+import TokenSelector from '../../../tokens/components/TokenSelector.jsx'
 import TransactionStatusDialog from './TransactionStatusDialog.jsx'
-import WalletAssetList from './WalletAssetList.jsx'
 import {
     DEFAULT_NATIVE_GAS_RESERVE_WEI,
     getSpendableTokenAmount,
@@ -49,10 +49,6 @@ import {
 import { recordWalletActivity } from '../../services/walletActivity.js'
 import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
 
-function matchesExactContract(token, search) {
-    return /^0x[a-fA-F0-9]{40}$/.test(search) &&
-        String(token.address).toLowerCase() === search.toLowerCase()
-}
 
 /** Renders wallet transfer selection/validation/review and delegates explicit submission to Wagmi. */
 export default function SendAssetDialog({
@@ -66,19 +62,13 @@ export default function SendAssetDialog({
     explorerUrl,
     onConfirmed,
 }) {
-    const numericChainId = Number(chainId)
-    const chain = getCuratedEvmChain(numericChainId)
-    const nativeSymbol = chain?.nativeCurrency?.symbol ?? 'native token'
-    const publicClient = usePublicClient({
-        chainId: isCuratedEvmChainId(numericChainId)
-            ? numericChainId
-            : undefined,
-    })
+    const numericWalletChainId = Number(chainId)
+    const { chainId: connectedChainId, switchNetwork } = useAppKitNetwork()
     const { mutateAsync: sendTransactionAsync } = useSendTransaction()
     const { mutateAsync: writeContractAsync } = useWriteContract()
     const [selectedToken, setSelectedToken] = useState(null)
     const [showSelector, setShowSelector] = useState(false)
-    const [showAllAssets, setShowAllAssets] = useState(false)
+    const [selectorChainId, setSelectorChainId] = useState('all')
     const [search, setSearch] = useState('')
     const [amount, setAmount] = useState('')
     const [recipient, setRecipient] = useState('')
@@ -87,11 +77,28 @@ export default function SendAssetDialog({
     const [status, setStatus] = useState('idle')
     const [review, setReview] = useState(null)
     const [hash, setHash] = useState(null)
+    const heldAssets = assets.filter(isPositiveWalletBalance)
     const defaultSelectedToken = sortWalletAssetsByValue(filterPortfolioTokens(
-        assets,
+        heldAssets,
         settings,
     ))[0] ?? null
     const activeSelectedToken = selectedToken ?? defaultSelectedToken
+    const numericChainId = Number(activeSelectedToken?.chainId ?? numericWalletChainId)
+    const chain = getCuratedEvmChain(numericChainId)
+    const nativeSymbol = chain?.nativeCurrency?.symbol ?? 'native token'
+    const publicClient = usePublicClient({
+        chainId: isCuratedEvmChainId(numericChainId)
+            ? numericChainId
+            : undefined,
+    })
+    const selectedNativeAsset = assets.find((token) =>
+        Number(token?.chainId) === numericChainId && isNativeEvmToken(token)) ?? null
+    const selectedNativeBalanceWei = selectedNativeAsset
+        ? getTokenBalanceWei(selectedNativeAsset)
+        : numericChainId === numericWalletChainId
+            ? BigInt(nativeBalanceWei ?? 0)
+            : 0n
+    const selectedExplorerUrl = chain?.blockExplorers?.default?.url ?? explorerUrl
     const reviewedAccountChanged = Boolean(
         review?.account &&
         review.account.toLowerCase() !== String(address).toLowerCase(),
@@ -100,26 +107,6 @@ export default function SendAssetDialog({
     const displayError = reviewedAccountChanged
         ? 'The connected account changed. Review the send again.'
         : error
-
-    const exactAddressSearch = /^0x[a-fA-F0-9]{40}$/.test(search.trim())
-    const revealHiddenAssets = exactAddressSearch
-    const filteredAssets = (() => {
-        const held = assets.filter(isPositiveWalletBalance)
-        const exact = held.filter((token) => matchesExactContract(token, search.trim()))
-        if (exact.length > 0) return exact
-        const base = revealHiddenAssets
-            ? exact
-            : filterPortfolioTokens(held, {
-                ...settings,
-                selectedTokens: [activeSelectedToken],
-            })
-        const normalizedSearch = search.trim().toLowerCase()
-        return sortWalletAssetsByValue(base.filter((token) =>
-            !normalizedSearch ||
-            token.name?.toLowerCase().includes(normalizedSearch) ||
-            token.symbol?.toLowerCase().includes(normalizedSearch),
-        ))
-    })()
 
     function updateAmount(event) {
         const value = event.target.value
@@ -133,7 +120,7 @@ export default function SendAssetDialog({
         if (!activeSelectedToken) return
         setAmount(getSpendableTokenAmount({
             token: activeSelectedToken,
-            nativeBalanceWei,
+            nativeBalanceWei: selectedNativeBalanceWei,
             estimatedFeeWei: review?.feeWei ?? null,
             fallbackReserveWei: DEFAULT_NATIVE_GAS_RESERVE_WEI,
         }))
@@ -157,11 +144,11 @@ export default function SendAssetDialog({
         try {
             const initialPlan = createTransferPlan({
                 account: address,
-                chainId,
+                chainId: numericChainId,
                 recipient,
                 amount,
                 token: activeSelectedToken,
-                nativeBalanceWei,
+                nativeBalanceWei: selectedNativeBalanceWei,
                 estimatedFeeWei: 0n,
             })
             const gasPrice = await publicClient.getGasPrice()
@@ -175,11 +162,11 @@ export default function SendAssetDialog({
             const feeWei = gas * gasPrice
             const plan = createTransferPlan({
                 account: address,
-                chainId,
+                chainId: numericChainId,
                 recipient,
                 amount,
                 token: activeSelectedToken,
-                nativeBalanceWei,
+                nativeBalanceWei: selectedNativeBalanceWei,
                 estimatedFeeWei: feeWei,
             })
             setReview({
@@ -208,16 +195,19 @@ export default function SendAssetDialog({
             setError('The connected account changed. Review the send again.')
             return
         }
-        if (Number(chainId) !== Number(review.plan.request.chainId)) {
-            setMode('edit')
-            setReview(null)
-            setStatus('idle')
-            setError('The active network changed. Switch back and review again.')
+        const targetChain = getCuratedEvmChain(Number(review.chainId))
+        if (!targetChain) {
+            setError('This network is not enabled in PistachioSwap.')
             return
         }
         setError(null)
         setStatus('confirming')
+        let phase = 'switch-network'
         try {
+            if (Number(connectedChainId) !== Number(review.chainId)) {
+                await switchNetwork(targetChain)
+            }
+            phase = 'send'
             let transactionHash
             if (review.plan.kind === 'native') {
                 transactionHash = await sendTransactionAsync(review.plan.request)
@@ -245,7 +235,9 @@ export default function SendAssetDialog({
         } catch (caught) {
             if (isTransferRejectedError(caught)) {
                 setStatus('rejected')
-                setError('The send was rejected in the wallet.')
+                setError(phase === 'switch-network'
+                    ? `Network switch to ${targetChain.name} was cancelled.`
+                    : 'The send was rejected in the wallet.')
             } else {
                 setStatus('failed')
                 setError(caught instanceof Error ? caught.message : 'The send failed.')
@@ -255,13 +247,13 @@ export default function SendAssetDialog({
 
     const tokenBalance = activeSelectedToken
         ? isNativeEvmToken(activeSelectedToken)
-            ? formatEther(BigInt(nativeBalanceWei ?? 0))
+            ? formatEther(selectedNativeBalanceWei)
             : formatUnits(getTokenBalanceWei(activeSelectedToken), Number(activeSelectedToken.decimals))
         : '0'
     const afterBalance = review
         ? formatUnits(
             (isNativeEvmToken(review.token)
-                ? BigInt(nativeBalanceWei ?? 0)
+                ? selectedNativeBalanceWei
                 : getTokenBalanceWei(review.token)) - review.plan.amountWei,
             Number(review.token.decimals),
         )
@@ -291,52 +283,13 @@ export default function SendAssetDialog({
                         >
                             <ArrowLeft aria-hidden="true" />
                         </button>
-                        <Dialog.Title>{showSelector ? 'Select token' : 'Send'}</Dialog.Title>
+                        <Dialog.Title>Send</Dialog.Title>
                         <Dialog.Close className="wallet-icon-button" aria-label="Close send dialog">
                             <X aria-hidden="true" />
                         </Dialog.Close>
                     </header>
 
-                    {showSelector ? (
-                        <div className="send-token-selector">
-                            <label className="send-search-field">
-                                <Search aria-hidden="true" />
-                                <input
-                                    value={search}
-                                    onChange={(event) => setSearch(event.target.value)}
-                                    placeholder="Search name or exact address"
-                                    aria-label="Search wallet assets"
-                                />
-                            </label>
-                            {!settings.hideUnknownTokens && (
-                                <button
-                                    type="button"
-                                    className="send-show-all"
-                                    onClick={() => setShowAllAssets((value) => !value)}
-                                    aria-pressed={showAllAssets}
-                                >
-                                    {showAllAssets ? 'Use portfolio filters' : 'Show all wallet assets'}
-                                </button>
-                            )}
-                            <WalletAssetList
-                                tokens={filteredAssets}
-                                settings={{
-                                    hideUnknownTokens: !revealHiddenAssets,
-                                    hideSmallBalances: false,
-                                }}
-                                selectedToken={activeSelectedToken}
-                                expandHidden={exactAddressSearch}
-                                storageScope="send"
-                                onSelect={(token) => {
-                                    if (!confirmRiskyTokenSelection(token, 'select this token')) return
-                                    setSelectedToken(token)
-                                    setShowSelector(false)
-                                    setAmount('')
-                                    setReview(null)
-                                }}
-                            />
-                        </div>
-                    ) : (
+                    {!showSelector && (
                         <>
                             {currentMode === 'edit' && (
                                 <div className="send-form">
@@ -421,7 +374,7 @@ export default function SendAssetDialog({
                                 </section>
                             )}
 
-                            <TransactionStatusDialog status={status} hash={hash} explorerUrl={explorerUrl} />
+                            <TransactionStatusDialog status={status} hash={hash} explorerUrl={selectedExplorerUrl} />
                             {displayError && <p className="send-error" role="alert">{displayError}</p>}
                             {status !== 'sent' && (
                                 <button
@@ -441,6 +394,41 @@ export default function SendAssetDialog({
                         </>
                     )}
                 </Dialog.Content>
+                {showSelector && (
+                    <TokenSelector
+                        side="send"
+                        chainId={selectorChainId}
+                        tokens={[]}
+                        commonTokens={[]}
+                        fallbackTokens={[]}
+                        walletTokens={heldAssets}
+                        search={search}
+                        loading={false}
+                        error={null}
+                        currentToken={null}
+                        oppositeToken={null}
+                        onSearchChange={setSearch}
+                        onSelect={(token) => {
+                            setSelectedToken(token)
+                            setShowSelector(false)
+                            setSelectorChainId('all')
+                            setSearch('')
+                            setAmount('')
+                            setReview(null)
+                            setStatus('idle')
+                            setError(null)
+                        }}
+                        onClose={() => {
+                            setShowSelector(false)
+                            setSelectorChainId('all')
+                            setSearch('')
+                        }}
+                        hideUnknownTokens={false}
+                        hideSmallBalances={false}
+                        onChainChange={setSelectorChainId}
+                        walletOnly
+                    />
+                )}
             </Dialog.Portal>
         </Dialog.Root>
     )
