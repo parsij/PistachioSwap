@@ -12,7 +12,7 @@ import {
  * @param {object} config Derived action and feature-owned callbacks.
  * @returns {{performPrimaryAction: () => Promise<void>, confirmSameChainSwap: () => Promise<unknown>}} Semantic CTA operations.
  * @sideEffects May open AppKit, switch networks, refresh routes/quotes, or open feature dialogs; confirmation delegates to the execution hook.
- * @security Rechecks same-chain eligibility and quote expiry before opening review.
+ * @security Rechecks compliance before transaction-producing Gas Assist/cross-chain actions and before same-chain confirmation; opening a same-chain review is non-transactional.
  */
 export function useSwapPrimaryAction(config) {
     const actionDiagnosticRef = useRef(null)
@@ -103,15 +103,20 @@ export function useSwapPrimaryAction(config) {
             diagnostic('primary-action.blocked', { reason: 'unsupported-action-type', actionType: action.type, label: action.label }, 'warn')
             return
         }
-        try {
-            await compliance?.ensureAllowed?.()
-        } catch (error) {
-            const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500
-            setVisibleStatus(unavailable
-                ? 'Compliance screening is temporarily unavailable. Please try again later.'
-                : 'This wallet cannot use PistachioSwap transaction services.')
-            diagnostic('primary-action.blocked', { reason: unavailable ? 'compliance-unavailable' : 'compliance-restricted' }, 'warn')
-            return
+        // Opening the ordinary same-chain review is non-transactional. Keep the
+        // fresh fail-closed check on paths that may start sponsored/cross-chain
+        // work here; same-chain execution is screened again on Confirm below.
+        if (routingMode === crossChainMode || executionMode === gaslessMode) {
+            try {
+                await compliance?.ensureAllowed?.()
+            } catch (error) {
+                const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500
+                setVisibleStatus(unavailable
+                    ? 'Compliance screening is temporarily unavailable. Please try again later.'
+                    : 'This wallet cannot use PistachioSwap transaction services.')
+                diagnostic('primary-action.blocked', { reason: unavailable ? 'compliance-unavailable' : 'compliance-restricted' }, 'warn')
+                return
+            }
         }
         if (transactionStatus === 'pending' || transactionStatus === 'submitted') {
             setVisibleStatus('A swap is already being processed.')
