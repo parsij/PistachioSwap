@@ -1963,7 +1963,7 @@ describe('App wallet integration', () => {
         expect(queryAllByRole('heading', { name: 'Review swap' })).toHaveLength(1)
         fireEvent.click(getByRole('button', { name: 'Confirm swap' }))
         fireEvent.click(getByRole('button', { name: 'Checking token approval...' }))
-        expect(mocks.prepareSwapApproval).toHaveBeenCalledTimes(1)
+        await waitFor(() => expect(mocks.prepareSwapApproval).toHaveBeenCalledTimes(1))
         const closeButton = getByRole('button', { name: 'Close review' })
         expect(closeButton.disabled).toBe(false)
         fireEvent.click(closeButton)

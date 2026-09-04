@@ -12,7 +12,7 @@ import {
  * @param {object} config Derived action and feature-owned callbacks.
  * @returns {{performPrimaryAction: () => Promise<void>, confirmSameChainSwap: () => Promise<unknown>}} Semantic CTA operations.
  * @sideEffects May open AppKit, switch networks, refresh routes/quotes, or open feature dialogs; confirmation delegates to the execution hook.
- * @security Rechecks same-chain eligibility and quote expiry before opening review.
+ * @security Rechecks compliance before transaction-producing Gas Assist/cross-chain actions and before same-chain confirmation; opening a same-chain review is non-transactional.
  */
 export function useSwapPrimaryAction(config) {
     const actionDiagnosticRef = useRef(null)
@@ -22,7 +22,7 @@ export function useSwapPrimaryAction(config) {
         activeChain, activeChainName, openAppKit, switchNetwork, crossChain, crossChainGasAssist,
         crossChainGasAssistDirect, gasAssist, prepaid,
         refreshSameChainQuote, clearSameChainQuoteForRefresh, openSameChainReview, setReviewError,
-        setReviewOperation, setVisibleStatus, confirmExecution, diagnostic,
+        setReviewOperation, setVisibleStatus, confirmExecution, diagnostic, compliance,
     } = config
 
     useEffect(() => {
@@ -102,6 +102,21 @@ export function useSwapPrimaryAction(config) {
         if (action.type !== 'swap' && !String(action.type).startsWith('review-blocked:')) {
             diagnostic('primary-action.blocked', { reason: 'unsupported-action-type', actionType: action.type, label: action.label }, 'warn')
             return
+        }
+        // Opening the ordinary same-chain review is non-transactional. Keep the
+        // fresh fail-closed check on paths that may start sponsored/cross-chain
+        // work here; same-chain execution is screened again on Confirm below.
+        if (routingMode === crossChainMode || executionMode === gaslessMode) {
+            try {
+                await compliance?.ensureAllowed?.()
+            } catch (error) {
+                const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500
+                setVisibleStatus(unavailable
+                    ? 'Compliance screening is temporarily unavailable. Please try again later.'
+                    : 'This wallet cannot use PistachioSwap transaction services.')
+                diagnostic('primary-action.blocked', { reason: unavailable ? 'compliance-unavailable' : 'compliance-restricted' }, 'warn')
+                return
+            }
         }
         if (transactionStatus === 'pending' || transactionStatus === 'submitted') {
             setVisibleStatus('A swap is already being processed.')
@@ -190,6 +205,24 @@ export function useSwapPrimaryAction(config) {
             setVisibleStatus(message)
             setReviewError(message)
             diagnostic('review.confirm.blocked', { reason: 'gas-assist-required' }, 'warn')
+            return null
+        }
+
+        // Mark the review as busy before awaiting the fresh transaction-time
+        // compliance gate. This prevents rapid confirm clicks from scheduling
+        // duplicate confirmation work while preserving the fail-closed check.
+        setReviewOperation('checking-approval')
+        try {
+            await compliance?.ensureAllowed?.()
+        } catch (error) {
+            setReviewOperation('idle')
+            const unavailable = error?.code === 'COMPLIANCE_UNAVAILABLE' || Number(error?.status) >= 500
+            const message = unavailable
+                ? 'Compliance screening is temporarily unavailable. Please try again later.'
+                : 'This wallet cannot use PistachioSwap transaction services.'
+            setVisibleStatus(message)
+            setReviewError(message)
+            diagnostic('review.confirm.blocked', { reason: unavailable ? 'compliance-unavailable' : 'compliance-restricted' }, 'warn')
             return null
         }
         diagnostic('review.confirm.clicked', {

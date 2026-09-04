@@ -66,7 +66,8 @@ Servers and infrastructure providers may receive or process:
 - IP address and network information;
 - request time, endpoint, method, selected headers, user-agent/browser/device information, and referring information when supplied;
 - rate-limit, authentication, security, abuse-prevention, and error events;
-- approximate location inferred by infrastructure or security providers from an IP address; and
+- approximate location inferred by infrastructure or security providers from an IP address;
+- sanctions-screening decisions, the version/hash of sanctions data used, and limited compliance case evidence when a transaction is restricted; and
 - diagnostic information needed to operate or secure the Service.
 
 Application logging is configured to redact sensitive fields including authorization credentials, internal service tokens, raw signed transactions, signatures, private keys, recovery phrases, passwords, and similar wallet-secret material. Operators must still review production logging and provider logging because no redaction configuration is infallible.
@@ -100,6 +101,7 @@ We may use information to:
 - protect encrypted local-wallet state and enforce signing/account/chain invariants;
 - operate, troubleshoot, test, secure, and improve the Service;
 - provide support and respond to security, privacy, legal, or regulatory requests; and
+- screen public wallet addresses and transaction requests for sanctions restrictions, reject prohibited hosted-service activity, document compliance decisions, and make legally required reports; and
 - comply with applicable law and establish, exercise, or defend legal claims.
 
 ## 5. Legal bases for EEA/UK processing
@@ -148,6 +150,7 @@ Current categories include:
 - **Quotes, orders, and signing intents:** expire on configured schedules, while transaction/recovery records may be kept longer where operationally or legally necessary.
 - **Transaction and fee records:** may be retained for accounting, tax, reconciliation, dispute, and legal needs.
 - **Security/abuse records:** may be kept while a threat, limit, investigation, or legal need remains active.
+- **Sanctions screening records:** ordinary checks are designed to store only compact wallet/chain/action, coarse location, decision, sanctions-data version, transaction reference, and time fields. Raw signed transactions and identity documents are not collected merely for routine sanctions screening. When a request is actually blocked or escalated, a separate case record may preserve the client IP and limited evidence needed for legal review/reporting. Records required by OFAC or other law may be retained for the legally required period, which is currently up to 10 years for records subject to OFAC's recordkeeping rule.
 - **Support communications:** may be kept while necessary to resolve and document the request.
 - **Backups:** may retain data for a limited additional period before rotation or deletion.
 

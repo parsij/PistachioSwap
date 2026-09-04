@@ -23,6 +23,7 @@ import { useCrossChainController } from '../../cross-chain/hooks/useCrossChainCo
 import { useCrossChainGasAssist } from '../../cross-chain/hooks/useCrossChainGasAssist.js'
 import { useSwapApproval } from '../../approvals/hooks/useSwapApproval.js'
 import { useSwapPrimaryAction } from './useSwapPrimaryAction.js'
+import { useComplianceAccess } from '../../compliance/hooks/useComplianceAccess.js'
 import {
     deriveSwapEligibility,
     expectsCrossChainGasAssist,
@@ -69,6 +70,11 @@ export function useSwapController() {
     const publicClient = usePublicClient({ chainId: swapChainId })
     const { mutateAsync: sendTransaction } = useSendTransaction()
     const walletState = useWalletState(swapChainId)
+    const compliance = useComplianceAccess({
+        endpoint: quoteConfig.endpoint,
+        walletAddress: walletState.address,
+        chainId: swapChainId,
+    })
     const [swapSettings, setSwapSettings] = useSwapSettings()
     const catalog = useTokenCatalogController({ swapChainId, walletState, tokensConfig })
     const inputs = useSwapInputs({
@@ -417,6 +423,7 @@ export function useSwapController() {
         setVisibleStatus: setStatusMessage,
         confirmExecution: execution.confirmSameChainSwap,
         diagnostic: logSwapDiagnostic,
+        compliance,
     })
 
     const quoteModeDiagnosticRef = useRef(null)
