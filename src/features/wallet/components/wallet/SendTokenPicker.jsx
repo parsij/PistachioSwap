@@ -1,0 +1,152 @@
+import { motion } from 'motion/react'
+
+import {
+    TokenSearchResults,
+    TokenSelectorSections,
+} from '../../../tokens/components/TokenSelectorSections.jsx'
+import { ChainSelector } from '../../../tokens/components/TokenSelectorPrimitives.jsx'
+import {
+    CopyIcon,
+    InfoIcon,
+    SearchIcon,
+} from '../../../tokens/components/TokenSelectorIcons.jsx'
+import { useTokenSelectorState } from '../../../tokens/hooks/useTokenSelectorState.js'
+import '../../../tokens/components/TokenSelector.css'
+import '../../../tokens/components/TokenSelectorPolish.css'
+import '../../../tokens/components/TokenIconLoading.css'
+
+/**
+ * Send-only wallet token picker rendered inside the active Radix Send dialog.
+ * It deliberately does not reuse the global TokenSelector modal/backdrop, so
+ * pointer, focus, search, scrolling, and chain controls stay inside the same
+ * interactive layer as Send.
+ */
+export default function SendTokenPicker({
+    chainId,
+    walletTokens,
+    search,
+    onSearchChange,
+    onSelect,
+    onClose,
+    onChainChange,
+}) {
+    const state = useTokenSelectorState({
+        chainId,
+        tokens: [],
+        commonTokens: [],
+        fallbackTokens: [],
+        walletTokens,
+        search,
+        loading: false,
+        error: null,
+        onSelect,
+        onClose,
+        hideUnknownTokens: false,
+        hideSmallBalances: false,
+    })
+
+    function handleChainChange(value) {
+        onSearchChange('')
+        onChainChange(value === 'all' ? 'all' : Number(value))
+    }
+
+    return (
+        <motion.section
+            className="send-token-picker-view"
+            aria-label="Select a token for send"
+            data-testid="send-token-picker"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        >
+            <div className="send-token-picker-search-wrap">
+                <div className="ps-token-search send-token-picker-search">
+                    <SearchIcon />
+                    <input
+                        autoFocus
+                        aria-label="Search tokens"
+                        value={search}
+                        onChange={(event) => onSearchChange(event.target.value)}
+                        placeholder="Search tokens"
+                        autoComplete="off"
+                        spellCheck="false"
+                    />
+                    <ChainSelector
+                        chainId={state.chainScope}
+                        onChange={handleChainChange}
+                    />
+                </div>
+            </div>
+
+            <div
+                className="send-token-picker-scroll"
+                onScroll={() => state.setContextMenu(null)}
+            >
+                {state.normalizedSearch ? (
+                    <TokenSearchResults
+                        loading={false}
+                        error={null}
+                        tokens={state.searchResultTokens}
+                        hiddenTokens={state.selectedHiddenTokens}
+                        onSelect={state.handleSelect}
+                        onContextMenu={state.openContextMenu}
+                        currentToken={null}
+                        oppositeToken={null}
+                    />
+                ) : (
+                    <TokenSelectorSections
+                        state={state}
+                        loading={false}
+                        currentToken={null}
+                        oppositeToken={null}
+                        hideUnknownTokens={false}
+                        walletOnly
+                    />
+                )}
+            </div>
+
+            {state.contextMenu && (
+                <motion.div
+                    role="menu"
+                    className="ps-token-context-menu send-token-context-menu"
+                    style={{
+                        left: state.contextMenu.x,
+                        top: state.contextMenu.y,
+                    }}
+                    initial={{ opacity: 0, scale: 0.96, y: 4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => event.preventDefault()}
+                >
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={state.handleCopyAddress}
+                    >
+                        <CopyIcon />
+                        <span>Copy address</span>
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        disabled={state.detailsLoading}
+                        onClick={state.handleTokenDetails}
+                    >
+                        <InfoIcon />
+                        <span>{state.detailsLoading ? 'Opening...' : 'Token details'}</span>
+                    </button>
+                </motion.div>
+            )}
+
+            {state.notice && (
+                <motion.div
+                    className="ps-token-notice send-token-notice"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                >
+                    {state.notice}
+                </motion.div>
+            )}
+        </motion.section>
+    )
+}
