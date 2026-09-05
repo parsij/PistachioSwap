@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useReducedMotion } from 'motion/react'
 
 import { motion } from 'motion/react'
@@ -8,30 +9,50 @@ import { CloseIcon, CopyIcon, InfoIcon, SearchIcon } from './TokenSelectorIcons.
 import { useTokenSelectorState } from '../hooks/useTokenSelectorState.js'
 import { requestMoreTokenCatalog } from '../hooks/useTokenCatalog.js'
 import { swapUiConfig } from '../../../swapConfig.js'
+import SendTokenPicker from '../../wallet/components/wallet/SendTokenPicker.jsx'
 import './TokenSelector.css'
 import './TokenSelectorPolish.css'
 import './TokenIconLoading.css'
 
 /**
- * Renders the animated token-selection dialog and delegates catalog/search state
- * to `useTokenSelectorState` and section markup to focused presentation components.
- * @param {object} props Controlled chain, catalog, search, selection, and visibility inputs.
- * @param {'sell'|'buy'|'send'} props.side Side whose token is being selected; used only for the dialog label.
- * @param {boolean} [props.walletOnly] Restricts the selector to wallet-owned holdings while preserving the exact selector UI.
- * @param {number|'all'} props.chainId Active token-discovery chain scope.
- * @param {Array<object>} props.tokens Ranked market token records.
- * @param {Array<object>} [props.commonTokens] Legacy fallback alias.
- * @param {Array<object>} [props.fallbackTokens] Static fallback directory records.
- * @param {Array<object>} [props.walletTokens] Wallet-owned token records.
- * @param {string} props.search Controlled search value.
- * @param {(value: string) => void} props.onSearchChange Search callback receiving the input value.
- * @param {(token: object) => void} props.onSelect Selection callback receiving the canonical token record.
- * @param {() => void} props.onClose Closes the dialog and restores the caller focus through the parent.
- * @returns {import('react').ReactElement} Existing selector dialog markup and accessibility behavior.
- * @sideEffects Reads/writes selector localStorage, manages body scroll and keyboard listeners, and may open details.
- * @security Risky-token confirmation and exact chain/address identity remain in the selector state hook.
+ * Renders token selection. Send gets its own in-dialog picker so it stays inside
+ * the active Radix interaction layer; swap/buy continue using the global modal.
  */
-export default function TokenSelector({
+export default function TokenSelector(props) {
+    if (props.side === 'send') {
+        return <SendTokenSelectorPortal {...props} />
+    }
+    return <GlobalTokenSelector {...props} />
+}
+
+function SendTokenSelectorPortal({
+    chainId,
+    walletTokens = [],
+    search,
+    onSearchChange,
+    onSelect,
+    onClose,
+    onChainChange,
+}) {
+    if (typeof document === 'undefined') return null
+    const target = document.querySelector('.wallet-send-dialog')
+    if (!target) return null
+
+    return createPortal(
+        <SendTokenPicker
+            chainId={chainId}
+            walletTokens={walletTokens}
+            search={search}
+            onSearchChange={onSearchChange}
+            onSelect={onSelect}
+            onClose={onClose}
+            onChainChange={onChainChange}
+        />,
+        target,
+    )
+}
+
+function GlobalTokenSelector({
     side,
     chainId,
     tokens = [],
