@@ -47,7 +47,6 @@ export default function SendTokenPicker({
     const [query, setQuery] = useState('')
     const [selectedChainId, setSelectedChainId] = useState('all')
     const [networkMenuOpen, setNetworkMenuOpen] = useState(false)
-    const [showUnsafe, setShowUnsafe] = useState(true)
 
     const selectedChain = selectedChainId === 'all'
         ? null
@@ -86,9 +85,11 @@ export default function SendTokenPicker({
         () => [...partitions.hiddenTokens, ...unclassifiedRiskyTokens],
         [partitions.hiddenTokens, unclassifiedRiskyTokens],
     )
-    const normalizedQuery = query.trim()
-    const visibleUnsafe = normalizedQuery ? riskyTokens : showUnsafe ? riskyTokens : []
-    const noMatches = partitions.primaryTokens.length === 0 && riskyTokens.length === 0
+    const normalizedQuery = query.trim().toLowerCase()
+    const exactAddressSearch = /^0x[a-f0-9]{40}$/.test(normalizedQuery)
+    const visibleRiskyTokens = exactAddressSearch ? riskyTokens : []
+    const noMatches = partitions.primaryTokens.length === 0 &&
+        visibleRiskyTokens.length === 0
 
     function chooseToken(token) {
         if (!confirmRiskyTokenSelection(token, 'send this token')) return
@@ -118,6 +119,8 @@ export default function SendTokenPicker({
 
     return (
         <motion.section
+            role="dialog"
+            aria-modal="true"
             aria-label="Select a token for send"
             className="send-token-picker-layer"
             data-testid="send-token-picker"
@@ -225,31 +228,13 @@ export default function SendTokenPicker({
                     </section>
                 )}
 
-                {riskyTokens.length > 0 && (
+                {visibleRiskyTokens.length > 0 && (
                     <section className="ps-token-section">
-                        <SectionTitle
-                            icon={<ShieldAlert />}
-                            action={!normalizedQuery ? (
-                                <button
-                                    type="button"
-                                    className="ps-token-section-action"
-                                    aria-expanded={showUnsafe}
-                                    onClick={() => setShowUnsafe((value) => !value)}
-                                >
-                                    {showUnsafe ? 'Hide' : 'Show'}
-                                </button>
-                            ) : null}
-                        >
-                            Unsafe tokens ({riskyTokens.length})
-                        </SectionTitle>
-                        {visibleUnsafe.length > 0 && (
-                            <>
-                                <p className="ps-hidden-token-explanation">
-                                    These unverified or risky wallet holdings are not in the trusted registry or are explicitly flagged. Review the exact contract before selecting one.
-                                </p>
-                                {visibleUnsafe.map(row)}
-                            </>
-                        )}
+                        <SectionTitle icon={<ShieldAlert />}>Unverified token</SectionTitle>
+                        <p className="ps-hidden-token-explanation">
+                            This token is hidden from normal results. Review the exact contract and risk reason before selecting it.
+                        </p>
+                        {visibleRiskyTokens.map(row)}
                     </section>
                 )}
 
