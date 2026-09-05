@@ -23,16 +23,16 @@
   Cache-Control: public, max-age=604800
 
 /
-  Cache-Control: no-store, must-revalidate
+  Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 
 /index.html
-  Cache-Control: no-store, must-revalidate
+  Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 
 /landing/*
-  Cache-Control: no-store, must-revalidate
+  Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 
 /gas-assist/*
-  Cache-Control: no-store, must-revalidate
+  Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 
 /api/*
   Cache-Control: no-store
