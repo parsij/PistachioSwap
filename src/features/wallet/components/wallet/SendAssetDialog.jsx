@@ -75,6 +75,7 @@ export default function SendAssetDialog({
     const [error, setError] = useState(null)
     const [mode, setMode] = useState('edit')
     const [status, setStatus] = useState('idle')
+    const [reviewLoading, setReviewLoading] = useState(false)
     const [review, setReview] = useState(null)
     const [hash, setHash] = useState(null)
     const heldAssets = assets.filter(isPositiveWalletBalance)
@@ -133,6 +134,7 @@ export default function SendAssetDialog({
     }
 
     async function buildReview() {
+        if (reviewLoading) return
         setError(null)
         if (!activeSelectedToken) return setError('Select a token.')
         if (
@@ -141,6 +143,7 @@ export default function SendAssetDialog({
         ) return
         if (!chain) return setError('This network is not enabled in PistachioSwap.')
         if (!publicClient) return setError(`${chain.name} is unavailable.`)
+        setReviewLoading(true)
         try {
             const initialPlan = createTransferPlan({
                 account: address,
@@ -184,6 +187,8 @@ export default function SendAssetDialog({
             setStatus('review')
         } catch (caught) {
             setError(caught instanceof Error ? caught.message : 'Unable to review this send.')
+        } finally {
+            setReviewLoading(false)
         }
     }
 
@@ -382,9 +387,11 @@ export default function SendAssetDialog({
                                     className="wallet-primary-button send-primary-button"
                                     disabled={
                                         !chain ||
+                                        reviewLoading ||
                                         status === 'confirming' ||
                                         status === 'submitted'
                                     }
+                                    aria-busy={reviewLoading || undefined}
                                     onClick={currentMode === 'review' ? confirmSend : buildReview}
                                 >
                                     {status === 'confirming' ? 'Confirm in wallet' :
