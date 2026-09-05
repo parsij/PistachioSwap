@@ -5,7 +5,7 @@ import { useWalletRuntimeStatus } from '#wallet-runtime'
 /**
  * Renders the single primary swap CTA from a derived action model.
  * @param {{action: {type: string, label: string, enabled: boolean, loading?: boolean}, reducedMotion: boolean, triggerRef: object, onAction: () => void|Promise<void>}} props CTA contract.
- * @returns {import('react').ReactElement|null} Existing primary action button, or no CTA while an automatic network switch is requested.
+ * @returns {import('react').ReactElement} Existing primary action button; automatic network switching is kept visually hidden.
  * @sideEffects Calls `onAction`; wallet/network behavior belongs to the controller.
  */
 export default function SwapPrimaryAction({ action, reducedMotion, triggerRef, onAction }) {
@@ -33,13 +33,13 @@ export default function SwapPrimaryAction({ action, reducedMotion, triggerRef, o
         attemptedNetworkRef.current = targetKey
 
         void Promise.resolve(onActionRef.current()).catch(() => {
-            // The controller owns user-visible wallet/network errors. Do not
-            // replace the swap CTA with a second network-switch UI state.
+            // The controller owns wallet/network failures. Never replace the
+            // normal swap surface with a visible network-switch CTA.
         })
     }, [action.label, automaticNetworkSwitch])
 
     async function handleClick() {
-        if (!action.enabled || busy) return
+        if (!action.enabled || busy || automaticNetworkSwitch) return
         if (action.type !== 'connect') {
             onAction()
             return
@@ -52,7 +52,21 @@ export default function SwapPrimaryAction({ action, reducedMotion, triggerRef, o
         }
     }
 
-    if (automaticNetworkSwitch) return null
+    if (automaticNetworkSwitch) {
+        return (
+            <button
+                ref={triggerRef}
+                type="button"
+                className="primary-action"
+                hidden
+                tabIndex={-1}
+                aria-hidden="true"
+                onClick={handleClick}
+            >
+                {action.label}
+            </button>
+        )
+    }
 
     return (
         <motion.button
