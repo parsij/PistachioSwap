@@ -1,121 +1,61 @@
-import { useMemo, useState } from 'react'
-import { ShieldAlert } from 'lucide-react'
+import { useState } from 'react'
 import { motion } from 'motion/react'
 
 import {
-    ChainIcon,
-    SectionTitle,
-    TokenRow,
-} from '../../../tokens/components/TokenSelectorPrimitives.jsx'
+    TokenSearchResults,
+    TokenSelectorSections,
+} from '../../../tokens/components/TokenSelectorSections.jsx'
+import { ChainSelector } from '../../../tokens/components/TokenSelectorPrimitives.jsx'
 import {
-    AllChainsIcon,
-    ChevronDownIcon,
     CloseIcon,
+    CopyIcon,
+    InfoIcon,
     SearchIcon,
-    WalletIcon,
 } from '../../../tokens/components/TokenSelectorIcons.jsx'
-import {
-    deduplicateTokens,
-    getTokenKey,
-    hasPositiveBalance,
-} from '../../../tokens/model/tokenSelectorState.js'
-import { partitionPortfolioAssets } from '../../../tokens/services/portfolio.js'
-import { confirmRiskyTokenSelection } from '../../../tokens/services/tokenRisk.js'
-import {
-    CURATED_EVM_CHAINS,
-    getCuratedEvmChain,
-    TOKEN_DISCOVERY_CHAIN_IDS,
-} from '../../../../web3/curatedEvmChains.js'
+import { useTokenSelectorState } from '../../../tokens/hooks/useTokenSelectorState.js'
 import { sendTokenMatchesSearch } from './sendTokenSearch.js'
 import '../../../tokens/components/TokenSelector.css'
 import '../../../tokens/components/TokenSelectorPolish.css'
 import '../../../tokens/components/TokenIconLoading.css'
 import './sendTokenPicker.css'
 
-const ACTIVE_CHAIN_IDS = new Set(TOKEN_DISCOVERY_CHAIN_IDS.map(Number))
-
 /**
- * Send-only token picker. Search and chain filtering are intentionally local:
- * wallet holdings are already loaded, so Send must react from the first typed
- * character and must never depend on global token-catalog search state.
+ * Send-only wallet token picker rendered inside the active Radix Send dialog.
+ * Search text and chain selection are local to Send so interacting with either
+ * cannot reset the parent Send flow. One-character searches use the already
+ * loaded wallet holdings directly instead of the global fuzzy-search minimum.
  */
 export default function SendTokenPicker({
     walletTokens = [],
     onSelect,
     onClose,
 }) {
-    const [query, setQuery] = useState('')
-    const [selectedChainId, setSelectedChainId] = useState('all')
-    const [networkMenuOpen, setNetworkMenuOpen] = useState(false)
-
-    const selectedChain = selectedChainId === 'all'
-        ? null
-        : getCuratedEvmChain(Number(selectedChainId))
-    const chainOptions = useMemo(
-        () => CURATED_EVM_CHAINS.filter((chain) => ACTIVE_CHAIN_IDS.has(Number(chain.id))),
-        [],
-    )
-
-    const scopedTokens = useMemo(() => deduplicateTokens(walletTokens)
-        .filter(hasPositiveBalance)
-        .filter((token) => selectedChainId === 'all' ||
-            Number(token?.chainId) === Number(selectedChainId))
-        .filter((token) => sendTokenMatchesSearch(token, query)), [
-        query,
-        selectedChainId,
+    const [selectorChainId, setSelectorChainId] = useState('all')
+    const [search, setSearch] = useState('')
+    const state = useTokenSelectorState({
+        chainId: selectorChainId,
+        tokens: [],
+        commonTokens: [],
+        fallbackTokens: [],
         walletTokens,
-    ])
+        search,
+        loading: false,
+        error: null,
+        onSelect,
+        onClose,
+        hideUnknownTokens: false,
+        hideSmallBalances: false,
+    })
 
-    const partitions = useMemo(
-        () => partitionPortfolioAssets(scopedTokens),
-        [scopedTokens],
-    )
-    const classifiedKeys = useMemo(() => new Set([
-        ...partitions.primaryTokens,
-        ...partitions.hiddenTokens,
-    ].map(getTokenKey).filter(Boolean)), [partitions])
-    const unclassifiedRiskyTokens = useMemo(
-        () => scopedTokens.filter((token) => {
-            const key = getTokenKey(token)
-            return key && !classifiedKeys.has(key)
-        }),
-        [classifiedKeys, scopedTokens],
-    )
-    const riskyTokens = useMemo(
-        () => [...partitions.hiddenTokens, ...unclassifiedRiskyTokens],
-        [partitions.hiddenTokens, unclassifiedRiskyTokens],
-    )
-    const normalizedQuery = query.trim().toLowerCase()
-    const exactAddressSearch = /^0x[a-f0-9]{40}$/.test(normalizedQuery)
-    const visibleRiskyTokens = exactAddressSearch ? riskyTokens : []
-    const noMatches = partitions.primaryTokens.length === 0 &&
-        visibleRiskyTokens.length === 0
-
-    function chooseToken(token) {
-        if (!confirmRiskyTokenSelection(token, 'send this token')) return
-        onSelect(token)
+    function handleChainChange(value) {
+        setSelectorChainId(value === 'all' ? 'all' : Number(value))
     }
 
-    function stopPointer(event) {
-        event.stopPropagation()
-    }
-
-    function chooseChain(value) {
-        setSelectedChainId(value)
-        setNetworkMenuOpen(false)
-    }
-
-    const row = (token) => (
-        <TokenRow
-            key={getTokenKey(token)}
-            token={token}
-            currentToken={null}
-            oppositeToken={null}
-            showBalance
-            onSelect={chooseToken}
-            onContextMenu={(event) => event.preventDefault()}
-        />
-    )
+    const normalizedSearch = search.trim()
+    const searchResultTokens = normalizedSearch.length === 1
+        ? state.primaryWalletTokens.filter((token) =>
+            sendTokenMatchesSearch(token, normalizedSearch))
+        : state.searchResultTokens
 
     return (
         <motion.section
@@ -127,7 +67,7 @@ export default function SendTokenPicker({
             initial={{ opacity: 0, scale: 0.985, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-            onPointerDown={stopPointer}
+            onPointerDown={(event) => event.stopPropagation()}
         >
             <header className="send-token-picker-header">
                 <h2>Select a token</h2>
@@ -147,101 +87,88 @@ export default function SendTokenPicker({
                     <input
                         autoFocus
                         aria-label="Search tokens"
-                        value={query}
-                        onChange={(event) => {
-                            setQuery(event.target.value)
-                            setNetworkMenuOpen(false)
-                        }}
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search tokens"
                         autoComplete="off"
                         spellCheck="false"
                     />
-
-                    <div className="ps-network-control send-network-control">
-                        <button
-                            type="button"
-                            className="ps-network-trigger"
-                            aria-label="Token network"
-                            aria-haspopup="listbox"
-                            aria-expanded={networkMenuOpen}
-                            onPointerDown={stopPointer}
-                            onClick={(event) => {
-                                event.stopPropagation()
-                                setNetworkMenuOpen((value) => !value)
-                            }}
-                        >
-                            {selectedChain ? (
-                                <ChainIcon
-                                    chainId={selectedChain.id}
-                                    name={selectedChain.name}
-                                />
-                            ) : <AllChainsIcon />}
-                            <span>{selectedChain?.name ?? 'All Chains'}</span>
-                            <ChevronDownIcon />
-                        </button>
-
-                        {networkMenuOpen && (
-                            <div
-                                className="ps-network-menu send-network-menu"
-                                role="listbox"
-                                aria-label="Token network"
-                                onPointerDown={stopPointer}
-                            >
-                                <button
-                                    type="button"
-                                    role="option"
-                                    aria-selected={selectedChainId === 'all'}
-                                    onClick={(event) => {
-                                        event.stopPropagation()
-                                        chooseChain('all')
-                                    }}
-                                >
-                                    <AllChainsIcon />
-                                    <span>All Chains</span>
-                                </button>
-                                {chainOptions.map((chain) => (
-                                    <button
-                                        key={chain.id}
-                                        type="button"
-                                        role="option"
-                                        aria-selected={Number(selectedChainId) === Number(chain.id)}
-                                        onClick={(event) => {
-                                            event.stopPropagation()
-                                            chooseChain(Number(chain.id))
-                                        }}
-                                    >
-                                        <ChainIcon chainId={chain.id} name={chain.name} />
-                                        <span>{chain.name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <ChainSelector
+                        chainId={state.chainScope}
+                        onChange={handleChainChange}
+                    />
                 </div>
             </div>
 
-            <div className="send-token-picker-scroll">
-                {partitions.primaryTokens.length > 0 && (
-                    <section className="ps-token-section">
-                        <SectionTitle icon={<WalletIcon />}>Your tokens</SectionTitle>
-                        {partitions.primaryTokens.map(row)}
-                    </section>
-                )}
-
-                {visibleRiskyTokens.length > 0 && (
-                    <section className="ps-token-section">
-                        <SectionTitle icon={<ShieldAlert />}>Unverified token</SectionTitle>
-                        <p className="ps-hidden-token-explanation">
-                            This token is hidden from normal results. Review the exact contract and risk reason before selecting it.
-                        </p>
-                        {visibleRiskyTokens.map(row)}
-                    </section>
-                )}
-
-                {noMatches && (
-                    <div className="ps-token-message">No matching tokens</div>
+            <div
+                className="send-token-picker-scroll"
+                onScroll={() => state.setContextMenu(null)}
+            >
+                {state.normalizedSearch ? (
+                    <TokenSearchResults
+                        loading={false}
+                        error={null}
+                        tokens={searchResultTokens}
+                        hiddenTokens={state.selectedHiddenTokens}
+                        onSelect={state.handleSelect}
+                        onContextMenu={state.openContextMenu}
+                        currentToken={null}
+                        oppositeToken={null}
+                    />
+                ) : (
+                    <TokenSelectorSections
+                        state={state}
+                        loading={false}
+                        currentToken={null}
+                        oppositeToken={null}
+                        hideUnknownTokens={false}
+                        walletOnly
+                    />
                 )}
             </div>
+
+            {state.contextMenu && (
+                <motion.div
+                    role="menu"
+                    className="ps-token-context-menu send-token-context-menu"
+                    style={{
+                        left: state.contextMenu.x,
+                        top: state.contextMenu.y,
+                    }}
+                    initial={{ opacity: 0, scale: 0.96, y: 4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => event.preventDefault()}
+                >
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={state.handleCopyAddress}
+                    >
+                        <CopyIcon />
+                        <span>Copy address</span>
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        disabled={state.detailsLoading}
+                        onClick={state.handleTokenDetails}
+                    >
+                        <InfoIcon />
+                        <span>{state.detailsLoading ? 'Opening...' : 'Token details'}</span>
+                    </button>
+                </motion.div>
+            )}
+
+            {state.notice && (
+                <motion.div
+                    className="ps-token-notice send-token-notice"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                >
+                    {state.notice}
+                </motion.div>
+            )}
         </motion.section>
     )
 }
