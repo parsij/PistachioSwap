@@ -19,22 +19,23 @@ describe('Send dialog integration boundaries', () => {
         expect(selector).toContain("props.side === 'send'")
         expect(selector).toContain("document.querySelector('.wallet-send-dialog')")
         expect(selector).toContain('<SendTokenPicker')
-        expect(picker).not.toContain('useTokenSelectorState')
-        expect(picker).not.toContain('<ChainSelector')
+        expect(picker).toContain('useTokenSelectorState')
+        expect(picker).toContain('<ChainSelector')
         expect(picker).toContain("useState('all')")
-        expect(picker).toContain('sendTokenMatchesSearch(token, query)')
+        expect(picker).toContain("useState('')")
+        expect(picker).toContain('sendTokenMatchesSearch(token, normalizedSearch)')
         expect(picker).toContain('send-token-picker-scroll')
         expect(picker).toContain('Search tokens')
         expect(styles).toContain(':has(.send-token-picker-layer)')
         expect(styles).toContain('overflow-y: auto')
     })
 
-    it('keeps chain-menu interaction local instead of resetting the Send picker', () => {
+    it('keeps chain selection local instead of resetting the parent Send picker', () => {
         const picker = source('./SendTokenPicker.jsx')
 
-        expect(picker).toContain('setNetworkMenuOpen((value) => !value)')
-        expect(picker).toContain("chooseChain('all')")
-        expect(picker).toContain('chooseChain(Number(chain.id))')
+        expect(picker).toContain('setSelectorChainId')
+        expect(picker).toContain("value === 'all' ? 'all' : Number(value)")
+        expect(picker).not.toContain('onChainChange(value')
         expect(picker).toContain('event.stopPropagation()')
     })
 
