@@ -68,7 +68,7 @@ export default function TokenSelector({
         const remaining = element.scrollHeight - element.scrollTop - element.clientHeight
         if (remaining <= 180) requestMoreTokenCatalog(chainId)
     }
-    return <motion.div className="ps-token-selector-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onPointerDown={onClose}>
+    return <motion.div className="ps-token-selector-backdrop" data-side={side} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onPointerDown={onClose}>
         <motion.section role="dialog" aria-modal="true" aria-label={`Select a token for ${side}`} className="ps-token-selector-dialog" initial={{ opacity: 0, scale: reducedMotion ? 1 : motionConfig.scale, y: reducedMotion ? 0 : motionConfig.offsetY }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: reducedMotion ? 1 : motionConfig.scale, y: reducedMotion ? 0 : motionConfig.offsetY }} transition={{ type: 'spring', stiffness: motionConfig.stiffness, damping: motionConfig.damping }} onPointerDown={(event) => event.stopPropagation()}>
             <header className="ps-token-selector-header"><h2>Select a token</h2><button type="button" className="ps-token-selector-close" aria-label="Close" onClick={onClose}><CloseIcon /></button></header>
             <div className="ps-token-search-wrapper"><div className="ps-token-search"><SearchIcon /><input autoFocus aria-label="Search tokens" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search tokens" autoComplete="off" spellCheck="false" /><ChainSelector chainId={state.chainScope} onChange={handleChainChange} /></div></div>
