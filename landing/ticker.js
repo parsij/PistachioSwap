@@ -108,12 +108,86 @@ function setupTicker(root) {
     requestAnimationFrame(tick)
 }
 
-function startTickers() {
+/*
+ * Native <details> toggles remove their contents immediately when closing, so
+ * CSS alone cannot reliably animate both directions. Keep the element open
+ * until the closing height animation finishes, and reverse from the current
+ * visual height if the user clicks again mid-animation.
+ */
+export function setupFaqDetails(details) {
+    const summary = details.querySelector(':scope > summary')
+    if (!summary) return
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let desiredOpen = details.open
+    let animation = null
+    let animationId = 0
+
+    const clearAnimatedStyles = () => {
+        details.style.removeProperty('height')
+        details.style.removeProperty('overflow')
+    }
+
+    const setOpen = (nextOpen) => {
+        desiredOpen = nextOpen
+
+        if (reducedMotion.matches || typeof details.animate !== 'function') {
+            animationId += 1
+            animation?.cancel()
+            animation = null
+            details.open = nextOpen
+            clearAnimatedStyles()
+            return
+        }
+
+        const id = ++animationId
+        const currentHeight = details.getBoundingClientRect().height
+        animation?.cancel()
+
+        if (nextOpen && !details.open) details.open = true
+
+        details.style.height = `${currentHeight}px`
+        details.style.overflow = 'hidden'
+
+        const targetHeight = nextOpen
+            ? details.scrollHeight
+            : summary.getBoundingClientRect().height
+
+        animation = details.animate(
+            [
+                { height: `${currentHeight}px` },
+                { height: `${targetHeight}px` },
+            ],
+            {
+                duration: 260,
+                easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+            },
+        )
+
+        animation.onfinish = () => {
+            if (id !== animationId) return
+            details.open = nextOpen
+            animation = null
+            clearAnimatedStyles()
+        }
+        animation.oncancel = () => {
+            if (id === animationId) animation = null
+        }
+    }
+
+    summary.addEventListener('click', (event) => {
+        event.preventDefault()
+        setOpen(!desiredOpen)
+    })
+}
+
+function startLandingInteractions() {
     document.querySelectorAll('.network-ticker').forEach(setupTicker)
+    document.querySelectorAll('.faq details').forEach(setupFaqDetails)
 }
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startTickers)
+    document.addEventListener('DOMContentLoaded', startLandingInteractions)
 } else {
-    startTickers()
+    startLandingInteractions()
 }
