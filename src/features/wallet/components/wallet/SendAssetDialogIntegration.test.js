@@ -20,10 +20,23 @@ describe('Send dialog integration boundaries', () => {
         expect(selector).toContain("document.querySelector('.wallet-send-dialog')")
         expect(selector).toContain('<SendTokenPicker')
         expect(picker).toContain('useTokenSelectorState')
+        expect(picker).toContain('<ChainSelector')
+        expect(picker).toContain("useState('all')")
+        expect(picker).toContain("useState('')")
+        expect(picker).toContain('sendTokenMatchesSearch(token, normalizedSearch)')
         expect(picker).toContain('send-token-picker-scroll')
         expect(picker).toContain('Search tokens')
         expect(styles).toContain(':has(.send-token-picker-layer)')
         expect(styles).toContain('overflow-y: auto')
+    })
+
+    it('keeps chain selection local instead of resetting the parent Send picker', () => {
+        const picker = source('./SendTokenPicker.jsx')
+
+        expect(picker).toContain('setSelectorChainId')
+        expect(picker).toContain("value === 'all' ? 'all' : Number(value)")
+        expect(picker).not.toContain('onChainChange(value')
+        expect(picker).toContain('event.stopPropagation()')
     })
 
     it('keeps the Send surface rounded, responsive, and motion-aware', () => {

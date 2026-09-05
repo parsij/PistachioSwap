@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'motion/react'
 
 import {
@@ -12,6 +13,7 @@ import {
     SearchIcon,
 } from '../../../tokens/components/TokenSelectorIcons.jsx'
 import { useTokenSelectorState } from '../../../tokens/hooks/useTokenSelectorState.js'
+import { sendTokenMatchesSearch } from './sendTokenSearch.js'
 import '../../../tokens/components/TokenSelector.css'
 import '../../../tokens/components/TokenSelectorPolish.css'
 import '../../../tokens/components/TokenIconLoading.css'
@@ -19,21 +21,19 @@ import './sendTokenPicker.css'
 
 /**
  * Send-only wallet token picker rendered inside the active Radix Send dialog.
- * It deliberately does not reuse the global TokenSelector modal/backdrop, so
- * pointer, focus, search, scrolling, and chain controls stay inside the same
- * interactive layer as Send.
+ * Search text and chain selection are local to Send so interacting with either
+ * cannot reset the parent Send flow. One-character searches use the already
+ * loaded wallet holdings directly instead of the global fuzzy-search minimum.
  */
 export default function SendTokenPicker({
-    chainId,
-    walletTokens,
-    search,
-    onSearchChange,
+    walletTokens = [],
     onSelect,
     onClose,
-    onChainChange,
 }) {
+    const [selectorChainId, setSelectorChainId] = useState('all')
+    const [search, setSearch] = useState('')
     const state = useTokenSelectorState({
-        chainId,
+        chainId: selectorChainId,
         tokens: [],
         commonTokens: [],
         fallbackTokens: [],
@@ -48,9 +48,14 @@ export default function SendTokenPicker({
     })
 
     function handleChainChange(value) {
-        onSearchChange('')
-        onChainChange(value === 'all' ? 'all' : Number(value))
+        setSelectorChainId(value === 'all' ? 'all' : Number(value))
     }
+
+    const normalizedSearch = search.trim()
+    const searchResultTokens = normalizedSearch.length === 1
+        ? state.primaryWalletTokens.filter((token) =>
+            sendTokenMatchesSearch(token, normalizedSearch))
+        : state.searchResultTokens
 
     return (
         <motion.section
@@ -62,6 +67,7 @@ export default function SendTokenPicker({
             initial={{ opacity: 0, scale: 0.985, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            onPointerDown={(event) => event.stopPropagation()}
         >
             <header className="send-token-picker-header">
                 <h2>Select a token</h2>
@@ -82,7 +88,7 @@ export default function SendTokenPicker({
                         autoFocus
                         aria-label="Search tokens"
                         value={search}
-                        onChange={(event) => onSearchChange(event.target.value)}
+                        onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search tokens"
                         autoComplete="off"
                         spellCheck="false"
@@ -102,7 +108,7 @@ export default function SendTokenPicker({
                     <TokenSearchResults
                         loading={false}
                         error={null}
-                        tokens={state.searchResultTokens}
+                        tokens={searchResultTokens}
                         hiddenTokens={state.selectedHiddenTokens}
                         onSelect={state.handleSelect}
                         onContextMenu={state.openContextMenu}
