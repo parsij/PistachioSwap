@@ -6,6 +6,7 @@ import {
 } from '../../../tokens/components/TokenSelectorSections.jsx'
 import { ChainSelector } from '../../../tokens/components/TokenSelectorPrimitives.jsx'
 import {
+    CloseIcon,
     CopyIcon,
     InfoIcon,
     SearchIcon,
@@ -14,6 +15,7 @@ import { useTokenSelectorState } from '../../../tokens/hooks/useTokenSelectorSta
 import '../../../tokens/components/TokenSelector.css'
 import '../../../tokens/components/TokenSelectorPolish.css'
 import '../../../tokens/components/TokenIconLoading.css'
+import './sendTokenPicker.css'
 
 /**
  * Send-only wallet token picker rendered inside the active Radix Send dialog.
@@ -52,13 +54,27 @@ export default function SendTokenPicker({
 
     return (
         <motion.section
-            className="send-token-picker-view"
+            role="dialog"
+            aria-modal="true"
             aria-label="Select a token for send"
+            className="send-token-picker-layer"
             data-testid="send-token-picker"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.985, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
         >
+            <header className="send-token-picker-header">
+                <h2>Select a token</h2>
+                <button
+                    type="button"
+                    className="send-token-picker-close"
+                    aria-label="Close token selector"
+                    onClick={onClose}
+                >
+                    <CloseIcon />
+                </button>
+            </header>
+
             <div className="send-token-picker-search-wrap">
                 <div className="ps-token-search send-token-picker-search">
                     <SearchIcon />
