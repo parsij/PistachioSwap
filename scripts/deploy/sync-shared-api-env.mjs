@@ -1,10 +1,25 @@
 #!/usr/bin/env node
 
-import { chmod, mkdir, readFile, rename, rm, watch, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import {
+    appendFile,
+    chmod,
+    mkdir,
+    readFile,
+    rename,
+    rm,
+    watch,
+    writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 const DEFAULT_LEFT = '/opt/pistachio/env/api.env'
 const DEFAULT_RIGHT = '/opt/gas-assist/env/api.env'
+const DEFAULT_LOG_FILE = process.env.SHARED_ENV_SYNC_LOG?.trim()
+    || '/opt/pistachio/.runtime/shared-env-sync.log'
 const LOCK_DIR = '/tmp/pistachio-shared-api-env-sync.lock'
 const WATCH_DEBOUNCE_MS = 150
 const LOCK_RETRY_MS = 50
@@ -31,23 +46,52 @@ const DEFAULT_SHARED_KEYS = new Set([
 ])
 
 function parseArgs(argv) {
-    const options = { left: DEFAULT_LEFT, right: DEFAULT_RIGHT, watch: false, required: false }
+    const options = {
+        left: DEFAULT_LEFT,
+        right: DEFAULT_RIGHT,
+        watch: false,
+        required: false,
+        source: null,
+        restartServices: false,
+        logFile: DEFAULT_LOG_FILE,
+    }
     for (let index = 0; index < argv.length; index += 1) {
         const argument = argv[index]
         if (argument === '--watch') options.watch = true
         else if (argument === '--required') options.required = true
+        else if (argument === '--restart-services') options.restartServices = true
         else if (argument === '--left') options.left = argv[++index]
         else if (argument === '--right') options.right = argv[++index]
+        else if (argument === '--log-file') options.logFile = argv[++index]
+        else if (argument === '--source') options.source = argv[++index]
         else {
             console.error(`[env-sync] Unknown argument: ${argument}`)
             process.exit(64)
         }
     }
-    if (!options.left || !options.right) {
-        console.error('[env-sync] --left and --right require paths.')
+    if (!options.left || !options.right || !options.logFile) {
+        console.error('[env-sync] --left, --right, and --log-file require paths.')
+        process.exit(64)
+    }
+    if (options.source && !['left', 'right'].includes(options.source)) {
+        console.error('[env-sync] --source must be left or right.')
+        process.exit(64)
+    }
+    if (options.watch && options.source) {
+        console.error('[env-sync] --source is only valid for one-shot synchronization.')
         process.exit(64)
     }
     return options
+}
+
+async function writeLog(options, message, { stderr = false } = {}) {
+    const line = `[${new Date().toISOString()}] ${message}`
+    const directory = path.dirname(options.logFile)
+    await mkdir(directory, { recursive: true, mode: 0o700 })
+    await appendFile(options.logFile, `${line}\n`, { encoding: 'utf8', mode: 0o600 })
+    await chmod(options.logFile, 0o600)
+    if (stderr) console.error(message)
+    else console.log(message)
 }
 
 async function readOptionalSharedKeys(file) {
@@ -102,23 +146,48 @@ async function readEnvFile(file, required) {
     }
 }
 
-async function atomicAppend(file, original, additions) {
-    if (additions.length === 0) return false
+async function atomicRewriteSharedValues(file, original, desiredValues, keys) {
+    if (desiredValues.size === 0) return []
+
+    const seen = new Set()
+    const changedKeys = new Set()
+    const lines = original.split(/\r?\n/u)
+    const output = lines.map((line) => {
+        const match = /^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*?)=(.*)$/u.exec(line)
+        if (!match) return line
+        const [, prefix, key, rawValue] = match
+        if (!keys.has(key) || !desiredValues.has(key)) return line
+        seen.add(key)
+        const desired = desiredValues.get(key)
+        if (rawValue !== desired) changedKeys.add(key)
+        return `${prefix}${key}=${desired}`
+    })
+
+    const additions = []
+    for (const [key, rawValue] of desiredValues) {
+        if (seen.has(key)) continue
+        additions.push([key, rawValue])
+        changedKeys.add(key)
+    }
+
+    if (additions.length > 0) {
+        if (output.length > 0 && output.at(-1) !== '') output.push('')
+        output.push('# Synced shared PistachioSwap / Gas Assist settings.')
+        for (const [key, rawValue] of additions) output.push(`${key}=${rawValue}`)
+        output.push('')
+    }
+
+    if (changedKeys.size === 0) return []
+
     const directory = path.dirname(file)
     const base = path.basename(file)
     await mkdir(directory, { recursive: true, mode: 0o700 })
-    const prefix = original.length === 0 || original.endsWith('\n') ? '' : '\n'
-    const block = [
-        `${prefix}# Synced shared PistachioSwap / Gas Assist settings.`,
-        ...additions.map(([key, rawValue]) => `${key}=${rawValue}`),
-        '',
-    ].join('\n')
     const temp = path.join(directory, `.${base}.sync-${process.pid}-${Date.now()}`)
-    await writeFile(temp, `${original}${block}`, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
+    await writeFile(temp, output.join('\n'), { encoding: 'utf8', mode: 0o600, flag: 'wx' })
     await chmod(temp, 0o600)
     await rename(temp, file)
     await chmod(file, 0o600)
-    return true
+    return [...changedKeys].sort()
 }
 
 function sleep(ms) {
@@ -165,7 +234,98 @@ async function withLock(callback) {
     }
 }
 
-async function syncOnce(options) {
+function unionChanged(...groups) {
+    return [...new Set(groups.flat())].sort()
+}
+
+async function syncFromSource(options, keys, leftText, rightText, sourcePath) {
+    const sourceIsLeft = sourcePath === options.left
+    const sourceText = sourceIsLeft ? leftText : rightText
+    const peerText = sourceIsLeft ? rightText : leftText
+    const peerPath = sourceIsLeft ? options.right : options.left
+
+    const sourceValues = parseSharedEnv(sourceText, sourcePath, keys)
+    const peerValues = parseSharedEnv(peerText, peerPath, keys)
+
+    // A watched edit is authoritative for every shared key still present in the
+    // edited file. Missing shared keys are restored from the peer so an accidental
+    // deletion does not silently erase a required production setting.
+    const peerChanged = await atomicRewriteSharedValues(peerPath, peerText, sourceValues, keys)
+
+    const missingFromSource = new Map()
+    for (const [key, rawValue] of peerValues) {
+        if (!sourceValues.has(key)) missingFromSource.set(key, rawValue)
+    }
+    const sourceChanged = await atomicRewriteSharedValues(sourcePath, sourceText, missingFromSource, keys)
+
+    const changed = unionChanged(peerChanged, sourceChanged)
+    if (peerChanged.length > 0) {
+        await writeLog(
+            options,
+            `[env-sync] Propagated shared keys from ${sourcePath} to ${peerPath}: ${peerChanged.join(', ')}`,
+        )
+    }
+    if (sourceChanged.length > 0) {
+        await writeLog(
+            options,
+            `[env-sync] Restored missing shared keys in ${sourcePath} from ${peerPath}: ${sourceChanged.join(', ')}`,
+        )
+    }
+    if (changed.length === 0) {
+        await writeLog(options, `[env-sync] Watched edit in ${sourcePath} did not change shared settings.`)
+    }
+    return changed
+}
+
+async function syncConservatively(options, keys, leftText, rightText) {
+    const leftValues = parseSharedEnv(leftText, options.left, keys)
+    const rightValues = parseSharedEnv(rightText, options.right, keys)
+    const conflicts = []
+    const copyToLeft = new Map()
+    const copyToRight = new Map()
+
+    for (const key of [...keys].sort()) {
+        const leftHas = leftValues.has(key)
+        const rightHas = rightValues.has(key)
+        if (leftHas && rightHas) {
+            if (leftValues.get(key) !== rightValues.get(key)) conflicts.push(key)
+            continue
+        }
+        if (leftHas) copyToRight.set(key, leftValues.get(key))
+        if (rightHas) copyToLeft.set(key, rightValues.get(key))
+    }
+
+    if (conflicts.length > 0) {
+        await writeLog(
+            options,
+            `[env-sync] CONFLICT: shared keys differ: ${conflicts.join(', ')}`,
+            { stderr: true },
+        )
+        await writeLog(
+            options,
+            '[env-sync] Values are intentionally not logged. Make the listed keys identical before either service starts.',
+            { stderr: true },
+        )
+        throw new Error('Shared API environment conflict.')
+    }
+
+    const leftChanged = await atomicRewriteSharedValues(options.left, leftText, copyToLeft, keys)
+    const rightChanged = await atomicRewriteSharedValues(options.right, rightText, copyToRight, keys)
+    const changed = unionChanged(leftChanged, rightChanged)
+
+    if (leftChanged.length > 0) {
+        await writeLog(options, `[env-sync] Copied missing shared keys into ${options.left}: ${leftChanged.join(', ')}`)
+    }
+    if (rightChanged.length > 0) {
+        await writeLog(options, `[env-sync] Copied missing shared keys into ${options.right}: ${rightChanged.join(', ')}`)
+    }
+    if (changed.length === 0) {
+        await writeLog(options, '[env-sync] Shared API environment keys are consistent.')
+    }
+    return changed
+}
+
+async function syncOnce(options, sourcePath = null) {
     return withLock(async () => {
         const keys = await sharedKeys(options.left, options.right)
         const [leftText, rightText] = await Promise.all([
@@ -173,39 +333,41 @@ async function syncOnce(options) {
             readEnvFile(options.right, options.required),
         ])
         if (leftText === null || rightText === null) {
-            console.log('[env-sync] Peer environment is not present; skipping outside required production mode.')
-            return
+            await writeLog(options, '[env-sync] Peer environment is not present; skipping outside required production mode.')
+            return []
         }
 
-        const leftValues = parseSharedEnv(leftText, options.left, keys)
-        const rightValues = parseSharedEnv(rightText, options.right, keys)
-        const conflicts = []
-        const copyToLeft = []
-        const copyToRight = []
-
-        for (const key of [...keys].sort()) {
-            const leftHas = leftValues.has(key)
-            const rightHas = rightValues.has(key)
-            if (leftHas && rightHas) {
-                if (leftValues.get(key) !== rightValues.get(key)) conflicts.push(key)
-                continue
+        if (sourcePath) {
+            if (sourcePath !== options.left && sourcePath !== options.right) {
+                throw new Error(`Watched source is not a configured environment file: ${sourcePath}`)
             }
-            if (leftHas) copyToRight.push([key, leftValues.get(key)])
-            if (rightHas) copyToLeft.push([key, rightValues.get(key)])
+            return syncFromSource(options, keys, leftText, rightText, sourcePath)
         }
-
-        if (conflicts.length > 0) {
-            console.error(`[env-sync] CONFLICT: shared keys differ: ${conflicts.join(', ')}`)
-            console.error('[env-sync] Values are intentionally not logged. Make the listed keys identical before either service starts.')
-            throw new Error('Shared API environment conflict.')
-        }
-
-        const leftChanged = await atomicAppend(options.left, leftText, copyToLeft)
-        const rightChanged = await atomicAppend(options.right, rightText, copyToRight)
-        if (leftChanged) console.log(`[env-sync] Copied missing shared keys into ${options.left}: ${copyToLeft.map(([key]) => key).join(', ')}`)
-        if (rightChanged) console.log(`[env-sync] Copied missing shared keys into ${options.right}: ${copyToRight.map(([key]) => key).join(', ')}`)
-        if (!leftChanged && !rightChanged) console.log('[env-sync] Shared API environment keys are consistent.')
+        return syncConservatively(options, keys, leftText, rightText)
     })
+}
+
+async function restartGasAssist(options, changedKeys) {
+    if (!options.restartServices || changedKeys.length === 0) return
+    await writeLog(
+        options,
+        `[env-sync] Reloading gas-assist after shared settings changed: ${changedKeys.join(', ')}`,
+    )
+    try {
+        await execFileAsync('pm2', ['restart', 'gas-assist', '--update-env'], {
+            cwd: process.env.HOME || '/',
+            env: process.env,
+            timeout: 60_000,
+        })
+    } catch {
+        await writeLog(
+            options,
+            '[env-sync] Failed to reload gas-assist after a shared environment change.',
+            { stderr: true },
+        )
+        throw new Error('Gas Assist reload failed after shared environment synchronization.')
+    }
+    await writeLog(options, '[env-sync] gas-assist reloaded successfully.')
 }
 
 async function watchFiles(options) {
@@ -219,6 +381,7 @@ async function watchFiles(options) {
     let timer = null
     let running = false
     let queued = false
+    let pendingSource = null
 
     const run = async () => {
         if (running) {
@@ -226,10 +389,23 @@ async function watchFiles(options) {
             return
         }
         running = true
+        const source = pendingSource
+        pendingSource = null
         try {
-            await syncOnce(options)
+            const changedKeys = await syncOnce(options, source)
+            if (changedKeys.length > 0 && options.restartServices) {
+                await restartGasAssist(options, changedKeys)
+                await writeLog(
+                    options,
+                    '[env-sync] Requesting PistachioSwap API reload so the new shared environment is active.',
+                )
+                // The startup wrapper waits for this watcher. Exiting causes the
+                // wrapper to stop the API, and PM2's autorestart starts both again
+                // with the freshly synchronized environment.
+                process.exit(75)
+            }
         } catch (error) {
-            console.error(`[env-sync] ${error.message}`)
+            await writeLog(options, `[env-sync] ${error.message}`, { stderr: true }).catch(() => undefined)
             process.exit(78)
         } finally {
             running = false
@@ -240,23 +416,32 @@ async function watchFiles(options) {
         }
     }
 
-    const watchers = directories.map((directory) => watch(directory))
-    for (const watcher of watchers) {
+    const watchers = directories.map((directory) => ({
+        directory,
+        watcher: watch(directory),
+    }))
+    for (const { directory, watcher } of watchers) {
         ;(async () => {
             for await (const event of watcher) {
                 if (!event.filename || !watchedNames.has(String(event.filename))) continue
+                const candidate = path.join(directory, String(event.filename))
+                if (candidate === options.left || candidate === options.right) pendingSource = candidate
+                else pendingSource = null
                 if (timer) clearTimeout(timer)
                 timer = setTimeout(() => void run(), WATCH_DEBOUNCE_MS)
             }
-        })().catch((error) => {
-            console.error(`[env-sync] Watcher failed: ${error.message}`)
+        })().catch(async (error) => {
+            await writeLog(options, `[env-sync] Watcher failed: ${error.message}`, { stderr: true }).catch(() => undefined)
             process.exit(78)
         })
     }
 
-    console.log(`[env-sync] Watching ${options.left} and ${options.right} for shared-setting changes.`)
+    await writeLog(
+        options,
+        `[env-sync] Watching ${options.left} and ${options.right} for shared-setting changes. Separate log: ${options.logFile}`,
+    )
     const shutdown = () => {
-        for (const watcher of watchers) watcher.close()
+        for (const { watcher } of watchers) watcher.close()
         process.exit(0)
     }
     process.on('SIGINT', shutdown)
@@ -266,9 +451,20 @@ async function watchFiles(options) {
 
 const options = parseArgs(process.argv.slice(2))
 try {
-    if (options.watch) await watchFiles(options)
-    else await syncOnce(options)
+    if (options.watch) {
+        await watchFiles(options)
+    } else {
+        const sourcePath = options.source === 'left'
+            ? options.left
+            : options.source === 'right'
+                ? options.right
+                : null
+        const changedKeys = await syncOnce(options, sourcePath)
+        await restartGasAssist(options, changedKeys)
+    }
 } catch (error) {
-    console.error(`[env-sync] ${error.message}`)
+    await writeLog(options, `[env-sync] ${error.message}`, { stderr: true }).catch(() => {
+        console.error(`[env-sync] ${error.message}`)
+    })
     process.exit(78)
 }

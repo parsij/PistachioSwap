@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SYNC="$ROOT/scripts/deploy/sync-shared-api-env.mjs"
 
 node "$SYNC" --required
-node "$SYNC" --required --watch &
+node "$SYNC" --required --watch --restart-services &
 sync_pid=$!
 app_pid=''
 
