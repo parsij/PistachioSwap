@@ -5,6 +5,7 @@ import {
     complianceRequestGeo,
     getComplianceService,
 } from '../compliance/service.js'
+import { jurisdictionAccess } from '../compliance/jurisdiction.js'
 import { normalizeAddress } from '../lib/address.js'
 
 function exactBody(value: unknown) {
@@ -33,6 +34,18 @@ function geo(request: FastifyRequest) {
 }
 
 export const complianceRoutes: FastifyPluginAsync = async (app) => {
+    app.get(
+        '/v1/compliance/access',
+        { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+        async (request, reply) => {
+            const result = jurisdictionAccess(request.headers as Record<string, unknown>)
+            return reply.send({
+                allowed: result.allowed,
+                decision: result.decision,
+            })
+        },
+    )
+
     app.post<{ Body: unknown }>(
         '/v1/compliance/screen',
         { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
