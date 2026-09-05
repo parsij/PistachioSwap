@@ -706,9 +706,7 @@ export default function WalletAccountDialog({
                 onOpenChange={setSendOpen}
                 address={address}
                 chainId={chainId}
-                assets={heldAssets.filter(
-                    (token) => Number(token.chainId) === Number(chainId),
-                )}
+                assets={heldAssets}
                 settings={settings}
                 nativeBalanceWei={nativeBalance.value ?? 0n}
                 explorerUrl={explorerUrl}
