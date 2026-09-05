@@ -1,0 +1,33 @@
+.primary-action-auto-switch {
+    position: relative;
+    color: transparent !important;
+}
+
+.primary-action-auto-switch::before {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--color-primary-action-text, #122012);
+    content: 'Switching network…';
+    pointer-events: none;
+}
+
+.primary-action-auto-switch[data-auto-switch-state='switching'] {
+    cursor: progress;
+    pointer-events: none;
+}
+
+.primary-action-auto-switch[data-auto-switch-state='retry'] {
+    cursor: pointer;
+}
+
+.primary-action-auto-switch[data-auto-switch-state='retry']::before {
+    content: 'Retry network switch';
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .primary-action-auto-switch::after {
+        animation: none !important;
+    }
+}
