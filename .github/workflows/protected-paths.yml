@@ -1,0 +1,62 @@
+name: Protected Paths
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  owner-only-paths:
+    name: Owner-only protected paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject protected-path changes from non-owner PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const ownerLogin = 'parsij';
+            const pr = context.payload.pull_request;
+            const author = pr.user.login;
+
+            if (author === ownerLogin) {
+              core.info(`PR author is @${ownerLogin}; protected-path changes are allowed.`);
+              return;
+            }
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                per_page: 100,
+              }
+            );
+
+            const protectedPath = (path) =>
+              path === '.github/CODEOWNERS' ||
+              path.startsWith('.github/workflows/') ||
+              path.startsWith('scripts/deploy/') ||
+              path === 'package.json' ||
+              path === 'pnpm-lock.yaml' ||
+              path === 'pnpm-workspace.yaml' ||
+              path === 'CONTRIBUTOR_ASSIGNMENT_AGREEMENT.md' ||
+              path === 'LICENSE';
+
+            const blocked = files
+              .map((file) => file.filename)
+              .filter(protectedPath);
+
+            if (blocked.length > 0) {
+              core.setFailed(
+                `Only @${ownerLogin} may modify protected production/security files. Blocked paths:\n` +
+                blocked.map((path) => ` - ${path}`).join('\n')
+              );
+              return;
+            }
+
+            core.info(`No owner-only protected paths were changed by @${author}.`);
