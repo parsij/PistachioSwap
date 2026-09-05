@@ -196,9 +196,11 @@
 }
 
 .wallet-send-dialog .send-primary-button {
+    position: relative;
     width: calc(100% - 36px);
     min-height: 56px;
     margin: 6px 18px 18px;
+    overflow: hidden;
     border-radius: 18px;
     background: var(--send-accent);
     box-shadow: 0 10px 28px rgb(80 130 70 / 16%);
@@ -224,6 +226,35 @@
     background: #2b292a;
     box-shadow: none;
     color: #777376;
+}
+
+.wallet-send-dialog .send-primary-button[aria-busy='true'],
+.wallet-send-dialog .send-primary-button[aria-busy='true']:disabled {
+    background: var(--send-accent);
+    box-shadow: 0 10px 28px rgb(80 130 70 / 16%);
+    color: #10210f;
+    cursor: progress;
+    opacity: 1;
+}
+
+.wallet-send-dialog .send-primary-button[aria-busy='true']::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        currentColor 40%,
+        currentColor 60%,
+        transparent
+    );
+    background-size: 40% 100%;
+    background-repeat: no-repeat;
+    animation: wallet-connect-bar 1.1s ease-in-out infinite;
+    content: '';
+    opacity: 0.55;
 }
 
 .wallet-send-dialog .send-review {
@@ -396,5 +427,9 @@
     .wallet-send-dialog .send-primary-button {
         animation: none;
         transition: none;
+    }
+
+    .wallet-send-dialog .send-primary-button[aria-busy='true']::after {
+        animation: none;
     }
 }
