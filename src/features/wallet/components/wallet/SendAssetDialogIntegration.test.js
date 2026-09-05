@@ -11,20 +11,28 @@ describe('Send dialog integration boundaries', () => {
         expect(accountDialog).not.toContain('assets={heldAssets.filter(')
     })
 
-    it('lifts only the Send token picker above nested wallet dialogs', () => {
+    it('uses a dedicated Send picker inside the active wallet dialog', () => {
         const selector = source('../../../tokens/components/TokenSelector.jsx')
-        const styles = source('./sendAssetDialog.css')
+        const picker = source('./SendTokenPicker.jsx')
+        const styles = source('./sendTokenPicker.css')
 
-        expect(selector).toContain('data-side={side}')
-        expect(styles).toContain(".ps-token-selector-backdrop[data-side='send']")
-        expect(styles).toMatch(/data-side='send'[\s\S]*z-index:\s*180/)
+        expect(selector).toContain("props.side === 'send'")
+        expect(selector).toContain("document.querySelector('.wallet-send-dialog')")
+        expect(selector).toContain('<SendTokenPicker')
+        expect(picker).toContain('useTokenSelectorState')
+        expect(picker).toContain('send-token-picker-scroll')
+        expect(picker).toContain('Search tokens')
+        expect(styles).toContain(':has(.send-token-picker-layer)')
+        expect(styles).toContain('overflow-y: auto')
     })
 
     it('keeps the Send surface rounded, responsive, and motion-aware', () => {
         const styles = source('./sendAssetDialog.css')
+        const pickerStyles = source('./sendTokenPicker.css')
 
         expect(styles).toContain('border-radius: 28px')
         expect(styles).toContain('@media (max-width: 640px)')
-        expect(styles).toContain('@media (prefers-reduced-motion: reduce)')
+        expect(pickerStyles).toContain('@media (max-width: 640px)')
+        expect(pickerStyles).toContain('@media (prefers-reduced-motion: reduce)')
     })
 })
