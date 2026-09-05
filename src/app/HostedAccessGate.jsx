@@ -40,11 +40,7 @@ function AccessGatePage({ status, onRetry }) {
     )
 }
 
-/**
- * Blocks the hosted application before wallet, quote, or transaction features
- * mount unless the server confirms that the current jurisdiction is allowed.
- */
-export default function HostedAccessGate({ children }) {
+function EnforcedHostedAccessGate({ children }) {
     const [accessStatus, setAccessStatus] = useState('checking')
 
     const checkAccess = useCallback(async () => {
@@ -81,4 +77,17 @@ export default function HostedAccessGate({ children }) {
     }
 
     return children
+}
+
+/**
+ * Blocks the hosted application before wallet, quote, or transaction features
+ * mount. Broad Vitest integration suites bypass this boundary synchronously;
+ * focused gate tests opt back in with `enforce`.
+ */
+export default function HostedAccessGate({
+    children,
+    enforce = import.meta.env.MODE !== 'test',
+}) {
+    if (!enforce) return children
+    return <EnforcedHostedAccessGate>{children}</EnforcedHostedAccessGate>
 }
