@@ -3,6 +3,7 @@ import { useState } from 'react'
 import WalletAccountButton from './wallet/WalletAccountButton.jsx'
 import WalletAccountDialog from './wallet/WalletAccountDialog.jsx'
 import './wallet/wallet.css'
+import './wallet/sendAssetDialog.css'
 
 /**
  * Composes the connected-account button and wallet account dialog.
