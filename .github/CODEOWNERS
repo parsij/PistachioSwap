@@ -1,0 +1,11 @@
+# PistachioSwap security-sensitive ownership
+# Changes to these paths require review from the repository owner.
+
+/.github/CODEOWNERS @parsij
+/.github/workflows/ @parsij
+/scripts/deploy/ @parsij
+/package.json @parsij
+/pnpm-lock.yaml @parsij
+/pnpm-workspace.yaml @parsij
+/CONTRIBUTOR_ASSIGNMENT_AGREEMENT.md @parsij
+/LICENSE @parsij
