@@ -1,0 +1,400 @@
+/* Modern Send surface. Scoped to the wallet Send dialog and its token picker. */
+.wallet-dialog-overlay.nested {
+    background: rgb(0 0 0 / 64%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.wallet-dialog.wallet-send-dialog {
+    --send-accent: var(--color-accent, #9bd887);
+    --send-accent-soft: rgb(155 216 135 / 14%);
+    --send-bg: #171717;
+    --send-surface: #222021;
+    --send-surface-hover: #2b282a;
+    --send-border: rgb(255 255 255 / 9%);
+    --send-muted: #9c999b;
+
+    width: min(500px, calc(100vw - 28px));
+    max-height: min(760px, calc(100dvh - 28px));
+    overflow: hidden;
+    border: 1px solid var(--send-border);
+    border-radius: 28px;
+    background:
+        radial-gradient(circle at 50% -20%, rgb(155 216 135 / 8%), transparent 42%),
+        var(--send-bg);
+    box-shadow:
+        0 34px 100px rgb(0 0 0 / 62%),
+        0 0 0 1px rgb(255 255 255 / 2%) inset;
+    animation: send-dialog-in 220ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.wallet-send-dialog .wallet-dialog-header {
+    min-height: 72px;
+    padding: 14px 18px 8px;
+    border-bottom: 0;
+}
+
+.wallet-send-dialog .wallet-dialog-header > h2,
+.wallet-send-dialog .wallet-dialog-header > [data-radix-dialog-title] {
+    font-size: 19px;
+    font-weight: 620;
+    letter-spacing: -.02em;
+}
+
+.wallet-send-dialog .wallet-icon-button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid transparent;
+    background: rgb(255 255 255 / 4%);
+    color: #aaa7a9;
+    transition:
+        background 140ms ease,
+        border-color 140ms ease,
+        color 140ms ease,
+        transform 140ms ease;
+}
+
+.wallet-send-dialog .wallet-icon-button:hover {
+    border-color: rgb(255 255 255 / 7%);
+    background: rgb(255 255 255 / 8%);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.wallet-send-dialog .send-form {
+    gap: 10px;
+    padding: 10px 18px 14px;
+}
+
+.wallet-send-dialog .send-amount-card,
+.wallet-send-dialog .send-recipient-card,
+.wallet-send-dialog .send-review {
+    border: 1px solid var(--send-border);
+    background: var(--send-surface);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 2%) inset;
+}
+
+.wallet-send-dialog .send-amount-card {
+    min-height: 166px;
+    padding: 20px;
+    border-radius: 24px;
+}
+
+.wallet-send-dialog .send-amount-line {
+    gap: 12px;
+}
+
+.wallet-send-dialog .send-amount-line > input {
+    min-height: 58px;
+    padding: 0;
+    font-size: clamp(40px, 8vw, 56px);
+    font-weight: 510;
+    letter-spacing: -.045em;
+    line-height: 1;
+}
+
+.wallet-send-dialog .send-amount-line > input::placeholder {
+    color: #6f6b6d;
+}
+
+.wallet-send-dialog .send-token-button {
+    min-width: max-content;
+    height: 48px;
+    gap: 8px;
+    padding: 0 13px 0 10px;
+    border: 1px solid rgb(255 255 255 / 8%);
+    border-radius: 999px;
+    background: #302d2f;
+    box-shadow: 0 1px 0 rgb(255 255 255 / 4%) inset;
+    font-size: 15px;
+    font-weight: 650;
+    transition:
+        background 140ms ease,
+        transform 140ms ease,
+        border-color 140ms ease;
+}
+
+.wallet-send-dialog .send-token-button:hover {
+    border-color: rgb(255 255 255 / 13%);
+    background: #393537;
+    transform: translateY(-1px);
+}
+
+.wallet-send-dialog .send-balance-line {
+    margin-top: 16px;
+    color: var(--send-muted);
+    font-size: 12.5px;
+}
+
+.wallet-send-dialog .send-balance-line button {
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: var(--send-accent-soft);
+    color: var(--send-accent);
+    font-weight: 650;
+}
+
+.wallet-send-dialog .send-balance-line button:hover {
+    background: rgb(155 216 135 / 20%);
+}
+
+.wallet-send-dialog .send-recipient-card {
+    padding: 17px 18px;
+    border-radius: 20px;
+}
+
+.wallet-send-dialog .send-recipient-card > label {
+    color: #c6c3c5;
+    font-size: 13px;
+    font-weight: 570;
+}
+
+.wallet-send-dialog .send-recipient-input {
+    min-height: 48px;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.wallet-send-dialog .send-recipient-input input {
+    height: 46px;
+    font-size: 16px;
+    letter-spacing: -.01em;
+}
+
+.wallet-send-dialog .send-recipient-input input::placeholder {
+    color: #696668;
+}
+
+.wallet-send-dialog .send-recipient-input button {
+    min-height: 36px;
+    gap: 6px;
+    padding: 0 10px;
+    border: 1px solid rgb(255 255 255 / 7%);
+    border-radius: 999px;
+    background: rgb(255 255 255 / 6%);
+    color: #e4e1e3;
+    font-weight: 560;
+}
+
+.wallet-send-dialog .send-recipient-input button:hover {
+    background: rgb(255 255 255 / 10%);
+}
+
+.wallet-send-dialog .recipient-preview {
+    margin-top: 8px;
+    color: var(--send-accent);
+}
+
+.wallet-send-dialog .send-error {
+    margin: 0 22px 10px;
+    padding: 10px 12px;
+    border: 1px solid rgb(255 112 135 / 17%);
+    border-radius: 13px;
+    background: rgb(255 112 135 / 8%);
+    color: #ff9bac;
+}
+
+.wallet-send-dialog .send-primary-button {
+    width: calc(100% - 36px);
+    min-height: 56px;
+    margin: 6px 18px 18px;
+    border-radius: 18px;
+    background: var(--send-accent);
+    box-shadow: 0 10px 28px rgb(80 130 70 / 16%);
+    color: #10210f;
+    font-size: 16px;
+    font-weight: 700;
+    transition:
+        transform 140ms ease,
+        filter 140ms ease,
+        background 140ms ease;
+}
+
+.wallet-send-dialog .send-primary-button:hover:not(:disabled) {
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+}
+
+.wallet-send-dialog .send-primary-button:active:not(:disabled) {
+    transform: translateY(0) scale(.995);
+}
+
+.wallet-send-dialog .send-primary-button:disabled {
+    background: #2b292a;
+    box-shadow: none;
+    color: #777376;
+}
+
+.wallet-send-dialog .send-review {
+    margin: 10px 18px 14px;
+    padding: 19px;
+    border-radius: 22px;
+}
+
+.wallet-send-dialog .send-review h3 {
+    margin-bottom: 18px;
+    font-size: 18px;
+    font-weight: 620;
+    letter-spacing: -.015em;
+}
+
+.wallet-send-dialog .send-review dl {
+    gap: 14px;
+}
+
+.wallet-send-dialog .send-review dl div {
+    gap: 22px;
+    padding-bottom: 11px;
+    border-bottom: 1px solid rgb(255 255 255 / 6%);
+}
+
+.wallet-send-dialog .send-review dl div:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.wallet-send-dialog .send-review dt {
+    color: var(--send-muted);
+    font-size: 12.5px;
+}
+
+.wallet-send-dialog .send-review dd {
+    font-size: 12.5px;
+    font-weight: 560;
+}
+
+/* The shared token selector normally sits below wallet dialogs (z-index 100).
+   Send is a nested wallet flow, so its selector must sit above the send modal. */
+.ps-token-selector-backdrop[data-side='send'] {
+    z-index: 180;
+    background: rgb(0 0 0 / 68%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.ps-token-selector-backdrop[data-side='send'] .ps-token-selector-dialog {
+    width: min(520px, calc(100vw - 28px));
+    max-height: min(720px, calc(100dvh - 28px));
+    border: 1px solid rgb(255 255 255 / 9%);
+    border-radius: 28px;
+    background: #181718;
+    box-shadow:
+        0 34px 100px rgb(0 0 0 / 64%),
+        0 0 0 1px rgb(255 255 255 / 2%) inset;
+}
+
+.ps-token-selector-backdrop[data-side='send'] .ps-token-selector-header {
+    padding: 18px 20px 10px;
+}
+
+.ps-token-selector-backdrop[data-side='send'] .ps-token-selector-header h2 {
+    font-size: 20px;
+    font-weight: 620;
+    letter-spacing: -.02em;
+}
+
+.ps-token-selector-backdrop[data-side='send'] .ps-token-search-wrapper {
+    padding: 8px 16px 10px;
+}
+
+.ps-token-selector-backdrop[data-side='send'] .ps-token-search {
+    min-height: 54px;
+    border-color: rgb(255 255 255 / 8%);
+    border-radius: 18px;
+    background: #232122;
+}
+
+.ps-token-selector-backdrop[data-side='send'] .ps-token-selector-scroll {
+    padding-bottom: 14px;
+}
+
+@keyframes send-dialog-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -48%) scale(.975);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+@media (max-width: 640px) {
+    .wallet-dialog.wallet-send-dialog {
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        max-height: calc(100dvh - 8px);
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 28px 28px 0 0;
+        transform: none;
+        animation: send-sheet-in 240ms cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .wallet-send-dialog .wallet-dialog-header {
+        min-height: 68px;
+        padding-top: 12px;
+    }
+
+    .wallet-send-dialog .send-form {
+        padding-right: 12px;
+        padding-left: 12px;
+    }
+
+    .wallet-send-dialog .send-amount-card {
+        min-height: 154px;
+        padding: 18px;
+        border-radius: 22px;
+    }
+
+    .wallet-send-dialog .send-recipient-card {
+        border-radius: 19px;
+    }
+
+    .wallet-send-dialog .send-primary-button {
+        width: calc(100% - 24px);
+        margin-right: 12px;
+        margin-bottom: max(12px, env(safe-area-inset-bottom));
+        margin-left: 12px;
+    }
+
+    .ps-token-selector-backdrop[data-side='send'] {
+        align-items: end;
+        padding: 0;
+    }
+
+    .ps-token-selector-backdrop[data-side='send'] .ps-token-selector-dialog {
+        width: 100%;
+        max-height: calc(100dvh - 8px);
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 28px 28px 0 0;
+    }
+}
+
+@keyframes send-sheet-in {
+    from {
+        opacity: 0;
+        transform: translateY(28px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wallet-dialog.wallet-send-dialog,
+    .wallet-send-dialog .wallet-icon-button,
+    .wallet-send-dialog .send-token-button,
+    .wallet-send-dialog .send-primary-button {
+        animation: none;
+        transition: none;
+    }
+}
