@@ -1,0 +1,40 @@
+name: Contributor Assignment Agreement
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-acceptance:
+    name: Verify CAA v1.2 acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify contributor acceptance checkbox
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          node <<'NODE'
+          const body = process.env.PR_BODY || '';
+          const author = process.env.PR_AUTHOR || 'unknown';
+
+          const required =
+            'I have read and agree to the PistachioSwap Contributor Assignment Agreement Version 1.2. By checking this box from my authenticated GitHub account, I intend this action to serve as my electronic signature. I confirm that I own or control the rights I am assigning, have authority to assign them, and understand that this Agreement covers my applicable existing and future PistachioSwap Contributions as described in the Agreement.';
+
+          const accepted = body
+            .split(/\r?\n/)
+            .some((line) => /^\s*-\s*\[[xX]\]\s+/.test(line) && line.includes(required));
+
+          if (!accepted) {
+            console.error(`CAA v1.2 has not been accepted by @${author}.`);
+            console.error('Open the pull request description, read the Contributor Assignment Agreement, and personally check the CAA acceptance box.');
+            console.error('The exact Version 1.2 acceptance statement must remain unchanged.');
+            process.exit(1);
+          }
+
+          console.log(`CAA v1.2 acceptance found for @${author}.`);
+          NODE
