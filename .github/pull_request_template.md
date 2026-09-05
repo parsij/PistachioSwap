@@ -8,8 +8,10 @@ List the checks or tests you ran.
 
 ## Contributor Assignment Agreement
 
-Read the [PistachioSwap Contributor Assignment Agreement](https://github.com/parsij/PistachioSwap/blob/main/CONTRIBUTOR_ASSIGNMENT_AGREEMENT.md), then paste the following statement unchanged below. The pull request must not be merged without this acceptance.
+Read the [PistachioSwap Contributor Assignment Agreement Version 1.2](https://github.com/parsij/PistachioSwap/blob/main/CONTRIBUTOR_ASSIGNMENT_AGREEMENT.md).
 
-> I have read and agree to the PistachioSwap Contributor Assignment Agreement Version 1.1. I intend this acceptance from my GitHub account to serve as my electronic signature, and I confirm that I have authority to submit and assign this contribution.
+The contributor who opened this pull request must personally check the box below. Do not check it on another contributor’s behalf. The pull request must not be merged without acceptance.
 
-<!-- Paste the exact acceptance statement here. A checkbox alone is not acceptance. -->
+- [ ] I have read and agree to the PistachioSwap Contributor Assignment Agreement Version 1.2. By checking this box from my authenticated GitHub account, I intend this action to serve as my electronic signature. I confirm that I own or control the rights I am assigning, have authority to assign them, and understand that this Agreement covers my applicable existing and future PistachioSwap Contributions as described in the Agreement.
+
+<!-- The Contributor Assignment Agreement workflow verifies that this exact acceptance box is checked. -->
