@@ -167,9 +167,9 @@ function displayQuality(frame) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const targetPixels = Math.max(frame.clientWidth, 320) * dpr
 
-    if (targetPixels <= 540) return 'low'
-    if (targetPixels <= 900) return 'medium'
-    if (targetPixels <= 1250) return 'high'
+    if (targetPixels <= 520) return 'low'
+    if (targetPixels <= 820) return 'medium'
+    if (targetPixels <= 1050) return 'high'
     return 'ultra'
 }
 
