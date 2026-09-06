@@ -1,5 +1,4 @@
 import './coin-media.js'
-import './coin-media-playback.js'
 
 /*
  * Auto-scrolling chain bar. Drag left or right with the mouse (or a finger)
