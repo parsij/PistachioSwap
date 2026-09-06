@@ -107,7 +107,7 @@ function createCoin(THREE, logoTexture) {
 }
 
 export async function mountLiveCoin(frame, { onFirstFrame } = {}) {
-    const THREE = await import(THREE_URL)
+    const THREE = await import(/* @vite-ignore */ THREE_URL)
     const logoTexture = await loadLogoTexture(THREE)
 
     const scene = new THREE.Scene()
