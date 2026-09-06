@@ -185,7 +185,7 @@ describe('wallet activity route trust filtering', () => {
         vi.clearAllMocks()
     })
 
-    it('returns only trusted token activity and does not turn random interactions into swaps', async () => {
+    it('keeps user-initiated history while filtering unsolicited untrusted receives', async () => {
         mocks.getWalletTokens.mockResolvedValue([
             token(usdtAddress),
             token(scamAddress, {
@@ -227,17 +227,21 @@ describe('wallet activity route trust filtering', () => {
         await app.close()
 
         expect(response.statusCode).toBe(200)
-        expect(response.json().items).toHaveLength(1)
-        expect(response.json().items[0]).toMatchObject({
+        expect(response.json().items).toHaveLength(2)
+        expect(response.json().items.find((item: { type: string }) =>
+            item.type === 'sent')).toMatchObject({
             type: 'sent',
             token: expect.objectContaining({
                 symbol: 'USDT',
                 visibility: 'primary',
             }),
         })
+        expect(response.json().items.find((item: { type: string }) =>
+            item.type === 'contract')).toMatchObject({
+            type: 'contract',
+            recipient,
+        })
         expect(response.body).not.toContain('RETURN TO MEMES')
-        expect(response.json().items.map((item: { type: string }) => item.type))
-            .not.toContain('contract')
         expect(response.json().items.map((item: { type: string }) => item.type))
             .not.toContain('swapped')
     })
