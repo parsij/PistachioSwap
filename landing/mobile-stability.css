@@ -59,7 +59,7 @@ svg {
      * offsets, and no child is allowed to establish a wider containing block.
      */
     .shell {
-        width: calc(100% - (2 * var(--landing-gutter))) !important;
+        width: calc(100% - var(--landing-gutter) - var(--landing-gutter)) !important;
         min-width: 0 !important;
         max-width: var(--landing-content-max) !important;
         margin-inline: auto !important;
