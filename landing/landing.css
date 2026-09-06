@@ -33,11 +33,16 @@
 }
 
 html {
+    max-width: 100%;
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 body {
+    max-width: 100%;
     margin: 0;
+    overflow-x: hidden;
     background: var(--bg);
     color: var(--text);
     font-family: var(--font);
@@ -827,6 +832,12 @@ p {
         grid-template-columns: 1fr;
     }
 
+    .hero-actions {
+        width: min(100%, 420px);
+        margin-right: auto;
+        margin-left: auto;
+    }
+
     .hero-actions .button {
         width: 100%;
     }
@@ -856,6 +867,12 @@ p {
         height: auto;
         min-height: 72px;
         padding-block: 6px;
+    }
+
+    a,
+    button,
+    summary {
+        touch-action: manipulation;
     }
 }
 
