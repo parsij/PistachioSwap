@@ -11,6 +11,41 @@ import {
 } from '../services/walletActivity.js'
 import { fetchWalletHistory } from '../services/walletHistory.js'
 
+// The backend currently has verified Moralis history support for these active
+// networks. Query them all instead of inferring history scope from current
+// balances: a chain must not disappear from activity just because the wallet
+// no longer holds a token there.
+export const REMOTE_WALLET_HISTORY_CHAIN_IDS = Object.freeze([
+    1,
+    10,
+    56,
+    100,
+    137,
+    8453,
+    42161,
+    43114,
+    59144,
+])
+
+const REMOTE_HISTORY_BATCH_SIZE = 8
+
+function historyBatches() {
+    const batches = []
+    for (
+        let index = 0;
+        index < REMOTE_WALLET_HISTORY_CHAIN_IDS.length;
+        index += REMOTE_HISTORY_BATCH_SIZE
+    ) {
+        batches.push(
+            REMOTE_WALLET_HISTORY_CHAIN_IDS.slice(
+                index,
+                index + REMOTE_HISTORY_BATCH_SIZE,
+            ),
+        )
+    }
+    return batches
+}
+
 function activityKey(item) {
     return item?.hash
         ? `${Number(item.chainId)}:${String(item.hash).toLowerCase()}:${String(item.type)}`
@@ -19,7 +54,6 @@ function activityKey(item) {
 
 export function useWalletActivity({
     walletAddress,
-    chainIds = [],
     limit = 50,
 } = {}) {
     const [localItems, setLocalItems] = useState(() =>
@@ -27,12 +61,7 @@ export function useWalletActivity({
     const [remoteItems, setRemoteItems] = useState([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
-    const chainKey = useMemo(
-        () => [...new Set(chainIds.map(Number).filter(Number.isSafeInteger))]
-            .sort((left, right) => left - right)
-            .join(','),
-        [chainIds],
-    )
+    const batches = useMemo(historyBatches, [])
 
     useEffect(() => {
         const refreshLocal = () => setLocalItems(
@@ -53,28 +82,36 @@ export function useWalletActivity({
         const controller = new AbortController()
         setLoading(true)
         setError(null)
-        fetchWalletHistory({
-            walletAddress,
-            chainIds: chainKey ? chainKey.split(',').map(Number) : [],
-            limit,
-            signal: controller.signal,
-        }).then((payload) => {
-            const normalized = payload.items
+
+        Promise.allSettled(
+            batches.map((chainIds) => fetchWalletHistory({
+                walletAddress,
+                chainIds,
+                limit,
+                signal: controller.signal,
+            })),
+        ).then((results) => {
+            if (controller.signal.aborted) return
+
+            const fulfilled = results.filter((result) =>
+                result.status === 'fulfilled')
+            const normalized = fulfilled
+                .flatMap((result) => result.value.items)
                 .map(normalizeWalletActivity)
                 .filter(Boolean)
+
             setRemoteItems(normalized)
-        }).catch((caught) => {
-            if (caught?.name === 'AbortError') return
-            setRemoteItems([])
-            setError(caught instanceof Error
-                ? caught.message
-                : 'Wallet history could not be loaded.')
+            if (fulfilled.length === 0) {
+                setError('Wallet history could not be loaded.')
+            } else if (fulfilled.length < results.length) {
+                setError('Some wallet history could not be loaded.')
+            }
         }).finally(() => {
             if (!controller.signal.aborted) setLoading(false)
         })
 
         return () => controller.abort()
-    }, [chainKey, limit, walletAddress])
+    }, [batches, limit, walletAddress])
 
     const items = useMemo(() => {
         const merged = new Map()
