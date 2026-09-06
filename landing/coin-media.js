@@ -10,6 +10,7 @@ const MEDIA = {
 }
 
 const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra']
+const VIDEO_START_TIMEOUT_MS = 4500
 
 const HERO_STYLES = `
 .hero.hero-with-coin {
@@ -71,7 +72,8 @@ const HERO_STYLES = `
 }
 
 .hero-coin-poster,
-.hero-coin-video {
+.hero-coin-video,
+.hero-coin-live {
     position: absolute;
     inset: 0;
     display: block;
@@ -89,13 +91,15 @@ const HERO_STYLES = `
     transition: opacity 260ms ease;
 }
 
-.hero-coin-video {
+.hero-coin-video,
+.hero-coin-live {
     z-index: 2;
     opacity: 0;
     transition: opacity 260ms ease;
 }
 
-.hero-coin-video.is-ready {
+.hero-coin-video.is-ready,
+.hero-coin-live.is-ready {
     opacity: 1;
 }
 
@@ -149,7 +153,8 @@ const HERO_STYLES = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .hero-coin-video {
+    .hero-coin-video,
+    .hero-coin-live {
         display: none;
     }
 
@@ -243,9 +248,48 @@ function createCoinMedia() {
     video.poster = MEDIA.posterJpg
     video.disablePictureInPicture = true
     video.setAttribute('tabindex', '-1')
+    video.setAttribute('muted', '')
+    video.setAttribute('autoplay', '')
+    video.setAttribute('loop', '')
+    video.setAttribute('playsinline', '')
+    video.setAttribute('webkit-playsinline', '')
 
     frame.append(picture, video)
     return { frame, poster, video }
+}
+
+function stopVideo(video) {
+    try {
+        video.pause()
+    } catch {}
+    video.removeAttribute('src')
+    video.load()
+    video.remove()
+}
+
+async function startLiveFallback(video, poster, frame, reason) {
+    if (frame.dataset.liveFallback === 'loading' || frame.dataset.liveFallback === 'ready') return
+    frame.dataset.liveFallback = 'loading'
+    frame.dataset.videoFallbackReason = reason
+
+    video.classList.remove('is-ready')
+    poster.classList.remove('is-faded')
+    stopVideo(video)
+
+    try {
+        const { mountLiveCoin } = await import('./coin-live.js')
+        await mountLiveCoin(frame, {
+            onFirstFrame: (canvas) => {
+                frame.dataset.liveFallback = 'ready'
+                canvas.classList.add('is-ready')
+                poster.classList.add('is-faded')
+            },
+        })
+    } catch (error) {
+        frame.dataset.liveFallback = 'failed'
+        poster.classList.remove('is-faded')
+        console.warn('[pistachio-swap] live coin fallback failed', error)
+    }
 }
 
 function startCoinMedia(video, poster, frame) {
@@ -255,22 +299,49 @@ function startCoinMedia(video, poster, frame) {
     video.dataset.quality = quality
     video.src = MEDIA[quality]
 
+    let revealed = false
+    let fallbackStarted = false
+    let timeoutId = 0
+
+    const fallback = (reason) => {
+        if (revealed || fallbackStarted) return
+        fallbackStarted = true
+        clearTimeout(timeoutId)
+        void startLiveFallback(video, poster, frame, reason)
+    }
+
     const reveal = () => {
-        requestAnimationFrame(() => {
+        if (fallbackStarted) return
+        revealed = true
+        clearTimeout(timeoutId)
+
+        const show = () => {
             video.classList.add('is-ready')
             poster.classList.add('is-faded')
-        })
+        }
+
+        if (typeof video.requestVideoFrameCallback === 'function') {
+            video.requestVideoFrameCallback(show)
+        } else {
+            requestAnimationFrame(show)
+        }
     }
 
     video.addEventListener('playing', reveal, { once: true })
-    video.addEventListener('error', () => {
-        video.classList.remove('is-ready')
-        poster.classList.remove('is-faded')
+    video.addEventListener('error', () => fallback('video-error'), { once: true })
+    video.addEventListener('stalled', () => {
+        if (!revealed && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) fallback('video-stalled')
     }, { once: true })
+
+    timeoutId = window.setTimeout(() => {
+        if (!revealed || video.paused || video.currentTime <= 0) fallback('video-start-timeout')
+    }, VIDEO_START_TIMEOUT_MS)
 
     video.load()
     const playback = video.play()
-    if (playback?.catch) playback.catch(() => {})
+    if (playback?.catch) {
+        playback.catch(() => fallback('autoplay-rejected'))
+    }
 }
 
 export function setupLandingCoin() {
