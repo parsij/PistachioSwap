@@ -96,25 +96,44 @@ function findActivityToken(activity, assets) {
     }
 }
 
+function activityAsset(candidate, assets, chainId) {
+    if (!candidate) return null
+    const address = String(candidate.address ?? '').toLowerCase()
+    return assets.find((token) =>
+        Number(token.chainId) === Number(chainId) &&
+        String(token.address ?? '').toLowerCase() === address) ?? candidate
+}
+
 function activityTokenTrusted(candidate, assets, chainId) {
     if (!candidate) return false
     if (candidate.isNative === true) return true
-    const address = String(candidate.address ?? '').toLowerCase()
-    const match = assets.find((token) =>
-        Number(token.chainId) === Number(chainId) &&
-        String(token.address ?? '').toLowerCase() === address)
-    const token = match ?? candidate
-    return isTrustedWalletToken(token)
+    return isTrustedWalletToken(activityAsset(candidate, assets, chainId))
 }
 
-function filterTrustedActivity(items, assets) {
+function activityTokenBlocked(candidate, assets, chainId) {
+    const token = activityAsset(candidate, assets, chainId)
+    if (!token) return false
+    return token.possibleSpam === true ||
+        ['high', 'blocked'].includes(token.securityStatus)
+}
+
+function filterVisibleActivity(items, assets) {
     return items.filter((activity) => {
-        if (activity.type === 'contract') return false
-        if (activity.type === 'swapped') {
-            return activityTokenTrusted(activity.sellToken, assets, activity.chainId) &&
-                activityTokenTrusted(activity.buyToken, assets, activity.chainId)
+        // Incoming transfers are the unsolicited-spam surface, so they retain
+        // the strict portfolio trust gate. Outgoing activity is user-initiated
+        // history and must not disappear just because a balance is now zero or
+        // an asset is absent from the current primary portfolio.
+        if (activity.type === 'received') {
+            return activityTokenTrusted(activity.token, assets, activity.chainId)
         }
-        return activityTokenTrusted(activity.token, assets, activity.chainId)
+        if (activity.type === 'swapped') {
+            return !activityTokenBlocked(activity.sellToken, assets, activity.chainId) &&
+                !activityTokenBlocked(activity.buyToken, assets, activity.chainId)
+        }
+        if (activity.type === 'sent' || activity.type === 'approved') {
+            return !activityTokenBlocked(activity.token, assets, activity.chainId)
+        }
+        return activity.type === 'contract'
     })
 }
 
@@ -363,7 +382,7 @@ export default function WalletAccountDialog({
         [visiblePortfolioAssets],
     )
     const visibleActivity = useMemo(
-        () => filterTrustedActivity(activity, assets),
+        () => filterVisibleActivity(activity, assets),
         [activity, assets],
     )
     const recentActivity = visibleActivity.slice(0, 3)
