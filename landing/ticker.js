@@ -182,7 +182,23 @@ export function setupFaqDetails(details) {
     })
 }
 
+function removeLandingStatsPanel() {
+    document.querySelector('main .stats')?.remove()
+}
+
+function renameSourceCodeButton() {
+    document
+        .querySelectorAll('a[href="https://github.com/parsij/PistachioSwap"]')
+        .forEach((link) => {
+            if (link.textContent?.trim() === 'Read the source') {
+                link.textContent = 'View source code'
+            }
+        })
+}
+
 function startLandingInteractions() {
+    removeLandingStatsPanel()
+    renameSourceCodeButton()
     document.querySelectorAll('.network-ticker').forEach(setupTicker)
     document.querySelectorAll('.faq details').forEach(setupFaqDetails)
 }
