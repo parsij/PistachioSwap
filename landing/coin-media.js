@@ -13,6 +13,9 @@ const MEDIA = {
 const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra']
 const GIF_LOAD_TIMEOUT_MS = 7000
 const VIDEO_START_TIMEOUT_MS = 4500
+const IS_IOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
 const HERO_STYLES = `
 .hero.hero-with-coin {
@@ -303,6 +306,7 @@ async function startLiveFallback(gif, video, poster, frame, reason) {
         await mountLiveCoin(frame, {
             onFirstFrame: (canvas) => {
                 frame.dataset.liveFallback = 'ready'
+                frame.dataset.mediaMode = 'live'
                 canvas.classList.add('is-ready')
                 poster.classList.add('is-faded')
             },
@@ -343,6 +347,7 @@ function startVideoFallback(gif, video, poster, frame, gifReason) {
         clearTimeout(timeoutId)
 
         const show = () => {
+            frame.dataset.mediaMode = 'video'
             video.classList.add('is-ready')
             poster.classList.add('is-faded')
         }
@@ -375,9 +380,7 @@ function startVideoFallback(gif, video, poster, frame, gifReason) {
     }
 }
 
-function startCoinMedia(gif, video, poster, frame) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-
+function startGifThenVideo(gif, video, poster, frame) {
     let gifResolved = false
     const gifTimeout = window.setTimeout(() => {
         if (gifResolved) return
@@ -404,6 +407,18 @@ function startCoinMedia(gif, video, poster, frame) {
     }, { once: true })
 
     gif.src = MEDIA.gif
+}
+
+function startCoinMedia(gif, video, poster, frame) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    if (IS_IOS) {
+        frame.dataset.iosMediaPath = 'video-then-live'
+        startVideoFallback(gif, video, poster, frame, 'ios-skip-gif')
+        return
+    }
+
+    startGifThenVideo(gif, video, poster, frame)
 }
 
 export function setupLandingCoin() {
