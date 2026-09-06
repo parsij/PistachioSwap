@@ -11,6 +11,7 @@ import {
 import { hasPersistedWalletSession } from './web3/walletSession.js'
 import './index.css'
 import './mobileHardening.css'
+import './features/wallet/components/wallet/walletAccountMotion.css'
 
 const root = createRoot(document.getElementById('root'))
 const kitHost = document.getElementById('wallet-kit-root')
