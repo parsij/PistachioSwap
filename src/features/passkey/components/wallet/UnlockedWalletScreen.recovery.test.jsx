@@ -120,19 +120,35 @@ describe('wallet secret reveal UI', () => {
         expect(mocks.addBackupPasskey).toHaveBeenCalledWith('Backup passkey')
     })
 
-    it('requires another passkey, an offline backup, and explicit confirmation before removing access', async () => {
+    it('requires another passkey and explicit confirmation before removing access', async () => {
         const user = userEvent.setup()
         const initial = snapshot()
-        const view = render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={initial} />)
+        const singleView = render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={initial} />)
         await user.click(screen.getByRole('button', { name: 'Details for Primary passkey' }))
         expect(screen.getByRole('button', { name: 'Remove Primary passkey' }).disabled).toBe(true)
-        const multiple = { ...initial, recoveryBackupConfirmed: false, vault: { ...initial.vault, keyWraps: [...initial.vault.keyWraps, { ...initial.vault.keyWraps[0], id: 'wrap-2', label: 'Backup passkey' }] } }
-        view.rerender(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={multiple} />)
-        expect(screen.getByRole('button', { name: 'Remove Primary passkey' }).disabled).toBe(true)
-        view.rerender(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={{ ...multiple, recoveryBackupConfirmed: true }} />)
-        await user.click(screen.getByRole('button', { name: 'Remove Primary passkey' }))
+        singleView.unmount()
+
+        const multiple = {
+            ...initial,
+            recoveryBackupConfirmed: false,
+            vault: {
+                ...initial.vault,
+                keyWraps: [
+                    ...initial.vault.keyWraps,
+                    { ...initial.vault.keyWraps[0], id: 'wrap-2', label: 'Backup passkey' },
+                ],
+            },
+        }
+        render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={multiple} />)
+        await user.click(screen.getByRole('button', { name: 'Details for Primary passkey' }))
+
+        const primaryCard = screen.getByRole('article', { name: 'Primary passkey' })
+        const removeButton = within(primaryCard).getByRole('button', { name: 'Remove Primary passkey' })
+        expect(removeButton.disabled).toBe(false)
+        expect(within(primaryCard).getByText('Another passkey will remain after removal. Keep an offline recovery backup too.')).toBeTruthy()
+        await user.click(removeButton)
         expect(mocks.removePasskey).not.toHaveBeenCalled()
-        const confirmation = screen.getByRole('group', { name: 'Confirm removal of Primary passkey' })
+        const confirmation = within(primaryCard).getByRole('group', { name: 'Confirm removal of Primary passkey' })
         await user.click(within(confirmation).getByRole('button', { name: 'Remove passkey' }))
         expect(mocks.removePasskey).toHaveBeenCalledWith('wrap-1')
     })
@@ -141,7 +157,10 @@ describe('wallet secret reveal UI', () => {
         const user = userEvent.setup()
         const onClose = vi.fn()
         render(<UnlockedContent onClose={onClose} onSensitiveChange={vi.fn()} snapshot={snapshot()} />)
-        await user.click(screen.getByRole('button', { name: 'Test passkey unlock' }))
+        const backupHint = screen.getByText('Keep an offline recovery backup before removing a passkey.').parentElement
+        const testButton = screen.getByRole('button', { name: 'Test passkey unlock' })
+        expect(backupHint.compareDocumentPosition(testButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        await user.click(testButton)
         expect(mocks.reauthenticate).toHaveBeenCalledOnce()
         expect(await screen.findByText('Passkey verified. This wallet can be unlocked with it.')).toBeTruthy()
         await user.click(screen.getByRole('button', { name: 'Done' }))
