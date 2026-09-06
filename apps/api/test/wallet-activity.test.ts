@@ -114,8 +114,8 @@ function historyRow({
     summary,
     transfers = [],
     input = '0x',
-    fromAddress = wallet,
-    toAddress = recipient,
+    fromAddress,
+    toAddress,
     category,
     authorizationList,
 }: {
@@ -128,6 +128,7 @@ function historyRow({
     category?: string
     authorizationList?: unknown[]
 }) {
+    const receiving = /^receive\b/i.test(summary)
     return {
         hash: `0x${hash.padStart(64, '0')}`,
         receipt_status: '1',
@@ -136,8 +137,8 @@ function historyRow({
         category,
         input,
         block_timestamp: '2026-07-22T12:00:00.000Z',
-        from_address: fromAddress,
-        to_address: toAddress,
+        from_address: fromAddress ?? (receiving ? recipient : wallet),
+        to_address: toAddress ?? (receiving ? wallet : recipient),
         erc20_transfers: transfers,
         native_transfers: [],
         authorization_list: authorizationList,
