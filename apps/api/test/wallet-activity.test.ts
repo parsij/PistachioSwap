@@ -114,8 +114,8 @@ function historyRow({
     summary,
     transfers = [],
     input = '0x',
-    fromAddress = wallet,
-    toAddress = recipient,
+    fromAddress,
+    toAddress,
     category,
     authorizationList,
 }: {
@@ -128,6 +128,7 @@ function historyRow({
     category?: string
     authorizationList?: unknown[]
 }) {
+    const receiving = /^receive\b/i.test(summary)
     return {
         hash: `0x${hash.padStart(64, '0')}`,
         receipt_status: '1',
@@ -136,8 +137,8 @@ function historyRow({
         category,
         input,
         block_timestamp: '2026-07-22T12:00:00.000Z',
-        from_address: fromAddress,
-        to_address: toAddress,
+        from_address: fromAddress ?? (receiving ? recipient : wallet),
+        to_address: toAddress ?? (receiving ? wallet : recipient),
         erc20_transfers: transfers,
         native_transfers: [],
         authorization_list: authorizationList,
@@ -185,7 +186,7 @@ describe('wallet activity route trust filtering', () => {
         vi.clearAllMocks()
     })
 
-    it('returns only trusted token activity and does not turn random interactions into swaps', async () => {
+    it('keeps user-initiated history while filtering unsolicited untrusted receives', async () => {
         mocks.getWalletTokens.mockResolvedValue([
             token(usdtAddress),
             token(scamAddress, {
@@ -227,17 +228,21 @@ describe('wallet activity route trust filtering', () => {
         await app.close()
 
         expect(response.statusCode).toBe(200)
-        expect(response.json().items).toHaveLength(1)
-        expect(response.json().items[0]).toMatchObject({
+        expect(response.json().items).toHaveLength(2)
+        expect(response.json().items.find((item: { type: string }) =>
+            item.type === 'sent')).toMatchObject({
             type: 'sent',
             token: expect.objectContaining({
                 symbol: 'USDT',
                 visibility: 'primary',
             }),
         })
+        expect(response.json().items.find((item: { type: string }) =>
+            item.type === 'contract')).toMatchObject({
+            type: 'contract',
+            recipient,
+        })
         expect(response.body).not.toContain('RETURN TO MEMES')
-        expect(response.json().items.map((item: { type: string }) => item.type))
-            .not.toContain('contract')
         expect(response.json().items.map((item: { type: string }) => item.type))
             .not.toContain('swapped')
     })
