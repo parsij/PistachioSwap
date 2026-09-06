@@ -1,3 +1,10 @@
+import {
+    decodeFunctionData,
+    formatUnits,
+    isHex,
+    zeroAddress,
+    type Hex,
+} from 'viem'
 import type { FastifyPluginAsync } from 'fastify'
 
 import {
@@ -33,6 +40,7 @@ type KnownActivityToken = WalletToken | PublicFallbackToken
 type Transfer = {
     token: ActivityToken
     amount: string | null
+    rawAmount: bigint | null
     from: string | null
     to: string | null
     direction: 'incoming' | 'outgoing' | null
@@ -44,6 +52,47 @@ const MORALIS_CHAIN_IDS = new Set(
         .map((chain) => chain.chainId),
 )
 
+// Production same-chain Gas Assist delegates the user's BNB Chain EOA to this
+// ownerless EIP-7702 executor. The top-level transaction still targets the
+// user's own EOA, so wallet history cannot identify it from `to_address` alone.
+export const GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS =
+    '0x973731be76bdb84b994d32ef1e9607edebfbe470'
+
+const gasAssistAtomicExecutorAbi = [
+    {
+        type: 'function',
+        name: 'executeAtomicSwap',
+        stateMutability: 'payable',
+        inputs: [
+            { name: 'treasury', type: 'address' },
+            { name: 'paymentToken', type: 'address' },
+            { name: 'feeAmount', type: 'uint256' },
+            { name: 'sellToken', type: 'address' },
+            { name: 'swapAmount', type: 'uint256' },
+            { name: 'buyToken', type: 'address' },
+            { name: 'router', type: 'address' },
+            { name: 'swapCalldata', type: 'bytes' },
+            { name: 'minOut', type: 'uint256' },
+        ],
+        outputs: [],
+    },
+] as const
+
+const erc20ApproveAbi = [
+    {
+        type: 'function',
+        name: 'approve',
+        stateMutability: 'nonpayable',
+        inputs: [
+            { name: 'spender', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+        ],
+        outputs: [{ name: '', type: 'bool' }],
+    },
+] as const
+
+const UINT256_MAX = (1n << 256n) - 1n
+
 function stringValue(value: unknown, maximumLength = 200) {
     if (typeof value !== 'string') return null
     const text = value.trim()
@@ -53,6 +102,16 @@ function stringValue(value: unknown, maximumLength = 200) {
 function decimalValue(value: unknown) {
     const text = String(value ?? '').trim()
     return /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text) ? text : null
+}
+
+function uintValue(value: unknown) {
+    const text = String(value ?? '').trim()
+    if (!/^\d+$/.test(text)) return null
+    try {
+        return BigInt(text)
+    } catch {
+        return null
+    }
 }
 
 function booleanValue(value: unknown) {
@@ -71,6 +130,20 @@ function safeHttpsUrl(value: unknown) {
             : null
     } catch {
         return null
+    }
+}
+
+function activityTokenForAddress(chainId: number, value: unknown): ActivityToken | null {
+    const address = normalizeAddress(value)
+    if (!address) return null
+    if (address === zeroAddress) return activityTokenFromNative(chainId, null)
+    return {
+        address,
+        symbol: null,
+        name: null,
+        decimals: null,
+        isNative: false,
+        logoURI: null,
     }
 }
 
@@ -130,6 +203,7 @@ function erc20Transfer(wallet: string, value: unknown): Transfer | null {
     return {
         token,
         amount: decimalValue(value.value_formatted),
+        rawAmount: uintValue(value.value),
         from,
         to,
         direction: transferDirection(wallet, from, to, value.direction),
@@ -147,6 +221,7 @@ function nativeTransfer(
     return {
         token: activityTokenFromNative(chainId, value),
         amount: decimalValue(value.value_formatted),
+        rawAmount: uintValue(value.value),
         from,
         to,
         direction: transferDirection(wallet, from, to, value.direction),
@@ -155,6 +230,172 @@ function nativeTransfer(
 
 function tokenIdentity(token: ActivityToken) {
     return token.isNative ? 'native' : token.address
+}
+
+function tokenMatchesAddress(token: ActivityToken, address: string) {
+    return address === zeroAddress
+        ? token.isNative
+        : token.address === address
+}
+
+function exactTransfer(
+    transfers: Transfer[],
+    address: string,
+    rawAmount?: bigint,
+) {
+    return transfers.find((transfer) =>
+        tokenMatchesAddress(transfer.token, address) &&
+        (rawAmount === undefined || transfer.rawAmount === rawAmount)) ?? null
+}
+
+function formatRawAmount(rawAmount: bigint, token: ActivityToken | null) {
+    const decimals = token?.decimals
+    if (!Number.isInteger(decimals) || decimals === null || decimals < 0 || decimals > 255) {
+        return null
+    }
+    try {
+        return formatUnits(rawAmount, decimals)
+    } catch {
+        return null
+    }
+}
+
+function authorizationAddresses(value: Record<string, unknown>) {
+    const candidates = value.authorization_list ?? value.authorizationList
+    if (!Array.isArray(candidates)) return []
+    return candidates
+        .map((entry) => isRecord(entry)
+            ? normalizeAddress(entry.address ?? entry.contract_address)
+            : null)
+        .filter((address): address is string => Boolean(address))
+}
+
+function gasAssistAuthorizationMatches(value: Record<string, unknown>) {
+    const addresses = authorizationAddresses(value)
+    // Some Moralis history responses do not expose EIP-7702 authorization
+    // tuples. When they are present, require the exact production executor.
+    return addresses.length === 0 || addresses.includes(GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS)
+}
+
+function decodeGasAssistActivity({
+    chainId,
+    wallet,
+    value,
+    hash,
+    timestamp,
+    outgoing,
+    incoming,
+}: {
+    chainId: number
+    wallet: string
+    value: Record<string, unknown>
+    hash: string
+    timestamp: string | null
+    outgoing: Transfer[]
+    incoming: Transfer[]
+}): Record<string, unknown> | null {
+    if (chainId !== 56) return null
+    const from = normalizeAddress(value.from_address)
+    const to = normalizeAddress(value.to_address)
+    if (from !== wallet || to !== wallet || !gasAssistAuthorizationMatches(value)) return null
+
+    const input = stringValue(value.input, 200_000)
+    if (!input || !isHex(input) || input.length < 10) return null
+
+    try {
+        const decoded = decodeFunctionData({
+            abi: gasAssistAtomicExecutorAbi,
+            data: input as Hex,
+        })
+        if (decoded.functionName !== 'executeAtomicSwap') return null
+
+        const [
+            ,
+            ,
+            ,
+            rawSellToken,
+            swapAmount,
+            rawBuyToken,
+        ] = decoded.args
+        const sellAddress = normalizeAddress(rawSellToken)
+        const normalizedBuyAddress = normalizeAddress(rawBuyToken)
+        if (!sellAddress || !normalizedBuyAddress || swapAmount <= 0n) return null
+
+        const buyAddress = normalizedBuyAddress === zeroAddress
+            ? zeroAddress
+            : normalizedBuyAddress
+        const exactSell = exactTransfer(outgoing, sellAddress, swapAmount)
+        const anySell = exactSell ?? exactTransfer(outgoing, sellAddress)
+        const buyTransfer = exactTransfer(incoming, buyAddress)
+        const sellToken = anySell?.token ?? activityTokenForAddress(chainId, sellAddress)
+        const buyToken = buyTransfer?.token ?? activityTokenForAddress(chainId, buyAddress)
+        if (!sellToken || !buyToken || tokenIdentity(sellToken) === tokenIdentity(buyToken)) {
+            return null
+        }
+
+        return {
+            id: `${chainId}:${hash}`,
+            walletAddress: wallet,
+            type: 'swapped',
+            chainId,
+            hash,
+            timestamp,
+            sellToken,
+            buyToken,
+            // The executor's swapAmount is the exact principal. Do not use the
+            // first outgoing transfer because it may be the Gas Assist fee.
+            sellAmount:
+                formatRawAmount(swapAmount, sellToken) ?? anySell?.amount ?? null,
+            buyAmount: buyTransfer?.amount ?? null,
+            recipient: wallet,
+            provider: 'pistachio-gas-assist',
+        }
+    } catch {
+        return null
+    }
+}
+
+function decodeApprovalActivity({
+    chainId,
+    wallet,
+    value,
+    hash,
+    timestamp,
+}: {
+    chainId: number
+    wallet: string
+    value: Record<string, unknown>
+    hash: string
+    timestamp: string | null
+}): Record<string, unknown> | null {
+    const from = normalizeAddress(value.from_address)
+    const tokenAddress = normalizeAddress(value.to_address)
+    const input = stringValue(value.input, 4_096)
+    if (from !== wallet || !tokenAddress || !input || !isHex(input) || input.length < 10) {
+        return null
+    }
+
+    try {
+        const decoded = decodeFunctionData({
+            abi: erc20ApproveAbi,
+            data: input as Hex,
+        })
+        if (decoded.functionName !== 'approve') return null
+        const [spender, amountRaw] = decoded.args
+        return {
+            id: `${chainId}:${hash}`,
+            walletAddress: wallet,
+            type: 'approved',
+            chainId,
+            hash,
+            timestamp,
+            token: activityTokenForAddress(chainId, tokenAddress),
+            amountRaw: amountRaw === UINT256_MAX ? null : amountRaw.toString(),
+            recipient: normalizeAddress(spender),
+        }
+    } catch {
+        return null
+    }
 }
 
 function normalizeMoralisActivity(
@@ -182,11 +423,32 @@ function normalizeMoralisActivity(
     const summary = `${String(value.summary ?? '')} ${String(value.method_label ?? '')}`
         .trim()
         .toLowerCase()
+    const category = String(value.category ?? '').trim().toLowerCase()
     const timestamp = stringValue(value.block_timestamp, 40)
     const from = normalizeAddress(value.from_address)
     const to = normalizeAddress(value.to_address)
 
-    if (/\b(?:approve|approval|set approval)\b/.test(summary)) {
+    const gasAssist = decodeGasAssistActivity({
+        chainId,
+        wallet,
+        value,
+        hash,
+        timestamp,
+        outgoing,
+        incoming,
+    })
+    if (gasAssist) return gasAssist
+
+    const decodedApproval = decodeApprovalActivity({
+        chainId,
+        wallet,
+        value,
+        hash,
+        timestamp,
+    })
+    if (decodedApproval) return decodedApproval
+
+    if (/\b(?:approve|approval|set approval)\b/.test(summary) || category === 'approve') {
         return {
             id: `${chainId}:${hash}`,
             walletAddress: wallet,
@@ -194,7 +456,7 @@ function normalizeMoralisActivity(
             chainId,
             hash,
             timestamp,
-            token: outgoing[0]?.token ?? null,
+            token: outgoing[0]?.token ?? activityTokenForAddress(chainId, to),
             amount: outgoing[0]?.amount ?? null,
             recipient: to,
         }
@@ -204,8 +466,11 @@ function normalizeMoralisActivity(
     const buy = incoming.find((item) =>
         !sell || tokenIdentity(item.token) !== tokenIdentity(sell.token)) ??
         incoming[0] ?? null
+    const swapSemantic =
+        /\b(?:swap|swapped|trade|traded)\b/.test(summary) ||
+        ['swap', 'token swap'].includes(category)
     if (
-        /\b(?:swap|swapped|trade|traded)\b/.test(summary) &&
+        swapSemantic &&
         sell && buy && tokenIdentity(sell.token) !== tokenIdentity(buy.token)
     ) {
         return {
@@ -370,13 +635,29 @@ function enrichActivityTokens(
             ),
         }
     }
+    const token = enrichActivityToken(
+        chainId,
+        item.token as ActivityToken | null,
+        trustedTokens,
+    )
+    let amount = item.amount ?? null
+    if (
+        amount == null &&
+        typeof item.amountRaw === 'string' &&
+        /^\d+$/.test(item.amountRaw) &&
+        token?.decimals != null
+    ) {
+        try {
+            amount = formatUnits(BigInt(item.amountRaw), Number(token.decimals))
+        } catch {
+            amount = null
+        }
+    }
     return {
         ...item,
-        token: enrichActivityToken(
-            chainId,
-            item.token as ActivityToken | null,
-            trustedTokens,
-        ),
+        token,
+        amount,
+        amountRaw: undefined,
     }
 }
 
@@ -499,6 +780,8 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
 
 export const walletActivityInternals = {
     activityTokenFromErc20,
+    decodeApprovalActivity,
+    decodeGasAssistActivity,
     normalizeMoralisActivity,
     requestedChainIds,
 }
