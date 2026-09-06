@@ -1,21 +1,11 @@
 const RELEASE_BASE = 'https://github.com/parsij/3d-gold-coin/releases/download/landing-media'
 
 const MEDIA = {
-    posterWebp: `${RELEASE_BASE}/coin-poster.webp`,
-    posterJpg: `${RELEASE_BASE}/coin-poster.jpg`,
-    gif: `${RELEASE_BASE}/coin-fallback.gif`,
+    poster: `${RELEASE_BASE}/coin-poster.webp`,
     low: `${RELEASE_BASE}/coin-low.mp4`,
-    medium: `${RELEASE_BASE}/coin-medium.mp4`,
-    high: `${RELEASE_BASE}/coin-high.mp4`,
-    ultra: `${RELEASE_BASE}/coin-ultra.mp4`,
 }
 
-const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra']
-const GIF_LOAD_TIMEOUT_MS = 7000
-const VIDEO_START_TIMEOUT_MS = 4500
-const IS_IOS =
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const VIDEO_START_TIMEOUT_MS = 3500
 
 const HERO_STYLES = `
 .hero.hero-with-coin {
@@ -62,6 +52,7 @@ const HERO_STYLES = `
     width: min(100%, 560px);
     aspect-ratio: 1;
     margin-left: auto;
+    background: var(--bg);
     isolation: isolate;
 }
 
@@ -77,7 +68,6 @@ const HERO_STYLES = `
 }
 
 .hero-coin-poster,
-.hero-coin-gif,
 .hero-coin-video,
 .hero-coin-live {
     position: absolute;
@@ -87,6 +77,7 @@ const HERO_STYLES = `
     height: 100%;
     object-fit: contain;
     object-position: center;
+    mix-blend-mode: lighten;
     -webkit-mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
     mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
 }
@@ -97,7 +88,6 @@ const HERO_STYLES = `
     transition: opacity 260ms ease;
 }
 
-.hero-coin-gif,
 .hero-coin-video,
 .hero-coin-live {
     z-index: 2;
@@ -105,7 +95,6 @@ const HERO_STYLES = `
     transition: opacity 260ms ease;
 }
 
-.hero-coin-gif.is-ready,
 .hero-coin-video.is-ready,
 .hero-coin-live.is-ready {
     opacity: 1;
@@ -161,7 +150,6 @@ const HERO_STYLES = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .hero-coin-gif,
     .hero-coin-video,
     .hero-coin-live {
         display: none;
@@ -172,47 +160,6 @@ const HERO_STYLES = `
     }
 }
 `
-
-function qualityIndex(name) {
-    return Math.max(0, QUALITY_ORDER.indexOf(name))
-}
-
-function displayQuality(frame) {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const targetPixels = Math.max(frame.clientWidth, 320) * dpr
-
-    if (targetPixels <= 520) return 'low'
-    if (targetPixels <= 820) return 'medium'
-    if (targetPixels <= 1050) return 'high'
-    return 'ultra'
-}
-
-function connectionQuality() {
-    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection
-
-    if (!connection) return 'high'
-    if (connection.saveData) return 'low'
-
-    const effectiveType = String(connection.effectiveType || '').toLowerCase()
-    if (effectiveType === 'slow-2g' || effectiveType === '2g') return 'low'
-    if (effectiveType === '3g') return 'medium'
-
-    const downlink = Number(connection.downlink)
-    if (Number.isFinite(downlink) && downlink > 0) {
-        if (downlink < 1.5) return 'low'
-        if (downlink < 4) return 'medium'
-        if (downlink < 10) return 'high'
-        return 'ultra'
-    }
-
-    return effectiveType === '4g' ? 'high' : 'medium'
-}
-
-function chooseQuality(frame) {
-    const byDisplay = displayQuality(frame)
-    const byConnection = connectionQuality()
-    return QUALITY_ORDER[Math.min(qualityIndex(byDisplay), qualityIndex(byConnection))]
-}
 
 function installStyles() {
     if (document.getElementById('hero-coin-styles')) return
@@ -227,33 +174,15 @@ function createCoinMedia() {
     frame.className = 'hero-coin-frame'
     frame.setAttribute('aria-hidden', 'true')
 
-    const picture = document.createElement('picture')
-    picture.className = 'hero-coin-picture'
-
-    const source = document.createElement('source')
-    source.type = 'image/webp'
-    source.srcset = MEDIA.posterWebp
-
     const poster = document.createElement('img')
     poster.className = 'hero-coin-poster'
-    poster.src = MEDIA.posterJpg
+    poster.src = MEDIA.poster
     poster.alt = ''
     poster.width = 1080
     poster.height = 1080
     poster.loading = 'eager'
     poster.decoding = 'async'
     poster.fetchPriority = 'high'
-
-    picture.append(source, poster)
-
-    const gif = document.createElement('img')
-    gif.className = 'hero-coin-gif'
-    gif.alt = ''
-    gif.width = 480
-    gif.height = 480
-    gif.loading = 'eager'
-    gif.decoding = 'async'
-    gif.fetchPriority = 'high'
 
     const video = document.createElement('video')
     video.className = 'hero-coin-video'
@@ -262,8 +191,8 @@ function createCoinMedia() {
     video.autoplay = true
     video.loop = true
     video.playsInline = true
-    video.preload = 'metadata'
-    video.poster = MEDIA.posterJpg
+    video.preload = 'auto'
+    video.poster = MEDIA.poster
     video.disablePictureInPicture = true
     video.setAttribute('tabindex', '-1')
     video.setAttribute('muted', '')
@@ -272,13 +201,8 @@ function createCoinMedia() {
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
 
-    frame.append(picture, gif, video)
-    return { frame, poster, gif, video }
-}
-
-function stopGif(gif) {
-    gif.removeAttribute('src')
-    gif.remove()
+    frame.append(poster, video)
+    return { frame, poster, video }
 }
 
 function stopVideo(video) {
@@ -290,15 +214,13 @@ function stopVideo(video) {
     video.remove()
 }
 
-async function startLiveFallback(gif, video, poster, frame, reason) {
+async function startLiveFallback(video, poster, frame, reason) {
     if (frame.dataset.liveFallback === 'loading' || frame.dataset.liveFallback === 'ready') return
     frame.dataset.liveFallback = 'loading'
     frame.dataset.liveFallbackReason = reason
 
-    gif?.classList.remove('is-ready')
     video?.classList.remove('is-ready')
     poster.classList.remove('is-faded')
-    if (gif?.isConnected) stopGif(gif)
     if (video?.isConnected) stopVideo(video)
 
     try {
@@ -318,17 +240,9 @@ async function startLiveFallback(gif, video, poster, frame, reason) {
     }
 }
 
-function startVideoFallback(gif, video, poster, frame, gifReason) {
-    if (frame.dataset.videoFallback === 'started') return
-    frame.dataset.videoFallback = 'started'
-    frame.dataset.gifFallbackReason = gifReason
-
-    if (gif.isConnected) stopGif(gif)
-    poster.classList.remove('is-faded')
-
-    const quality = chooseQuality(frame)
-    video.dataset.quality = quality
-    video.src = MEDIA[quality]
+function startVideo(video, poster, frame) {
+    video.dataset.quality = 'low'
+    video.src = MEDIA.low
 
     let revealed = false
     let liveStarted = false
@@ -338,7 +252,7 @@ function startVideoFallback(gif, video, poster, frame, gifReason) {
         if (revealed || liveStarted) return
         liveStarted = true
         clearTimeout(timeoutId)
-        void startLiveFallback(gif, video, poster, frame, reason)
+        void startLiveFallback(video, poster, frame, reason)
     }
 
     const revealVideo = () => {
@@ -380,45 +294,9 @@ function startVideoFallback(gif, video, poster, frame, gifReason) {
     }
 }
 
-function startGifThenVideo(gif, video, poster, frame) {
-    let gifResolved = false
-    const gifTimeout = window.setTimeout(() => {
-        if (gifResolved) return
-        gifResolved = true
-        startVideoFallback(gif, video, poster, frame, 'gif-load-timeout')
-    }, GIF_LOAD_TIMEOUT_MS)
-
-    gif.addEventListener('load', () => {
-        if (gifResolved) return
-        gifResolved = true
-        clearTimeout(gifTimeout)
-        frame.dataset.mediaMode = 'gif'
-        requestAnimationFrame(() => {
-            gif.classList.add('is-ready')
-            poster.classList.add('is-faded')
-        })
-    }, { once: true })
-
-    gif.addEventListener('error', () => {
-        if (gifResolved) return
-        gifResolved = true
-        clearTimeout(gifTimeout)
-        startVideoFallback(gif, video, poster, frame, 'gif-error')
-    }, { once: true })
-
-    gif.src = MEDIA.gif
-}
-
-function startCoinMedia(gif, video, poster, frame) {
+function startCoinMedia(video, poster, frame) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-
-    if (IS_IOS) {
-        frame.dataset.iosMediaPath = 'video-then-live'
-        startVideoFallback(gif, video, poster, frame, 'ios-skip-gif')
-        return
-    }
-
-    startGifThenVideo(gif, video, poster, frame)
+    startVideo(video, poster, frame)
 }
 
 export function setupLandingCoin() {
@@ -431,11 +309,11 @@ export function setupLandingCoin() {
     copy.className = 'hero-copy'
     while (hero.firstChild) copy.appendChild(hero.firstChild)
 
-    const { frame, poster, gif, video } = createCoinMedia()
+    const { frame, poster, video } = createCoinMedia()
     hero.classList.add('hero-with-coin')
     hero.append(copy, frame)
 
-    startCoinMedia(gif, video, poster, frame)
+    startCoinMedia(video, poster, frame)
 }
 
 if (document.readyState === 'loading') {
