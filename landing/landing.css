@@ -1,3 +1,5 @@
+@import url('./mobile-stability.css');
+
 /*
  * Standalone stylesheet for the marketing page. It deliberately shares no code
  * with the application shell: the landing must render fully without the React

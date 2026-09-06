@@ -1,11 +1,16 @@
 /*
- * Mobile viewport stability for the standalone landing pages.
+ * Authoritative responsive-layout layer for the standalone marketing pages.
  *
- * Keep this separate from the application CSS: these pages are independent
- * Vite HTML entries and load through landing/ticker.js. The rules below avoid
- * mobile browser text inflation and accidental root-level horizontal overflow
- * without disabling user pinch zoom.
+ * The older landing stylesheet still owns colors/typography/components. This
+ * file owns viewport geometry on phones/tablets so no media element, injected
+ * coin style, or browser text inflation can widen the page after first paint.
+ * User pinch zoom remains enabled.
  */
+
+:root {
+    --landing-content-max: 1120px;
+    --landing-gutter: clamp(16px, 4vw, 24px);
+}
 
 html,
 body {
@@ -15,9 +20,30 @@ body {
     overflow-x: clip;
 }
 
+html {
+    -webkit-text-size-adjust: none !important;
+    text-size-adjust: none !important;
+}
+
+body,
+main,
+.site-chrome,
+.site-nav,
+.network-ticker {
+    min-width: 0;
+    max-width: 100%;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+    max-width: 100%;
+}
+
 .network-ticker {
     width: 100%;
-    max-width: 100%;
 }
 
 @supports not (overflow: clip) {
@@ -28,45 +54,217 @@ body {
 }
 
 @media (max-width: 900px) {
-    html {
-        -webkit-text-size-adjust: none;
-        text-size-adjust: none;
-    }
-
     /*
-     * Anchor the content to equal physical viewport gutters instead of
-     * centering a calculated width. Mobile Safari can temporarily report a
-     * wider containing block while its browser chrome/visual viewport settles,
-     * which made the whole hero, including the CTAs, appear shifted right.
+     * One fluid container for every mobile section. No vw math, no negative
+     * offsets, and no child is allowed to establish a wider containing block.
      */
     .shell {
+        width: calc(100% - var(--landing-gutter) - var(--landing-gutter)) !important;
+        min-width: 0 !important;
+        max-width: var(--landing-content-max) !important;
+        margin-inline: auto !important;
+    }
+
+    .site-header {
+        display: grid !important;
+        width: 100%;
+        min-width: 0;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .brand {
+        min-width: 0;
+        white-space: nowrap;
+    }
+
+    .site-header > .button {
         width: auto;
-        min-width: 0;
-        max-width: none;
-        margin-right: 16px;
-        margin-left: 16px;
+        max-width: 46vw;
+        justify-self: end;
     }
 
-    .hero {
+    .hero,
+    .hero.hero-with-coin {
+        display: grid !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        justify-items: center !important;
+        align-items: start !important;
+        gap: clamp(18px, 5vw, 28px) !important;
+        min-height: 0 !important;
+        padding: clamp(36px, 8vw, 52px) 0 24px !important;
+        text-align: center !important;
+    }
+
+    .hero-copy,
+    .hero-with-coin .hero-copy {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 680px !important;
+        margin-inline: auto !important;
+    }
+
+    .hero-with-coin .eyebrow,
+    .eyebrow {
+        max-width: 100%;
+        margin-bottom: 22px !important;
+    }
+
+    .hero-signature,
+    .hero-with-coin .hero-signature {
+        width: fit-content;
+        max-width: 100%;
+        margin: 0 auto 20px !important;
+        font-size: clamp(48px, 13vw, 72px) !important;
+        line-height: 0.9 !important;
+        transform-origin: center !important;
+    }
+
+    .hero h1,
+    .hero-with-coin h1 {
+        width: 100%;
+        max-width: 14ch !important;
+        margin-inline: auto !important;
+        font-size: clamp(32px, 9vw, 52px) !important;
+        line-height: 1.08 !important;
+        text-wrap: balance;
+    }
+
+    .hero-lede,
+    .hero-with-coin .hero-lede {
         width: 100%;
         min-width: 0;
-        max-width: 100%;
+        max-width: 38rem !important;
+        margin: 22px auto 0 !important;
+        font-size: clamp(16px, 4vw, 18px) !important;
+        line-height: 1.55;
+        overflow-wrap: break-word;
+        text-wrap: pretty;
     }
 
-    /* Both hero buttons share one deterministic centered column. */
-    .hero-actions {
-        display: grid;
-        width: min(100%, 420px);
-        max-width: 100%;
-        grid-template-columns: minmax(0, 1fr);
-        justify-items: stretch;
-        margin: 34px auto 0;
+    .hero-actions,
+    .hero-with-coin .hero-actions {
+        display: grid !important;
+        width: min(100%, 420px) !important;
+        min-width: 0 !important;
+        max-width: 420px !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        justify-content: normal !important;
+        justify-items: stretch !important;
+        gap: 12px !important;
+        margin: 32px auto 0 !important;
     }
 
-    .hero-actions .button {
-        width: 100%;
+    .hero-actions .button,
+    .hero-with-coin .hero-actions .button {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        margin: 0 !important;
+    }
+
+    .hero-note {
+        max-width: 100%;
+        padding-inline: 8px;
+    }
+
+    /* Never allow the decorative coin to define page width. */
+    .hero-coin-frame {
+        width: min(100%, 430px) !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        justify-self: center !important;
+        overflow: clip;
+    }
+
+    .section,
+    .section-head,
+    .cards,
+    .split,
+    .cta,
+    .disclosure,
+    .faq,
+    .prose,
+    .site-footer {
         min-width: 0;
         max-width: 100%;
-        margin: 0;
+    }
+}
+
+@media (max-width: 520px) {
+    :root {
+        --landing-gutter: 16px;
+    }
+
+    .site-header {
+        min-height: 68px;
+        gap: 10px;
+        padding-block: 6px;
+    }
+
+    .brand {
+        gap: 8px;
+        font-size: clamp(15px, 4.4vw, 18px);
+    }
+
+    .brand img {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+    }
+
+    .site-header > .button {
+        max-width: 44vw;
+        padding: 10px 16px;
+        font-size: clamp(13px, 3.7vw, 15px);
+    }
+
+    .hero,
+    .hero.hero-with-coin {
+        gap: 16px !important;
+        padding-top: 36px !important;
+    }
+
+    .hero-signature,
+    .hero-with-coin .hero-signature {
+        font-size: clamp(46px, 15vw, 64px) !important;
+    }
+
+    .hero h1,
+    .hero-with-coin h1 {
+        max-width: 12ch !important;
+        font-size: clamp(31px, 10vw, 44px) !important;
+    }
+
+    .hero-lede,
+    .hero-with-coin .hero-lede {
+        max-width: 32rem !important;
+        font-size: clamp(16px, 4.2vw, 18px) !important;
+    }
+
+    .hero-actions,
+    .hero-with-coin .hero-actions {
+        width: 100% !important;
+        max-width: 420px !important;
+    }
+
+    .hero-coin-frame {
+        width: min(100%, 390px) !important;
+        margin-top: 4px !important;
+    }
+}
+
+@media (max-width: 360px) {
+    .hero-lede .nowrap {
+        white-space: normal;
+    }
+
+    .site-header > .button {
+        padding-inline: 13px;
     }
 }
