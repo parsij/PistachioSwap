@@ -250,7 +250,12 @@ function exactTransfer(
 
 function formatRawAmount(rawAmount: bigint, token: ActivityToken | null) {
     const decimals = token?.decimals
-    if (!Number.isInteger(decimals) || decimals === null || decimals < 0 || decimals > 255) {
+    if (
+        typeof decimals !== 'number' ||
+        !Number.isInteger(decimals) ||
+        decimals < 0 ||
+        decimals > 255
+    ) {
         return null
     }
     try {
@@ -263,11 +268,13 @@ function formatRawAmount(rawAmount: bigint, token: ActivityToken | null) {
 function authorizationAddresses(value: Record<string, unknown>) {
     const candidates = value.authorization_list ?? value.authorizationList
     if (!Array.isArray(candidates)) return []
-    return candidates
-        .map((entry) => isRecord(entry)
-            ? normalizeAddress(entry.address ?? entry.contract_address)
-            : null)
-        .filter((address): address is string => Boolean(address))
+    const addresses: string[] = []
+    for (const entry of candidates) {
+        if (!isRecord(entry)) continue
+        const address = normalizeAddress(entry.address ?? entry.contract_address)
+        if (address) addresses.push(address)
+    }
+    return addresses
 }
 
 function gasAssistAuthorizationMatches(value: Record<string, unknown>) {
@@ -640,15 +647,16 @@ function enrichActivityTokens(
         item.token as ActivityToken | null,
         trustedTokens,
     )
+    const amountRaw = typeof item.amountRaw === 'string' ? item.amountRaw : null
     let amount = item.amount ?? null
     if (
         amount == null &&
-        typeof item.amountRaw === 'string' &&
-        /^\d+$/.test(item.amountRaw) &&
+        amountRaw !== null &&
+        /^\d+$/.test(amountRaw) &&
         token?.decimals != null
     ) {
         try {
-            amount = formatUnits(BigInt(item.amountRaw), Number(token.decimals))
+            amount = formatUnits(BigInt(amountRaw), Number(token.decimals))
         } catch {
             amount = null
         }
