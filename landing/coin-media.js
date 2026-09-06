@@ -1,20 +1,34 @@
 const RELEASE_BASE = 'https://github.com/parsij/3d-gold-coin/releases/download/landing-media'
+const MEDIA_REVISION = 'alpha-hq10-20260906-1715'
+
+const asset = (name) => `${RELEASE_BASE}/${name}?v=${MEDIA_REVISION}`
 
 const MEDIA = {
-    posterWebp: `${RELEASE_BASE}/coin-poster.webp`,
-    posterJpg: `${RELEASE_BASE}/coin-poster.jpg`,
-    low: `${RELEASE_BASE}/coin-low.mp4`,
-    medium: `${RELEASE_BASE}/coin-medium.mp4`,
-    high: `${RELEASE_BASE}/coin-high.mp4`,
-    ultra: `${RELEASE_BASE}/coin-ultra.mp4`,
+    posterWebp: asset('coin-poster-alpha.webp'),
+    posterPng: asset('coin-poster-alpha.png'),
+    alpha: {
+        low: asset('coin-low-alpha.webm'),
+        medium: asset('coin-medium-alpha.webm'),
+        high: asset('coin-high-alpha.webm'),
+        ultra: asset('coin-ultra-alpha.webm'),
+    },
+    mp4: {
+        low: asset('coin-low.mp4'),
+        medium: asset('coin-medium.mp4'),
+        high: asset('coin-high.mp4'),
+        ultra: asset('coin-ultra.mp4'),
+    },
 }
 
 const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra']
 const VIDEO_START_TIMEOUT_MS = 6000
 const VIDEO_ADVANCE_CHECK_MS = 1800
+const USER_AGENT = navigator.userAgent || ''
 const IS_IOS =
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    /iPad|iPhone|iPod/.test(USER_AGENT) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const IS_CHROMIUM =
+    !IS_IOS && /Chrome|Chromium|Edg|OPR/.test(USER_AGENT)
 
 const HERO_STYLES = `
 .hero.hero-with-coin {
@@ -74,20 +88,25 @@ const HERO_STYLES = `
     height: 100%;
     object-fit: contain;
     object-position: center;
-    -webkit-mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
-    mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
     pointer-events: none;
 }
 
-/* Keep video visible to WebKit while it starts. The poster hides it from the user. */
 .hero-coin-video {
     z-index: 1;
     opacity: 1;
+    background: transparent;
+}
+
+/* The compatibility MP4 has a baked dark background. Soften only that path. */
+.hero-coin-video[data-format='mp4'] {
+    -webkit-mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
+    mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
 }
 
 .hero-coin-live {
     z-index: 2;
     opacity: 0;
+    background: transparent;
     transition: opacity 260ms ease;
 }
 .hero-coin-live.is-ready { opacity: 1; }
@@ -95,6 +114,7 @@ const HERO_STYLES = `
 .hero-coin-poster {
     z-index: 3;
     opacity: 1;
+    background: transparent;
     transition: opacity 260ms ease;
 }
 .hero-coin-poster.is-faded { opacity: 0; }
@@ -190,6 +210,12 @@ function chooseAutomaticQuality(frame) {
     return QUALITY_ORDER[Math.min(qualityIndex(byDisplay), qualityIndex(byConnection))]
 }
 
+function supportsTransparentWebM(video) {
+    if (!IS_CHROMIUM) return false
+    const support = video.canPlayType('video/webm; codecs="vp9"')
+    return support === 'probably' || support === 'maybe'
+}
+
 function installStyles() {
     if (document.getElementById('hero-coin-styles')) return
     const style = document.createElement('style')
@@ -212,10 +238,10 @@ function createCoinMedia() {
 
     const poster = document.createElement('img')
     poster.className = 'hero-coin-poster'
-    poster.src = MEDIA.posterJpg
+    poster.src = MEDIA.posterPng
     poster.alt = ''
-    poster.width = 1080
-    poster.height = 1080
+    poster.width = 1440
+    poster.height = 1440
     poster.loading = 'eager'
     poster.decoding = 'async'
     poster.fetchPriority = 'high'
@@ -229,7 +255,7 @@ function createCoinMedia() {
     video.loop = true
     video.playsInline = true
     video.preload = 'auto'
-    video.poster = MEDIA.posterJpg
+    video.poster = MEDIA.posterPng
     video.disablePictureInPicture = true
     video.disableRemotePlayback = true
     video.setAttribute('tabindex', '-1')
@@ -247,14 +273,25 @@ function createController(video, poster, frame) {
     let mode = 'poster'
     let videoQualityMode = 'auto'
     let activeVideoQuality = null
+    let activeVideoFormat = null
+    let activeVideoUrl = null
     let playbackGeneration = 0
     let videoCleanup = null
     let liveCleanup = null
     let activeAttemptPlay = null
     let liveReason = null
 
+    const alphaVideoSupported = supportsTransparentWebM(video)
+
     const resolveVideoQuality = () =>
         videoQualityMode === 'auto' ? chooseAutomaticQuality(frame) : videoQualityMode
+
+    const resolveVideoSource = (quality) => {
+        if (alphaVideoSupported) {
+            return { format: 'webm-alpha', url: MEDIA.alpha[quality] }
+        }
+        return { format: 'mp4', url: MEDIA.mp4[quality] }
+    }
 
     const clearVideoAttempt = () => {
         playbackGeneration += 1
@@ -287,6 +324,7 @@ function createController(video, poster, frame) {
 
         mode = 'rendering'
         liveReason = reason
+        activeVideoUrl = null
         frame.dataset.mediaMode = 'live-loading'
         frame.dataset.liveFallback = 'loading'
         frame.dataset.liveFallbackReason = reason
@@ -335,15 +373,17 @@ function createController(video, poster, frame) {
         poster.classList.remove('is-faded')
 
         const quality = resolveVideoQuality()
+        const source = resolveVideoSource(quality)
         activeVideoQuality = quality
+        activeVideoFormat = source.format
+        activeVideoUrl = source.url
         frame.dataset.quality = quality
+        frame.dataset.videoFormat = source.format
         frame.dataset.highEndIOS = String(isHighEndIOS())
         video.dataset.quality = quality
+        video.dataset.format = source.format
 
-        const nextSrc = MEDIA[quality]
-        if (video.getAttribute('src') !== nextSrc) {
-            video.src = nextSrc
-        }
+        if (video.getAttribute('src') !== source.url) video.src = source.url
 
         const generation = playbackGeneration
         let firstFrameShown = false
@@ -447,7 +487,7 @@ function createController(video, poster, frame) {
 
         try { video.load() } catch {}
         attemptPlay()
-        console.info(`[pistachio-swap] video mode: ${quality} (${reason})`)
+        console.info(`[pistachio-swap] video mode: ${quality} ${source.format} (${reason})`)
         return quality
     }
 
@@ -471,12 +511,15 @@ function createController(video, poster, frame) {
         get: () => ({
             mode,
             liveReason,
+            transparentVideoSupported: alphaVideoSupported,
             liveQuality: window.coinQuality?.get?.() ?? null,
             videoQuality: {
                 mode: videoQualityMode === 'auto' ? 'auto' : 'manual',
                 requested: videoQualityMode,
                 resolved: resolveVideoQuality(),
                 active: activeVideoQuality,
+                format: activeVideoFormat,
+                url: activeVideoUrl,
             },
         }),
     }
@@ -488,6 +531,9 @@ function createController(video, poster, frame) {
             requested: videoQualityMode,
             resolved: resolveVideoQuality(),
             active: activeVideoQuality,
+            format: activeVideoFormat,
+            url: activeVideoUrl,
+            transparentVideoSupported: alphaVideoSupported,
             levels: [...QUALITY_ORDER, 'auto'],
         }),
         low: () => setVideoQuality('low'),
