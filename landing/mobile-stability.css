@@ -33,25 +33,31 @@ body {
         text-size-adjust: none;
     }
 
-    /* Avoid vw-based shell width while mobile browser chrome settles. */
+    /*
+     * Anchor the content to equal physical viewport gutters instead of
+     * centering a calculated width. Mobile Safari can temporarily report a
+     * wider containing block while its browser chrome/visual viewport settles,
+     * which made the whole hero, including the CTAs, appear shifted right.
+     */
     .shell {
-        width: calc(100% - 32px);
+        width: auto;
         min-width: 0;
-        max-width: 1120px;
-        margin-right: auto;
-        margin-left: auto;
+        max-width: none;
+        margin-right: 16px;
+        margin-left: 16px;
     }
 
     .hero {
         width: 100%;
         min-width: 0;
+        max-width: 100%;
     }
 
     /* Both hero buttons share one deterministic centered column. */
     .hero-actions {
         display: grid;
-        width: 100%;
-        max-width: 420px;
+        width: min(100%, 420px);
+        max-width: 100%;
         grid-template-columns: minmax(0, 1fr);
         justify-items: stretch;
         margin: 34px auto 0;
@@ -60,6 +66,7 @@ body {
     .hero-actions .button {
         width: 100%;
         min-width: 0;
+        max-width: 100%;
         margin: 0;
     }
 }
