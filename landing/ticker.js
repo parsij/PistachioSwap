@@ -1,4 +1,3 @@
-import './mobile-stability.css'
 import './coin-media.js'
 
 /*
