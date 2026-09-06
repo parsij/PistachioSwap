@@ -3,6 +3,7 @@ const RELEASE_BASE = 'https://github.com/parsij/3d-gold-coin/releases/download/l
 const MEDIA = {
     posterWebp: `${RELEASE_BASE}/coin-poster.webp`,
     posterJpg: `${RELEASE_BASE}/coin-poster.jpg`,
+    gif: `${RELEASE_BASE}/coin-fallback.gif`,
     low: `${RELEASE_BASE}/coin-low.mp4`,
     medium: `${RELEASE_BASE}/coin-medium.mp4`,
     high: `${RELEASE_BASE}/coin-high.mp4`,
@@ -10,6 +11,7 @@ const MEDIA = {
 }
 
 const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra']
+const GIF_LOAD_TIMEOUT_MS = 7000
 const VIDEO_START_TIMEOUT_MS = 4500
 
 const HERO_STYLES = `
@@ -72,6 +74,7 @@ const HERO_STYLES = `
 }
 
 .hero-coin-poster,
+.hero-coin-gif,
 .hero-coin-video,
 .hero-coin-live {
     position: absolute;
@@ -91,6 +94,7 @@ const HERO_STYLES = `
     transition: opacity 260ms ease;
 }
 
+.hero-coin-gif,
 .hero-coin-video,
 .hero-coin-live {
     z-index: 2;
@@ -98,6 +102,7 @@ const HERO_STYLES = `
     transition: opacity 260ms ease;
 }
 
+.hero-coin-gif.is-ready,
 .hero-coin-video.is-ready,
 .hero-coin-live.is-ready {
     opacity: 1;
@@ -153,6 +158,7 @@ const HERO_STYLES = `
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .hero-coin-gif,
     .hero-coin-video,
     .hero-coin-live {
         display: none;
@@ -237,6 +243,15 @@ function createCoinMedia() {
 
     picture.append(source, poster)
 
+    const gif = document.createElement('img')
+    gif.className = 'hero-coin-gif'
+    gif.alt = ''
+    gif.width = 480
+    gif.height = 480
+    gif.loading = 'eager'
+    gif.decoding = 'async'
+    gif.fetchPriority = 'high'
+
     const video = document.createElement('video')
     video.className = 'hero-coin-video'
     video.muted = true
@@ -254,8 +269,13 @@ function createCoinMedia() {
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
 
-    frame.append(picture, video)
-    return { frame, poster, video }
+    frame.append(picture, gif, video)
+    return { frame, poster, gif, video }
+}
+
+function stopGif(gif) {
+    gif.removeAttribute('src')
+    gif.remove()
 }
 
 function stopVideo(video) {
@@ -267,17 +287,19 @@ function stopVideo(video) {
     video.remove()
 }
 
-async function startLiveFallback(video, poster, frame, reason) {
+async function startLiveFallback(gif, video, poster, frame, reason) {
     if (frame.dataset.liveFallback === 'loading' || frame.dataset.liveFallback === 'ready') return
     frame.dataset.liveFallback = 'loading'
-    frame.dataset.videoFallbackReason = reason
+    frame.dataset.liveFallbackReason = reason
 
-    video.classList.remove('is-ready')
+    gif?.classList.remove('is-ready')
+    video?.classList.remove('is-ready')
     poster.classList.remove('is-faded')
-    stopVideo(video)
+    if (gif?.isConnected) stopGif(gif)
+    if (video?.isConnected) stopVideo(video)
 
     try {
-        const { mountLiveCoin } = await import('./coin-live.js')
+        const { mountLiveCoin } = await import(/* @vite-ignore */ './coin-live.js')
         await mountLiveCoin(frame, {
             onFirstFrame: (canvas) => {
                 frame.dataset.liveFallback = 'ready'
@@ -292,26 +314,31 @@ async function startLiveFallback(video, poster, frame, reason) {
     }
 }
 
-function startCoinMedia(video, poster, frame) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+function startVideoFallback(gif, video, poster, frame, gifReason) {
+    if (frame.dataset.videoFallback === 'started') return
+    frame.dataset.videoFallback = 'started'
+    frame.dataset.gifFallbackReason = gifReason
+
+    if (gif.isConnected) stopGif(gif)
+    poster.classList.remove('is-faded')
 
     const quality = chooseQuality(frame)
     video.dataset.quality = quality
     video.src = MEDIA[quality]
 
     let revealed = false
-    let fallbackStarted = false
+    let liveStarted = false
     let timeoutId = 0
 
-    const fallback = (reason) => {
-        if (revealed || fallbackStarted) return
-        fallbackStarted = true
+    const liveFallback = (reason) => {
+        if (revealed || liveStarted) return
+        liveStarted = true
         clearTimeout(timeoutId)
-        void startLiveFallback(video, poster, frame, reason)
+        void startLiveFallback(gif, video, poster, frame, reason)
     }
 
-    const reveal = () => {
-        if (fallbackStarted) return
+    const revealVideo = () => {
+        if (liveStarted) return
         revealed = true
         clearTimeout(timeoutId)
 
@@ -327,21 +354,56 @@ function startCoinMedia(video, poster, frame) {
         }
     }
 
-    video.addEventListener('playing', reveal, { once: true })
-    video.addEventListener('error', () => fallback('video-error'), { once: true })
+    video.addEventListener('playing', revealVideo, { once: true })
+    video.addEventListener('error', () => liveFallback('video-error'), { once: true })
     video.addEventListener('stalled', () => {
-        if (!revealed && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) fallback('video-stalled')
+        if (!revealed && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+            liveFallback('video-stalled')
+        }
     }, { once: true })
 
     timeoutId = window.setTimeout(() => {
-        if (!revealed || video.paused || video.currentTime <= 0) fallback('video-start-timeout')
+        if (!revealed || video.paused || video.currentTime <= 0) {
+            liveFallback('video-start-timeout')
+        }
     }, VIDEO_START_TIMEOUT_MS)
 
     video.load()
     const playback = video.play()
     if (playback?.catch) {
-        playback.catch(() => fallback('autoplay-rejected'))
+        playback.catch(() => liveFallback('autoplay-rejected'))
     }
+}
+
+function startCoinMedia(gif, video, poster, frame) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    let gifResolved = false
+    const gifTimeout = window.setTimeout(() => {
+        if (gifResolved) return
+        gifResolved = true
+        startVideoFallback(gif, video, poster, frame, 'gif-load-timeout')
+    }, GIF_LOAD_TIMEOUT_MS)
+
+    gif.addEventListener('load', () => {
+        if (gifResolved) return
+        gifResolved = true
+        clearTimeout(gifTimeout)
+        frame.dataset.mediaMode = 'gif'
+        requestAnimationFrame(() => {
+            gif.classList.add('is-ready')
+            poster.classList.add('is-faded')
+        })
+    }, { once: true })
+
+    gif.addEventListener('error', () => {
+        if (gifResolved) return
+        gifResolved = true
+        clearTimeout(gifTimeout)
+        startVideoFallback(gif, video, poster, frame, 'gif-error')
+    }, { once: true })
+
+    gif.src = MEDIA.gif
 }
 
 export function setupLandingCoin() {
@@ -354,11 +416,11 @@ export function setupLandingCoin() {
     copy.className = 'hero-copy'
     while (hero.firstChild) copy.appendChild(hero.firstChild)
 
-    const { frame, poster, video } = createCoinMedia()
+    const { frame, poster, gif, video } = createCoinMedia()
     hero.classList.add('hero-with-coin')
     hero.append(copy, frame)
 
-    startCoinMedia(video, poster, frame)
+    startCoinMedia(gif, video, poster, frame)
 }
 
 if (document.readyState === 'loading') {
