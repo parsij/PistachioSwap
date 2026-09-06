@@ -1,0 +1,111 @@
+/* Security settings share the wallet primitives; these tokens are local to the managed-wallet view. */
+.pistachio-security-dialog {
+    --pw-bg: #191c19;
+    --pw-surface: #222622;
+    --pw-surface-hover: #2b312a;
+    --pw-border: #333a32;
+    --pw-border-strong: #4a5347;
+    --pw-text: #f4f6f2;
+    --pw-muted: #a0a89e;
+    width: min(640px, calc(100vw - 32px));
+    border-radius: 24px;
+}
+.pistachio-security-dialog > header { min-height: 90px; padding: 20px 24px 18px 28px; border-bottom: 0; }
+.pistachio-security-dialog .pistachio-wallet-header-brand { gap: 14px; }
+.pistachio-security-dialog .pistachio-wallet-header-mark,
+.pistachio-security-dialog .pistachio-wallet-header-mark img { width: 36px; height: 40px; }
+.pistachio-security-dialog h2 { font-size: 22px; }
+.pistachio-security-subtitle { display: block; margin-top: 4px; color: var(--pw-muted); font-size: 14px; line-height: 1.4; }
+.pistachio-security { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
+.pistachio-security-account { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; margin: 0 28px; padding: 16px 0 20px; border-top: 1px solid var(--pw-border); font-size: 13px; }
+.pistachio-security-account > div { display: flex; align-items: center; gap: 8px; }
+.pistachio-security-account code { color: var(--pw-muted); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pistachio-security-status-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--pw-accent); }
+.pistachio-security-tabs { display: grid; flex: 0 0 auto; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0 16px; border-bottom: 1px solid var(--pw-border); }
+.pistachio-security-tabs > button { min-height: 50px; border-radius: 12px 12px 0 0; border-bottom: 2px solid transparent; background: transparent; color: var(--pw-muted); }
+.pistachio-security-tabs > button[aria-selected="true"] { border-bottom-color: var(--pw-accent); background: var(--pw-surface); color: var(--pw-text); }
+.pistachio-security-body { gap: 16px; padding: 28px; }
+.pistachio-security-panel { display: flex; flex-direction: column; gap: 20px; outline: none; animation: pistachio-security-panel-in 160ms ease-out; }
+.pistachio-security-panel[hidden],
+.pistachio-security-passkey-details[hidden] { display: none; }
+.pistachio-security-panel:focus-visible { outline: 2px solid var(--pw-accent); outline-offset: 4px; border-radius: 8px; }
+.pistachio-security-panel .pistachio-wallet-intro { gap: 8px; margin-bottom: 4px; }
+.pistachio-security-panel h3 { font-size: 27px; font-weight: 700; letter-spacing: -.5px; }
+.pistachio-security-passkeys { display: grid; gap: 10px; }
+.pistachio-security-passkey { min-width: 0; border: 1px solid var(--pw-border); border-radius: 14px; }
+.pistachio-security-passkey-row { display: flex; align-items: center; gap: 14px; padding: 16px; }
+.pistachio-security-symbol { display: grid; width: 48px; height: 48px; flex: 0 0 auto; place-items: center; border-radius: 12px; background: rgb(155 216 135 / 10%); color: var(--pw-accent); }
+.pistachio-security-symbol svg { width: 25px; height: 25px; stroke-width: 1.6; }
+.pistachio-security-passkey-name { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5px; }
+.pistachio-security-passkey-name strong { font-size: 15px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
+.pistachio-security-passkey-name > span { color: var(--pw-muted); font-size: 12px; line-height: 1.4; }
+.pistachio-security-row-actions { display: flex; flex: 0 0 auto; gap: 2px; }
+.pistachio-security .pistachio-security-icon-button { width: 40px; min-height: 40px; padding: 0; background: transparent; color: var(--pw-muted); }
+.pistachio-security-icon-button[aria-expanded="true"] > .lucide-chevron-down { transform: rotate(180deg); }
+.pistachio-security .pistachio-security-verified { display: flex; align-items: center; gap: 5px; color: var(--pw-accent); }
+.pistachio-security-verified svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.pistachio-security-edit,
+.pistachio-security-passkey-details { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-top: 1px solid var(--pw-border); }
+.pistachio-security-passkey-details dl { display: grid; gap: 10px; margin: 0; font-size: 12px; line-height: 1.5; }
+.pistachio-security-passkey-details dl > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; }
+.pistachio-security-passkey-details dt { color: var(--pw-muted); }
+.pistachio-security-passkey-details dd { margin: 0; overflow-wrap: anywhere; }
+.pistachio-security-passkey-details p { font-size: 12px; }
+.pistachio-security .pistachio-security-remove { align-self: flex-start; background: transparent; color: var(--pw-danger); }
+.pistachio-security-remove-confirm { display: grid; gap: 12px; }
+.pistachio-security-add { display: flex; flex-direction: column; gap: 10px; padding-top: 20px; border-top: 1px solid var(--pw-border); }
+.pistachio-security-add label,
+.pistachio-security-edit label { color: var(--pw-muted); font-size: 13px; line-height: 1.4; }
+.pistachio-security-input-row { display: flex; gap: 10px; }
+.pistachio-security-input-row input { min-width: 0; flex: 1; background: transparent; }
+.pistachio-security-input-row > button { flex-shrink: 0; }
+.pistachio-security-add button { min-width: 150px; }
+.pistachio-security .pistachio-security-test { width: 100%; min-height: 46px; border: 1px solid var(--pw-border); }
+.pistachio-security-hint { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.pistachio-security-body .pistachio-security-hint,
+.pistachio-security-hint p { color: var(--pw-muted); font-size: 12px; line-height: 1.6; }
+.pistachio-security .pistachio-security-link { min-height: 32px; align-self: flex-start; padding: 4px 0; background: transparent; color: var(--pw-accent); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.pistachio-security .pistachio-security-link:hover:not(:disabled) { background: transparent; color: var(--pw-accent-hover); }
+.pistachio-security-footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 28px; border-top: 1px solid var(--pw-border); }
+.pistachio-security-footer > button:first-child { padding-left: 0; background: transparent; color: var(--pw-muted); }
+.pistachio-security-footer > .pistachio-wallet-primary { min-width: 88px; }
+.pistachio-security-overview-list { display: grid; }
+.pistachio-security .pistachio-security-overview-row { justify-content: flex-start; gap: 14px; padding: 20px 0; border-bottom: 1px solid var(--pw-border); border-radius: 0; background: transparent; text-align: left; }
+.pistachio-security-overview-row > span:nth-child(2) { display: grid; min-width: 0; flex: 1; gap: 6px; }
+.pistachio-security-overview-row strong { font-weight: 500; font-size: 15px; }
+.pistachio-security-overview-row > span > span { color: var(--pw-muted); font-size: 13px; line-height: 1.5; }
+.pistachio-security-overview-row > svg { color: var(--pw-muted); }
+.pistachio-security-recovery-action { display: flex; align-items: center; gap: 14px; padding-bottom: 20px; border-bottom: 1px solid var(--pw-border); }
+.pistachio-security-recovery-action > div { min-width: 0; flex: 1; }
+.pistachio-security-recovery-action strong { display: block; margin-bottom: 5px; font-size: 15px; font-weight: 500; }
+.pistachio-security-recovery-action p { font-size: 12px; }
+.pistachio-security-recovery-action > button { min-width: 78px; }
+.pistachio-security-backup-confirmation { display: grid; gap: 12px; margin-top: 4px; }
+.pistachio-security-backup-confirmation p { font-size: 12px; }
+.pistachio-security .pistachio-keystore-export > label { margin-bottom: -4px; }
+@keyframes pistachio-security-panel-in { from { opacity: 0; transform: translateY(4px); } }
+@media (max-width: 640px) {
+    .pistachio-security-dialog { width: 100%; border-radius: 24px 24px 0 0; }
+    .pistachio-security-dialog > header { min-height: 82px; padding: 18px 16px 16px 20px; }
+    .pistachio-security-dialog h2 { font-size: 20px; }
+    .pistachio-security-account { margin-inline: 20px; padding-block: 14px 18px; }
+    .pistachio-security-tabs { padding-inline: 8px; }
+    .pistachio-security-body { padding: 24px 20px; }
+    .pistachio-security-panel h3 { font-size: 25px; }
+    .pistachio-security-footer { padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 420px) {
+    .pistachio-security-passkey-row { gap: 10px; padding: 12px; }
+    .pistachio-security-passkey-row > .pistachio-security-symbol { width: 36px; height: 42px; border-radius: 10px; }
+    .pistachio-security-passkey-name strong { font-size: 14px; }
+    .pistachio-security-row-actions { flex-direction: column; }
+    .pistachio-security-add > .pistachio-security-input-row { flex-direction: column; }
+    .pistachio-security-edit > .pistachio-security-input-row { flex-wrap: wrap; }
+    .pistachio-security-edit input { flex-basis: 100%; }
+    .pistachio-security-passkey-details dl > div { grid-template-columns: 95px minmax(0, 1fr); }
+    .pistachio-security-recovery-action { flex-wrap: wrap; }
+    .pistachio-security-recovery-action > button { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .pistachio-security-panel { animation: none; }
+}

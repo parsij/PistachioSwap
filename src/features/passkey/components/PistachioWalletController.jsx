@@ -8,6 +8,7 @@ import '@fontsource/ubuntu/latin-400.css'
 import '@fontsource/ubuntu/latin-500.css'
 import '@fontsource/ubuntu/latin-700.css'
 import './pistachioWallet.css'
+import './wallet/walletSecurity.css'
 
 const manager = getPistachioWalletManager()
 const PISTACHIO_LOGO_URL = '/icons/PistachioLogo.svg'
@@ -145,7 +146,7 @@ export default function PistachioWalletController() {
                 <Dialog.Portal>
                     <Dialog.Overlay className="pistachio-wallet-overlay" />
                     <Dialog.Content
-                        className="pistachio-wallet-dialog"
+                        className={`pistachio-wallet-dialog${walletPageVisible ? ' pistachio-security-dialog' : ''}`}
                         aria-describedby="pistachio-wallet-dialog-description"
                         onKeyDownCapture={() => void manager.recordActivity()}
                         onPointerDownCapture={() => void manager.recordActivity()}
@@ -161,6 +162,7 @@ export default function PistachioWalletController() {
                                 </span>
                                 <div>
                                     <Dialog.Title ref={titleRef} tabIndex={-1}>Pistachio Wallet</Dialog.Title>
+                                    {walletPageVisible && <span className="pistachio-security-subtitle">Security settings</span>}
                                 </div>
                             </div>
                             <div className="pistachio-wallet-header-actions">
@@ -178,7 +180,7 @@ export default function PistachioWalletController() {
                                 {lockedPhase && snapshot.phase === 'locked' && !walletPageVisible && entryScreen === 'chooser' && <SavedWalletChooser snapshot={snapshot} onBack={() => setEntryScreen('menu')} onRestore={() => setEntryScreen('restore')} onSensitiveChange={setSensitive} onStart={startAnotherWallet} />}
                                 {lockedPhase && snapshot.phase === 'locked' && !walletPageVisible && entryScreen === 'another' && <AnotherWalletMenu flags={snapshot.flags} onBack={() => setEntryScreen('menu')} onRestore={() => setEntryScreen('restore')} onStart={startAnotherWallet} />}
                                 {lockedPhase && snapshot.phase === 'locked' && !walletPageVisible && entryScreen === 'restore' && <RestoreBackupContent onBack={() => setEntryScreen('menu')} onRestored={resumeRestoredVault} />}
-                                {walletPageVisible && <UnlockedContent onSensitiveChange={setSensitive} snapshot={snapshot} />}
+                                {walletPageVisible && <UnlockedContent key={snapshot.vault?.vaultId ?? snapshot.selectedVaultId} onClose={requestClose} onSensitiveChange={setSensitive} snapshot={snapshot} />}
                             </>
                         )}
                         {closeNotice && <p className="pistachio-wallet-close-notice" role="status" aria-live="polite">{closeNotice}</p>}

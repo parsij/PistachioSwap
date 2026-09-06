@@ -667,6 +667,7 @@ describe('Pistachio Wallet saved-wallet behavior', () => {
         mocks.state.snapshot = { ...savedVaultSnapshot, address: savedVault.address, phase: 'unlocked' }
         render(<PistachioWalletController />)
         expect(screen.queryByRole('region', { name: 'Recovery phrase' })).toBeNull()
+        await user.click(screen.getByRole('tab', { name: 'Recovery' }))
         await user.click(screen.getByRole('button', { name: 'Reveal recovery phrase' }))
         expect(mocks.manager.revealRecoveryPhrase).toHaveBeenCalledOnce()
         const recoveryRegion = await screen.findByRole('region', { name: 'Recovery phrase' })

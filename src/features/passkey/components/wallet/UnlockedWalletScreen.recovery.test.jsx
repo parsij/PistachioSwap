@@ -1,23 +1,28 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
     revealPrivateKey: vi.fn(),
     revealRecoveryPhrase: vi.fn(),
+    addBackupPasskey: vi.fn(),
+    removePasskey: vi.fn(),
+    renamePasskey: vi.fn(),
+    reauthenticate: vi.fn(),
 }))
 
 vi.mock('../../services/walletUIOperations.js', () => ({
     walletUIOperations: {
-        addBackupPasskey: vi.fn(),
+        addBackupPasskey: mocks.addBackupPasskey,
         confirmRecoveryBackup: vi.fn(),
         exportEncryptedBackup: vi.fn(),
         exportKeystore: vi.fn(),
         lock: vi.fn(),
-        reauthenticate: vi.fn(),
-        removePasskey: vi.fn(),
-        renamePasskey: vi.fn(),
+        reauthenticate: mocks.reauthenticate,
+        removePasskey: mocks.removePasskey,
+        renamePasskey: mocks.renamePasskey,
         revealPrivateKey: mocks.revealPrivateKey,
         revealRecoveryPhrase: mocks.revealRecoveryPhrase,
     },
@@ -49,7 +54,9 @@ function snapshot({ sourceType = 'generated-mnemonic' } = {}) {
 }
 
 describe('wallet secret reveal UI', () => {
+    afterEach(() => { cleanup(); vi.useRealTimers() })
     beforeEach(() => {
+        vi.clearAllMocks()
         mocks.revealPrivateKey.mockReset()
         mocks.revealPrivateKey.mockResolvedValue(privateKey)
         mocks.revealRecoveryPhrase.mockReset()
@@ -60,9 +67,90 @@ describe('wallet secret reveal UI', () => {
         })
     })
 
+    it('navigates tabs with the keyboard and clears a revealed secret when leaving Recovery', async () => {
+        const user = userEvent.setup()
+        render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={snapshot()} />)
+        screen.getByRole('tab', { name: 'Passkeys' }).focus()
+        await user.keyboard('{ArrowRight}')
+        expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Recovery' }))
+        await user.click(screen.getByRole('button', { name: 'Reveal recovery phrase' }))
+        await screen.findByRole('region', { name: 'Recovery phrase' })
+        await user.click(screen.getByRole('tab', { name: 'Overview' }))
+        expect(screen.queryByText('alpha')).toBeNull()
+        await user.click(screen.getByRole('tab', { name: 'Recovery' }))
+        expect(screen.queryByRole('region', { name: 'Recovery phrase' })).toBeNull()
+    })
+
+    it('keeps the active recovery panel stable and prevents another action during verification', async () => {
+        let complete
+        mocks.revealRecoveryPhrase.mockReturnValueOnce(new Promise((resolve) => { complete = resolve }))
+        const view = render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={snapshot()} />)
+        fireEvent.click(screen.getByRole('tab', { name: 'Recovery' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Reveal recovery phrase' }))
+        view.rerender(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={{ ...snapshot(), phase: 'unlocking', address: null }} />)
+        expect(screen.getByRole('tab', { name: 'Recovery' }).getAttribute('aria-selected')).toBe('true')
+        expect(screen.getByRole('tab', { name: 'Passkeys' }).disabled).toBe(true)
+        expect(screen.getByRole('button', { name: 'Done' }).disabled).toBe(true)
+        await act(async () => complete(phrase))
+        expect(screen.getByRole('region', { name: 'Recovery phrase' })).toBeTruthy()
+    })
+
+    it('continues to hide recovery material automatically after sixty seconds', async () => {
+        vi.useFakeTimers()
+        render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={snapshot()} />)
+        fireEvent.click(screen.getByRole('tab', { name: 'Recovery' }))
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reveal recovery phrase' })))
+        expect(screen.getByRole('region', { name: 'Recovery phrase' })).toBeTruthy()
+        act(() => vi.advanceTimersByTime(60_000))
+        expect(screen.queryByText('alpha')).toBeNull()
+    })
+
+    it('renames a passkey explicitly and passes the entered backup name to the wallet service', async () => {
+        const user = userEvent.setup()
+        render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={snapshot()} />)
+        await user.click(screen.getByRole('button', { name: 'Rename Primary passkey' }))
+        const field = screen.getByLabelText('Passkey label')
+        await user.clear(field)
+        await user.type(field, 'My laptop')
+        expect(mocks.renamePasskey).not.toHaveBeenCalled()
+        await user.click(screen.getByRole('button', { name: 'Save label for Primary passkey' }))
+        expect(mocks.renamePasskey).toHaveBeenCalledWith('wrap-1', 'My laptop')
+        expect(screen.queryByLabelText('Passkey label')).toBeNull()
+        await user.click(screen.getByRole('button', { name: 'Add passkey' }))
+        expect(mocks.addBackupPasskey).toHaveBeenCalledWith('Backup passkey')
+    })
+
+    it('requires another passkey, an offline backup, and explicit confirmation before removing access', async () => {
+        const user = userEvent.setup()
+        const initial = snapshot()
+        const view = render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={initial} />)
+        await user.click(screen.getByRole('button', { name: 'Details for Primary passkey' }))
+        expect(screen.getByRole('button', { name: 'Remove Primary passkey' }).disabled).toBe(true)
+        const multiple = { ...initial, recoveryBackupConfirmed: false, vault: { ...initial.vault, keyWraps: [...initial.vault.keyWraps, { ...initial.vault.keyWraps[0], id: 'wrap-2', label: 'Backup passkey' }] } }
+        view.rerender(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={multiple} />)
+        expect(screen.getByRole('button', { name: 'Remove Primary passkey' }).disabled).toBe(true)
+        view.rerender(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={{ ...multiple, recoveryBackupConfirmed: true }} />)
+        await user.click(screen.getByRole('button', { name: 'Remove Primary passkey' }))
+        expect(mocks.removePasskey).not.toHaveBeenCalled()
+        const confirmation = screen.getByRole('group', { name: 'Confirm removal of Primary passkey' })
+        await user.click(within(confirmation).getByRole('button', { name: 'Remove passkey' }))
+        expect(mocks.removePasskey).toHaveBeenCalledWith('wrap-1')
+    })
+
+    it('reports successful passkey testing and routes Done through the controller close guard', async () => {
+        const user = userEvent.setup()
+        const onClose = vi.fn()
+        render(<UnlockedContent onClose={onClose} onSensitiveChange={vi.fn()} snapshot={snapshot()} />)
+        await user.click(screen.getByRole('button', { name: 'Test passkey unlock' }))
+        expect(mocks.reauthenticate).toHaveBeenCalledOnce()
+        expect(await screen.findByText('Passkey verified. This wallet can be unlocked with it.')).toBeTruthy()
+        await user.click(screen.getByRole('button', { name: 'Done' }))
+        expect(onClose).toHaveBeenCalledOnce()
+    })
+
     it('shows all twelve words numbered 1 through 12 and copies them as one phrase', async () => {
         render(<UnlockedContent onSensitiveChange={vi.fn()} snapshot={snapshot()} />)
-
+        fireEvent.click(screen.getByRole('tab', { name: 'Recovery' }))
         fireEvent.click(screen.getByRole('button', { name: 'Reveal recovery phrase' }))
 
         const region = await screen.findByRole('region', { name: 'Recovery phrase' })
@@ -87,6 +175,7 @@ describe('wallet secret reveal UI', () => {
             />,
         )
 
+        fireEvent.click(screen.getByRole('tab', { name: 'Recovery' }))
         fireEvent.click(screen.getByRole('button', { name: 'Reveal private key' }))
 
         const region = await screen.findByRole('region', { name: 'Private key' })

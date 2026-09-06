@@ -1,58 +1,20 @@
-/* oxlint-disable no-unused-vars -- shared declarations preserve the extracted screen contract. */
-import * as Dialog from '@radix-ui/react-dialog'
 import {
-    AlertTriangle,
-    ArrowLeft,
     Check,
-    ChevronRight,
     Copy,
     Download,
-    FileKey,
-    FileUp,
     KeyRound,
     Loader2,
     Lock,
-    Pencil,
-    Plus,
-    ShieldAlert,
     ShieldCheck,
-    Trash2,
-    WalletCards, WalletIcon,
-    X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import '@fontsource/ubuntu/latin-400.css'
 import '@fontsource/ubuntu/latin-500.css'
 import '@fontsource/ubuntu/latin-700.css'
 import { walletUIOperations as manager } from '../../services/walletUIOperations.js'
-import { ErrorNotice, ScreenIntro, shortenAddress, formatLastUsed } from './WalletPrimitives.jsx'
-
-const GUARDED_SETUP_PHASES = new Set(['passkey-ready', 'confirm-recovery', 'confirm-import', 'onboarding-ready'])
-const LAST_USED_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-})
-
-const SAFE_ERROR_COPY = Object.freeze({
-    PISTACHIO_CONNECTION_CANCELLED: 'The wallet request was canceled. You can try again when you are ready.',
-    PISTACHIO_PASSKEY_IFRAME_BLOCKED: 'Open PistachioSwap in a top-level browser tab to use Pistachio Wallet.',
-    PISTACHIO_PASSKEY_INSECURE_CONTEXT: 'Pistachio Wallet requires a secure browser connection.',
-    PISTACHIO_PASSKEY_NOT_AVAILABLE: 'The passkey request was canceled or the matching passkey is unavailable.',
-    PISTACHIO_PASSKEY_PRF_RESULT_MISSING: 'This passkey did not provide the protection required by Pistachio Wallet.',
-    PISTACHIO_PASSKEY_PRF_UNSUPPORTED: 'This browser or passkey provider cannot protect Pistachio Wallet.',
-    PISTACHIO_VAULT_ALREADY_EXISTS: 'This encrypted backup is already saved in this browser.',
-    PISTACHIO_VAULT_NOT_FOUND: 'That saved Pistachio Wallet is no longer available.',
-    PISTACHIO_WALLET_STORAGE_FAILED: 'Pistachio Wallet could not safely access encrypted browser storage.',
-    PISTACHIO_WALLET_UNLOCK_FAILED: 'Pistachio Wallet could not be unlocked. Check that you selected the correct passkey.',
-})
-
-function chooseWordPositions() {
-    const positions = new Set()
-    while (positions.size < 3) positions.add(crypto.getRandomValues(new Uint8Array(1))[0] % 12)
-    return [...positions].sort((left, right) => left - right)
-}
+import { ErrorNotice, ScreenIntro, shortenAddress } from './WalletPrimitives.jsx'
+import { PasskeySettings, SecurityOverview, SecurityTabs } from './WalletSecurityPanels.jsx'
 
 function saveTextFile(name, text, type = 'application/json') {
     const url = URL.createObjectURL(new Blob([text], { type }))
@@ -67,36 +29,16 @@ function saveTextFile(name, text, type = 'application/json') {
     }
 }
 
-function safeErrorMessage(error, context = 'wallet') {
-    if (!error) return ''
-    if (SAFE_ERROR_COPY[error.code]) return SAFE_ERROR_COPY[error.code]
-    const message = String(error.message ?? '')
-    if (/recovery phrase has invalid words or checksum/iu.test(message)) {
-        return 'The recovery phrase has an invalid word or checksum. Check every word and try again.'
-    }
-    if (/private key must be exactly 32 bytes/iu.test(message)) {
-        return 'Enter a private key containing exactly 64 hexadecimal characters, with or without 0x.'
-    }
-    if (/keystore exceeds 1 MiB/iu.test(message)) return 'The keystore file is larger than the 1 MiB limit.'
-    if (/keystore is not valid JSON/iu.test(message)) return 'The selected keystore is not valid JSON.'
-    if (/only Web3 Secret Storage V3/iu.test(message)) return 'Select an Ethereum Web3 Secret Storage V3 keystore file.'
-    if (context === 'keystore') return 'The keystore could not be opened. Check the file and password, then try again.'
-    if (context === 'restore') return 'This file is not a valid encrypted Pistachio Wallet backup.'
-    if (/wallet name is required/iu.test(message)) return 'Enter a name for this saved wallet.'
-    if (/passwords do not match/iu.test(message)) return 'The passwords do not match.'
-    if (/password must be at least 12 characters/iu.test(message)) return 'Use a backup password with at least 12 characters.'
-    return 'Pistachio Wallet could not complete that action. Try again.'
-}
-
-
-function UnlockedContent({ onSensitiveChange, snapshot }) {
+function UnlockedContent({ onClose, onSensitiveChange, snapshot }) {
+    const id = useId()
+    const bodyRef = useRef(null)
+    const [activeTab, setActiveTab] = useState('Passkeys')
     const [busyAction, setBusyAction] = useState(null)
     const [error, setError] = useState(null)
+    const [notice, setNotice] = useState('')
     const secretRef = useRef(null)
     const [secretKind, setSecretKind] = useState(null)
     const [secretCopied, setSecretCopied] = useState(false)
-    const [newLabel, setNewLabel] = useState('Backup passkey')
-    const [labels, setLabels] = useState(() => Object.fromEntries(snapshot.vault.keyWraps.map((wrap) => [wrap.id, wrap.label])))
     const [keystoreBackupPassword, setKeystoreBackupPassword] = useState('')
     const [keystoreBackupConfirmation, setKeystoreBackupConfirmation] = useState('')
     const clearTimer = useRef(null)
@@ -113,12 +55,15 @@ function UnlockedContent({ onSensitiveChange, snapshot }) {
         secretRef.current = null
     }, [])
 
-    async function run(name, action) {
+    async function run(name, action, successMessage = '') {
         if (busyAction) return null
         setBusyAction(name)
         setError(null)
+        setNotice('')
         try {
-            return await action()
+            const result = await action()
+            setNotice(successMessage)
+            return result
         } catch (nextError) {
             setError(nextError)
             return null
@@ -133,6 +78,18 @@ function UnlockedContent({ onSensitiveChange, snapshot }) {
         secretRef.current = null
         setSecretCopied(false)
         setSecretKind(null)
+    }
+
+    function selectTab(tab, focusTab = false) {
+        if (busyAction) return
+        hideSecret()
+        setKeystoreBackupPassword('')
+        setKeystoreBackupConfirmation('')
+        setError(null)
+        setNotice('')
+        setActiveTab(tab)
+        if (bodyRef.current) bodyRef.current.scrollTop = 0
+        if (focusTab) document.getElementById(`${id}-${tab}-tab`)?.focus()
     }
 
     function showSecret(value, kind) {
@@ -177,106 +134,111 @@ function UnlockedContent({ onSensitiveChange, snapshot }) {
         : []
 
     return (
-        <div className="pistachio-wallet-stack">
-            <div className="pistachio-wallet-unlocked-heading">
-                <div className="pistachio-wallet-success" role="status">
-                    {readOnlyView ? <WalletCards aria-hidden="true" /> : <Check aria-hidden="true" />}
+        <div className="pistachio-security">
+            <div className="pistachio-security-account">
+                <div role="status">
+                    <span className="pistachio-security-status-dot" aria-hidden="true" />
                     {readOnlyView ? ' Wallet ready' : ' Wallet unlocked'}
                 </div>
                 <code>{shortenAddress(displayAddress)}</code>
             </div>
-            <section className="pistachio-wallet-section">
-                <ScreenIntro title="Passkeys">Manage passkeys that can unlock this encrypted wallet.</ScreenIntro>
-                {snapshot.vault.keyWraps.map((wrap, index) => (
-                    <div className="pistachio-passkey-row" key={wrap.id}>
-                        <div>
-                            <div className="pistachio-passkey-label"><label className="pistachio-sr-only" htmlFor={`passkey-${wrap.id}`}>Passkey label</label><input id={`passkey-${wrap.id}`} value={labels[wrap.id] ?? wrap.label} maxLength={80} onChange={(event) => setLabels((current) => ({ ...current, [wrap.id]: event.target.value }))} /><button type="button" aria-label={`Save label for ${wrap.label}`} disabled={Boolean(busyAction)} onClick={() => run(`rename-${wrap.id}`, () => manager.renamePasskey(wrap.id, labels[wrap.id]))}><Check aria-hidden="true" /></button></div>
-                            <span>{index === 0 ? 'Primary passkey' : 'Backup passkey'} · Verified for wallet encryption</span>
-                            <span>{wrap.rpId} · Added {formatLastUsed(wrap.createdAt)}</span>
-                            <span>{wrap.credentialTransports.join(', ') || 'Transport not reported'} · Last used {snapshot.lastUnlockByWrap[wrap.id] ? new Date(snapshot.lastUnlockByWrap[wrap.id]).toLocaleString() : 'Never'}</span>
-                        </div>
-                        <button className="pistachio-wallet-icon-danger" type="button" aria-label={`Remove ${wrap.label}`} disabled={Boolean(busyAction) || snapshot.vault.keyWraps.length === 1 || !snapshot.recoveryBackupConfirmed} onClick={() => run(`remove-${wrap.id}`, () => manager.removePasskey(wrap.id))}><Trash2 aria-hidden="true" /></button>
+            <SecurityTabs activeTab={activeTab} busy={Boolean(busyAction)} id={id} onSelect={selectTab} />
+            <div ref={bodyRef} className="pistachio-wallet-stack pistachio-security-body">
+                <section className="pistachio-security-panel" role="tabpanel" tabIndex={0} id={`${id}-Overview-panel`} aria-labelledby={`${id}-Overview-tab`} hidden={activeTab !== 'Overview'}>
+                    <SecurityOverview snapshot={snapshot} onSelect={(tab) => selectTab(tab, true)} />
+                </section>
+                <section className="pistachio-security-panel" role="tabpanel" tabIndex={0} id={`${id}-Passkeys-panel`} aria-labelledby={`${id}-Passkeys-tab`} hidden={activeTab !== 'Passkeys'}>
+                    <PasskeySettings snapshot={snapshot} busy={Boolean(busyAction)} run={run} onRecovery={() => selectTab('Recovery', true)} />
+                </section>
+                <section className="pistachio-security-panel" role="tabpanel" tabIndex={0} id={`${id}-Recovery-panel`} aria-labelledby={`${id}-Recovery-tab`} hidden={activeTab !== 'Recovery'}>
+                    <ScreenIntro title="Recovery and backups">Reauthentication is required before exporting or revealing sensitive information.</ScreenIntro>
+                    <div className="pistachio-security-recovery-action">
+                        <span className="pistachio-security-symbol"><Download aria-hidden="true" /></span>
+                        <div><strong>Encrypted backup</strong><p>Save a file to restore this wallet on another device.</p></div>
+                        <button type="button" className="pistachio-wallet-primary" disabled={Boolean(busyAction)} aria-label="Export encrypted backup" onClick={() => run('backup-export', async () => saveTextFile('pistachio-wallet-backup.json', await manager.exportEncryptedBackup()))}>Export</button>
                     </div>
-                ))}
-                <label htmlFor="pistachio-new-passkey-label">New passkey label</label>
-                <div className="pistachio-wallet-inline"><input id="pistachio-new-passkey-label" value={newLabel} maxLength={80} onChange={(event) => setNewLabel(event.target.value)} /><button type="button" disabled={Boolean(busyAction) || !newLabel.trim()} onClick={() => run('add-passkey', () => manager.addBackupPasskey(newLabel))}><Plus aria-hidden="true" /> Add backup passkey</button></div>
-                <button type="button" disabled={Boolean(busyAction)} onClick={() => run('test-passkey', () => manager.reauthenticate())}><KeyRound aria-hidden="true" /> Test passkey unlock</button>
-                {!snapshot.recoveryBackupConfirmed && <label className="pistachio-wallet-check"><input type="checkbox" disabled={Boolean(busyAction)} onChange={(event) => event.target.checked && run('confirm-backup', () => manager.confirmRecoveryBackup())} /> I have an offline wallet recovery backup.</label>}
-                <p className="pistachio-wallet-note">Removing access here does not delete the passkey from Chrome, your operating system, or a password manager.</p>
-            </section>
-            <section className="pistachio-wallet-section">
-                <ScreenIntro title="Recovery and backups">Reauthentication is required before exporting or revealing sensitive information.</ScreenIntro>
-                <button type="button" disabled={Boolean(busyAction)} onClick={() => run('backup-export', async () => saveTextFile('pistachio-wallet-backup.json', await manager.exportEncryptedBackup()))}><Download aria-hidden="true" /> Export encrypted backup</button>
-                {snapshot.vault.sourceType.endsWith('mnemonic') ? (
-                    <button type="button" disabled={Boolean(busyAction)} onClick={() => run('reveal-phrase', async () => showSecret(await manager.revealRecoveryPhrase(), 'Recovery phrase'))}>Reveal recovery phrase</button>
-                ) : (
-                    <button type="button" disabled={Boolean(busyAction)} onClick={() => run('reveal-key', async () => showSecret(await manager.revealPrivateKey(), 'Private key'))}>Reveal private key</button>
-                )}
-                {!snapshot.vault.sourceType.endsWith('mnemonic') && (
-                    <div className="pistachio-keystore-export">
-                        <label htmlFor="pistachio-backup-password">Encrypted keystore password</label>
-                        <input id="pistachio-backup-password" type="password" value={keystoreBackupPassword} autoComplete="new-password" onChange={(event) => setKeystoreBackupPassword(event.target.value)} />
-                        <label htmlFor="pistachio-backup-password-confirmation">Confirm password</label>
-                        <input id="pistachio-backup-password-confirmation" type="password" value={keystoreBackupConfirmation} autoComplete="new-password" onChange={(event) => setKeystoreBackupConfirmation(event.target.value)} />
-                        <button type="button" disabled={Boolean(busyAction) || keystoreBackupPassword.length < 12 || !keystoreBackupConfirmation} onClick={exportKeystoreBackup}><Download aria-hidden="true" /> Export encrypted keystore</button>
-                    </div>
-                )}
-                {secretKind && (
-                    <div className="pistachio-secret-reveal" role="region" aria-label={secretKind}>
-                        <div><strong>{secretKind}</strong><span>Hidden automatically after 60 seconds</span></div>
-                        {secretKind === 'Recovery phrase' ? (
-                            <>
-                                <ol
-                                    aria-label="Recovery phrase words"
-                                    style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                                        gap: '8px 16px',
-                                        listStyle: 'none',
-                                        margin: 0,
-                                        padding: 0,
-                                    }}
-                                >
-                                    {recoveryWords.map((word, index) => (
-                                        <li
-                                            key={`${index}-${word}`}
-                                            style={{
-                                                alignItems: 'center',
-                                                display: 'grid',
-                                                gridTemplateColumns: '2rem minmax(0, 1fr)',
-                                                gap: '8px',
-                                            }}
-                                        >
-                                            <span aria-hidden="true" style={{ opacity: 0.65, textAlign: 'right' }}>{index + 1}.</span>
-                                            <span style={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{word}</span>
-                                        </li>
-                                    ))}
-                                </ol>
-                                <div className="pistachio-wallet-inline">
-                                    <button type="button" onClick={copySecret}>
-                                        <Copy aria-hidden="true" /> {secretCopied ? 'Copied' : 'Copy recovery phrase'}
-                                    </button>
-                                    <button type="button" onClick={hideSecret}>Hide</button>
-                                </div>
-                            </>
+                    <div className="pistachio-security-recovery-action">
+                        <span className="pistachio-security-symbol"><KeyRound aria-hidden="true" /></span>
+                        <div><strong>{snapshot.vault.sourceType.endsWith('mnemonic') ? 'Recovery phrase' : 'Private key'}</strong><p>View in a private place. Never share it.</p></div>
+                        {snapshot.vault.sourceType.endsWith('mnemonic') ? (
+                            <button type="button" disabled={Boolean(busyAction)} aria-label="Reveal recovery phrase" onClick={() => run('reveal-phrase', async () => showSecret(await manager.revealRecoveryPhrase(), 'Recovery phrase'))}>Reveal</button>
                         ) : (
-                            <>
-                                <code>{secretRef.current}</code>
-                                <div className="pistachio-wallet-inline">
-                                    <button type="button" onClick={copySecret}>
-                                        <Copy aria-hidden="true" /> {secretCopied ? 'Copied' : 'Copy private key'}
-                                    </button>
-                                    <button type="button" onClick={hideSecret}>Hide</button>
-                                </div>
-                            </>
+                            <button type="button" disabled={Boolean(busyAction)} aria-label="Reveal private key" onClick={() => run('reveal-key', async () => showSecret(await manager.revealPrivateKey(), 'Private key'))}>Reveal</button>
                         )}
                     </div>
-                )}
-                <p className="pistachio-wallet-note">A passkey may sync while this browser’s encrypted wallet data does not. Test every backup before relying on it.</p>
-            </section>
-            <button type="button" disabled={Boolean(busyAction)} onClick={() => manager.lock('manual')}><Lock aria-hidden="true" /> Lock wallet</button>
-            {busyAction && <p className="pistachio-wallet-progress" role="status" aria-live="polite"><Loader2 className="pistachio-wallet-spinner" aria-hidden="true" /> Complete the requested wallet check…</p>}
-            <ErrorNotice error={error} />
+                    {!snapshot.vault.sourceType.endsWith('mnemonic') && (
+                        <div className="pistachio-keystore-export">
+                            <label htmlFor="pistachio-backup-password">Encrypted keystore password</label>
+                            <input id="pistachio-backup-password" type="password" value={keystoreBackupPassword} autoComplete="new-password" onChange={(event) => setKeystoreBackupPassword(event.target.value)} />
+                            <label htmlFor="pistachio-backup-password-confirmation">Confirm password</label>
+                            <input id="pistachio-backup-password-confirmation" type="password" value={keystoreBackupConfirmation} autoComplete="new-password" onChange={(event) => setKeystoreBackupConfirmation(event.target.value)} />
+                            <button type="button" disabled={Boolean(busyAction) || keystoreBackupPassword.length < 12 || !keystoreBackupConfirmation} onClick={exportKeystoreBackup}><Download aria-hidden="true" /> Export encrypted keystore</button>
+                        </div>
+                    )}
+                    {secretKind && (
+                        <div className="pistachio-secret-reveal" role="region" aria-label={secretKind}>
+                            <div><strong>{secretKind}</strong><span>Hidden automatically after 60 seconds</span></div>
+                            {secretKind === 'Recovery phrase' ? (
+                                <>
+                                    <ol
+                                        aria-label="Recovery phrase words"
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                                            gap: '8px 16px',
+                                            listStyle: 'none',
+                                            margin: 0,
+                                            padding: 0,
+                                        }}
+                                    >
+                                        {recoveryWords.map((word, index) => (
+                                            <li
+                                                key={`${index}-${word}`}
+                                                style={{
+                                                    alignItems: 'center',
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '2rem minmax(0, 1fr)',
+                                                    gap: '8px',
+                                                }}
+                                            >
+                                                <span aria-hidden="true" style={{ opacity: 0.65, textAlign: 'right' }}>{index + 1}.</span>
+                                                <span style={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{word}</span>
+                                            </li>
+                                        ))}
+                                    </ol>
+                                    <div className="pistachio-wallet-inline">
+                                        <button type="button" onClick={copySecret}>
+                                            <Copy aria-hidden="true" /> {secretCopied ? 'Copied' : 'Copy recovery phrase'}
+                                        </button>
+                                        <button type="button" onClick={hideSecret}>Hide</button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <code>{secretRef.current}</code>
+                                    <div className="pistachio-wallet-inline">
+                                        <button type="button" onClick={copySecret}>
+                                            <Copy aria-hidden="true" /> {secretCopied ? 'Copied' : 'Copy private key'}
+                                        </button>
+                                        <button type="button" onClick={hideSecret}>Hide</button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                    <div className="pistachio-security-backup-confirmation">
+                        {snapshot.recoveryBackupConfirmed ? <p className="pistachio-security-verified"><ShieldCheck aria-hidden="true" /> Offline backup confirmed by you</p> : <label className="pistachio-wallet-check"><input type="checkbox" checked={false} disabled={Boolean(busyAction)} onChange={(event) => event.target.checked && run('confirm-backup', () => manager.confirmRecoveryBackup())} /> I have an offline wallet recovery backup.</label>}
+                        <p>A passkey may sync while this browser’s encrypted wallet data does not. Test every backup before relying on it.</p>
+                    </div>
+                </section>
+                {busyAction && <p className="pistachio-wallet-progress" role="status" aria-live="polite"><Loader2 className="pistachio-wallet-spinner" aria-hidden="true" /> Complete the requested wallet check…</p>}
+                {notice && <p className="pistachio-security-verified" role="status"><Check aria-hidden="true" /> {notice}</p>}
+                <ErrorNotice error={error} />
+            </div>
+            <footer className="pistachio-security-footer">
+                <button type="button" disabled={Boolean(busyAction)} onClick={() => { hideSecret(); manager.lock('manual') }}><Lock aria-hidden="true" /> Lock wallet</button>
+                <button type="button" className="pistachio-wallet-primary" disabled={Boolean(busyAction)} onClick={onClose ?? (() => { hideSecret(); manager.close() })}>Done</button>
+            </footer>
         </div>
     )
 }

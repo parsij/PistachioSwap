@@ -135,12 +135,14 @@ Run every applicable route at `320 x 568`, `375 x 667`, `390 x 844`, `430 x 932`
 ## 12. Backup, passkeys, and secret reveal
 
 - Starting state: unlocked saved wallet opened from the header icon.
-- Steps: rename passkey, test unlock, add backup passkey, acknowledge offline recovery, export backup, reveal the fake phrase or key, and hide it.
-- Expected screen/buttons: **Add backup passkey**, **Test passkey unlock**, **Export encrypted backup**, **Reveal recovery phrase** or **Reveal private key**, **Hide**, and **Lock wallet**.
-- Close/back: active passkey requests and visible secrets use guarded close; reveal hides after 60 seconds.
+- Steps: in **Passkeys**, use the pencil to rename and explicitly save, test unlock, and **Add passkey**. Open **Recovery** to acknowledge an offline backup, export a backup, reveal the fake phrase or key, and hide it.
+- Expected screen/buttons: three tabs (**Overview**, **Passkeys**, **Recovery**); passkey details expand to show website, last-used time, connection methods, and removal controls. **Export** and **Reveal** retain descriptive accessible names. **Lock wallet** and **Done** remain visible in the footer.
+- Close/back: **Done** and the header close share the existing close guard. Active passkey requests and visible secrets use guarded close; reveal hides after 60 seconds and immediately when leaving Recovery. Switching tabs also clears keystore password fields and returns the panel to the top.
 - Connector: remains connected unless explicitly locked or disconnected.
 - Stored data: new wraps are encrypted; final wrap cannot be removed; reveal material is never persisted or automatically copied.
-- Desktop/mobile/keyboard/failure: test long passkey labels, disabled final-wrap removal, and failed reauthentication.
+- Desktop/mobile/keyboard/failure: test long passkey labels, narrow-screen internal scrolling, and failed reauthentication. Left/Right arrows and Home/End move focus and selection between tabs. Tab navigation is disabled while a wallet action is pending; the selected panel survives the manager's transient unlocking phase.
+- Removal: the only remaining passkey cannot be removed. With multiple passkeys, removal remains disabled until an offline backup is confirmed; an explicit **Remove passkey** / **Keep passkey** confirmation follows. Cancel makes no service call.
+- Feedback: a successful **Test passkey unlock** shows a success message; a canceled or failed request uses the existing safe error message.
 
 ## 13. Remove from this browser
 
