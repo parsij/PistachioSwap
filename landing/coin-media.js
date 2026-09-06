@@ -3,7 +3,6 @@ const RELEASE_BASE = 'https://github.com/parsij/3d-gold-coin/releases/download/l
 const MEDIA = {
     posterWebp: `${RELEASE_BASE}/coin-poster.webp`,
     posterJpg: `${RELEASE_BASE}/coin-poster.jpg`,
-    gif: `${RELEASE_BASE}/coin-fallback.gif`,
     low: `${RELEASE_BASE}/coin-low.mp4`,
     medium: `${RELEASE_BASE}/coin-medium.mp4`,
     high: `${RELEASE_BASE}/coin-high.mp4`,
@@ -11,11 +10,8 @@ const MEDIA = {
 }
 
 const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra']
-const GIF_LOAD_TIMEOUT_MS = 7000
-const VIDEO_START_TIMEOUT_MS = 4500
-const IS_IOS =
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const VIDEO_START_TIMEOUT_MS = 6000
+const VIDEO_ADVANCE_CHECK_MS = 1800
 
 const HERO_STYLES = `
 .hero.hero-with-coin {
@@ -77,7 +73,6 @@ const HERO_STYLES = `
 }
 
 .hero-coin-poster,
-.hero-coin-gif,
 .hero-coin-video,
 .hero-coin-live {
     position: absolute;
@@ -89,26 +84,33 @@ const HERO_STYLES = `
     object-position: center;
     -webkit-mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
     mask-image: radial-gradient(circle at center, #000 62%, rgb(0 0 0 / 92%) 76%, transparent 98%);
+    pointer-events: none;
 }
 
-.hero-coin-poster {
+/*
+ * Keep the video fully visible to WebKit from the moment it enters the DOM.
+ * The poster sits above it until a decoded video frame is confirmed. Safari
+ * may refuse/pause autoplay when the video itself is hidden with CSS.
+ */
+.hero-coin-video {
     z-index: 1;
     opacity: 1;
-    transition: opacity 260ms ease;
 }
 
-.hero-coin-gif,
-.hero-coin-video,
 .hero-coin-live {
     z-index: 2;
     opacity: 0;
     transition: opacity 260ms ease;
 }
 
-.hero-coin-gif.is-ready,
-.hero-coin-video.is-ready,
 .hero-coin-live.is-ready {
     opacity: 1;
+}
+
+.hero-coin-poster {
+    z-index: 3;
+    opacity: 1;
+    transition: opacity 260ms ease;
 }
 
 .hero-coin-poster.is-faded {
@@ -161,7 +163,6 @@ const HERO_STYLES = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .hero-coin-gif,
     .hero-coin-video,
     .hero-coin-live {
         display: none;
@@ -246,15 +247,6 @@ function createCoinMedia() {
 
     picture.append(source, poster)
 
-    const gif = document.createElement('img')
-    gif.className = 'hero-coin-gif'
-    gif.alt = ''
-    gif.width = 480
-    gif.height = 480
-    gif.loading = 'eager'
-    gif.decoding = 'async'
-    gif.fetchPriority = 'high'
-
     const video = document.createElement('video')
     video.className = 'hero-coin-video'
     video.muted = true
@@ -262,9 +254,10 @@ function createCoinMedia() {
     video.autoplay = true
     video.loop = true
     video.playsInline = true
-    video.preload = 'metadata'
+    video.preload = 'auto'
     video.poster = MEDIA.posterJpg
     video.disablePictureInPicture = true
+    video.disableRemotePlayback = true
     video.setAttribute('tabindex', '-1')
     video.setAttribute('muted', '')
     video.setAttribute('autoplay', '')
@@ -272,13 +265,8 @@ function createCoinMedia() {
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
 
-    frame.append(picture, gif, video)
-    return { frame, poster, gif, video }
-}
-
-function stopGif(gif) {
-    gif.removeAttribute('src')
-    gif.remove()
+    frame.append(video, picture)
+    return { frame, poster, video }
 }
 
 function stopVideo(video) {
@@ -290,15 +278,12 @@ function stopVideo(video) {
     video.remove()
 }
 
-async function startLiveFallback(gif, video, poster, frame, reason) {
+async function startLiveFallback(video, poster, frame, reason) {
     if (frame.dataset.liveFallback === 'loading' || frame.dataset.liveFallback === 'ready') return
     frame.dataset.liveFallback = 'loading'
     frame.dataset.liveFallbackReason = reason
 
-    gif?.classList.remove('is-ready')
-    video?.classList.remove('is-ready')
     poster.classList.remove('is-faded')
-    if (gif?.isConnected) stopGif(gif)
     if (video?.isConnected) stopVideo(video)
 
     try {
@@ -318,107 +303,124 @@ async function startLiveFallback(gif, video, poster, frame, reason) {
     }
 }
 
-function startVideoFallback(gif, video, poster, frame, gifReason) {
-    if (frame.dataset.videoFallback === 'started') return
-    frame.dataset.videoFallback = 'started'
-    frame.dataset.gifFallbackReason = gifReason
-
-    if (gif.isConnected) stopGif(gif)
-    poster.classList.remove('is-faded')
+function startCoinMedia(video, poster, frame) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
     const quality = chooseQuality(frame)
     video.dataset.quality = quality
     video.src = MEDIA[quality]
 
-    let revealed = false
-    let liveStarted = false
-    let timeoutId = 0
+    let fallbackStarted = false
+    let firstFrameShown = false
+    let playbackVerified = false
+    let startTimeoutId = 0
+    let advanceTimeoutId = 0
+    let rejectedTimeoutId = 0
+
+    const clearTimers = () => {
+        clearTimeout(startTimeoutId)
+        clearTimeout(advanceTimeoutId)
+        clearTimeout(rejectedTimeoutId)
+    }
 
     const liveFallback = (reason) => {
-        if (revealed || liveStarted) return
-        liveStarted = true
-        clearTimeout(timeoutId)
-        void startLiveFallback(gif, video, poster, frame, reason)
+        if (fallbackStarted || playbackVerified) return
+        fallbackStarted = true
+        clearTimers()
+        void startLiveFallback(video, poster, frame, reason)
     }
 
-    const revealVideo = () => {
-        if (liveStarted) return
-        revealed = true
-        clearTimeout(timeoutId)
+    const revealVideoFrame = () => {
+        if (fallbackStarted || firstFrameShown) return
+        firstFrameShown = true
+        frame.dataset.mediaMode = 'video'
+        poster.classList.add('is-faded')
+    }
 
-        const show = () => {
-            frame.dataset.mediaMode = 'video'
-            video.classList.add('is-ready')
-            poster.classList.add('is-faded')
-        }
+    const verifyAdvancingPlayback = () => {
+        if (fallbackStarted || playbackVerified) return
+        const initialTime = video.currentTime
+        clearTimeout(advanceTimeoutId)
+        advanceTimeoutId = window.setTimeout(() => {
+            if (fallbackStarted) return
+            const advanced = !video.paused && video.currentTime >= initialTime + 0.08
+            if (!advanced) {
+                liveFallback('video-not-advancing')
+                return
+            }
+            playbackVerified = true
+            clearTimeout(startTimeoutId)
+        }, VIDEO_ADVANCE_CHECK_MS)
+    }
+
+    const onPlaying = () => {
+        if (fallbackStarted) return
+        clearTimeout(rejectedTimeoutId)
 
         if (typeof video.requestVideoFrameCallback === 'function') {
-            video.requestVideoFrameCallback(show)
+            video.requestVideoFrameCallback(() => {
+                revealVideoFrame()
+                verifyAdvancingPlayback()
+            })
         } else {
-            requestAnimationFrame(show)
+            requestAnimationFrame(() => {
+                revealVideoFrame()
+                verifyAdvancingPlayback()
+            })
         }
     }
 
-    video.addEventListener('playing', revealVideo, { once: true })
+    const attemptPlay = () => {
+        if (fallbackStarted || playbackVerified) return
+        video.muted = true
+        video.defaultMuted = true
+        const playback = video.play()
+        if (playback?.catch) {
+            playback.catch(() => {
+                if (fallbackStarted || playbackVerified) return
+                clearTimeout(rejectedTimeoutId)
+                rejectedTimeoutId = window.setTimeout(
+                    () => liveFallback('autoplay-rejected'),
+                    1500,
+                )
+            })
+        }
+    }
+
+    video.addEventListener('playing', onPlaying)
+    video.addEventListener('loadeddata', attemptPlay, { once: true })
+    video.addEventListener('canplay', attemptPlay, { once: true })
     video.addEventListener('error', () => liveFallback('video-error'), { once: true })
     video.addEventListener('stalled', () => {
-        if (!revealed && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-            liveFallback('video-stalled')
+        if (!playbackVerified && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+            window.setTimeout(() => {
+                if (!playbackVerified && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+                    liveFallback('video-stalled')
+                }
+            }, 1200)
         }
     }, { once: true })
 
-    timeoutId = window.setTimeout(() => {
-        if (!revealed || video.paused || video.currentTime <= 0) {
-            liveFallback('video-start-timeout')
+    const retryFromGesture = () => attemptPlay()
+    document.addEventListener('touchstart', retryFromGesture, { once: true, passive: true })
+    document.addEventListener('pointerdown', retryFromGesture, { once: true, passive: true })
+
+    window.addEventListener('pageshow', () => {
+        if (!playbackVerified && !fallbackStarted) attemptPlay()
+    }, { once: true })
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && !playbackVerified && !fallbackStarted) {
+            attemptPlay()
         }
+    })
+
+    startTimeoutId = window.setTimeout(() => {
+        if (!playbackVerified) liveFallback('video-start-timeout')
     }, VIDEO_START_TIMEOUT_MS)
 
     video.load()
-    const playback = video.play()
-    if (playback?.catch) {
-        playback.catch(() => liveFallback('autoplay-rejected'))
-    }
-}
-
-function startGifThenVideo(gif, video, poster, frame) {
-    let gifResolved = false
-    const gifTimeout = window.setTimeout(() => {
-        if (gifResolved) return
-        gifResolved = true
-        startVideoFallback(gif, video, poster, frame, 'gif-load-timeout')
-    }, GIF_LOAD_TIMEOUT_MS)
-
-    gif.addEventListener('load', () => {
-        if (gifResolved) return
-        gifResolved = true
-        clearTimeout(gifTimeout)
-        frame.dataset.mediaMode = 'gif'
-        requestAnimationFrame(() => {
-            gif.classList.add('is-ready')
-            poster.classList.add('is-faded')
-        })
-    }, { once: true })
-
-    gif.addEventListener('error', () => {
-        if (gifResolved) return
-        gifResolved = true
-        clearTimeout(gifTimeout)
-        startVideoFallback(gif, video, poster, frame, 'gif-error')
-    }, { once: true })
-
-    gif.src = MEDIA.gif
-}
-
-function startCoinMedia(gif, video, poster, frame) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-
-    if (IS_IOS) {
-        frame.dataset.iosMediaPath = 'video-then-live'
-        startVideoFallback(gif, video, poster, frame, 'ios-skip-gif')
-        return
-    }
-
-    startGifThenVideo(gif, video, poster, frame)
+    attemptPlay()
 }
 
 export function setupLandingCoin() {
@@ -431,11 +433,11 @@ export function setupLandingCoin() {
     copy.className = 'hero-copy'
     while (hero.firstChild) copy.appendChild(hero.firstChild)
 
-    const { frame, poster, gif, video } = createCoinMedia()
+    const { frame, poster, video } = createCoinMedia()
     hero.classList.add('hero-with-coin')
     hero.append(copy, frame)
 
-    startCoinMedia(gif, video, poster, frame)
+    startCoinMedia(video, poster, frame)
 }
 
 if (document.readyState === 'loading') {
