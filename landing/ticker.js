@@ -1,3 +1,4 @@
+import './mobile-stability.css'
 import './coin-media.js'
 import './coin-media-playback.js'
 
