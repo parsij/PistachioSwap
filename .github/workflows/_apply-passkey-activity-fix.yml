@@ -1,0 +1,73 @@
+name: Apply passkey and activity fix
+
+on:
+  push:
+    branches:
+      - fix/passkey-delete-and-complete-activity
+    paths:
+      - .github/workflows/_apply-passkey-activity-fix.yml
+      - scripts/_fix-passkey-and-activity.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/passkey-delete-and-complete-activity
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Apply focused patch
+        run: python3 scripts/_fix-passkey-and-activity.py
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: API typecheck
+        run: pnpm --filter @pistachio/api typecheck
+
+      - name: Passkey credential-manager regression
+        run: pnpm exec vitest run src/features/passkey/services/walletUIOperations.test.js
+
+      - name: Wallet activity API regressions
+        run: pnpm exec vitest run apps/api/test/wallet-activity.test.ts
+
+      - name: Wallet activity merge regressions
+        run: pnpm exec vitest run src/features/wallet/hooks/useWalletActivity.test.jsx
+
+      - name: Passkey settings UI regressions
+        run: pnpm exec vitest run src/features/passkey/components/wallet/UnlockedWalletScreen.recovery.test.jsx
+
+      - name: Full tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Commit validated patch
+        shell: bash
+        run: |
+          git rm .github/workflows/_apply-passkey-activity-fix.yml scripts/_fix-passkey-and-activity.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix passkey credential sync and wallet activity'
+          git push origin HEAD:fix/passkey-delete-and-complete-activity
