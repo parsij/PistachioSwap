@@ -44,7 +44,13 @@ jobs:
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
 
-      - name: Passkey settings UI regression
+      - name: Multiple-passkey removal UI
+        run: pnpm exec vitest run src/features/passkey/components/wallet/UnlockedWalletScreen.recovery.test.jsx -t "requires another passkey"
+
+      - name: Test-passkey layout UI
+        run: pnpm exec vitest run src/features/passkey/components/wallet/UnlockedWalletScreen.recovery.test.jsx -t "reports successful passkey testing"
+
+      - name: Full passkey settings UI regression
         run: pnpm exec vitest run src/features/passkey/components/wallet/UnlockedWalletScreen.recovery.test.jsx
 
       - name: Wallet manager regressions
