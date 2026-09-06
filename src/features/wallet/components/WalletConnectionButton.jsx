@@ -4,6 +4,7 @@ import WalletAccountButton from './wallet/WalletAccountButton.jsx'
 import WalletAccountDialog from './wallet/WalletAccountDialog.jsx'
 import './wallet/wallet.css'
 import './wallet/sendAssetDialog.css'
+import './wallet/walletAccount.mobile.css'
 
 /**
  * Composes the connected-account button and wallet account dialog.
