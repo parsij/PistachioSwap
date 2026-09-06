@@ -12,6 +12,9 @@ const MEDIA = {
 const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra']
 const VIDEO_START_TIMEOUT_MS = 6000
 const VIDEO_ADVANCE_CHECK_MS = 1800
+const IS_IOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
 const HERO_STYLES = `
 .hero.hero-with-coin {
@@ -87,11 +90,7 @@ const HERO_STYLES = `
     pointer-events: none;
 }
 
-/*
- * Keep the video fully visible to WebKit from the moment it enters the DOM.
- * The poster sits above it until a decoded video frame is confirmed. Safari
- * may refuse/pause autoplay when the video itself is hidden with CSS.
- */
+/* Keep the video visible to WebKit. The poster sits above it until playback is verified. */
 .hero-coin-video {
     z-index: 1;
     opacity: 1;
@@ -174,12 +173,23 @@ const HERO_STYLES = `
 }
 `
 
+function isHighEndIOS() {
+    if (!IS_IOS) return false
+
+    const dpr = window.devicePixelRatio || 1
+    const cores = navigator.hardwareConcurrency || 6
+    const longSide = Math.max(window.screen?.width || 0, window.screen?.height || 0)
+
+    return dpr >= 3 && cores >= 6 && longSide * dpr >= 2550
+}
+
 function qualityIndex(name) {
     return Math.max(0, QUALITY_ORDER.indexOf(name))
 }
 
 function displayQuality(frame) {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const dprCap = isHighEndIOS() ? 3 : 2
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap)
     const targetPixels = Math.max(frame.clientWidth, 320) * dpr
 
     if (targetPixels <= 520) return 'low'
@@ -191,7 +201,7 @@ function displayQuality(frame) {
 function connectionQuality() {
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection
 
-    if (!connection) return 'high'
+    if (!connection) return isHighEndIOS() ? 'ultra' : 'high'
     if (connection.saveData) return 'low'
 
     const effectiveType = String(connection.effectiveType || '').toLowerCase()
@@ -210,6 +220,8 @@ function connectionQuality() {
 }
 
 function chooseQuality(frame) {
+    if (isHighEndIOS()) return 'ultra'
+
     const byDisplay = displayQuality(frame)
     const byConnection = connectionQuality()
     return QUALITY_ORDER[Math.min(qualityIndex(byDisplay), qualityIndex(byConnection))]
@@ -289,6 +301,7 @@ async function startLiveFallback(video, poster, frame, reason) {
     try {
         const { mountLiveCoin } = await import('./coin-live.js')
         await mountLiveCoin(frame, {
+            quality: frame.dataset.quality || 'auto',
             onFirstFrame: (canvas) => {
                 frame.dataset.liveFallback = 'ready'
                 frame.dataset.mediaMode = 'live'
@@ -307,6 +320,8 @@ function startCoinMedia(video, poster, frame) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
     const quality = chooseQuality(frame)
+    frame.dataset.quality = quality
+    frame.dataset.highEndIOS = String(isHighEndIOS())
     video.dataset.quality = quality
     video.src = MEDIA[quality]
 
