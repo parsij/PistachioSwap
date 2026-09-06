@@ -381,8 +381,8 @@ async function handle(operation, message) {
     }
     if (operation === 'removePasskeyWrap') {
         requireWallet()
-        if (!activeVault || !dek || activeVault.keyWraps.length <= 1 || message.backupAcknowledged !== true) {
-            throw new TypeError('The last passkey wrap cannot be removed without recovery backup evidence.')
+        if (!activeVault || !dek || activeVault.keyWraps.length <= 1) {
+            throw new TypeError('The last passkey wrap cannot be removed.')
         }
         const remaining = activeVault.keyWraps.filter((item) => item.id !== message.keyWrapId)
         if (remaining.length === activeVault.keyWraps.length) throw new TypeError('Passkey wrap not found.')

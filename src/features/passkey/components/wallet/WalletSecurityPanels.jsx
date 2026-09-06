@@ -57,7 +57,7 @@ function PasskeyItem({ wrap, index, snapshot, busy, run, onRecovery }) {
     const [label, setLabel] = useState(wrap.label)
     const [expanded, setExpanded] = useState(false)
     const [removing, setRemoving] = useState(false)
-    const canRemove = snapshot.vault.keyWraps.length > 1 && snapshot.recoveryBackupConfirmed
+    const canRemove = snapshot.vault.keyWraps.length > 1
     const lastUsed = snapshot.lastUnlockByWrap?.[wrap.id]
 
     function finishEditing() {
@@ -96,7 +96,7 @@ function PasskeyItem({ wrap, index, snapshot, busy, run, onRecovery }) {
                     <div><dt>Last used</dt><dd>{lastUsed ? new Date(lastUsed).toLocaleString() : 'Never'}</dd></div>
                     <div><dt>Connection methods</dt><dd>{wrap.credentialTransports?.join(', ') || 'Not reported'}</dd></div>
                 </dl>
-                <p id={`${id}-remove-help`}>{snapshot.vault.keyWraps.length === 1 ? 'Your only passkey cannot be removed. Add another passkey first.' : !snapshot.recoveryBackupConfirmed ? 'Confirm an offline recovery backup before removing a passkey.' : 'Removing access here does not delete the passkey from your browser, device, or password manager.'}</p>
+                <p id={`${id}-remove-help`}>{snapshot.vault.keyWraps.length === 1 ? 'Your only passkey cannot be removed. Add another passkey first.' : !snapshot.recoveryBackupConfirmed ? 'Another passkey will remain after removal. Keep an offline recovery backup too.' : 'Removing access here does not delete the passkey from your browser, device, or password manager.'}</p>
                 {!snapshot.recoveryBackupConfirmed && <button type="button" className="pistachio-security-link" disabled={busy} onClick={onRecovery}>Manage recovery</button>}
                 {removing ? (
                     <div className="pistachio-security-remove-confirm" role="group" aria-label={`Confirm removal of ${wrap.label}`}>
@@ -129,8 +129,8 @@ export function PasskeySettings({ snapshot, busy, run, onRecovery }) {
                     <button type="submit" className="pistachio-wallet-primary" disabled={busy || !newLabel.trim()}>Add passkey</button>
                 </div>
             </form>
-            <button type="button" className="pistachio-security-test" disabled={busy} onClick={() => run('test-passkey', () => manager.reauthenticate(), 'Passkey verified. This wallet can be unlocked with it.')}><KeyRound aria-hidden="true" /> Test passkey unlock</button>
             <div className="pistachio-security-hint"><p>Keep an offline recovery backup before removing a passkey.</p><button type="button" className="pistachio-security-link" disabled={busy} onClick={onRecovery}>Manage recovery</button></div>
+            <button type="button" className="pistachio-security-test" disabled={busy} onClick={() => run('test-passkey', () => manager.reauthenticate(), 'Passkey verified. This wallet can be unlocked with it.')}><KeyRound aria-hidden="true" /> Test passkey unlock</button>
         </>
     )
 }

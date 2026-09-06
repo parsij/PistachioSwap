@@ -355,9 +355,15 @@ export const methods = {
         this.notify()
     },
     async removePasskey(keyWrapId) {
+        this.requireUnlocked()
+        if (!this.vault || this.vault.keyWraps.length <= 1) {
+            throw managerError(
+                'PISTACHIO_LAST_PASSKEY_REQUIRED',
+                'Your only passkey cannot be removed. Add another passkey first.',
+            )
+        }
         await this.reauthenticate()
-        if (!this.recoveryBackupConfirmed) throw managerError('PISTACHIO_RECOVERY_BACKUP_REQUIRED', 'Confirm an offline recovery backup before removing a passkey.')
-        const result = await this.client.request('removePasskeyWrap', { keyWrapId, backupAcknowledged: true })
+        const result = await this.client.request('removePasskeyWrap', { keyWrapId })
         this.vault = await this.storage.saveAndReadBackVault(result.vault)
         this.notify()
     },
