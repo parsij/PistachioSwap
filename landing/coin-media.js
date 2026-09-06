@@ -27,34 +27,23 @@ const HERO_STYLES = `
     text-align: left;
 }
 
-.hero-with-coin .hero-copy {
-    min-width: 0;
-}
-
-.hero-with-coin .eyebrow {
-    margin-bottom: 24px;
-}
-
+.hero-with-coin .hero-copy { min-width: 0; }
+.hero-with-coin .eyebrow { margin-bottom: 24px; }
 .hero-with-coin .hero-signature {
     margin: 0 0 20px;
     font-size: clamp(56px, 7vw, 94px);
     transform-origin: left center;
 }
-
 .hero-with-coin h1 {
     max-width: 17ch;
     margin-inline: 0;
     font-size: clamp(35px, 4.3vw, 54px);
 }
-
 .hero-with-coin .hero-lede {
     max-width: 56ch;
     margin: 24px 0 0;
 }
-
-.hero-with-coin .hero-actions {
-    justify-content: flex-start;
-}
+.hero-with-coin .hero-actions { justify-content: flex-start; }
 
 .hero-coin-frame {
     position: relative;
@@ -90,7 +79,7 @@ const HERO_STYLES = `
     pointer-events: none;
 }
 
-/* Keep the video visible to WebKit. The poster sits above it until playback is verified. */
+/* Keep video visible to WebKit while it starts. The poster hides it from the user. */
 .hero-coin-video {
     z-index: 1;
     opacity: 1;
@@ -101,20 +90,14 @@ const HERO_STYLES = `
     opacity: 0;
     transition: opacity 260ms ease;
 }
-
-.hero-coin-live.is-ready {
-    opacity: 1;
-}
+.hero-coin-live.is-ready { opacity: 1; }
 
 .hero-coin-poster {
     z-index: 3;
     opacity: 1;
     transition: opacity 260ms ease;
 }
-
-.hero-coin-poster.is-faded {
-    opacity: 0;
-}
+.hero-coin-poster.is-faded { opacity: 0; }
 
 @media (max-width: 900px) {
     .hero.hero-with-coin {
@@ -124,25 +107,16 @@ const HERO_STYLES = `
         padding-top: 44px;
         text-align: center;
     }
-
     .hero-with-coin .hero-signature {
         margin-inline: auto;
         transform-origin: center;
     }
-
     .hero-with-coin h1 {
         max-width: 24ch;
         margin-inline: auto;
     }
-
-    .hero-with-coin .hero-lede {
-        margin-inline: auto;
-    }
-
-    .hero-with-coin .hero-actions {
-        justify-content: center;
-    }
-
+    .hero-with-coin .hero-lede { margin-inline: auto; }
+    .hero-with-coin .hero-actions { justify-content: center; }
     .hero-coin-frame {
         width: min(100%, 500px);
         margin: 2px auto 0;
@@ -154,7 +128,6 @@ const HERO_STYLES = `
         gap: 12px;
         padding-bottom: 20px;
     }
-
     .hero-coin-frame {
         width: min(112vw, 430px);
         margin-top: -2px;
@@ -163,23 +136,16 @@ const HERO_STYLES = `
 
 @media (prefers-reduced-motion: reduce) {
     .hero-coin-video,
-    .hero-coin-live {
-        display: none;
-    }
-
-    .hero-coin-poster {
-        opacity: 1 !important;
-    }
+    .hero-coin-live { display: none; }
+    .hero-coin-poster { opacity: 1 !important; }
 }
 `
 
 function isHighEndIOS() {
     if (!IS_IOS) return false
-
     const dpr = window.devicePixelRatio || 1
     const cores = navigator.hardwareConcurrency || 6
     const longSide = Math.max(window.screen?.width || 0, window.screen?.height || 0)
-
     return dpr >= 3 && cores >= 6 && longSide * dpr >= 2550
 }
 
@@ -191,7 +157,6 @@ function displayQuality(frame) {
     const dprCap = isHighEndIOS() ? 3 : 2
     const dpr = Math.min(window.devicePixelRatio || 1, dprCap)
     const targetPixels = Math.max(frame.clientWidth, 320) * dpr
-
     if (targetPixels <= 520) return 'low'
     if (targetPixels <= 820) return 'medium'
     if (targetPixels <= 1050) return 'high'
@@ -200,7 +165,6 @@ function displayQuality(frame) {
 
 function connectionQuality() {
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection
-
     if (!connection) return isHighEndIOS() ? 'ultra' : 'high'
     if (connection.saveData) return 'low'
 
@@ -219,9 +183,8 @@ function connectionQuality() {
     return effectiveType === '4g' ? 'high' : 'medium'
 }
 
-function chooseQuality(frame) {
+function chooseAutomaticQuality(frame) {
     if (isHighEndIOS()) return 'ultra'
-
     const byDisplay = displayQuality(frame)
     const byConnection = connectionQuality()
     return QUALITY_ORDER[Math.min(qualityIndex(byDisplay), qualityIndex(byConnection))]
@@ -256,7 +219,6 @@ function createCoinMedia() {
     poster.loading = 'eager'
     poster.decoding = 'async'
     poster.fetchPriority = 'high'
-
     picture.append(source, poster)
 
     const video = document.createElement('video')
@@ -281,161 +243,275 @@ function createCoinMedia() {
     return { frame, poster, video }
 }
 
-function stopVideo(video) {
-    try {
-        video.pause()
-    } catch {}
-    video.removeAttribute('src')
-    video.load()
-    video.remove()
-}
+function createController(video, poster, frame) {
+    let mode = 'poster'
+    let videoQualityMode = 'auto'
+    let activeVideoQuality = null
+    let playbackGeneration = 0
+    let videoCleanup = null
+    let liveCleanup = null
+    let activeAttemptPlay = null
+    let liveReason = null
 
-async function startLiveFallback(video, poster, frame, reason) {
-    if (frame.dataset.liveFallback === 'loading' || frame.dataset.liveFallback === 'ready') return
-    frame.dataset.liveFallback = 'loading'
-    frame.dataset.liveFallbackReason = reason
+    const resolveVideoQuality = () =>
+        videoQualityMode === 'auto' ? chooseAutomaticQuality(frame) : videoQualityMode
 
-    poster.classList.remove('is-faded')
-    if (video?.isConnected) stopVideo(video)
+    const clearVideoAttempt = () => {
+        playbackGeneration += 1
+        activeAttemptPlay = null
+        videoCleanup?.()
+        videoCleanup = null
+    }
 
-    try {
-        const { mountLiveCoin } = await import('./coin-live.js')
-        await mountLiveCoin(frame, {
-            quality: frame.dataset.quality || 'auto',
-            onFirstFrame: (canvas) => {
-                frame.dataset.liveFallback = 'ready'
-                frame.dataset.mediaMode = 'live'
-                canvas.classList.add('is-ready')
-                poster.classList.add('is-faded')
-            },
-        })
-    } catch (error) {
-        frame.dataset.liveFallback = 'failed'
+    const stopVideo = ({ clearSource = false } = {}) => {
+        try { video.pause() } catch {}
+        if (clearSource) {
+            video.removeAttribute('src')
+            try { video.load() } catch {}
+        }
+    }
+
+    const stopLive = () => {
+        liveCleanup?.()
+        liveCleanup = null
+        delete frame.dataset.liveFallback
+        delete frame.dataset.liveFallbackReason
+    }
+
+    const startLive = async (reason = 'manual-rendering-on') => {
+        if (mode === 'rendering' && liveCleanup) return 'rendering'
+
+        clearVideoAttempt()
+        stopVideo({ clearSource: true })
+        stopLive()
+
+        mode = 'rendering'
+        liveReason = reason
+        frame.dataset.mediaMode = 'live-loading'
+        frame.dataset.liveFallback = 'loading'
+        frame.dataset.liveFallbackReason = reason
+        video.style.visibility = 'hidden'
         poster.classList.remove('is-faded')
-        console.warn('[pistachio-swap] live coin fallback failed', error)
-    }
-}
 
-function startCoinMedia(video, poster, frame) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+        try {
+            const { mountLiveCoin } = await import('./coin-live.js')
+            const cleanup = await mountLiveCoin(frame, {
+                quality: 'auto',
+                onFirstFrame: (canvas) => {
+                    if (mode !== 'rendering') return
+                    frame.dataset.liveFallback = 'ready'
+                    frame.dataset.mediaMode = 'rendering'
+                    canvas.classList.add('is-ready')
+                    poster.classList.add('is-faded')
+                },
+            })
 
-    const quality = chooseQuality(frame)
-    frame.dataset.quality = quality
-    frame.dataset.highEndIOS = String(isHighEndIOS())
-    video.dataset.quality = quality
-    video.src = MEDIA[quality]
-
-    let fallbackStarted = false
-    let firstFrameShown = false
-    let playbackVerified = false
-    let startTimeoutId = 0
-    let advanceTimeoutId = 0
-    let rejectedTimeoutId = 0
-
-    const clearTimers = () => {
-        clearTimeout(startTimeoutId)
-        clearTimeout(advanceTimeoutId)
-        clearTimeout(rejectedTimeoutId)
-    }
-
-    const liveFallback = (reason) => {
-        if (fallbackStarted || playbackVerified) return
-        fallbackStarted = true
-        clearTimers()
-        void startLiveFallback(video, poster, frame, reason)
-    }
-
-    const revealVideoFrame = () => {
-        if (fallbackStarted || firstFrameShown) return
-        firstFrameShown = true
-        frame.dataset.mediaMode = 'video'
-        poster.classList.add('is-faded')
-    }
-
-    const verifyAdvancingPlayback = () => {
-        if (fallbackStarted || playbackVerified) return
-        const initialTime = video.currentTime
-        clearTimeout(advanceTimeoutId)
-        advanceTimeoutId = window.setTimeout(() => {
-            if (fallbackStarted) return
-            const advanced = !video.paused && video.currentTime >= initialTime + 0.08
-            if (!advanced) {
-                liveFallback('video-not-advancing')
-                return
+            if (mode !== 'rendering') {
+                cleanup?.()
+                return mode
             }
-            playbackVerified = true
+
+            liveCleanup = cleanup
+            return 'rendering'
+        } catch (error) {
+            frame.dataset.liveFallback = 'failed'
+            mode = 'poster'
+            poster.classList.remove('is-faded')
+            console.warn('[pistachio-swap] live coin render failed', error)
+            return 'poster'
+        }
+    }
+
+    const startVideo = (reason = 'manual-rendering-off') => {
+        clearVideoAttempt()
+        stopLive()
+
+        mode = 'video'
+        liveReason = null
+        frame.dataset.mediaMode = 'video-loading'
+        delete frame.dataset.liveFallback
+        delete frame.dataset.liveFallbackReason
+        video.style.visibility = 'visible'
+        poster.classList.remove('is-faded')
+
+        const quality = resolveVideoQuality()
+        activeVideoQuality = quality
+        frame.dataset.quality = quality
+        frame.dataset.highEndIOS = String(isHighEndIOS())
+        video.dataset.quality = quality
+
+        const nextSrc = MEDIA[quality]
+        if (video.getAttribute('src') !== nextSrc) {
+            video.src = nextSrc
+        }
+
+        const generation = playbackGeneration
+        let firstFrameShown = false
+        let playbackVerified = false
+        let startTimeoutId = 0
+        let advanceTimeoutId = 0
+        let rejectedTimeoutId = 0
+
+        const isCurrent = () => mode === 'video' && generation === playbackGeneration
+
+        const clearTimers = () => {
             clearTimeout(startTimeoutId)
-        }, VIDEO_ADVANCE_CHECK_MS)
-    }
-
-    const onPlaying = () => {
-        if (fallbackStarted) return
-        clearTimeout(rejectedTimeoutId)
-
-        if (typeof video.requestVideoFrameCallback === 'function') {
-            video.requestVideoFrameCallback(() => {
-                revealVideoFrame()
-                verifyAdvancingPlayback()
-            })
-        } else {
-            requestAnimationFrame(() => {
-                revealVideoFrame()
-                verifyAdvancingPlayback()
-            })
+            clearTimeout(advanceTimeoutId)
+            clearTimeout(rejectedTimeoutId)
         }
-    }
 
-    const attemptPlay = () => {
-        if (fallbackStarted || playbackVerified) return
-        video.muted = true
-        video.defaultMuted = true
-        const playback = video.play()
-        if (playback?.catch) {
-            playback.catch(() => {
-                if (fallbackStarted || playbackVerified) return
+        const fallback = (fallbackReason) => {
+            if (!isCurrent() || playbackVerified) return
+            clearTimers()
+            void startLive(`video-${fallbackReason}`)
+        }
+
+        const revealVideoFrame = () => {
+            if (!isCurrent() || firstFrameShown) return
+            firstFrameShown = true
+            frame.dataset.mediaMode = 'video'
+            poster.classList.add('is-faded')
+        }
+
+        const verifyAdvancingPlayback = () => {
+            if (!isCurrent() || playbackVerified) return
+            const initialTime = video.currentTime
+            clearTimeout(advanceTimeoutId)
+            advanceTimeoutId = window.setTimeout(() => {
+                if (!isCurrent()) return
+                const advanced = !video.paused && video.currentTime >= initialTime + 0.08
+                if (!advanced) {
+                    fallback('not-advancing')
+                    return
+                }
+                playbackVerified = true
+                clearTimeout(startTimeoutId)
+            }, VIDEO_ADVANCE_CHECK_MS)
+        }
+
+        const onPlaying = () => {
+            if (!isCurrent()) return
+            clearTimeout(rejectedTimeoutId)
+            const showAndVerify = () => {
+                revealVideoFrame()
+                verifyAdvancingPlayback()
+            }
+            if (typeof video.requestVideoFrameCallback === 'function') {
+                video.requestVideoFrameCallback(showAndVerify)
+            } else {
+                requestAnimationFrame(showAndVerify)
+            }
+        }
+
+        const attemptPlay = () => {
+            if (!isCurrent() || playbackVerified) return
+            video.muted = true
+            video.defaultMuted = true
+            const playback = video.play()
+            playback?.catch?.(() => {
+                if (!isCurrent() || playbackVerified) return
                 clearTimeout(rejectedTimeoutId)
-                rejectedTimeoutId = window.setTimeout(
-                    () => liveFallback('autoplay-rejected'),
-                    1500,
-                )
+                rejectedTimeoutId = window.setTimeout(() => fallback('autoplay-rejected'), 1500)
             })
         }
-    }
 
-    video.addEventListener('playing', onPlaying)
-    video.addEventListener('loadeddata', attemptPlay, { once: true })
-    video.addEventListener('canplay', attemptPlay, { once: true })
-    video.addEventListener('error', () => liveFallback('video-error'), { once: true })
-    video.addEventListener('stalled', () => {
-        if (!playbackVerified && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+        const onError = () => fallback('error')
+        const onStalled = () => {
+            if (!isCurrent() || playbackVerified) return
             window.setTimeout(() => {
-                if (!playbackVerified && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-                    liveFallback('video-stalled')
+                if (isCurrent() && !playbackVerified && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+                    fallback('stalled')
                 }
             }, 1200)
         }
-    }, { once: true })
 
-    const retryFromGesture = () => attemptPlay()
-    document.addEventListener('touchstart', retryFromGesture, { once: true, passive: true })
-    document.addEventListener('pointerdown', retryFromGesture, { once: true, passive: true })
+        video.addEventListener('playing', onPlaying)
+        video.addEventListener('loadeddata', attemptPlay)
+        video.addEventListener('canplay', attemptPlay)
+        video.addEventListener('error', onError)
+        video.addEventListener('stalled', onStalled)
 
-    window.addEventListener('pageshow', () => {
-        if (!playbackVerified && !fallbackStarted) attemptPlay()
-    }, { once: true })
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && !playbackVerified && !fallbackStarted) {
-            attemptPlay()
+        videoCleanup = () => {
+            clearTimers()
+            video.removeEventListener('playing', onPlaying)
+            video.removeEventListener('loadeddata', attemptPlay)
+            video.removeEventListener('canplay', attemptPlay)
+            video.removeEventListener('error', onError)
+            video.removeEventListener('stalled', onStalled)
         }
+        activeAttemptPlay = attemptPlay
+
+        startTimeoutId = window.setTimeout(() => {
+            if (isCurrent() && !playbackVerified) fallback('start-timeout')
+        }, VIDEO_START_TIMEOUT_MS)
+
+        try { video.load() } catch {}
+        attemptPlay()
+        console.info(`[pistachio-swap] video mode: ${quality} (${reason})`)
+        return quality
+    }
+
+    const setVideoQuality = (value) => {
+        const normalized = String(value).trim().toLowerCase()
+        if (normalized !== 'auto' && !QUALITY_ORDER.includes(normalized)) {
+            console.warn('[pistachio-swap] video quality must be low, medium, high, ultra, or auto')
+            return null
+        }
+
+        videoQualityMode = normalized
+        const resolved = resolveVideoQuality()
+        console.info(`[pistachio-swap] video quality: ${normalized} -> ${resolved}`)
+        if (mode === 'video') startVideo('video-quality-change')
+        return resolved
+    }
+
+    window.rendering = {
+        on: () => startLive('manual-rendering-on'),
+        off: () => startVideo('manual-rendering-off'),
+        get: () => ({
+            mode,
+            liveReason,
+            liveQuality: window.coinQuality?.get?.() ?? null,
+            videoQuality: {
+                mode: videoQualityMode === 'auto' ? 'auto' : 'manual',
+                requested: videoQualityMode,
+                resolved: resolveVideoQuality(),
+                active: activeVideoQuality,
+            },
+        }),
+    }
+
+    window.videoQuality = {
+        set: setVideoQuality,
+        get: () => ({
+            mode: videoQualityMode === 'auto' ? 'auto' : 'manual',
+            requested: videoQualityMode,
+            resolved: resolveVideoQuality(),
+            active: activeVideoQuality,
+            levels: [...QUALITY_ORDER, 'auto'],
+        }),
+        low: () => setVideoQuality('low'),
+        medium: () => setVideoQuality('medium'),
+        high: () => setVideoQuality('high'),
+        ultra: () => setVideoQuality('ultra'),
+        auto: () => setVideoQuality('auto'),
+        levels: [...QUALITY_ORDER, 'auto'],
+    }
+
+    document.addEventListener('touchstart', () => activeAttemptPlay?.(), { passive: true })
+    document.addEventListener('pointerdown', () => activeAttemptPlay?.(), { passive: true })
+    window.addEventListener('pageshow', () => activeAttemptPlay?.())
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') activeAttemptPlay?.()
     })
 
-    startTimeoutId = window.setTimeout(() => {
-        if (!playbackVerified) liveFallback('video-start-timeout')
-    }, VIDEO_START_TIMEOUT_MS)
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        mode = 'poster'
+        frame.dataset.mediaMode = 'poster'
+        return
+    }
 
-    video.load()
-    attemptPlay()
+    startVideo('initial')
 }
 
 export function setupLandingCoin() {
@@ -451,8 +527,7 @@ export function setupLandingCoin() {
     const { frame, poster, video } = createCoinMedia()
     hero.classList.add('hero-with-coin')
     hero.append(copy, frame)
-
-    startCoinMedia(video, poster, frame)
+    createController(video, poster, frame)
 }
 
 if (document.readyState === 'loading') {
