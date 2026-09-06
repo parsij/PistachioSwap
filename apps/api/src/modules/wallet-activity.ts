@@ -52,11 +52,22 @@ const MORALIS_CHAIN_IDS = new Set(
         .map((chain) => chain.chainId),
 )
 
-// Production same-chain Gas Assist delegates the user's BNB Chain EOA to this
-// ownerless EIP-7702 executor. The top-level transaction still targets the
-// user's own EOA, so wallet history cannot identify it from `to_address` alone.
+// Current direct EIP-7702 same-chain executor.
 export const GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS =
     '0x973731be76bdb84b994d32ef1e9607edebfbe470'
+
+// Pistachio-owned BNB Chain contracts that have been used by the product.
+// Keep these as transaction-history identities only. Their presence here does
+// not grant execution privileges or alter Gas Assist routing/security policy.
+export const KNOWN_PISTACHIO_BSC_CONTRACT_ADDRESSES = Object.freeze([
+    GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS,
+    '0x517b6c94da086f3f69dc725d7d70cdba7c4a9b62',
+    '0x21331d393a0622eeddffce3e9db29448b6110bc6',
+])
+
+const KNOWN_PISTACHIO_BSC_CONTRACT_SET = new Set(
+    KNOWN_PISTACHIO_BSC_CONTRACT_ADDRESSES,
+)
 
 const gasAssistAtomicExecutorAbi = [
     {
@@ -133,7 +144,10 @@ function safeHttpsUrl(value: unknown) {
     }
 }
 
-function activityTokenForAddress(chainId: number, value: unknown): ActivityToken | null {
+function activityTokenForAddress(
+    chainId: number,
+    value: unknown,
+): ActivityToken | null {
     const address = normalizeAddress(value)
     if (!address) return null
     if (address === zeroAddress) return activityTokenFromNative(chainId, null)
@@ -277,11 +291,52 @@ function authorizationAddresses(value: Record<string, unknown>) {
     return addresses
 }
 
+function isKnownPistachioBscContract(value: unknown) {
+    const address = normalizeAddress(value)
+    return address !== null && KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address)
+}
+
+function hasKnownPistachioAuthorization(value: Record<string, unknown>) {
+    return authorizationAddresses(value)
+        .some((address) => KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address))
+}
+
 function gasAssistAuthorizationMatches(value: Record<string, unknown>) {
     const addresses = authorizationAddresses(value)
-    // Some Moralis history responses do not expose EIP-7702 authorization
-    // tuples. When they are present, require the exact production executor.
-    return addresses.length === 0 || addresses.includes(GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS)
+    // Moralis does not always expose EIP-7702 authorization tuples. When it
+    // does expose them, require a known Pistachio executor/contract identity.
+    return addresses.length === 0 || addresses.some((address) =>
+        KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address))
+}
+
+function dominantTransfer(transfers: Transfer[]) {
+    if (transfers.length === 0) return null
+    return transfers.reduce((best, candidate) => {
+        if (!best) return candidate
+        if (best.rawAmount !== null && candidate.rawAmount !== null) {
+            return candidate.rawAmount > best.rawAmount ? candidate : best
+        }
+        const bestAmount = Number(best.amount)
+        const candidateAmount = Number(candidate.amount)
+        if (Number.isFinite(candidateAmount) &&
+            (!Number.isFinite(bestAmount) || candidateAmount > bestAmount)) {
+            return candidate
+        }
+        return best
+    }, null as Transfer | null)
+}
+
+function singleTokenFlow(transfers: Transfer[]) {
+    const groups = new Map<string, Transfer[]>()
+    for (const transfer of transfers) {
+        const identity = tokenIdentity(transfer.token)
+        if (!identity) continue
+        const group = groups.get(identity) ?? []
+        group.push(transfer)
+        groups.set(identity, group)
+    }
+    if (groups.size !== 1) return null
+    return dominantTransfer([...groups.values()][0] ?? [])
 }
 
 function decodeGasAssistActivity({
@@ -304,7 +359,9 @@ function decodeGasAssistActivity({
     if (chainId !== 56) return null
     const from = normalizeAddress(value.from_address)
     const to = normalizeAddress(value.to_address)
-    if (from !== wallet || to !== wallet || !gasAssistAuthorizationMatches(value)) return null
+    const directKnownContract = isKnownPistachioBscContract(to)
+    const delegatedSelfCall = to === wallet && gasAssistAuthorizationMatches(value)
+    if (from !== wallet || (!directKnownContract && !delegatedSelfCall)) return null
 
     const input = stringValue(value.input, 200_000)
     if (!input || !isHex(input) || input.length < 10) return null
@@ -334,11 +391,12 @@ function decodeGasAssistActivity({
         const exactSell = exactTransfer(outgoing, sellAddress, swapAmount)
         const anySell = exactSell ?? exactTransfer(outgoing, sellAddress)
         const buyTransfer = exactTransfer(incoming, buyAddress)
-        const sellToken = anySell?.token ?? activityTokenForAddress(chainId, sellAddress)
-        const buyToken = buyTransfer?.token ?? activityTokenForAddress(chainId, buyAddress)
-        if (!sellToken || !buyToken || tokenIdentity(sellToken) === tokenIdentity(buyToken)) {
-            return null
-        }
+        // Require observed token flow. Calldata alone must never turn an
+        // unrelated or reverted-looking interaction into a displayed swap.
+        if (!anySell || !buyTransfer) return null
+        const sellToken = anySell.token
+        const buyToken = buyTransfer.token
+        if (tokenIdentity(sellToken) === tokenIdentity(buyToken)) return null
 
         return {
             id: `${chainId}:${hash}`,
@@ -349,16 +407,64 @@ function decodeGasAssistActivity({
             timestamp,
             sellToken,
             buyToken,
-            // The executor's swapAmount is the exact principal. Do not use the
-            // first outgoing transfer because it may be the Gas Assist fee.
+            // swapAmount is the principal. A fee transfer may be the first
+            // outgoing transfer, so never infer the principal from array order.
             sellAmount:
-                formatRawAmount(swapAmount, sellToken) ?? anySell?.amount ?? null,
-            buyAmount: buyTransfer?.amount ?? null,
+                formatRawAmount(swapAmount, sellToken) ?? anySell.amount ?? null,
+            buyAmount: buyTransfer.amount ?? null,
             recipient: wallet,
             provider: 'pistachio-gas-assist',
         }
     } catch {
         return null
+    }
+}
+
+function inferKnownPistachioSwapActivity({
+    chainId,
+    wallet,
+    value,
+    hash,
+    timestamp,
+    outgoing,
+    incoming,
+}: {
+    chainId: number
+    wallet: string
+    value: Record<string, unknown>
+    hash: string
+    timestamp: string | null
+    outgoing: Transfer[]
+    incoming: Transfer[]
+}): Record<string, unknown> | null {
+    if (chainId !== 56 || normalizeAddress(value.from_address) !== wallet) return null
+    const to = normalizeAddress(value.to_address)
+    const knownInteraction = isKnownPistachioBscContract(to) ||
+        (to === wallet && hasKnownPistachioAuthorization(value))
+    if (!knownInteraction) return null
+
+    // Only infer a legacy/custom Pistachio swap when transfer flow is
+    // unambiguous: one outgoing asset identity and one incoming asset identity.
+    // Exact modern Gas Assist calls are handled above and retain exact principal.
+    const sell = singleTokenFlow(outgoing)
+    const buy = singleTokenFlow(incoming)
+    if (!sell || !buy || tokenIdentity(sell.token) === tokenIdentity(buy.token)) {
+        return null
+    }
+
+    return {
+        id: `${chainId}:${hash}`,
+        walletAddress: wallet,
+        type: 'swapped',
+        chainId,
+        hash,
+        timestamp,
+        sellToken: sell.token,
+        buyToken: buy.token,
+        sellAmount: sell.amount,
+        buyAmount: buy.amount,
+        recipient: to,
+        provider: 'pistachio-contract',
     }
 }
 
@@ -445,6 +551,17 @@ function normalizeMoralisActivity(
         incoming,
     })
     if (gasAssist) return gasAssist
+
+    const knownPistachioSwap = inferKnownPistachioSwapActivity({
+        chainId,
+        wallet,
+        value,
+        hash,
+        timestamp,
+        outgoing,
+        incoming,
+    })
+    if (knownPistachioSwap) return knownPistachioSwap
 
     const decodedApproval = decodeApprovalActivity({
         chainId,
@@ -564,25 +681,24 @@ function activityPassesTrustPolicy(
     item: Record<string, unknown>,
     trustedTokens: Map<string, KnownActivityToken>,
 ) {
-    const chainId = Number(item.chainId)
     const type = String(item.type)
-    if (type === 'contract') return false
-    if (type === 'swapped') {
+
+    // Transaction history is not a portfolio. A successful transaction that the
+    // wallet initiated must remain visible even when the asset has since moved
+    // to zero balance or lacks current primary-portfolio classification.
+    if (['contract', 'approved', 'sent', 'swapped'].includes(type)) return true
+
+    // Unsolicited inbound token transfers are the spam surface. Keep the strict
+    // token trust gate there in addition to Moralis possible_spam filtering.
+    if (type === 'received') {
         return activityTokenTrusted(
-            chainId,
-            item.sellToken as ActivityToken | null,
-            trustedTokens,
-        ) && activityTokenTrusted(
-            chainId,
-            item.buyToken as ActivityToken | null,
+            Number(item.chainId),
+            item.token as ActivityToken | null,
             trustedTokens,
         )
     }
-    return activityTokenTrusted(
-        chainId,
-        item.token as ActivityToken | null,
-        trustedTokens,
-    )
+
+    return false
 }
 
 function enrichActivityToken(
@@ -744,8 +860,8 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
                     token,
                 )
             }
-            // Current wallet records take precedence for richer price/security
-            // metadata, but their absence no longer erases historical transfers.
+            // Current wallet records enrich display metadata. They no longer
+            // decide whether user-initiated historical transactions exist.
             for (const token of result.value.walletTokens) {
                 trustedTokens.set(
                     `${Number(token.chainId)}:${String(token.address).toLowerCase()}`,
@@ -787,9 +903,12 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
 }
 
 export const walletActivityInternals = {
+    activityPassesTrustPolicy,
     activityTokenFromErc20,
     decodeApprovalActivity,
     decodeGasAssistActivity,
+    inferKnownPistachioSwapActivity,
+    isKnownPistachioBscContract,
     normalizeMoralisActivity,
     requestedChainIds,
 }
