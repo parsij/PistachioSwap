@@ -1,0 +1,206 @@
+/* Mobile account sheet overrides. Desktop keeps the existing right-side panel. */
+@media (max-width: 640px) {
+    .uni-wallet-overlay {
+        background: rgb(0 0 0 / 34%);
+    }
+
+    .wallet-account-dialog.uni-wallet-dialog {
+        top: auto;
+        right: auto;
+        bottom: 0;
+        left: 50%;
+        width: min(100%, 460px);
+        height: min(760px, calc(100dvh - 12px));
+        max-height: calc(100dvh - 12px);
+        overflow: hidden;
+        border: 1px solid #383638;
+        border-bottom: 0;
+        border-radius: 22px 22px 0 0;
+        background: #191919;
+        box-shadow: 0 -18px 52px rgb(0 0 0 / 38%);
+        transform: translateX(-50%);
+    }
+
+    .wallet-account-dialog.uni-wallet-dialog::before {
+        position: absolute;
+        z-index: 5;
+        top: 10px;
+        left: 50%;
+        width: 36px;
+        height: 4px;
+        border-radius: 999px;
+        background: #858285;
+        content: '';
+        pointer-events: none;
+        transform: translateX(-50%);
+    }
+
+    .uni-wallet-shell {
+        min-height: 0;
+        padding-top: 26px;
+    }
+
+    .uni-wallet-identity {
+        padding: 28px 28px 0;
+    }
+
+    .uni-wallet-topline {
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .uni-wallet-dialog .wallet-avatar-md {
+        width: 56px;
+        height: 56px;
+        padding: 7px;
+    }
+
+    .uni-wallet-controls {
+        gap: 8px;
+    }
+
+    .uni-wallet-brand {
+        width: 26px;
+        height: 26px;
+        margin: 6px 3px 0 0;
+    }
+
+    .uni-wallet-controls > button {
+        width: 40px;
+        height: 40px;
+    }
+
+    .uni-wallet-controls svg {
+        width: 21px;
+        height: 21px;
+    }
+
+    /* The sheet handle is the mobile visual affordance. Keep the desktop close
+       behavior available through outside press / Escape without a fourth icon. */
+    .uni-wallet-mobile-close {
+        display: none !important;
+    }
+
+    .uni-wallet-address {
+        margin-top: 10px;
+    }
+
+    .uni-wallet-address strong {
+        font-size: 18px;
+        font-weight: 560;
+    }
+
+    .uni-wallet-value {
+        margin-top: 18px;
+        font-size: 43px;
+        font-weight: 520;
+        letter-spacing: -.045em;
+    }
+
+    .uni-wallet-actions {
+        gap: 10px;
+        padding: 24px 28px 14px;
+    }
+
+    .uni-wallet-dialog .uni-wallet-actions > button {
+        min-height: 92px;
+        padding: 16px;
+        border-radius: 16px;
+        font-size: 16px;
+    }
+
+    .uni-wallet-actions > button > span {
+        width: 30px;
+        height: 30px;
+    }
+
+    .uni-wallet-actions svg {
+        width: 23px;
+        height: 23px;
+    }
+
+    .uni-wallet-outline-action {
+        min-height: 40px;
+        margin: 0 28px;
+        font-size: 14px;
+    }
+
+    .uni-wallet-activity-section {
+        padding: 26px 20px 16px;
+    }
+
+    .uni-wallet-activity-section > h2 {
+        padding: 0 8px 14px;
+        font-size: 17px;
+        font-weight: 560;
+    }
+
+    .uni-wallet-activity-list {
+        scrollbar-width: thin;
+    }
+
+    .uni-activity-row {
+        min-height: 72px;
+        grid-template-columns: 50px minmax(0, 1fr) auto;
+        gap: 10px;
+        padding: 8px;
+        border-radius: 14px;
+    }
+
+    .uni-activity-token {
+        width: 46px;
+        height: 46px;
+    }
+
+    .uni-activity-token .token-icon,
+    .uni-activity-fallback {
+        width: 44px;
+        height: 44px;
+    }
+
+    .uni-activity-copy strong {
+        font-size: 15px;
+    }
+
+    .uni-activity-copy span {
+        font-size: 14px;
+    }
+
+    .uni-activity-row time {
+        padding-top: 7px;
+        font-size: 12px;
+    }
+
+    .uni-wallet-small-outline {
+        min-height: 38px;
+        margin-top: 10px;
+        margin-left: 8px;
+        padding-inline: 14px;
+    }
+
+    .uni-wallet-inner-view > header {
+        padding-top: 18px;
+    }
+}
+
+@media (max-width: 380px) {
+    .uni-wallet-identity {
+        padding-right: 20px;
+        padding-left: 20px;
+    }
+
+    .uni-wallet-actions {
+        padding-right: 20px;
+        padding-left: 20px;
+    }
+
+    .uni-wallet-outline-action {
+        margin-right: 20px;
+        margin-left: 20px;
+    }
+
+    .uni-wallet-activity-section {
+        padding-right: 12px;
+        padding-left: 12px;
+    }
+}
