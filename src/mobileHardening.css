@@ -1,0 +1,35 @@
+/* Mobile browser hardening without disabling user zoom. */
+html {
+    max-width: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+body,
+#root,
+#wallet-kit-root {
+    max-width: 100%;
+}
+
+body {
+    overflow-x: hidden;
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+    /* iOS Safari auto-zooms focused form controls below 16px. */
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+    textarea,
+    select {
+        font-size: 16px !important;
+    }
+
+    /* Prevent accidental double-tap zoom on controls while preserving pinch zoom. */
+    a,
+    button,
+    input,
+    textarea,
+    select,
+    summary {
+        touch-action: manipulation;
+    }
+}

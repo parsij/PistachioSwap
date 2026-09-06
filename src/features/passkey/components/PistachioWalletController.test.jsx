@@ -461,7 +461,7 @@ describe('Pistachio Wallet entry and modal behavior', () => {
         expect(mocks.manager.retryInitialization).toHaveBeenCalledOnce()
     })
 
-    it('finishes successful onboarding only after the user chooses Connect wallet', async () => {
+    it('finishes successful onboarding only after the user chooses Continue', async () => {
         const user = userEvent.setup()
         mocks.state.snapshot = {
             ...emptySnapshot,
@@ -472,7 +472,9 @@ describe('Pistachio Wallet entry and modal behavior', () => {
         }
         render(<PistachioWalletController />)
         expect(mocks.manager.finishOnboarding).not.toHaveBeenCalled()
-        await user.click(screen.getByRole('button', { name: /^Connect wallet/ }))
+        expect(screen.getByRole('button', { name: 'Gas Assist' })).toBeTruthy()
+        expect(screen.queryByRole('button', { name: /Lock wallet/i })).toBeNull()
+        await user.click(screen.getByRole('button', { name: /^Continue/ }))
         expect(mocks.manager.finishOnboarding).toHaveBeenCalledWith({ continueUnlocked: true })
     })
 

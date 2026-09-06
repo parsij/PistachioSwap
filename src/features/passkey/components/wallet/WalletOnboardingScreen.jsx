@@ -11,7 +11,6 @@ import {
     FileUp,
     KeyRound,
     Loader2,
-    Lock,
     Pencil,
     Plus,
     ShieldAlert,
@@ -185,6 +184,10 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
         await manager.finishOnboarding({ continueUnlocked })
         if (continueUnlocked && !snapshot.connectionPending) manager.close()
     }
+    async function finishOnboardingAndOpenGasAssist() {
+        await manager.finishOnboarding({ continueUnlocked: true })
+        window.location.assign('/landing/gas-assist/')
+    }
     async function exportOnboardingBackup() {
         const backup = await run(() => manager.exportEncryptedBackup())
         if (backup) saveTextFile('pistachio-wallet-backup.json', backup)
@@ -310,8 +313,8 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
                 <p>A synced passkey does not sync the encrypted browser backup. Export a backup before relying on another device.</p>
                 <button type="button" disabled={busy} onClick={exportOnboardingBackup}><Download aria-hidden="true" /> {busy ? 'Preparing backup…' : 'Export encrypted backup'}</button>
                 <div className="pistachio-wallet-button-row">
-                    <button className="pistachio-wallet-primary" type="button" onClick={() => finishOnboarding(true)}>{snapshot.connectionPending ? 'Connect wallet' : 'Done'} <ChevronRight aria-hidden="true" /></button>
-                    <button type="button" onClick={() => finishOnboarding(false)}><Lock aria-hidden="true" /> Lock wallet</button>
+                    <button className="pistachio-wallet-primary" type="button" onClick={() => finishOnboarding(true)}>Continue <ChevronRight aria-hidden="true" /></button>
+                    <button type="button" onClick={finishOnboardingAndOpenGasAssist}>Gas Assist</button>
                 </div>
                 <ErrorNotice error={error} />
             </div>
