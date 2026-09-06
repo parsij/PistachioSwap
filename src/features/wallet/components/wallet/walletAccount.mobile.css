@@ -5,44 +5,88 @@
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog {
-        top: auto !important;
+        --wallet-sheet-top-gap: clamp(120px, 22dvh, 220px);
+        --wallet-sheet-drag-y: 0px;
+
+        top: var(--wallet-sheet-top-gap) !important;
         right: auto !important;
         bottom: 0 !important;
         left: 50% !important;
         width: min(calc(100vw - 16px), 460px) !important;
-        height: min(760px, calc(100dvh - 8px)) !important;
+        height: auto !important;
         max-width: none !important;
-        max-height: calc(100dvh - 8px) !important;
+        max-height: none !important;
         overflow: hidden;
         border: 1px solid #383638;
         border-bottom: 0;
         border-radius: 22px 22px 0 0;
         background: #191919;
         box-shadow: 0 -18px 52px rgb(0 0 0 / 38%);
-        transform: translateX(-50%) !important;
+        transform: translate(-50%, var(--wallet-sheet-drag-y)) !important;
+        transition: transform 190ms cubic-bezier(.22, 1, .36, 1);
+        will-change: transform;
     }
 
-    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog::before {
-        position: absolute;
-        z-index: 5;
-        top: 10px;
-        left: 50%;
-        width: 36px;
-        height: 4px;
-        border-radius: 999px;
-        background: #858285;
-        content: '';
-        pointer-events: none;
-        transform: translateX(-50%);
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog.is-dragging {
+        transition: none;
+    }
+
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog.is-dismissing {
+        transition: transform 180ms cubic-bezier(.4, 0, 1, 1);
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-shell {
         min-height: 0;
-        padding-top: 26px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding-top: 54px;
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    /* The Radix close control doubles as a real, accessible drag handle.
+       A tap closes it; a downward drag is handled by walletSheetDrag.js. */
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-mobile-close {
+        position: absolute;
+        z-index: 20;
+        top: 0;
+        left: 50%;
+        display: grid !important;
+        width: 96px;
+        height: 52px;
+        min-height: 0;
+        place-items: start center;
+        padding: 20px 0 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent !important;
+        color: transparent;
+        cursor: grab;
+        touch-action: none;
+        transform: translateX(-50%);
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-mobile-close:active {
+        cursor: grabbing;
+    }
+
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-mobile-close::before {
+        width: 72px;
+        height: 6px;
+        border-radius: 999px;
+        background: #969396;
+        content: '';
+    }
+
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-mobile-close svg {
+        display: none;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-identity {
-        padding: 28px 28px 0;
+        padding: 16px 28px 0;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-topline {
@@ -74,11 +118,6 @@
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-controls svg {
         width: 21px;
         height: 21px;
-    }
-
-    /* The handle is the mobile close affordance; outside press and Escape still close. */
-    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-mobile-close {
-        display: none !important;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-address {
@@ -125,8 +164,12 @@
         font-size: 14px;
     }
 
+    /* Let the whole sheet scroll. Do not create a second competing scroll area
+       inside Recent activity on small screens. */
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-activity-section {
-        padding: 26px 20px max(16px, env(safe-area-inset-bottom));
+        min-height: auto;
+        flex: 0 0 auto;
+        padding: 26px 20px 16px;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-activity-section > h2 {
@@ -136,7 +179,7 @@
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-activity-list {
-        scrollbar-width: thin;
+        overflow: visible;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-activity-row {
@@ -178,12 +221,26 @@
         padding-inline: 14px;
     }
 
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-inner-view {
+        min-height: auto;
+        flex: 0 0 auto;
+    }
+
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-inner-view > header {
         padding-top: 18px;
+    }
+
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-assets-scroll,
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-all-activity {
+        overflow: visible;
     }
 }
 
 @media (max-width: 380px) {
+    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog {
+        --wallet-sheet-top-gap: clamp(108px, 20dvh, 154px);
+    }
+
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-identity {
         padding-right: 20px;
         padding-left: 20px;
