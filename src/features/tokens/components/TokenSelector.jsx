@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useReducedMotion } from 'motion/react'
 
@@ -5,12 +6,9 @@ import { motion } from 'motion/react'
 
 import { TokenSearchResults, TokenSelectorSections as Sections } from './TokenSelectorSections.jsx'
 import { ChainSelector } from './TokenSelectorPrimitives.jsx'
-import TokenIcon from './TokenIcon.jsx'
 import { CloseIcon, CopyIcon, InfoIcon, SearchIcon } from './TokenSelectorIcons.jsx'
 import { useTokenSelectorState } from '../hooks/useTokenSelectorState.js'
 import { requestMoreTokenCatalog } from '../hooks/useTokenCatalog.js'
-import { getTokenDisplaySymbol } from '../services/tokenDisplay.js'
-import { getTokenKey } from '../model/tokenSelectorState.js'
 import { swapUiConfig } from '../../../swapConfig.js'
 import SendTokenPicker from '../../wallet/components/wallet/SendTokenPicker.jsx'
 import './TokenSelector.css'
@@ -63,26 +61,6 @@ function SendTokenSelectorPortal({
     )
 }
 
-function MobileQuickTokens({ tokens, onSelect }) {
-    const unique = []
-    const seen = new Set()
-    for (const token of tokens ?? []) {
-        const key = getTokenKey(token)
-        if (!key || seen.has(key)) continue
-        seen.add(key)
-        unique.push(token)
-        if (unique.length === 5) break
-    }
-    if (unique.length === 0) return null
-
-    return <div className="ps-token-mobile-quick" aria-label="Quick tokens">
-        {unique.map((token) => <button key={getTokenKey(token)} type="button" onClick={() => onSelect(token)}>
-            <TokenIcon token={token} size="list" />
-            <span>{getTokenDisplaySymbol(token)}</span>
-        </button>)}
-    </div>
-}
-
 function GlobalTokenSelector({
     side,
     chainId,
@@ -108,7 +86,23 @@ function GlobalTokenSelector({
     const reducedMotion = useReducedMotion()
     const motionConfig = swapUiConfig.motion.dialog
     const compact = isCompactSelectorViewport()
+    const initialScopeApplied = useRef(false)
     const state = useTokenSelectorState({ chainId, tokens, commonTokens, fallbackTokens, walletTokens, search, loading, error, catalogNotice, catalogDiagnostics, currentToken, oppositeToken, onSelect, onClose, hideUnknownTokens, hideSmallBalances })
+
+    useLayoutEffect(() => {
+        if (initialScopeApplied.current || !onChainChange) return
+        initialScopeApplied.current = true
+
+        const oppositeChainId = Number(oppositeToken?.chainId)
+        const preferredChainId = Number.isSafeInteger(oppositeChainId) && oppositeChainId > 0
+            ? oppositeChainId
+            : 'all'
+
+        if (String(chainId) === String(preferredChainId)) return
+        onSearchChange('')
+        onChainChange(preferredChainId)
+    }, [chainId, onChainChange, onSearchChange, oppositeToken?.chainId])
+
     const handleChainChange = (value) => {
         if (!onChainChange) return
         onSearchChange('')
@@ -123,16 +117,12 @@ function GlobalTokenSelector({
     }
     const dialogScale = reducedMotion || compact ? 1 : motionConfig.scale
     const dialogOffset = reducedMotion ? 0 : compact ? 72 : motionConfig.offsetY
-    const quickTokens = state.commonMarketTokens.length > 0
-        ? state.commonMarketTokens
-        : state.sortedGlobalMarketTokens
 
     return <motion.div className="ps-token-selector-backdrop" data-side={side} data-compact={compact ? 'true' : 'false'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onPointerDown={onClose}>
         <motion.section role="dialog" aria-modal="true" aria-label={`Select a token for ${side}`} className="ps-token-selector-dialog" initial={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} transition={{ type: 'spring', stiffness: compact ? 360 : motionConfig.stiffness, damping: compact ? 34 : motionConfig.damping }} onPointerDown={(event) => event.stopPropagation()}>
             <div className="ps-token-selector-handle" aria-hidden="true" />
             <header className="ps-token-selector-header"><h2>Select a token</h2><button type="button" className="ps-token-selector-close" aria-label="Close" onClick={onClose}><CloseIcon /></button></header>
             <div className="ps-token-search-wrapper"><div className="ps-token-search"><SearchIcon /><input autoFocus={!compact} aria-label="Search tokens" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search tokens" autoComplete="off" spellCheck="false" /><ChainSelector chainId={state.chainScope} onChange={handleChainChange} /></div></div>
-            {!state.normalizedSearch && !walletOnly && <MobileQuickTokens tokens={quickTokens} onSelect={state.handleSelect} />}
             <div className="ps-token-selector-scroll" onScroll={handleCatalogScroll}>{state.normalizedSearch ? <TokenSearchResults loading={loading} error={error} tokens={state.searchResultTokens} hiddenTokens={state.selectedHiddenTokens} onSelect={state.handleSelect} onContextMenu={state.openContextMenu} currentToken={currentToken} oppositeToken={oppositeToken} /> : <Sections state={state} loading={loading} currentToken={currentToken} oppositeToken={oppositeToken} hideUnknownTokens={hideUnknownTokens} walletOnly={walletOnly} />}</div>
         </motion.section>
         {state.contextMenu && <motion.div role="menu" className="ps-token-context-menu" style={{ left: state.contextMenu.x, top: state.contextMenu.y }} initial={{ opacity: 0, scale: 0.96, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} onPointerDown={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}><button type="button" role="menuitem" onClick={state.handleCopyAddress}><CopyIcon /><span>Copy address</span></button><button type="button" role="menuitem" disabled={state.detailsLoading} onClick={state.handleTokenDetails}><InfoIcon /><span>{state.detailsLoading ? 'Opening...' : 'Token details'}</span></button></motion.div>}
