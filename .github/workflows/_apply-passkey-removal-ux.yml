@@ -1,0 +1,61 @@
+name: Apply passkey removal UX patch
+
+on:
+  push:
+    branches:
+      - fix/passkey-removal-and-test-order
+    paths:
+      - .github/workflows/_apply-passkey-removal-ux.yml
+      - scripts/_apply-passkey-removal-ux.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/passkey-removal-and-test-order
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Apply focused patch
+        run: python3 scripts/_apply-passkey-removal-ux.py
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: API typecheck
+        run: pnpm --filter @pistachio/api typecheck
+
+      - name: Tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Commit validated patch
+        shell: bash
+        run: |
+          git rm .github/workflows/_apply-passkey-removal-ux.yml scripts/_apply-passkey-removal-ux.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix passkey removal safety and settings layout'
+          git push origin HEAD:fix/passkey-removal-and-test-order
