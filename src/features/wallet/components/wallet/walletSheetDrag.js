@@ -3,6 +3,7 @@ const HANDLE_SELECTOR = '.uni-wallet-mobile-close'
 
 let activeDrag = null
 let suppressNextClick = false
+let suppressResetTimer = 0
 
 function getSheetFromHandle(handle) {
     return handle.closest(SHEET_SELECTOR)
@@ -11,6 +12,14 @@ function getSheetFromHandle(handle) {
 function resetSheet(sheet) {
     sheet.classList.remove('is-dragging', 'is-dismissing')
     sheet.style.removeProperty('--wallet-sheet-drag-y')
+}
+
+function armClickSuppression() {
+    suppressNextClick = true
+    window.clearTimeout(suppressResetTimer)
+    suppressResetTimer = window.setTimeout(() => {
+        suppressNextClick = false
+    }, 320)
 }
 
 function beginDrag(event) {
@@ -71,7 +80,7 @@ function finishDrag(event, cancelled = false) {
     const shouldDismiss = !cancelled &&
         (drag.distance >= distanceThreshold || fastDownwardFlick)
 
-    if (drag.moved) suppressNextClick = true
+    if (drag.moved) armClickSuppression()
 
     drag.sheet.classList.remove('is-dragging')
 
@@ -84,6 +93,7 @@ function finishDrag(event, cancelled = false) {
 
         window.setTimeout(() => {
             suppressNextClick = false
+            window.clearTimeout(suppressResetTimer)
             drag.handle.click()
             resetSheet(drag.sheet)
         }, 190)
@@ -97,6 +107,7 @@ function finishDrag(event, cancelled = false) {
 function suppressDraggedClick(event) {
     if (!suppressNextClick || !event.target.closest?.(HANDLE_SELECTOR)) return
     suppressNextClick = false
+    window.clearTimeout(suppressResetTimer)
     event.preventDefault()
     event.stopPropagation()
 }
