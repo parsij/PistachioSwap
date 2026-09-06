@@ -299,7 +299,7 @@ async function startLiveFallback(gif, video, poster, frame, reason) {
     if (video?.isConnected) stopVideo(video)
 
     try {
-        const { mountLiveCoin } = await import(/* @vite-ignore */ './coin-live.js')
+        const { mountLiveCoin } = await import('./coin-live.js')
         await mountLiveCoin(frame, {
             onFirstFrame: (canvas) => {
                 frame.dataset.liveFallback = 'ready'
