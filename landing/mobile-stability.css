@@ -1,0 +1,65 @@
+/*
+ * Mobile viewport stability for the standalone landing pages.
+ *
+ * Keep this separate from the application CSS: these pages are independent
+ * Vite HTML entries and load through landing/ticker.js. The rules below avoid
+ * mobile browser text inflation and accidental root-level horizontal overflow
+ * without disabling user pinch zoom.
+ */
+
+html,
+body {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
+}
+
+.network-ticker {
+    width: 100%;
+    max-width: 100%;
+}
+
+@supports not (overflow: clip) {
+    html,
+    body {
+        overflow-x: hidden;
+    }
+}
+
+@media (max-width: 900px) {
+    html {
+        -webkit-text-size-adjust: none;
+        text-size-adjust: none;
+    }
+
+    /* Avoid vw-based shell width while mobile browser chrome settles. */
+    .shell {
+        width: calc(100% - 32px);
+        min-width: 0;
+        max-width: 1120px;
+        margin-right: auto;
+        margin-left: auto;
+    }
+
+    .hero {
+        width: 100%;
+        min-width: 0;
+    }
+
+    /* Both hero buttons share one deterministic centered column. */
+    .hero-actions {
+        display: grid;
+        width: 100%;
+        max-width: 420px;
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: stretch;
+        margin: 34px auto 0;
+    }
+
+    .hero-actions .button {
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+    }
+}
