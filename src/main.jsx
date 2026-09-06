@@ -10,6 +10,7 @@ import {
 } from './web3/walletRuntime.js'
 import { hasPersistedWalletSession } from './web3/walletSession.js'
 import './index.css'
+import './mobileHardening.css'
 
 const root = createRoot(document.getElementById('root'))
 const kitHost = document.getElementById('wallet-kit-root')
