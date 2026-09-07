@@ -93,15 +93,18 @@ function GlobalTokenSelector({
         if (initialScopeApplied.current || !onChainChange) return
         initialScopeApplied.current = true
 
+        const emptyOutputSide = side === 'buy' && !currentToken
         const oppositeChainId = Number(oppositeToken?.chainId)
-        const preferredChainId = Number.isSafeInteger(oppositeChainId) && oppositeChainId > 0
-            ? oppositeChainId
-            : 'all'
+        const preferredChainId = emptyOutputSide
+            ? 'all'
+            : Number.isSafeInteger(oppositeChainId) && oppositeChainId > 0
+                ? oppositeChainId
+                : 'all'
 
         if (String(chainId) === String(preferredChainId)) return
         onSearchChange('')
         onChainChange(preferredChainId)
-    }, [chainId, onChainChange, onSearchChange, oppositeToken?.chainId])
+    }, [chainId, currentToken, onChainChange, onSearchChange, oppositeToken?.chainId, side])
 
     const handleChainChange = (value) => {
         if (!onChainChange) return
