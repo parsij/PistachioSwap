@@ -15,10 +15,10 @@ export default function AppLayout({ style, header, children, overlays }) {
             <footer className="app-info-footer" aria-label="Pistachio Swap links">
                 <nav aria-label="Product guides">
                     <a href="/">About</a>
-                    <a href="/landing/wallet/">Pistachio Wallet</a>
-                    <a href="/landing/gas-assist/">Gas Assist</a>
-                    <a href="/landing/how-it-works/">How Pistachio Swap works</a>
-                    <a href="/landing/faq/">FAQ</a>
+                    <a href="/wallet/">Pistachio Wallet</a>
+                    <a href="/gas-assist/">Gas Assist</a>
+                    <a href="/how-it-works/">How Pistachio Swap works</a>
+                    <a href="/faq/">FAQ</a>
                     <a href="/legal/third-party/">Legal &amp; third-party notices</a>
                 </nav>
             </footer>
