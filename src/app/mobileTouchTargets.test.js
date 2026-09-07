@@ -38,10 +38,13 @@ describe('mobile touch targets', () => {
         expect(coarse).toMatch(/font-size:\s*16px/)
     })
 
-    it('keeps primary and secondary swap numbers readable on phones', () => {
+    it('keeps primary swap numbers the same size on desktop and phones', () => {
         const source = css('src/features/swap/components/SwapAmountInput.css')
-        expect(source).toMatch(
-            /@media\s*\(max-width:\s*520px\)[\s\S]*--swap-amount-input-font-size:\s*clamp\(40px,\s*11vw,\s*46px\)/,
+        expect(source).toMatch(/--swap-amount-input-font-size:\s*36px/)
+        expect(source).toMatch(/\.amount-input-shell\.amount-input-compact\s*\{[^}]*32px/)
+        expect(source).toMatch(/\.amount-input-shell\.amount-input-dense\s*\{[^}]*28px/)
+        expect(source).not.toMatch(
+            /@media\s*\(max-width:\s*520px\)[\s\S]*--swap-amount-input-font-size/,
         )
         expect(source).toMatch(
             /\.sell-fiat-value,[\s\S]*\.buy-fiat-value,[\s\S]*\.sell-balance\s*\{[^}]*font-size:\s*18px/,
