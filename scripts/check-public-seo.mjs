@@ -6,13 +6,15 @@ import { JSDOM } from 'jsdom'
 // Run after the build. Check published files, not only Vite's source HTML.
 const root = resolve('dist')
 const origin = 'https://pistachioswap.com'
-const pages = ['/', '/swap/', '/landing/wallet/', '/landing/how-it-works/',
-    '/landing/gas-assist/', '/gas-assist/', '/landing/faq/']
+const pages = ['/', '/swap/', '/wallet/', '/gas-assist/', '/how-it-works/', '/faq/']
+const guides = ['/wallet/', '/gas-assist/', '/how-it-works/']
+const retiredGuides = ['/landing/wallet/', '/landing/gas-assist/', '/landing/how-it-works/', '/landing/faq/']
 const read = (path) => readFileSync(resolve(root, path.replace(/^\//, '')), 'utf8')
 const sitemap = new JSDOM(read('sitemap.xml'), { contentType: 'application/xml' }).window.document
 const locations = [...sitemap.querySelectorAll('loc')].map((loc) => loc.textContent)
 assert.deepEqual([...locations].sort(), pages.map((path) => origin + path).sort())
 assert.equal(new Set(locations).size, locations.length)
+for (const retired of retiredGuides) assert(!locations.includes(origin + retired), retired + ' must not be in sitemap')
 const titles = new Set()
 const descriptions = new Set()
 const robots = read('robots.txt').split('User-agent: Googlebot\n')[1]?.split('User-agent:')[0]
@@ -38,7 +40,7 @@ for (const path of pages) {
         assert.equal(data['@context'], 'https://schema.org')
         assert(data['@graph'].some((node) => node.url === canonical))
     }
-    for (const guide of ['/landing/wallet/', '/landing/gas-assist/', '/landing/how-it-works/']) {
+    for (const guide of guides) {
         assert(doc.querySelector(`a[href="${guide}"]`), path + ' must link to ' + guide)
     }
     for (const node of doc.querySelectorAll('a[href], link[rel="stylesheet"], img[src], script[src]')) {
@@ -54,11 +56,13 @@ for (const path of pages) {
     if (path !== '/swap/') assert(!doc.querySelector('#wallet-kit-root'), path + ' must be static')
     else assert(doc.querySelector('#wallet-kit-root'), 'The wallet must mount at /swap/')
     for (const anchor of doc.querySelectorAll('a[href]')) {
-        assert.notEqual(new URL(anchor.href).pathname, '/landing/', path + ' links to a retired URL')
+        const pathname = new URL(anchor.href).pathname
+        assert(!retiredGuides.includes(pathname), path + ' links to retired guide ' + pathname)
+        assert.notEqual(pathname, '/landing/', path + ' links to retired landing root')
         if (/^(Open wallet|Swap|Trade)$/.test(anchor.textContent.trim())) {
-            assert.equal(new URL(anchor.href).pathname, '/swap/', path + ' app CTA')
+            assert.equal(pathname, '/swap/', path + ' app CTA')
         }
     }
     console.log('PASS ' + path)
 }
-console.log('SEO build checks passed: 7 canonical pages, metadata, schema, sitemap, resources, and guide links.')
+console.log('SEO build checks passed: 6 canonical pages, metadata, schema, sitemap, resources, and guide links.')
