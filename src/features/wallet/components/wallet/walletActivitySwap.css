@@ -1,0 +1,52 @@
+.uni-activity-swap-pair {
+    position: relative;
+    display: block;
+    width: 44px;
+    height: 44px;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--uni-wallet-surface);
+}
+
+.uni-activity-swap-half {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    overflow: hidden;
+}
+
+.uni-activity-swap-half-sell {
+    left: 0;
+}
+
+.uni-activity-swap-half-buy {
+    right: 0;
+}
+
+.uni-activity-swap-half .ps-token-icon {
+    position: absolute;
+    top: 0;
+    width: 44px;
+    height: 44px;
+}
+
+.uni-activity-swap-half-sell .ps-token-icon {
+    left: 0;
+}
+
+.uni-activity-swap-half-buy .ps-token-icon {
+    right: 0;
+}
+
+.uni-activity-swap-pair::after {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 50%;
+    width: 1px;
+    background: rgb(25 25 25 / 72%);
+    content: '';
+    pointer-events: none;
+    transform: translateX(-.5px);
+}
