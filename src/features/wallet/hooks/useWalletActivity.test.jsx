@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
     fetchWalletHistory: vi.fn(),
@@ -29,13 +29,13 @@ import {
 const walletAddress = '0x0000000000000000000000000000000000000001'
 
 describe('useWalletActivity direct browser history', () => {
-    afterEach(() => {
+    beforeEach(() => {
         vi.clearAllMocks()
         mocks.readCachedWalletHistory.mockResolvedValue({ items: [], partial: false })
+        mocks.fetchWalletHistory.mockResolvedValue({ items: [], partial: false })
     })
 
     it('queries every configured direct-history network in bounded batches', async () => {
-        mocks.readCachedWalletHistory.mockResolvedValue({ items: [] })
         mocks.fetchWalletHistory.mockImplementation(async ({ chainIds }) => ({
             items: [{
                 id: `activity-${chainIds[0]}`,
@@ -84,10 +84,7 @@ describe('useWalletActivity direct browser history', () => {
         await waitFor(() => expect(result.current.loading).toBe(false))
     })
 
-    it('keeps history from a successful direct batch when another batch fails', async () => {
-        // This test remains future-proof if more than one configured chain is
-        // enabled; with the default BNB-only list it verifies the successful path.
-        mocks.readCachedWalletHistory.mockResolvedValue({ items: [] })
+    it('keeps history from a successful direct batch', async () => {
         mocks.fetchWalletHistory.mockResolvedValue({
             items: [{
                 id: 'good-activity',
@@ -111,8 +108,6 @@ describe('useWalletActivity direct browser history', () => {
     })
 
     it('refetches after confirmations, chain changes and reopening the wallet', async () => {
-        mocks.readCachedWalletHistory.mockResolvedValue({ items: [] })
-        mocks.fetchWalletHistory.mockResolvedValue({ items: [], partial: false })
         const { result, rerender } = renderHook(props => useWalletActivity(props), {
             initialProps: { walletAddress, chainId: 56, enabled: true },
         })
@@ -132,7 +127,6 @@ describe('useWalletActivity direct browser history', () => {
     })
 
     it('reports a partial direct response rather than treating it as complete history', async () => {
-        mocks.readCachedWalletHistory.mockResolvedValue({ items: [] })
         mocks.fetchWalletHistory.mockResolvedValue({ items: [], partial: true })
         const { result } = renderHook(() => useWalletActivity({ walletAddress, chainId: 56 }))
         await waitFor(() => expect(result.current.loading).toBe(false))
@@ -140,7 +134,6 @@ describe('useWalletActivity direct browser history', () => {
     })
 
     it('clears the previous wallet while the new direct request is pending', async () => {
-        mocks.readCachedWalletHistory.mockResolvedValue({ items: [] })
         mocks.fetchWalletHistory.mockResolvedValue({
             items: [{
                 walletAddress,
