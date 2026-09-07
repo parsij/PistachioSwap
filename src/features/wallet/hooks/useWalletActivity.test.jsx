@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
     fetchWalletHistory: vi.fn(),
+    readCachedWalletHistory: vi.fn(),
     subscribe: vi.fn(() => () => {}),
 }))
 
@@ -15,7 +16,9 @@ vi.mock('../services/walletActivity.js', () => ({
 }))
 
 vi.mock('../services/walletHistory.js', () => ({
+    DIRECT_WALLET_HISTORY_CHAIN_IDS: Object.freeze([56]),
     fetchWalletHistory: mocks.fetchWalletHistory,
+    readCachedWalletHistory: mocks.readCachedWalletHistory,
 }))
 
 import {
@@ -25,12 +28,14 @@ import {
 
 const walletAddress = '0x0000000000000000000000000000000000000001'
 
-describe('useWalletActivity remote history', () => {
-    afterEach(() => {
+describe('useWalletActivity direct browser history', () => {
+    beforeEach(() => {
         vi.clearAllMocks()
+        mocks.readCachedWalletHistory.mockResolvedValue({ items: [], partial: false })
+        mocks.fetchWalletHistory.mockResolvedValue({ items: [], partial: false })
     })
 
-    it('queries every supported remote-history network in bounded batches', async () => {
+    it('queries every configured direct-history network in bounded batches', async () => {
         mocks.fetchWalletHistory.mockImplementation(async ({ chainIds }) => ({
             items: [{
                 id: `activity-${chainIds[0]}`,
@@ -43,72 +48,111 @@ describe('useWalletActivity remote history', () => {
 
         const { result } = renderHook(() => useWalletActivity({
             walletAddress,
-            chainIds: [56],
+            chainId: 56,
             limit: 50,
         }))
 
         await waitFor(() => expect(result.current.loading).toBe(false))
 
-        expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(2)
+        expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(1)
         const queriedChainIds = mocks.fetchWalletHistory.mock.calls
             .flatMap(([input]) => input.chainIds)
         expect(queriedChainIds).toEqual(REMOTE_WALLET_HISTORY_CHAIN_IDS)
-        expect(result.current.items).toHaveLength(2)
+        expect(result.current.items).toHaveLength(1)
     })
 
-    it('keeps history from successful batches when another batch fails', async () => {
-        mocks.fetchWalletHistory
-            .mockResolvedValueOnce({
-                items: [{
-                    id: 'good-activity',
-                    walletAddress,
-                    type: 'sent',
-                    chainId: 56,
-                    timestamp: '2026-09-06T12:00:00.000Z',
-                }],
-            })
-            .mockRejectedValueOnce(new Error('temporary provider failure'))
+    it('shows cached IndexedDB history before the direct refresh resolves', async () => {
+        mocks.readCachedWalletHistory.mockResolvedValue({
+            items: [{
+                id: 'cached-activity',
+                walletAddress,
+                type: 'sent',
+                chainId: 56,
+                timestamp: '2026-09-06T12:00:00.000Z',
+            }],
+        })
+        let resolveRefresh
+        mocks.fetchWalletHistory.mockImplementation(() => new Promise(resolve => {
+            resolveRefresh = resolve
+        }))
+
+        const { result } = renderHook(() => useWalletActivity({ walletAddress, chainId: 56 }))
+        await waitFor(() => expect(result.current.items.map(item => item.id)).toContain('cached-activity'))
+        expect(result.current.loading).toBe(true)
+
+        await act(async () => resolveRefresh({ items: [], partial: false }))
+        await waitFor(() => expect(result.current.loading).toBe(false))
+    })
+
+    it('keeps history from a successful direct batch', async () => {
+        mocks.fetchWalletHistory.mockResolvedValue({
+            items: [{
+                id: 'good-activity',
+                walletAddress,
+                type: 'sent',
+                chainId: 56,
+                timestamp: '2026-09-06T12:00:00.000Z',
+            }],
+            partial: false,
+        })
 
         const { result } = renderHook(() => useWalletActivity({
             walletAddress,
+            chainId: 56,
             limit: 50,
         }))
 
         await waitFor(() => expect(result.current.loading).toBe(false))
-
-        expect(result.current.items.map((item) => item.id))
-            .toContain('good-activity')
-        expect(result.current.error).toBe('Some wallet history could not be loaded.')
+        expect(result.current.items.map(item => item.id)).toContain('good-activity')
+        expect(result.current.error).toBeNull()
     })
 
     it('refetches after confirmations, chain changes and reopening the wallet', async () => {
-        mocks.fetchWalletHistory.mockResolvedValue({ items: [] })
         const { result, rerender } = renderHook(props => useWalletActivity(props), {
             initialProps: { walletAddress, chainId: 56, enabled: true },
         })
         await waitFor(() => expect(result.current.loading).toBe(false))
+        expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(1)
+
         await act(async () => mocks.subscribe.mock.calls.at(-1)[0]())
-        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(4))
+        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(2))
+        expect(mocks.fetchWalletHistory.mock.calls.at(-1)[0].force).toBe(true)
+
         rerender({ walletAddress, chainId: 1, enabled: true })
-        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(6))
+        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(3))
+
         rerender({ walletAddress, chainId: 1, enabled: false })
         rerender({ walletAddress, chainId: 1, enabled: true })
-        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(8))
+        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(4))
     })
 
-    it('reports a partial API response rather than treating it as complete history', async () => {
+    it('reports a partial direct response rather than treating it as complete history', async () => {
         mocks.fetchWalletHistory.mockResolvedValue({ items: [], partial: true })
-        const { result } = renderHook(() => useWalletActivity({ walletAddress }))
+        const { result } = renderHook(() => useWalletActivity({ walletAddress, chainId: 56 }))
         await waitFor(() => expect(result.current.loading).toBe(false))
         expect(result.current.error).toBe('Some wallet history could not be loaded.')
     })
 
-    it('clears the previous wallet while the new history request is pending', async () => {
-        mocks.fetchWalletHistory.mockResolvedValue({ items: [{ walletAddress, chainId: 56, id: 'old', type: 'sent', timestamp: '2026-09-01' }] })
-        const { result, rerender } = renderHook(props => useWalletActivity(props), { initialProps: { walletAddress } })
+    it('clears the previous wallet while the new direct request is pending', async () => {
+        mocks.fetchWalletHistory.mockResolvedValue({
+            items: [{
+                walletAddress,
+                chainId: 56,
+                id: 'old',
+                type: 'sent',
+                timestamp: '2026-09-01',
+            }],
+        })
+        const { result, rerender } = renderHook(props => useWalletActivity(props), {
+            initialProps: { walletAddress, chainId: 56 },
+        })
         await waitFor(() => expect(result.current.items).toHaveLength(1))
+
         mocks.fetchWalletHistory.mockImplementation(() => new Promise(() => {}))
-        rerender({ walletAddress: '0x0000000000000000000000000000000000000002' })
+        rerender({
+            walletAddress: '0x0000000000000000000000000000000000000002',
+            chainId: 56,
+        })
         expect(result.current.items).toEqual([])
     })
 })
