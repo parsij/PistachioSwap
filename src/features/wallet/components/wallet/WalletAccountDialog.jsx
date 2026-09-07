@@ -39,6 +39,7 @@ import {
     getCuratedEvmChainLogoUri,
 } from '../../../../web3/curatedEvmChains.js'
 import './walletAccount.css'
+import './walletActivitySwap.css'
 
 function portfolioValue(tokens) {
     const values = tokens
@@ -70,15 +71,13 @@ function tokenIdentity(token) {
     return `${Number(token.chainId)}:${String(token.address ?? '').toLowerCase()}`
 }
 
-function findActivityToken(activity, assets) {
-    const candidate = activity.type === 'swapped'
-        ? activity.sellToken ?? activity.buyToken
-        : activity.token
+function resolveActivityToken(candidate, assets, chainId) {
     if (!candidate) return null
 
+    const normalizedChainId = Number(chainId)
     const address = String(candidate.address ?? '').toLowerCase()
     const match = assets.find((token) =>
-        Number(token.chainId) === Number(activity.chainId) &&
+        Number(token.chainId) === normalizedChainId &&
         (
             (address && String(token.address ?? '').toLowerCase() === address) ||
             (!address && candidate.isNative && token.isNative)
@@ -87,7 +86,7 @@ function findActivityToken(activity, assets) {
 
     return match ?? {
         ...candidate,
-        chainId: activity.chainId,
+        chainId: normalizedChainId,
         address: candidate.address ??
             '0x0000000000000000000000000000000000000000',
         symbol: candidate.symbol ?? 'Token',
@@ -129,6 +128,12 @@ function activitySummary(activity) {
 
         if (sellAmount && sellSymbol && buyAmount && buySymbol) {
             return `${sellAmount} ${sellSymbol} → ${buyAmount} ${buySymbol}`
+        }
+        if (sellAmount && sellSymbol && buySymbol) {
+            return `${sellAmount} ${sellSymbol} → ${buySymbol}`
+        }
+        if (sellSymbol && buySymbol) {
+            return `${sellSymbol} → ${buySymbol}`
         }
         return 'Swap confirmed'
     }
@@ -201,17 +206,54 @@ function ActivityGlyph({ type }) {
     return <Icon aria-hidden="true" />
 }
 
+function SwapActivityIcon({ sellToken, buyToken }) {
+    if (!sellToken || !buyToken) return null
+
+    return (
+        <span
+            className="uni-activity-swap-pair"
+            aria-label={`${getTokenDisplaySymbol(sellToken)} to ${getTokenDisplaySymbol(buyToken)}`}
+        >
+            <span className="uni-activity-swap-half uni-activity-swap-half-sell">
+                <TokenIcon token={sellToken} size="list" showChainBadge={false} />
+            </span>
+            <span className="uni-activity-swap-half uni-activity-swap-half-buy">
+                <TokenIcon token={buyToken} size="list" showChainBadge={false} />
+            </span>
+        </span>
+    )
+}
+
 function ActivityRow({
     activity,
     assets,
     activeChainId,
     activeExplorerUrl,
 }) {
-    const token = findActivityToken(activity, assets)
-    const chain = getCuratedEvmChain(Number(activity.chainId))
+    const sourceChainId = Number(activity.chainId)
+    const destinationChainId = Number(activity.destinationChainId) > 0
+        ? Number(activity.destinationChainId)
+        : sourceChainId
+    const token = activity.type === 'swapped'
+        ? null
+        : resolveActivityToken(activity.token, assets, sourceChainId)
+    const sellToken = activity.type === 'swapped'
+        ? resolveActivityToken(activity.sellToken, assets, sourceChainId)
+        : null
+    const buyToken = activity.type === 'swapped'
+        ? resolveActivityToken(activity.buyToken, assets, destinationChainId)
+        : null
+    const displayActivity = activity.type === 'swapped'
+        ? {
+            ...activity,
+            sellToken: sellToken ?? activity.sellToken,
+            buyToken: buyToken ?? activity.buyToken,
+        }
+        : activity
+    const chain = getCuratedEvmChain(sourceChainId)
     const explorerBase =
         chain?.blockExplorers?.default?.url ??
-        (Number(activity.chainId) === Number(activeChainId)
+        (sourceChainId === Number(activeChainId)
             ? activeExplorerUrl
             : null)
     const transactionUrl =
@@ -222,19 +264,21 @@ function ActivityRow({
     const content = (
         <>
             <span className="uni-activity-token">
-                {token
-                    ? <TokenIcon token={token} size="list" />
-                    : <span className="uni-activity-fallback"><ActivityGlyph type={activity.type} /></span>}
+                {activity.type === 'swapped' && sellToken && buyToken
+                    ? <SwapActivityIcon sellToken={sellToken} buyToken={buyToken} />
+                    : token
+                        ? <TokenIcon token={token} size="list" />
+                        : <span className="uni-activity-fallback"><ActivityGlyph type={activity.type} /></span>}
                 <img
                     className="uni-activity-chain"
-                    src={getCuratedEvmChainLogoUri(Number(activity.chainId))}
+                    src={getCuratedEvmChainLogoUri(sourceChainId)}
                     alt=""
                     onError={(event) => event.currentTarget.remove()}
                 />
             </span>
             <span className="uni-activity-copy">
                 <strong>{activityTitle(activity.type)}</strong>
-                <span>{activitySummary(activity)}</span>
+                <span>{activitySummary(displayActivity)}</span>
             </span>
             <time dateTime={activity.timestamp}>
                 {activityTime(activity.timestamp)}
