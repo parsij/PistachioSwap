@@ -1,5 +1,13 @@
 .amount-input-shell {
-    --swap-amount-input-font-size: clamp(36px, 6vw, 40px);
+    --swap-amount-input-font-size: 36px;
+}
+
+.amount-input-shell.amount-input-compact {
+    --swap-amount-input-font-size: 32px;
+}
+
+.amount-input-shell.amount-input-dense {
+    --swap-amount-input-font-size: 28px;
 }
 
 .amount-input-shell .sell-amount-input,
@@ -8,8 +16,9 @@
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: var(--swap-amount-input-font-size);
     font-variant-numeric: lining-nums tabular-nums;
+    font-weight: 485;
     letter-spacing: -0.025em;
-    line-height: 1.05;
+    line-height: 1.2;
 }
 
 .sell-amount-input:focus,
@@ -22,10 +31,6 @@
 }
 
 @media (max-width: 520px) {
-    .amount-input-shell {
-        --swap-amount-input-font-size: clamp(40px, 11vw, 46px);
-    }
-
     .sell-fiat-value,
     .buy-fiat-value,
     .sell-balance {
