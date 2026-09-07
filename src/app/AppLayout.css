@@ -9,3 +9,35 @@
     white-space: nowrap;
     border: 0;
 }
+
+.app-info-footer {
+    position: relative;
+    padding: 2rem 1rem;
+    background: var(--color-background, #191919);
+    font: 13px/1.6 system-ui, sans-serif;
+    text-align: center;
+}
+
+.app-info-footer nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 20px;
+}
+
+.app-info-footer a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--color-accent, #8ac27c);
+    text-decoration: none;
+}
+
+.app-info-footer a:hover {
+    text-decoration: underline;
+}
+
+.app-info-footer a:focus-visible {
+    outline: 2px solid var(--color-accent, #8ac27c);
+    outline-offset: 3px;
+}

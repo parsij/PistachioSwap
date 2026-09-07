@@ -168,6 +168,38 @@
         border-radius: 18px;
         background: #8ac27c;
       }
+
+      .app-info-footer {
+        position: relative;
+        padding: 2rem 1rem;
+        background: #191919;
+        font: 13px/1.6 system-ui, sans-serif;
+        text-align: center;
+      }
+
+      .app-info-footer nav {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 4px 20px;
+      }
+
+      .app-info-footer a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        color: #8ac27c;
+        text-decoration: none;
+      }
+
+      .app-info-footer a:hover {
+        text-decoration: underline;
+      }
+
+      .app-info-footer a:focus-visible {
+        outline: 2px solid #8ac27c;
+        outline-offset: 3px;
+      }
     </style>
   </head>
   <body>
@@ -188,6 +220,16 @@
           <div class="app-boot-action"></div>
         </section>
       </div>
+      <footer class="app-info-footer" aria-label="Pistachio Swap links">
+        <nav aria-label="Product guides">
+          <a href="/">About</a>
+          <a href="/landing/wallet/">Pistachio Wallet</a>
+          <a href="/landing/gas-assist/">Gas Assist</a>
+          <a href="/landing/how-it-works/">How Pistachio Swap works</a>
+          <a href="/landing/faq/">FAQ</a>
+          <a href="/legal/third-party/">Legal &amp; third-party notices</a>
+        </nav>
+      </footer>
     </div>
     <noscript>
       <div style="max-width: 40rem; margin: 12vh auto 0; padding: 0 1.5rem; color: #fff; font-family: system-ui, sans-serif; text-align: center;">
