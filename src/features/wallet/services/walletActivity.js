@@ -154,6 +154,7 @@ export function normalizeWalletActivity(input) {
     const walletAddress = normalizeWalletAddress(input.walletAddress)
     const type = VALID_TYPES.has(input.type) ? input.type : null
     const chainId = Number(input.chainId)
+    const destinationChainId = Number(input.destinationChainId)
     const hash = normalizeHash(input.hash)
     const parsedTimestamp = Date.parse(input.timestamp ?? '')
 
@@ -166,6 +167,10 @@ export function normalizeWalletActivity(input) {
         walletAddress,
         type,
         chainId,
+        destinationChainId:
+            Number.isSafeInteger(destinationChainId) && destinationChainId > 0
+                ? destinationChainId
+                : null,
         hash,
         timestamp: Number.isFinite(parsedTimestamp)
             ? new Date(parsedTimestamp).toISOString()
