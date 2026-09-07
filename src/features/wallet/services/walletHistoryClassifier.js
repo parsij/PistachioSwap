@@ -13,7 +13,7 @@ import {
     getWrappedNativeTokenAddress,
 } from '../../../web3/curatedEvmChains.js'
 
-export const WALLET_HISTORY_CLASSIFIER_VERSION = 1
+export const WALLET_HISTORY_CLASSIFIER_VERSION = 2
 
 export const GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS =
     '0x973731be76bdb84b994d32ef1e9607edebfbe470'
@@ -47,6 +47,28 @@ const gasAssistAtomicExecutorAbi = [
             { name: 'sellToken', type: 'address' },
             { name: 'swapAmount', type: 'uint256' },
             { name: 'buyToken', type: 'address' },
+            { name: 'router', type: 'address' },
+            { name: 'swapCalldata', type: 'bytes' },
+            { name: 'minOut', type: 'uint256' },
+        ],
+        outputs: [],
+    },
+]
+
+const gasAssistCrossChainExecutorAbi = [
+    {
+        type: 'function',
+        name: 'executeAtomicCrossChain',
+        stateMutability: 'payable',
+        inputs: [
+            { name: 'treasury', type: 'address' },
+            { name: 'paymentToken', type: 'address' },
+            { name: 'feeAmount', type: 'uint256' },
+            { name: 'sellToken', type: 'address' },
+            { name: 'swapAmount', type: 'uint256' },
+            { name: 'destinationChainId', type: 'uint256' },
+            { name: 'buyToken', type: 'address' },
+            { name: 'allowanceTarget', type: 'address' },
             { name: 'router', type: 'address' },
             { name: 'swapCalldata', type: 'bytes' },
             { name: 'minOut', type: 'uint256' },
@@ -470,6 +492,87 @@ function decodeGasAssistActivity({
     }
 }
 
+function decodeCrossChainGasAssistActivity({
+    chainId,
+    wallet,
+    value,
+    hash,
+    timestamp,
+    outgoing,
+}) {
+    if (chainId !== 56 || normalizeAddress(value.from_address) !== wallet) return null
+    const to = normalizeAddress(value.to_address)
+    const directKnownContract = isKnownPistachioBscContract(to)
+    const delegatedSelfCall = to === wallet && hasKnownPistachioAuthorization(value)
+    if (!directKnownContract && !delegatedSelfCall) return null
+
+    const input = stringValue(value.input, 200_000)
+    if (!input || !isHex(input) || input.length < 10) return null
+
+    try {
+        const decoded = decodeFunctionData({
+            abi: gasAssistCrossChainExecutorAbi,
+            data: input,
+        })
+        if (decoded.functionName !== 'executeAtomicCrossChain') return null
+
+        const [
+            ,
+            ,
+            ,
+            rawSellToken,
+            swapAmount,
+            rawDestinationChainId,
+            rawBuyToken,
+        ] = decoded.args
+        const sellAddress = normalizeAddress(rawSellToken)
+        const buyAddress = normalizeAddress(rawBuyToken)
+        if (
+            !sellAddress ||
+            !buyAddress ||
+            buyAddress === zeroAddress ||
+            swapAmount <= 0n ||
+            rawDestinationChainId <= 0n ||
+            rawDestinationChainId > BigInt(Number.MAX_SAFE_INTEGER)
+        ) {
+            return null
+        }
+
+        const destinationChainId = Number(rawDestinationChainId)
+        if (!Number.isSafeInteger(destinationChainId) || destinationChainId === chainId) {
+            return null
+        }
+
+        // The cross-chain executor deliberately cannot observe destination-chain
+        // delivery synchronously. Its successful source-chain execution proves
+        // the exact reviewed sell amount left the user's EOA, so require that
+        // receipt-backed source flow rather than pretending a destination receipt
+        // exists on BNB Chain.
+        const sellTransfer = exactTransfer(outgoing, sellAddress, swapAmount)
+        if (!sellTransfer) return null
+        const buyToken = tokenForAddress(destinationChainId, buyAddress)
+        if (!buyToken) return null
+
+        return {
+            id: `${chainId}:${hash}`,
+            walletAddress: wallet,
+            type: 'swapped',
+            chainId,
+            destinationChainId,
+            hash,
+            timestamp,
+            sellToken: sellTransfer.token,
+            buyToken,
+            sellAmount: formatRawAmount(swapAmount, sellTransfer.token) ?? sellTransfer.amount,
+            buyAmount: null,
+            recipient: wallet,
+            provider: 'pistachio-gas-assist-cross-chain',
+        }
+    } catch {
+        return null
+    }
+}
+
 function inferKnownPistachioSwap({
     chainId,
     wallet,
@@ -536,6 +639,16 @@ export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
             timestamp,
             outgoing,
             incoming,
+        })
+    }
+    if (!activity) {
+        activity = decodeCrossChainGasAssistActivity({
+            chainId,
+            wallet,
+            value,
+            hash,
+            timestamp,
+            outgoing,
         })
     }
     if (!activity) {
@@ -610,6 +723,18 @@ export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
         KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address)) ??
         (activity.type === 'swapped' ? to : null)
 
+    const classificationReason = activity.provider === 'pistachio-gas-assist-cross-chain'
+        ? 'Successful Pistachio cross-chain executor receipt with exact reviewed source sell flow'
+        : activity.type === 'swapped'
+            ? 'Successful receipt with distinct outgoing and incoming assets and swap evidence'
+            : activity.type === 'approved'
+                ? 'ERC-20 approval calldata'
+                : activity.type === 'sent'
+                    ? 'Wallet-initiated outgoing asset movement'
+                    : activity.type === 'received'
+                        ? 'Incoming asset movement to the wallet'
+                        : 'Wallet-initiated contract call without confirmed swap flows'
+
     return {
         ...activity,
         source: 'remote',
@@ -621,15 +746,7 @@ export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
         provider: activity.provider ?? value.provider ?? 'alchemy-browser',
         providerType: stringValue(value.category, 60),
         detectedContract,
-        classificationReason: activity.type === 'swapped'
-            ? 'Successful receipt with distinct outgoing and incoming assets and swap evidence'
-            : activity.type === 'approved'
-                ? 'ERC-20 approval calldata'
-                : activity.type === 'sent'
-                    ? 'Wallet-initiated outgoing asset movement'
-                    : activity.type === 'received'
-                        ? 'Incoming asset movement to the wallet'
-                        : 'Wallet-initiated contract call without confirmed swap flows',
+        classificationReason,
     }
 }
 
