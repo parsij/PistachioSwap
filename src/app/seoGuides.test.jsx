@@ -4,9 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import AppLayout from './AppLayout.jsx'
 
-const pages = [
+const guidePages = [
     'index.html',
-    'swap/index.html',
     'landing/wallet/index.html',
     'landing/how-it-works/index.html',
     'landing/gas-assist/index.html',
@@ -18,24 +17,21 @@ const parse = (html) => new DOMParser().parseFromString(html, 'text/html')
 const read = (path) => readFileSync(path, 'utf8')
 
 describe('discoverable product guides', () => {
-    it.each(pages)('%s links to all three guides in real HTML', (path) => {
+    it.each(guidePages)('%s links to all three guides in real HTML', (path) => {
         const doc = parse(read(path))
         for (const href of guides) {
             expect(doc.querySelectorAll(`a[href="${href}"]`).length).toBeGreaterThan(0)
         }
     })
 
-    it('keeps identical visible guide content before and after the app mounts', () => {
-        const staticFooter = parse(read('swap/index.html')).querySelector('.app-info-footer')
-        const appFooter = parse(renderToStaticMarkup(
+    it('keeps the focused swap application free of a duplicated marketing footer', () => {
+        const staticSwap = parse(read('swap/index.html'))
+        const mountedSwap = parse(renderToStaticMarkup(
             <AppLayout header={null} overlays={null}>Swap interface</AppLayout>,
-        )).querySelector('.app-info-footer')
-        const text = (element) => [...element.querySelectorAll('h1, p, a')]
-            .map((node) => node.textContent.replace(/\s+/g, ' ').trim())
-        expect(text(appFooter)).toEqual(text(staticFooter))
-        expect([...appFooter.querySelectorAll('a')].map((a) => a.getAttribute('href')))
-            .toEqual([...staticFooter.querySelectorAll('a')].map((a) => a.getAttribute('href')))
-        expect(staticFooter.closest('[aria-hidden="true"], [hidden], noscript')).toBeNull()
+        ))
+
+        expect(staticSwap.querySelector('.app-info-footer')).toBeNull()
+        expect(mountedSwap.querySelector('.app-info-footer')).toBeNull()
     })
 
     it.each(['wallet', 'how-it-works'])('%s is a standalone, accessible static guide', (slug) => {

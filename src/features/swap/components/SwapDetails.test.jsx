@@ -15,6 +15,47 @@ const baseProps = {
 
 afterEach(() => cleanup())
 
+describe('compact quote summary', () => {
+    it('shows same-chain network gas beside the rate', () => {
+        render(<SwapDetails
+            {...baseProps}
+            mode="same-chain"
+            sameChain={{
+                visible: true,
+                serviceFee: 'Free',
+                networkCost: '$0.02',
+                gasAssistFee: null,
+            }}
+            crossChain={null}
+        />)
+
+        expect(screen.getByText('1 SELL = 2 BUY')).toBeTruthy()
+        expect(screen.getByLabelText('Estimated network gas: $0.02')).toBeTruthy()
+    })
+
+    it('prefers the sponsored gas estimate for Gas Assist', () => {
+        render(<SwapDetails
+            {...baseProps}
+            mode="same-chain"
+            sameChain={{
+                visible: true,
+                serviceFee: '0.7 SELL',
+                networkCost: '$0.30',
+                gasAssistFee: {
+                    totalToken: '1 SELL',
+                    totalUsd: '$1',
+                    networkReserveUsd: '$0.30',
+                    commercialUsd: '$0.70',
+                    estimatedSponsoredGasUsd: '$0.12',
+                },
+            }}
+            crossChain={null}
+        />)
+
+        expect(screen.getByLabelText('Estimated network gas: $0.12')).toBeTruthy()
+    })
+})
+
 describe('all-in Gas Assist quote details', () => {
     it('shows the exact same-chain fee with included network and commercial breakdowns', () => {
         render(<SwapDetails
@@ -60,10 +101,12 @@ describe('all-in Gas Assist quote details', () => {
                     routeCostUsd: '$0.50',
                     allInCostUsd: '$1.50',
                     networkReserveUsd: '$0.30',
+                    estimatedSponsoredGasUsd: '$0.18',
                 },
             }}
         />)
 
+        expect(screen.getByLabelText('Estimated network gas: $0.18')).toBeTruthy()
         expect(screen.getByText('Estimated total cost (all-in)')).toBeTruthy()
         expect(screen.getByText('$1.50')).toBeTruthy()
         expect(screen.getByText('Gas Assist fee (included)')).toBeTruthy()

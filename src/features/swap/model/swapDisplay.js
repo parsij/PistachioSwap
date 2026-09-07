@@ -4,6 +4,8 @@ import { formatWalletTokenAmount } from '../../tokens/services/walletTokens.js'
 
 const TOKEN_INPUT_FRACTION_DIGITS = 6
 const USD_INPUT_FRACTION_DIGITS = 2
+const RATE_SIGNIFICANT_DIGITS = 6
+const RATE_MAX_FRACTION_DIGITS = 12
 
 /**
  * Shortens a decimal amount for display without grouping commas.
@@ -53,6 +55,14 @@ export function formatSwapSecondaryTokenAmount(amount, token) {
     return `${formatWalletTokenAmount(amount)} ${getTokenDisplaySymbol(token)}`.trim()
 }
 
+function formatRateNumber(value) {
+    return value.toLocaleString(undefined, {
+        useGrouping: false,
+        maximumSignificantDigits: RATE_SIGNIFICANT_DIGITS,
+        maximumFractionDigits: RATE_MAX_FRACTION_DIGITS,
+    })
+}
+
 /** @returns {string} Compact exchange-rate label or the existing unavailable label. */
 export function formatCompactRate(sellValue, sellSymbol, buyValue, buySymbol) {
     const sell = Number(sellValue)
@@ -60,9 +70,10 @@ export function formatCompactRate(sellValue, sellSymbol, buyValue, buySymbol) {
     if (!Number.isFinite(sell) || !Number.isFinite(buy) || sell <= 0 || buy <= 0) {
         return 'Rate unavailable'
     }
-    return `1 ${sellSymbol} = ${(buy / sell).toLocaleString(undefined, {
-        maximumFractionDigits: 6,
-    })} ${buySymbol}`
+
+    const rate = buy / sell
+    if (!Number.isFinite(rate) || rate <= 0) return 'Rate unavailable'
+    return `1 ${sellSymbol} = ${formatRateNumber(rate)} ${buySymbol}`
 }
 
 /** @returns {string|null} Existing USD cost label, optionally prefixed as an estimate. */

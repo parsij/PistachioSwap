@@ -1,36 +1,29 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-    formatAmountInputDisplay,
-    formatCompactAmountInput,
-    formatSwapSecondaryTokenAmount,
-} from './swapDisplay.js'
+import { formatCompactRate } from './swapDisplay.js'
 
-describe('formatCompactAmountInput', () => {
-    it('trims trailing zeros without grouping commas', () => {
-        expect(formatCompactAmountInput('2.074720000')).toBe('2.07472')
-        expect(formatCompactAmountInput('10')).toBe('10')
-        expect(formatCompactAmountInput('')).toBe('')
+describe('formatCompactRate', () => {
+    it('uses readable significant digits for ordinary rates', () => {
+        expect(formatCompactRate('1', 'USD₮', '12.6956', 'CELO'))
+            .toBe('1 USD₮ = 12.6956 CELO')
+        expect(formatCompactRate('1', 'WETH', '2489.63', 'USDT'))
+            .toBe('1 WETH = 2489.63 USDT')
     })
 
-    it('rounds long token amounts to six fraction digits', () => {
-        expect(formatCompactAmountInput('0.001144182429488718')).toBe('0.001144')
-        expect(formatCompactAmountInput('0.00529963167546908')).toBe('0.0053')
+    it('keeps useful precision for small rates without scientific notation', () => {
+        expect(formatCompactRate('1', 'USDT', '0.00135293', 'BNB'))
+            .toBe('1 USDT = 0.00135293 BNB')
+        expect(formatCompactRate('1', 'USDT', '0.000401665', 'WETH'))
+            .toBe('1 USDT = 0.000401665 WETH')
     })
 
-    it('rounds USD amounts to two fraction digits', () => {
-        expect(formatCompactAmountInput('0.6898962376', 2)).toBe('0.69')
-        expect(formatAmountInputDisplay('0.6898962376', 'USD')).toBe('0.69')
-        expect(formatAmountInputDisplay('0.00529963167546908', 'TOKEN')).toBe('0.0053')
+    it('rounds noisy rates to six significant digits', () => {
+        expect(formatCompactRate('0.1167', 'FDUSD', '0.134513', 'POL'))
+            .toBe('1 FDUSD = 1.15264 POL')
     })
-})
 
-describe('formatSwapSecondaryTokenAmount', () => {
-    it('shortens the amount and keeps a safe symbol', () => {
-        expect(formatSwapSecondaryTokenAmount('0.001144182429488718', {
-            address: '0x0000000000000000000000000000000000000000',
-            isNative: true,
-            symbol: 'BNB',
-        })).toBe('0.001144 BNB')
+    it('keeps the unavailable state for invalid values', () => {
+        expect(formatCompactRate('0', 'A', '1', 'B')).toBe('Rate unavailable')
+        expect(formatCompactRate('1', 'A', '', 'B')).toBe('Rate unavailable')
     })
 })
