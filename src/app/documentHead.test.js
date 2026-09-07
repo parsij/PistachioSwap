@@ -26,6 +26,12 @@ function oneLine(value) {
     return decode(value).replace(/\s+/g, ' ').trim()
 }
 
+function comparableHeading(value) {
+    return oneLine(value)
+        .toLowerCase()
+        .replace(/\s*&\s*/g, ' and ')
+}
+
 function metaContent(html, attribute, name) {
     const pattern = new RegExp(
         `<meta\\s+${attribute}="${name}"[\\s\\S]*?content="([^"]+)"`,
@@ -79,8 +85,8 @@ describe.each([
         expect(headings).toHaveLength(1)
         const heading = headings[0]
         expect(heading.length).toBeGreaterThan(8)
-        expect(title.toLowerCase().startsWith(heading.toLowerCase())).toBe(true)
-        expect(description.toLowerCase()).toContain(heading.toLowerCase())
+        expect(comparableHeading(title).startsWith(comparableHeading(heading))).toBe(true)
+        expect(comparableHeading(description)).toContain(comparableHeading(heading))
 
         expect(metaContent(html, 'property', 'og:title')).toBe(title)
         expect(metaContent(html, 'property', 'og:description')).toBe(description)
