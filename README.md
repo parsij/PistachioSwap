@@ -27,35 +27,22 @@
 
 ## What PistachioSwap does
 
-PistachioSwap combines same-chain and cross-chain route comparison, wallet balances, token discovery, transaction review, an optional passkey-protected local wallet, and a BNB Chain Gas Assist flow.
+PistachioSwap combines same-chain and cross-chain route comparison, wallet balances, token discovery, transaction review, an optional passkey-protected BNB Smart Chain wallet, and a BNB Chain Gas Assist flow.
 
-Gas Assist helps eligible BNB Chain token holders who do not have enough BNB for normal gas. Costs and availability are shown in the applicable quote or review flow.
+Gas Assist helps eligible BNB Chain token holders who do not have enough BNB for normal gas. It can be used for supported same-chain and cross-chain routes when the source transaction is on BNB Chain. Costs and availability are shown in the applicable quote or review flow.
 
 ## Major components
 
 | Area | Current role |
 | --- | --- |
-| **Pistachio Wallet** | Optional local self-custodial wallet with encrypted IndexedDB vault records, passkey/PRF protection, a worker-owned unlocked session, signing review, and account/chain invariants. |
-| **Gas Assist** | BNB Chain sponsored-swap user experience with explicit review and authorization. |
+| **Pistachio Wallet** | Optional BNB Smart Chain-only self-custodial browser wallet with encrypted IndexedDB vault records, passkey/PRF protection, a worker-owned unlocked session, signing review, and account/chain invariants. |
+| **Gas Assist** | Atomic BNB Chain sponsored-swap experience for eligible same-chain and cross-chain routes with explicit fee review and wallet authorization. |
 | **Same-chain routing** | Normalizes enabled quote providers and compares executable routes using net output and transaction cost. |
 | **Cross-chain routing** | Integrates configured bridge/route providers and validates chain, token, recipient, amount, expiry, and execution data before use. |
-| **Wallet portfolio** | Combines configured indexers, RPC fallbacks, market data, and local Pchained services to display balances and activity. |
-| **Token discovery** | Builds per-chain searchable catalogs from configured asset, market, liquidity, and token-security sources. |
-| **Public API** | Fastify API with validation, rate limits, CORS restrictions, provider timeouts, and redacted logging. |
+| **Wallet portfolio** | Uses configured wallet indexers, RPC fallbacks, market data, and optional local Pchained services for balances; wallet activity is fetched directly by the browser from configured indexers/RPCs and merged with local PistachioSwap activity. |
+| **Token discovery** | Builds per-chain searchable catalogs from the local ShapeShift asset catalog plus configured market, liquidity, token-list, and token-security sources. |
+| **Public API** | Fastify + TypeScript API with validation, bounded request bodies, rate limits, restricted CORS, provider timeouts, sensitive-response cache controls, and log redaction. |
 | **Licensing pipeline** | Audits dependency licenses and copies exact installed custom-license texts/notices into production legal artifacts. |
-
-## Architecture
-
-```mermaid
-flowchart LR
-    User[User wallet] --> UI[React + Vite interface]
-    UI --> Vault[Encrypted local Pistachio Wallet]
-    UI --> API[Public Fastify API]
-    API --> Quotes[Configured swap providers]
-    API --> CrossChain[Configured cross-chain providers]
-    API --> Data[RPC / indexers / market data / Pchained]
-    API --> Chain[Public blockchains]
-```
 
 Provider availability is deployment-specific. A provider named in documentation is not necessarily enabled in every environment.
 
@@ -77,8 +64,8 @@ Security-sensitive reports should not include private keys, recovery phrases, pa
 
 ```text
 .
-├── apps/api/                 Public Fastify API
-├── docs/                     Architecture, operations, security, and licensing notes
+├── apps/api/                 Public Fastify + TypeScript API
+├── docs/                     Operations, security, integration, and licensing notes
 ├── public/                   Static application assets
 ├── scripts/                  Build, deployment, catalog, licensing, and audit tooling
 ├── src/                      React application, routing, wallet, and signing features
@@ -90,7 +77,7 @@ Security-sensitive reports should not include private keys, recovery phrases, pa
 ### Requirements
 
 - Node.js 24
-- `pnpm` 10.30.3 or the compatible version declared by the repository
+- The `pnpm` version declared by `packageManager` in `package.json` (currently 10.34.5)
 - Provider credentials only for integrations you intentionally enable
 
 ### Install and run
@@ -100,11 +87,12 @@ pnpm install
 cp .env.example .env.local
 cp apps/api/.env.example apps/api/.env
 
-pnpm --filter @pistachio/api dev
-pnpm dev --host 127.0.0.1
+pnpm dev
 ```
 
-The frontend defaults to `http://127.0.0.1:5173` and the public API defaults to `http://127.0.0.1:3001`.
+`pnpm dev` starts both the frontend and the public API. The frontend defaults to `http://127.0.0.1:5173` and the public API defaults to `http://127.0.0.1:3001`.
+
+For the fuller local stack that includes configured Pchained coinstacks, use `pnpm dev:local`; that mode also requires Docker and a local `parsij/Pchained` checkout in the expected sibling path or configured location.
 
 ### Configuration boundaries
 
