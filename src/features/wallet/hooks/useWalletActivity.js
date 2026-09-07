@@ -18,9 +18,23 @@ import {
 } from '../services/walletHistory.js'
 import { mergeWalletActivity } from '../services/mergeWalletActivity.js'
 
+function configuredHistoryChainIds() {
+    const configured = String(
+        import.meta.env.VITE_WALLET_HISTORY_CHAIN_IDS ?? '56',
+    )
+    const requested = [...new Set(configured
+        .split(',')
+        .map(value => Number(value.trim()))
+        .filter(value => DIRECT_WALLET_HISTORY_CHAIN_IDS.includes(value)))]
+    return requested.length > 0 ? requested : [56]
+}
+
 // Remote history is fetched by the browser directly from Alchemy. The VPS is
-// deliberately not part of the wallet-history read path.
-export const REMOTE_WALLET_HISTORY_CHAIN_IDS = DIRECT_WALLET_HISTORY_CHAIN_IDS
+// deliberately not part of the wallet-history read path. BNB is the safe
+// default; additional supported chains can be explicitly enabled at build time.
+export const REMOTE_WALLET_HISTORY_CHAIN_IDS = Object.freeze(
+    configuredHistoryChainIds(),
+)
 
 const REMOTE_HISTORY_BATCH_SIZE = 8
 
