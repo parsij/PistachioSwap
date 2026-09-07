@@ -206,11 +206,11 @@ describe('WalletAccountDialog trust filtering', () => {
             buyAmount: '0.5',
         }]
 
-        const { container } = renderDialog()
+        renderDialog()
 
         expect(screen.getByText('Swapped')).toBeTruthy()
         expect(screen.getByText('1 USDT → 0.5 XAUt')).toBeTruthy()
-        const pair = container.querySelector('.uni-activity-swap-pair')
+        const pair = document.body.querySelector('.uni-activity-swap-pair')
         expect(pair).toBeTruthy()
         expect(pair.querySelectorAll('.uni-activity-swap-half')).toHaveLength(2)
         expect(pair.querySelectorAll('.ps-token-icon')).toHaveLength(2)
