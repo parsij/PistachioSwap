@@ -62,6 +62,26 @@ const gasAssistAbi = [{
     outputs: [],
 }]
 
+const gasAssistCrossChainAbi = [{
+    type: 'function',
+    name: 'executeAtomicCrossChain',
+    stateMutability: 'payable',
+    inputs: [
+        { name: 'treasury', type: 'address' },
+        { name: 'paymentToken', type: 'address' },
+        { name: 'feeAmount', type: 'uint256' },
+        { name: 'sellToken', type: 'address' },
+        { name: 'swapAmount', type: 'uint256' },
+        { name: 'destinationChainId', type: 'uint256' },
+        { name: 'buyToken', type: 'address' },
+        { name: 'allowanceTarget', type: 'address' },
+        { name: 'router', type: 'address' },
+        { name: 'swapCalldata', type: 'bytes' },
+        { name: 'minOut', type: 'uint256' },
+    ],
+    outputs: [],
+}]
+
 describe('browser wallet-history classifier', () => {
     it('classifies a receipt-backed normal swap', () => {
         const activity = classifyReceiptHistoryRow(56, wallet, row({
@@ -113,6 +133,78 @@ describe('browser wallet-history classifier', () => {
             provider: 'pistachio-gas-assist',
             detectedContract: executor,
         })
+    })
+
+    it('classifies a successful cross-chain executor call as a swap from its exact source flow', () => {
+        const executor = KNOWN_PISTACHIO_BSC_CONTRACT_ADDRESSES[2]
+        const input = encodeFunctionData({
+            abi: gasAssistCrossChainAbi,
+            functionName: 'executeAtomicCrossChain',
+            args: [
+                other,
+                tokenA,
+                100_000n,
+                tokenA,
+                1_000_000n,
+                137n,
+                tokenB,
+                other,
+                other,
+                '0x1234',
+                500_000n,
+            ],
+        })
+        const activity = classifyReceiptHistoryRow(56, wallet, row({
+            to_address: wallet,
+            input,
+            authorization_list: [{ address: executor }],
+            erc20_transfers: [
+                transfer({ token: tokenA, from: wallet, to: other, value: 100_000, symbol: 'USDC' }),
+                transfer({ token: tokenA, from: wallet, to: other, value: 1_000_000, symbol: 'USDC' }),
+            ],
+        }))
+
+        expect(activity).toMatchObject({
+            type: 'swapped',
+            chainId: 56,
+            destinationChainId: 137,
+            sellAmount: '1',
+            buyAmount: null,
+            provider: 'pistachio-gas-assist-cross-chain',
+            detectedContract: executor,
+        })
+        expect(activity.buyToken).toMatchObject({ address: tokenB })
+    })
+
+    it('does not call a cross-chain executor interaction a swap without the exact reviewed sell flow', () => {
+        const executor = KNOWN_PISTACHIO_BSC_CONTRACT_ADDRESSES[2]
+        const input = encodeFunctionData({
+            abi: gasAssistCrossChainAbi,
+            functionName: 'executeAtomicCrossChain',
+            args: [
+                other,
+                tokenA,
+                100_000n,
+                tokenA,
+                1_000_000n,
+                137n,
+                tokenB,
+                other,
+                other,
+                '0x1234',
+                500_000n,
+            ],
+        })
+        const activity = classifyReceiptHistoryRow(56, wallet, row({
+            to_address: wallet,
+            input,
+            authorization_list: [{ address: executor }],
+            erc20_transfers: [
+                transfer({ token: tokenA, from: wallet, to: other, value: 100_000, symbol: 'USDC' }),
+            ],
+        }))
+
+        expect(activity).toMatchObject({ type: 'sent' })
     })
 
     it('keeps a plain wallet-initiated token transfer as sent', () => {
