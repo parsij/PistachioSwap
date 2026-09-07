@@ -95,7 +95,9 @@ function GlobalTokenSelector({
 
         const emptyOutputSide = side === 'buy' && !currentToken
         const oppositeChainId = Number(oppositeToken?.chainId)
-        const preferredChainId = emptyOutputSide
+        const oppositeWasExplicitlySelected = oppositeToken?.uiSelectionOrigin === 'user'
+        const keepEmptyOutputGlobal = emptyOutputSide && !oppositeWasExplicitlySelected
+        const preferredChainId = keepEmptyOutputGlobal
             ? 'all'
             : Number.isSafeInteger(oppositeChainId) && oppositeChainId > 0
                 ? oppositeChainId
@@ -104,7 +106,7 @@ function GlobalTokenSelector({
         if (String(chainId) === String(preferredChainId)) return
         onSearchChange('')
         onChainChange(preferredChainId)
-    }, [chainId, currentToken, onChainChange, onSearchChange, oppositeToken?.chainId, side])
+    }, [chainId, currentToken, onChainChange, onSearchChange, oppositeToken?.chainId, oppositeToken?.uiSelectionOrigin, side])
 
     const handleChainChange = (value) => {
         if (!onChainChange) return
