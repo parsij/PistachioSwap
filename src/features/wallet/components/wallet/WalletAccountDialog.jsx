@@ -30,10 +30,10 @@ import { shortenAddress } from '../../../../services/address.js'
 import { resolveWalletUsdValue } from '../../../tokens/services/walletTokens.js'
 import {
     filterPortfolioTokens,
-    isTrustedWalletToken,
 } from '../../../tokens/services/portfolio.js'
 import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
 import { useWalletActivity } from '../../hooks/useWalletActivity.js'
+import { filterVisibleActivity } from '../../services/visibleWalletActivity.js'
 import {
     getCuratedEvmChain,
     getCuratedEvmChainLogoUri,
@@ -94,47 +94,6 @@ function findActivityToken(activity, assets) {
         name: candidate.name ?? candidate.symbol ?? 'Token',
         logoURI: candidate.logoURI ?? null,
     }
-}
-
-function activityAsset(candidate, assets, chainId) {
-    if (!candidate) return null
-    const address = String(candidate.address ?? '').toLowerCase()
-    return assets.find((token) =>
-        Number(token.chainId) === Number(chainId) &&
-        String(token.address ?? '').toLowerCase() === address) ?? candidate
-}
-
-function activityTokenTrusted(candidate, assets, chainId) {
-    if (!candidate) return false
-    if (candidate.isNative === true) return true
-    return isTrustedWalletToken(activityAsset(candidate, assets, chainId))
-}
-
-function activityTokenBlocked(candidate, assets, chainId) {
-    const token = activityAsset(candidate, assets, chainId)
-    if (!token) return false
-    return token.possibleSpam === true ||
-        ['high', 'blocked'].includes(token.securityStatus)
-}
-
-function filterVisibleActivity(items, assets) {
-    return items.filter((activity) => {
-        // Incoming transfers are the unsolicited-spam surface, so they retain
-        // the strict portfolio trust gate. Outgoing activity is user-initiated
-        // history and must not disappear just because a balance is now zero or
-        // an asset is absent from the current primary portfolio.
-        if (activity.type === 'received') {
-            return activityTokenTrusted(activity.token, assets, activity.chainId)
-        }
-        if (activity.type === 'swapped') {
-            return !activityTokenBlocked(activity.sellToken, assets, activity.chainId) &&
-                !activityTokenBlocked(activity.buyToken, assets, activity.chainId)
-        }
-        if (activity.type === 'sent' || activity.type === 'approved') {
-            return !activityTokenBlocked(activity.token, assets, activity.chainId)
-        }
-        return activity.type === 'contract'
-    })
 }
 
 function compactAmount(value) {
@@ -202,9 +161,10 @@ function activitySummary(activity) {
     if (activity.type === 'received') {
         const amount = compactAmount(activity.amount)
         const symbol = activity.token?.symbol
+        const origin = activity.sender ? ` from ${shortenAddress(activity.sender, 5)}` : ''
         return amount && symbol
-            ? `${amount} ${symbol}`
-            : 'Funds received'
+            ? `${amount} ${symbol}${origin}`
+            : `Funds received${origin}`
     }
 
     return 'Transaction confirmed'
@@ -322,20 +282,15 @@ export default function WalletAccountDialog({
     const [disconnecting, setDisconnecting] = useState(false)
     const [disconnectError, setDisconnectError] = useState(null)
     const [view, setView] = useState('overview')
-    const activityChainIds = useMemo(() => [...new Set([
-        Number(chainId),
-        ...walletTokens.map((token) => Number(token?.chainId)),
-    ].filter((value) => Number.isSafeInteger(value) && value > 0))], [
-        chainId,
-        walletTokens,
-    ])
     const {
         items: activity,
         loading: activityLoading,
         error: activityError,
+        refetch: refetchActivity,
     } = useWalletActivity({
+        chainId,
+        enabled: open,
         walletAddress: address,
-        chainIds: activityChainIds,
         limit: 50,
     })
 
@@ -411,6 +366,7 @@ export default function WalletAccountDialog({
 
     async function refreshAssets() {
         if (refreshing) return
+        refetchActivity?.()
         setRefreshing(true)
         try {
             await onRefetch?.()

@@ -1,4 +1,5 @@
 import {
+    useCallback,
     useEffect,
     useMemo,
     useState,
@@ -10,6 +11,7 @@ import {
     subscribeWalletActivity,
 } from '../services/walletActivity.js'
 import { fetchWalletHistory } from '../services/walletHistory.js'
+import { mergeWalletActivity } from '../services/mergeWalletActivity.js'
 
 // The backend currently has verified Moralis history support for these active
 // networks. Query them all instead of inferring history scope from current
@@ -46,14 +48,10 @@ function historyBatches() {
     return batches
 }
 
-function activityKey(item) {
-    return item?.hash
-        ? `${Number(item.chainId)}:${String(item.hash).toLowerCase()}:${String(item.type)}`
-        : String(item?.id ?? '')
-}
-
 export function useWalletActivity({
     walletAddress,
+    chainId,
+    enabled = true,
     limit = 50,
 } = {}) {
     const [localItems, setLocalItems] = useState(() =>
@@ -61,6 +59,8 @@ export function useWalletActivity({
     const [remoteItems, setRemoteItems] = useState([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
+    const [revision, setRevision] = useState(0)
+    const refetch = useCallback(() => setRevision(value => value + 1), [])
     const batches = useMemo(historyBatches, [])
 
     useEffect(() => {
@@ -68,11 +68,14 @@ export function useWalletActivity({
             readWalletActivity({ walletAddress, limit }),
         )
         refreshLocal()
-        return subscribeWalletActivity(refreshLocal)
+        return subscribeWalletActivity(() => {
+            refreshLocal()
+            setRevision(value => value + 1)
+        })
     }, [limit, walletAddress])
 
     useEffect(() => {
-        if (!/^0x[a-fA-F0-9]{40}$/.test(String(walletAddress ?? ''))) {
+        if (!enabled || !/^0x[a-fA-F0-9]{40}$/.test(String(walletAddress ?? ''))) {
             setRemoteItems([])
             setLoading(false)
             setError(null)
@@ -80,6 +83,7 @@ export function useWalletActivity({
         }
 
         const controller = new AbortController()
+        setRemoteItems([])
         setLoading(true)
         setError(null)
 
@@ -103,7 +107,7 @@ export function useWalletActivity({
             setRemoteItems(normalized)
             if (fulfilled.length === 0) {
                 setError('Wallet history could not be loaded.')
-            } else if (fulfilled.length < results.length) {
+            } else if (fulfilled.length < results.length || fulfilled.some(result => result.value.partial)) {
                 setError('Some wallet history could not be loaded.')
             }
         }).finally(() => {
@@ -111,35 +115,17 @@ export function useWalletActivity({
         })
 
         return () => controller.abort()
-    }, [batches, limit, walletAddress])
+    }, [batches, chainId, enabled, limit, walletAddress, revision])
 
     const items = useMemo(() => {
-        const merged = new Map()
-        for (const item of [...localItems, ...remoteItems]) {
-            const key = activityKey(item)
-            if (!key) continue
-            const existing = merged.get(key)
-            merged.set(key, existing ? {
-                ...existing,
-                ...item,
-                token: item.token ?? existing.token ?? null,
-                sellToken: item.sellToken ?? existing.sellToken ?? null,
-                buyToken: item.buyToken ?? existing.buyToken ?? null,
-                amount: item.amount ?? existing.amount ?? null,
-                sellAmount: item.sellAmount ?? existing.sellAmount ?? null,
-                buyAmount: item.buyAmount ?? existing.buyAmount ?? null,
-                recipient: item.recipient ?? existing.recipient ?? null,
-            } : item)
-        }
-        return [...merged.values()]
-            .sort((left, right) =>
-                Date.parse(right.timestamp) - Date.parse(left.timestamp))
-            .slice(0, limit)
-    }, [limit, localItems, remoteItems])
+        return mergeWalletActivity(localItems, remoteItems, limit)
+            .filter(item => item.walletAddress.toLowerCase() === String(walletAddress).toLowerCase())
+    }, [limit, localItems, remoteItems, walletAddress])
 
     return {
         items,
         loading,
         error,
+        refetch,
     }
 }

@@ -13,6 +13,8 @@ import {
 } from '../lib/address.js'
 import { isRecord } from '../lib/http.js'
 import { moralisWalletHistoryRequest } from '../providers/moralis/wallet-history.js'
+import { alchemyWalletHistoryRequest, receiptHasSwapEvidence } from '../providers/alchemy/wallet-history.js'
+import { alchemyRpcBatch } from '../providers/alchemy/alchemy-client.js'
 import {
     getWalletTokens,
     type WalletToken,
@@ -165,7 +167,7 @@ function activityTokenFromErc20(value: unknown): ActivityToken | null {
     if (!isRecord(value) || booleanValue(value.possible_spam) === true) return null
     const address = normalizeAddress(value.address ?? value.token_address)
     if (!address) return null
-    const decimals = Number(value.token_decimals)
+    const decimals = value.token_decimals == null ? NaN : Number(value.token_decimals)
     return {
         address,
         symbol: stringValue(value.token_symbol, 24),
@@ -200,6 +202,10 @@ function transferDirection(
     to: string | null,
     declared: unknown,
 ): Transfer['direction'] {
+    if (from === wallet && to === wallet) return null
+    if (from === wallet) return 'outgoing'
+    if (to === wallet) return 'incoming'
+    if (from && to) return null
     const normalizedDeclared = String(declared ?? '').trim().toLowerCase()
     if (normalizedDeclared === 'incoming' || normalizedDeclared === 'outgoing') {
         return normalizedDeclared
@@ -244,6 +250,13 @@ function nativeTransfer(
 
 function tokenIdentity(token: ActivityToken) {
     return token.isNative ? 'native' : token.address
+}
+
+function differentAssets(chainId: number, sell: ActivityToken, buy: ActivityToken) {
+    const wrapped = getTokenDiscoveryChain(chainId)?.wrappedNative?.address
+    return tokenIdentity(sell) !== tokenIdentity(buy) &&
+        !(sell.isNative && buy.address === wrapped) &&
+        !(buy.isNative && sell.address === wrapped)
 }
 
 function tokenMatchesAddress(token: ActivityToken, address: string) {
@@ -336,7 +349,30 @@ function singleTokenFlow(transfers: Transfer[]) {
         groups.set(identity, group)
     }
     if (groups.size !== 1) return null
-    return dominantTransfer([...groups.values()][0] ?? [])
+    const group = [...groups.values()][0] ?? []
+    const first = dominantTransfer(group)
+    if (!first || group.some(item => item.rawAmount === null)) return first
+    const rawAmount = group.reduce((total, item) => total + (item.rawAmount ?? 0n), 0n)
+    return { ...first, rawAmount, amount: formatRawAmount(rawAmount, first.token) }
+}
+
+function netFlows(transfers: Transfer[]) {
+    const groups = new Map<string, Transfer[]>()
+    for (const transfer of transfers) {
+        const key = tokenIdentity(transfer.token)
+        if (!key || !transfer.direction || transfer.rawAmount === 0n) continue
+        groups.set(key, [...(groups.get(key) ?? []), transfer])
+    }
+    return [...groups.values()].flatMap(group => {
+        if (group.some(item => item.rawAmount === null)) return group
+        const net = group.reduce((total, item) => total +
+            (item.direction === 'incoming' ? 1n : -1n) * (item.rawAmount ?? 0n), 0n)
+        if (net === 0n) return []
+        const direction = net > 0n ? 'incoming' : 'outgoing'
+        const first = group.find(item => item.direction === direction)!
+        const rawAmount = net > 0n ? net : -net
+        return [{ ...first, direction, rawAmount, amount: formatRawAmount(rawAmount, first.token) } as Transfer]
+    })
 }
 
 function decodeGasAssistActivity({
@@ -396,7 +432,7 @@ function decodeGasAssistActivity({
         if (!anySell || !buyTransfer) return null
         const sellToken = anySell.token
         const buyToken = buyTransfer.token
-        if (tokenIdentity(sellToken) === tokenIdentity(buyToken)) return null
+        if (!differentAssets(chainId, sellToken, buyToken)) return null
 
         return {
             id: `${chainId}:${hash}`,
@@ -446,9 +482,10 @@ function inferKnownPistachioSwapActivity({
     // Only infer a legacy/custom Pistachio swap when transfer flow is
     // unambiguous: one outgoing asset identity and one incoming asset identity.
     // Exact modern Gas Assist calls are handled above and retain exact principal.
-    const sell = singleTokenFlow(outgoing)
-    const buy = singleTokenFlow(incoming)
-    if (!sell || !buy || tokenIdentity(sell.token) === tokenIdentity(buy.token)) {
+    const net = netFlows([...outgoing, ...incoming])
+    const sell = singleTokenFlow(net.filter(item => item.direction === 'outgoing'))
+    const buy = singleTokenFlow(net.filter(item => item.direction === 'incoming'))
+    if (!sell || !buy || !differentAssets(chainId, sell.token, buy.token)) {
         return null
     }
 
@@ -511,7 +548,7 @@ function decodeApprovalActivity({
     }
 }
 
-function normalizeMoralisActivity(
+function classifyHistoryActivity(
     chainId: number,
     wallet: string,
     value: unknown,
@@ -530,7 +567,15 @@ function normalizeMoralisActivity(
             .map((item) => nativeTransfer(chainId, wallet, item))
             .filter((item): item is Transfer => item !== null)
         : []
-    const transfers = [...erc20, ...native]
+    if (native.length === 0 && (uintValue(value.value) ?? 0n) > 0n) {
+        const transfer = nativeTransfer(chainId, wallet, {
+            from_address: value.from_address, to_address: value.to_address,
+            value: value.value, value_formatted: formatUnits(uintValue(value.value)!, 18),
+        })
+        if (transfer) native.push(transfer)
+    }
+    const transfers = [...erc20, ...native].filter(item =>
+        item.rawAmount !== 0n && (item.rawAmount !== null || Number(item.amount) > 0))
     const outgoing = transfers.filter((item) => item.direction === 'outgoing')
     const incoming = transfers.filter((item) => item.direction === 'incoming')
     const summary = `${String(value.summary ?? '')} ${String(value.method_label ?? '')}`
@@ -540,6 +585,9 @@ function normalizeMoralisActivity(
     const timestamp = stringValue(value.block_timestamp, 40)
     const from = normalizeAddress(value.from_address)
     const to = normalizeAddress(value.to_address)
+
+    const approval = decodeApprovalActivity({ chainId, wallet, value, hash, timestamp })
+    if (approval) return approval
 
     const gasAssist = decodeGasAssistActivity({
         chainId,
@@ -563,15 +611,6 @@ function normalizeMoralisActivity(
     })
     if (knownPistachioSwap) return knownPistachioSwap
 
-    const decodedApproval = decodeApprovalActivity({
-        chainId,
-        wallet,
-        value,
-        hash,
-        timestamp,
-    })
-    if (decodedApproval) return decodedApproval
-
     if (/\b(?:approve|approval|set approval)\b/.test(summary) || category === 'approve') {
         return {
             id: `${chainId}:${hash}`,
@@ -586,16 +625,17 @@ function normalizeMoralisActivity(
         }
     }
 
-    const sell = outgoing[0] ?? null
-    const buy = incoming.find((item) =>
+    const net = netFlows(transfers)
+    const sell = singleTokenFlow(net.filter(item => item.direction === 'outgoing'))
+    const buy = net.filter(item => item.direction === 'incoming').find((item) =>
         !sell || tokenIdentity(item.token) !== tokenIdentity(sell.token)) ??
-        incoming[0] ?? null
+        null
     const swapSemantic =
         /\b(?:swap|swapped|trade|traded)\b/.test(summary) ||
-        ['swap', 'token swap'].includes(category)
+        ['swap', 'token swap'].includes(category) || value.swap_evidence === true
     if (
-        swapSemantic &&
-        sell && buy && tokenIdentity(sell.token) !== tokenIdentity(buy.token)
+        from === wallet && swapSemantic &&
+        sell && buy && differentAssets(chainId, sell.token, buy.token)
     ) {
         return {
             id: `${chainId}:${hash}`,
@@ -639,10 +679,80 @@ function normalizeMoralisActivity(
             token: transfer?.token ?? null,
             amount: transfer?.amount ?? null,
             recipient: wallet,
+            sender: transfer?.from ?? from,
         }
     }
 
     return null
+}
+
+function normalizeMoralisActivity(chainId: number, wallet: string, value: unknown) {
+    wallet = normalizeAddress(wallet) ?? wallet
+    const item = classifyHistoryActivity(chainId, wallet, value)
+    if (!item || !isRecord(value)) return item
+    const contracts = [normalizeAddress(value.to_address), ...authorizationAddresses(value)]
+    return { ...item, source: 'remote', status: 'confirmed',
+        blockNumber: String(value.block_number ?? ''),
+        from: normalizeAddress(value.from_address), to: normalizeAddress(value.to_address),
+        nativeValue: decimalValue(value.value), provider: item.provider ?? value.provider ?? 'moralis',
+        providerType: stringValue(value.category),
+        detectedContract: contracts.find(address => address && KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address)) ??
+            (item.type === 'swapped' ? normalizeAddress(value.to_address) : null),
+        classificationReason: item.type === 'swapped'
+            ? 'Successful swap interaction with outgoing and incoming distinct assets'
+            : item.type === 'approved' ? 'Approval calldata or provider approval evidence'
+            : item.type === 'sent' ? 'Outgoing wallet movement; no confirmed distinct buy flow'
+            : item.type === 'received' ? 'Incoming wallet movement'
+            : 'Wallet contract call without swap flows',
+    }
+}
+
+async function verifyAmbiguousSwapRows(chainId: number, wallet: string, rows: unknown[]) {
+    let verificationUnavailable = false
+    const candidates = rows.filter(isRecord).filter(row => {
+        if (normalizeAddress(row.from_address) !== wallet) return false
+        if (normalizeMoralisActivity(chainId, wallet, row)?.type !== 'sent') return false
+        const movements = [...(Array.isArray(row.erc20_transfers) ? row.erc20_transfers : []),
+            ...(Array.isArray(row.native_transfers) ? row.native_transfers : [])].filter(isRecord)
+        return movements.some(item => normalizeAddress(item.to_address) === wallet && normalizeAddress(item.from_address) !== wallet)
+    })
+    for (let index = 0; index < candidates.length; index += 10) {
+        const batch = candidates.slice(index, index + 10)
+        const responses = await alchemyRpcBatch(batch.map(row => ({ jsonrpc: '2.0', id: String(row.hash),
+            method: 'eth_getTransactionReceipt', params: [row.hash] })), undefined, chainId).catch(() => null)
+        for (const row of batch) {
+            const response = responses?.get(String(row.hash))
+            if (response?.error || !isRecord(response?.result)) {
+                verificationUnavailable = true
+                continue
+            }
+            row.swap_evidence = receiptHasSwapEvidence(response.result)
+            row.receipt_status = response.result.status === '0x1' ? '1' : '0'
+        }
+    }
+    return { result: rows, limitations: verificationUnavailable ? ['swap-receipt-verification-unavailable'] : [] }
+}
+
+async function loadWalletHistory(chainId: number, walletAddress: string) {
+    try {
+        const rows: unknown[] = []
+        let cursor: string | undefined
+        const seen = new Set<string>()
+        for (let page = 0; page < 5; page++) {
+            const payload = await moralisWalletHistoryRequest({ chainId, walletAddress, limit: 50, cursor })
+            if (!payload) throw new Error('History provider unavailable')
+            if (!isRecord(payload) || !Array.isArray(payload.result)) throw new Error('Invalid history response')
+            rows.push(...payload.result)
+            if (!payload.cursor) return { ...await verifyAmbiguousSwapRows(chainId, walletAddress, rows), source: 'moralis-wallet-history', truncated: false }
+            if (typeof payload.cursor !== 'string' || seen.has(payload.cursor)) throw new Error('Invalid history cursor')
+            cursor = payload.cursor
+            seen.add(cursor)
+        }
+        return { ...await verifyAmbiguousSwapRows(chainId, walletAddress, rows), source: 'moralis-wallet-history', truncated: true }
+    } catch {
+        if (chainId !== 56) throw new Error('History provider unavailable')
+        return alchemyWalletHistoryRequest({ chainId, walletAddress })
+    }
 }
 
 function walletTokenKey(chainId: number, token: ActivityToken | null) {
@@ -686,7 +796,14 @@ function activityPassesTrustPolicy(
     // Transaction history is not a portfolio. A successful transaction that the
     // wallet initiated must remain visible even when the asset has since moved
     // to zero balance or lacks current primary-portfolio classification.
-    if (['contract', 'approved', 'sent', 'swapped'].includes(type)) return true
+    if (['contract', 'approved', 'sent', 'swapped'].includes(type)) {
+        // A token can emit forged outbound logs for any address. Such logs are
+        // not evidence that this wallet initiated a send.
+        if (type === 'sent' && item.from && item.from !== item.walletAddress) {
+            return activityTokenTrusted(Number(item.chainId), item.token as ActivityToken | null, trustedTokens)
+        }
+        return true
+    }
 
     // Unsolicited inbound token transfers are the spam surface. Keep the strict
     // token trust gate there in addition to Moralis possible_spam filtering.
@@ -821,14 +938,9 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
         const chainIds = requestedChainIds(request.query.chainIds)
         if (chainIds.length === 0) chainIds.push(56)
         const limit = Math.max(1, Math.min(50, Number(request.query.limit) || 50))
-        const perChainLimit = Math.max(10, Math.min(50, limit))
         const results = await Promise.allSettled(chainIds.map(async (chainId) => {
             const [payload, walletTokens, fallbackTokens] = await Promise.all([
-                moralisWalletHistoryRequest({
-                    chainId,
-                    walletAddress: wallet,
-                    limit: perChainLimit,
-                }),
+                loadWalletHistory(chainId, wallet),
                 getWalletTokens({
                     chainId,
                     walletAddress: wallet,
@@ -842,6 +954,7 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
         const items: Record<string, unknown>[] = []
         const failedChainIds: number[] = []
         const unsupportedChainIds: number[] = []
+        const coverage: Record<string, unknown>[] = []
         for (const [index, result] of results.entries()) {
             const chainId = chainIds[index]
             if (result.status === 'rejected') {
@@ -853,6 +966,7 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
                 continue
             }
             const payload = result.value.payload
+            coverage.push({ chainId, source: payload.source, truncated: payload.truncated, limitations: payload.limitations })
             const trustedTokens = new Map<string, KnownActivityToken>()
             for (const token of result.value.fallbackTokens) {
                 trustedTokens.set(
@@ -881,7 +995,7 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
 
         const deduplicated = new Map<string, Record<string, unknown>>()
         for (const item of items) {
-            const key = `${item.chainId}:${item.hash}:${item.type}`
+            const key = `${item.chainId}:${item.hash}`
             if (!deduplicated.has(key)) deduplicated.set(key, item)
         }
         const sorted = [...deduplicated.values()]
@@ -890,14 +1004,20 @@ export const walletActivityRoutes: FastifyPluginAsync = async (app) => {
                 Date.parse(String(left.timestamp ?? '')))
             .slice(0, limit)
 
+        if (failedChainIds.length === chainIds.length) {
+            return reply.code(503).send({ error: { code: 'WALLET_HISTORY_UNAVAILABLE', message: 'Wallet history providers are unavailable.' } })
+        }
         return {
             address: wallet,
             items: sorted,
             queriedChainIds: chainIds,
             failedChainIds,
             unsupportedChainIds,
-            partial: failedChainIds.length > 0 || unsupportedChainIds.length > 0,
-            source: 'moralis-wallet-history',
+            partial: failedChainIds.length > 0 || unsupportedChainIds.length > 0 ||
+                coverage.some(entry => entry.truncated === true ||
+                    (Array.isArray(entry.limitations) && entry.limitations.includes('swap-receipt-verification-unavailable'))),
+            coverage,
+            source: coverage.length === 1 ? coverage[0].source : 'wallet-history',
         }
     })
 }

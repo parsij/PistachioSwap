@@ -9,6 +9,7 @@
     "#wallet-runtime": "./src/web3/walletRuntime.js"
   },
   "scripts": {
+    "diagnose:wallet-activity": "node --env-file=apps/api/.env scripts/diagnose-wallet-activity.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:local": "node scripts/dev.mjs --local",
     "dev:web": "vite",
