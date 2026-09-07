@@ -21,13 +21,13 @@ const APP_LINKS = [
 
 const PRODUCT_LINKS = [
     {
-        href: '/landing/wallet/',
+        href: '/wallet/',
         label: 'Pistachio Wallet',
         description: 'Self-custody wallet',
         Icon: WalletCards,
     },
     {
-        href: '/landing/gas-assist/',
+        href: '/gas-assist/',
         label: 'Gas Assist',
         description: 'Swap without holding BNB',
         Icon: Fuel,
@@ -36,13 +36,13 @@ const PRODUCT_LINKS = [
 
 const PROTOCOL_LINKS = [
     { href: '/swap/', label: 'Trade' },
-    { href: '/landing/gas-assist/', label: 'Gas Assist' },
+    { href: '/gas-assist/', label: 'Gas Assist' },
 ]
 
 const COMPANY_LINKS = [
     { href: '/', label: 'About' },
-    { href: '/landing/how-it-works/', label: 'How Pistachio Swap works' },
-    { href: '/landing/faq/', label: 'FAQ' },
+    { href: '/how-it-works/', label: 'How Pistachio Swap works' },
+    { href: '/faq/', label: 'FAQ' },
 ]
 
 const UTILITY_LINKS = [...PROTOCOL_LINKS, ...COMPANY_LINKS]
@@ -198,7 +198,7 @@ function BrandMenuFooter({ onNavigate }) {
                 </a>
                 <a
                     className="brand-menu-social"
-                    href="/landing/faq/"
+                    href="/faq/"
                     aria-label="Help"
                     onClick={onNavigate}
                 >
