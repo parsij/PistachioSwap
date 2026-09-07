@@ -177,14 +177,26 @@ function metadataEvidence(row) {
     return timestamp ? { metadata: { blockTimestamp: timestamp } } : null
 }
 
+function metadataObject(row) {
+    if (row?.token_metadata && typeof row.token_metadata === 'object') {
+        return row.token_metadata
+    }
+    if (row?.metadata && typeof row.metadata === 'object') return row.metadata
+    return {}
+}
+
 function tokenEvidence(row) {
     const token = row?.token && typeof row.token === 'object' ? row.token : {}
+    const tokenMetadata = metadataObject(row)
     const address = String(
-        row?.contract_address ?? row?.token_address ?? token.address ?? '',
+        row?.contract_address ?? row?.token_address ?? token.address ??
+        tokenMetadata.address ?? tokenMetadata.contract_address ?? '',
     ).trim().toLowerCase()
     if (!/^0x[a-f0-9]{40}$/.test(address)) return metadataEvidence(row)
-    const decimals = row?.token_decimals ?? row?.decimals ?? token.decimals
-    const symbol = row?.token_symbol ?? row?.symbol ?? token.symbol
+    const decimals = row?.token_decimals ?? row?.decimals ?? token.decimals ??
+        tokenMetadata.decimals
+    const symbol = row?.token_symbol ?? row?.symbol ?? token.symbol ??
+        tokenMetadata.symbol
     return {
         rawContract: {
             address,
@@ -340,6 +352,7 @@ export const thirdwebWalletHistoryInternals = {
     configuredThirdwebClientId,
     insightOrigin,
     isoTimestamp,
+    metadataObject,
     normalizeHash,
     pageInfo,
     rpcUrl,
