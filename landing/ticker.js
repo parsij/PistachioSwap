@@ -1,4 +1,10 @@
-import './coin-media.js'
+import { isCrawlerUserAgent } from './coin-mode.js'
+
+if (isCrawlerUserAgent(navigator.userAgent)) {
+    void import('./coin-static.js')
+} else {
+    void import('./coin-media.js')
+}
 
 /*
  * Auto-scrolling chain bar. Drag left or right with the mouse (or a finger)
