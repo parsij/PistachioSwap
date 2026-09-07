@@ -1,3 +1,4 @@
+import { CURATED_EVM_CHAIN_IDS } from '../../../web3/curatedEvmChains.js'
 import {
     buildReceiptHistoryRow,
     classifyReceiptHistoryRow,
@@ -7,30 +8,43 @@ import {
     readWalletHistoryCache,
     writeWalletHistoryCache,
 } from './walletHistoryCache.js'
+import {
+    fetchThirdwebChainActivities,
+    thirdwebHistoryConfigured,
+} from './thirdwebWalletHistory.js'
 
-export const DIRECT_WALLET_HISTORY_CHAIN_IDS = Object.freeze([
-    1,
-    10,
-    56,
-    100,
-    137,
-    8453,
-    42161,
-    43114,
-    59144,
-])
+// Polygon zkEVM mainnet (1101) was shut down on July 1, 2026. Keep it in the
+// wider app registry for compatibility until that registry is cleaned up, but
+// do not make doomed history requests to a retired chain.
+const RETIRED_HISTORY_CHAIN_IDS = new Set([1101])
+
+export const SUPPORTED_WALLET_HISTORY_CHAIN_IDS = Object.freeze(
+    CURATED_EVM_CHAIN_IDS.filter(chainId => !RETIRED_HISTORY_CHAIN_IDS.has(chainId)),
+)
 
 const ALCHEMY_ENDPOINTS = Object.freeze({
     1: 'https://eth-mainnet.g.alchemy.com/v2',
     10: 'https://opt-mainnet.g.alchemy.com/v2',
     56: 'https://bnb-mainnet.g.alchemy.com/v2',
     100: 'https://gnosis-mainnet.g.alchemy.com/v2',
+    130: 'https://unichain-mainnet.g.alchemy.com/v2',
     137: 'https://polygon-mainnet.g.alchemy.com/v2',
+    324: 'https://zksync-mainnet.g.alchemy.com/v2',
+    480: 'https://worldchain-mainnet.g.alchemy.com/v2',
     8453: 'https://base-mainnet.g.alchemy.com/v2',
     42161: 'https://arb-mainnet.g.alchemy.com/v2',
+    42220: 'https://celo-mainnet.g.alchemy.com/v2',
     43114: 'https://avax-mainnet.g.alchemy.com/v2',
+    534352: 'https://scroll-mainnet.g.alchemy.com/v2',
     59144: 'https://linea-mainnet.g.alchemy.com/v2',
+    80094: 'https://berachain-mainnet.g.alchemy.com/v2',
+    81457: 'https://blast-mainnet.g.alchemy.com/v2',
 })
+
+export const ALCHEMY_TRANSFER_CHAIN_IDS = Object.freeze(
+    Object.keys(ALCHEMY_ENDPOINTS).map(Number),
+)
+const ALCHEMY_TRANSFER_CHAIN_SET = new Set(ALCHEMY_TRANSFER_CHAIN_IDS)
 
 const REFRESH_TTL_MS = 10 * 60 * 1000
 const REORG_BUFFER_BLOCKS = 64
@@ -43,15 +57,31 @@ function viteEnv() {
     return import.meta.env ?? {}
 }
 
+function configuredHistoryChainIds() {
+    const configured = String(viteEnv().VITE_WALLET_HISTORY_CHAIN_IDS ?? '').trim()
+    if (!configured) return [56]
+    const allowed = new Set(SUPPORTED_WALLET_HISTORY_CHAIN_IDS)
+    const ids = [...new Set(configured
+        .split(',')
+        .map(value => Number(value.trim()))
+        .filter(value => Number.isSafeInteger(value) && allowed.has(value)))]
+    return ids.length > 0 ? ids : [56]
+}
+
+export const DIRECT_WALLET_HISTORY_CHAIN_IDS = Object.freeze(
+    configuredHistoryChainIds(),
+)
+
 function normalizeWalletAddress(value) {
     const address = String(value ?? '').trim().toLowerCase()
     return /^0x[a-f0-9]{40}$/.test(address) ? address : null
 }
 
 function normalizeChainIds(values) {
+    const configured = new Set(DIRECT_WALLET_HISTORY_CHAIN_IDS)
     return [...new Set((Array.isArray(values) ? values : [])
         .map(Number)
-        .filter(value => DIRECT_WALLET_HISTORY_CHAIN_IDS.includes(value)))]
+        .filter(value => configured.has(value)))]
         .slice(0, DIRECT_WALLET_HISTORY_CHAIN_IDS.length)
 }
 
@@ -60,6 +90,8 @@ function alchemyEndpoint(chainId) {
 }
 
 function keyFromConfiguredRpc(chainId) {
+    const endpoint = alchemyEndpoint(chainId)
+    if (!endpoint) return null
     const env = viteEnv()
     const configured = Number(chainId) === 56
         ? env.VITE_BSC_PUBLIC_RPC_URL
@@ -68,7 +100,7 @@ function keyFromConfiguredRpc(chainId) {
     if (!text) return null
     try {
         const url = new URL(text)
-        const expected = new URL(alchemyEndpoint(chainId))
+        const expected = new URL(endpoint)
         if (url.origin !== expected.origin) return null
         const match = url.pathname.match(/^\/v2\/([^/]+)\/?$/)
         return match?.[1] ? decodeURIComponent(match[1]) : null
@@ -84,6 +116,11 @@ function configuredAlchemyKey(chainId) {
     ).trim()
     const shared = String(env.VITE_WALLET_HISTORY_ALCHEMY_PUBLIC_KEY ?? '').trim()
     return perChain || shared || keyFromConfiguredRpc(chainId)
+}
+
+function alchemyHistoryConfigured(chainId) {
+    return ALCHEMY_TRANSFER_CHAIN_SET.has(Number(chainId)) &&
+        Boolean(configuredAlchemyKey(chainId))
 }
 
 function sleep(milliseconds, signal) {
@@ -103,7 +140,7 @@ async function alchemyFetch(chainId, body, { signal } = {}) {
     const endpoint = alchemyEndpoint(chainId)
     const apiKey = configuredAlchemyKey(chainId)
     if (!endpoint || !apiKey) {
-        throw new Error('Direct wallet history is not configured for this network.')
+        throw new Error('Alchemy browser history is not configured for this network.')
     }
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -124,14 +161,14 @@ async function alchemyFetch(chainId, body, { signal } = {}) {
             continue
         }
         if (!response.ok) {
-            throw new Error(`Direct wallet history provider returned HTTP ${response.status}.`)
+            throw new Error(`Alchemy browser history returned HTTP ${response.status}.`)
         }
 
         const payload = await response.json().catch(() => null)
-        if (!payload) throw new Error('Direct wallet history response was invalid.')
+        if (!payload) throw new Error('Alchemy browser history response was invalid.')
         return payload
     }
-    throw new Error('Direct wallet history provider is unavailable.')
+    throw new Error('Alchemy browser history is unavailable.')
 }
 
 async function alchemyRpc(chainId, method, params, { signal } = {}) {
@@ -142,7 +179,7 @@ async function alchemyRpc(chainId, method, params, { signal } = {}) {
         params,
     }, { signal })
     if (payload.error || !('result' in payload)) {
-        throw new Error(payload.error?.message || 'Direct wallet history RPC failed.')
+        throw new Error(payload.error?.message || 'Alchemy browser RPC failed.')
     }
     return payload.result
 }
@@ -153,7 +190,7 @@ async function alchemyRpcBatch(chainId, requests, { signal } = {}) {
         jsonrpc: '2.0',
         ...request,
     })), { signal })
-    if (!Array.isArray(payload)) throw new Error('Direct wallet history batch response was invalid.')
+    if (!Array.isArray(payload)) throw new Error('Alchemy browser batch response was invalid.')
     return new Map(payload.map(item => [String(item?.id), item]))
 }
 
@@ -199,13 +236,13 @@ async function transferStream({
         }
         const result = await alchemyRpc(chainId, 'alchemy_getAssetTransfers', [params], { signal })
         if (!result || !Array.isArray(result.transfers)) {
-            throw new Error('Direct wallet history transfer response was invalid.')
+            throw new Error('Alchemy transfer response was invalid.')
         }
         transfers.push(...result.transfers)
 
         if (!result.pageKey) break
         if (typeof result.pageKey !== 'string' || seenPageKeys.has(result.pageKey)) {
-            throw new Error('Direct wallet history pagination was invalid.')
+            throw new Error('Alchemy transfer pagination was invalid.')
         }
         seenPageKeys.add(result.pageKey)
         pageKey = result.pageKey
@@ -302,6 +339,24 @@ async function hydrateActivities({ chainId, walletAddress, transfers, signal }) 
     return { activities, partial }
 }
 
+async function fetchAlchemyChainActivities({ chainId, walletAddress, fromBlock, signal }) {
+    const latestBlock = blockNumber(await alchemyRpc(chainId, 'eth_blockNumber', [], { signal }))
+    if (latestBlock === null) throw new Error('Alchemy browser block height was invalid.')
+    const discovery = await discoverTransfers({ chainId, walletAddress, fromBlock, signal })
+    const hydrated = await hydrateActivities({
+        chainId,
+        walletAddress,
+        transfers: discovery.transfers,
+        signal,
+    })
+    return {
+        activities: hydrated.activities,
+        latestBlock,
+        truncated: discovery.truncated || hydrated.partial,
+        source: 'alchemy-browser',
+    }
+}
+
 function activityBlockNumber(activity) {
     const value = Number(activity?.blockNumber)
     return Number.isSafeInteger(value) && value >= 0 ? value : 0
@@ -342,6 +397,34 @@ function cacheIsFresh(record, now = Date.now()) {
         now - Number(record.lastRefreshAt) < REFRESH_TTL_MS
 }
 
+async function fetchChainProviderHistory({ chainId, walletAddress, fromBlock, signal }) {
+    let alchemyError = null
+    if (alchemyHistoryConfigured(chainId)) {
+        try {
+            return await fetchAlchemyChainActivities({
+                chainId,
+                walletAddress,
+                fromBlock,
+                signal,
+            })
+        } catch (error) {
+            alchemyError = error
+        }
+    }
+
+    if (thirdwebHistoryConfigured()) {
+        return fetchThirdwebChainActivities({
+            chainId,
+            walletAddress,
+            fromBlock,
+            signal,
+        })
+    }
+
+    if (alchemyError) throw alchemyError
+    throw new Error('No direct browser history provider is configured for this network.')
+}
+
 async function refreshChainHistory({ chainId, walletAddress, force, signal }) {
     const cached = await readWalletHistoryCache({ walletAddress, chainId })
     if (!force && cacheIsFresh(cached)) {
@@ -353,9 +436,6 @@ async function refreshChainHistory({ chainId, walletAddress, force, signal }) {
         }
     }
 
-    const latestBlock = blockNumber(await alchemyRpc(chainId, 'eth_blockNumber', [], { signal }))
-    if (latestBlock === null) throw new Error('Direct wallet history block height was invalid.')
-
     const previousBlock = cacheIsCurrent(cached)
         ? Number(cached.lastScannedBlock) || 0
         : 0
@@ -363,39 +443,32 @@ async function refreshChainHistory({ chainId, walletAddress, force, signal }) {
         ? Math.max(0, previousBlock - REORG_BUFFER_BLOCKS)
         : 0
 
-    const discovery = await discoverTransfers({
+    const refreshed = await fetchChainProviderHistory({
         chainId,
         walletAddress,
         fromBlock,
-        signal,
-    })
-    const hydrated = await hydrateActivities({
-        chainId,
-        walletAddress,
-        transfers: discovery.transfers,
         signal,
     })
     const items = mergeRefreshedActivities(
         cacheIsCurrent(cached) ? cached.activities : [],
-        hydrated.activities,
+        refreshed.activities,
         fromBlock,
     )
-    const truncated = discovery.truncated || hydrated.partial
 
     await writeWalletHistoryCache({
         walletAddress,
         chainId,
         activities: items,
-        lastScannedBlock: latestBlock,
+        lastScannedBlock: refreshed.latestBlock,
         lastRefreshAt: Date.now(),
         classifierVersion: WALLET_HISTORY_CLASSIFIER_VERSION,
-        truncated,
+        truncated: refreshed.truncated,
     })
 
     return {
         items,
-        source: 'alchemy-browser',
-        truncated,
+        source: refreshed.source,
+        truncated: refreshed.truncated,
         refreshed: true,
     }
 }
@@ -493,17 +566,23 @@ export async function fetchWalletHistory({
 
 export const walletHistoryInternals = {
     ALCHEMY_ENDPOINTS,
+    ALCHEMY_TRANSFER_CHAIN_IDS,
     DIRECT_WALLET_HISTORY_CHAIN_IDS,
     HYDRATION_BATCH_SIZE,
     MAX_CACHED_ACTIVITIES,
     MAX_TRANSFER_PAGES,
     REFRESH_TTL_MS,
     REORG_BUFFER_BLOCKS,
+    RETIRED_HISTORY_CHAIN_IDS,
+    SUPPORTED_WALLET_HISTORY_CHAIN_IDS,
     alchemyEndpoint,
+    alchemyHistoryConfigured,
     blockNumber,
     blockTag,
     cacheIsFresh,
     configuredAlchemyKey,
+    configuredHistoryChainIds,
+    fetchChainProviderHistory,
     groupTransfersByHash,
     keyFromConfiguredRpc,
     mergeRefreshedActivities,
