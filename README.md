@@ -7,7 +7,7 @@
   />
 </a>
 
-# PistachioSwap
+# Pistachio Swap
 
 <div align="center">
   <img src="public/icons/PistachioLogo.svg" alt="PistachioSwap logo" width="104" />
