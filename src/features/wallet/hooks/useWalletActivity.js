@@ -29,14 +29,15 @@ function configuredHistoryChainIds() {
     return requested.length > 0 ? requested : [56]
 }
 
-// Remote history is fetched by the browser directly from Alchemy. The VPS is
-// deliberately not part of the wallet-history read path. BNB is the safe
-// default; additional supported chains can be explicitly enabled at build time.
+// History is fetched by the browser directly from the configured indexers/RPCs.
+// The Pistachio VPS is deliberately not part of the wallet-history read path.
 export const REMOTE_WALLET_HISTORY_CHAIN_IDS = Object.freeze(
     configuredHistoryChainIds(),
 )
 
-const REMOTE_HISTORY_BATCH_SIZE = 8
+// Bootstrap can cover 24 live networks. Keep provider pressure bounded instead
+// of starting every indexed-chain scan at once in a newly opened browser.
+const REMOTE_HISTORY_BATCH_SIZE = 4
 
 function historyBatches() {
     const batches = []
@@ -61,6 +62,33 @@ function normalizeHistoryItems(results) {
         .flatMap(result => result.value.items)
         .map(normalizeWalletActivity)
         .filter(Boolean)
+}
+
+async function fetchHistoryBatches({
+    batches,
+    walletAddress,
+    limit,
+    force,
+    signal,
+}) {
+    const results = []
+    for (const chainIds of batches) {
+        if (signal.aborted) break
+        try {
+            const value = await fetchWalletHistory({
+                walletAddress,
+                chainIds,
+                limit,
+                force,
+                signal,
+            })
+            results.push({ status: 'fulfilled', value })
+        } catch (reason) {
+            if (signal.aborted) break
+            results.push({ status: 'rejected', reason })
+        }
+    }
+    return results
 }
 
 export function useWalletActivity({
@@ -116,15 +144,13 @@ export function useWalletActivity({
             if (cached.length > 0) setRemoteItems(cached)
         })
 
-        cachedPromise.then(() => Promise.allSettled(
-            batches.map(chainIds => fetchWalletHistory({
-                walletAddress,
-                chainIds,
-                limit,
-                force,
-                signal: controller.signal,
-            })),
-        )).then(results => {
+        cachedPromise.then(() => fetchHistoryBatches({
+            batches,
+            walletAddress,
+            limit,
+            force,
+            signal: controller.signal,
+        })).then(results => {
             if (controller.signal.aborted) return
 
             const fulfilled = results.filter(result => result.status === 'fulfilled')
