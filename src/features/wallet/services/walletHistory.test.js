@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteWalletHistoryCache } from './walletHistoryCache.js'
 import {
     fetchWalletHistory,
+    SUPPORTED_WALLET_HISTORY_CHAIN_IDS,
     walletHistoryInternals,
 } from './walletHistory.js'
 
@@ -117,8 +118,19 @@ describe('direct browser wallet history', () => {
         ])
     })
 
-    it('supports only known direct-history chain IDs', () => {
+    it('defines every live curated network as history-capable and excludes retired Polygon zkEVM', () => {
+        expect(SUPPORTED_WALLET_HISTORY_CHAIN_IDS).toEqual([
+            1, 56, 137, 42161, 10, 8453, 43114, 42220, 100, 59144,
+            534352, 324, 5000, 146, 80094, 130, 480, 81457, 34443,
+            1088, 25, 1284, 167000, 204,
+        ])
+        expect(SUPPORTED_WALLET_HISTORY_CHAIN_IDS).not.toContain(1101)
+    })
+
+    it('filters requested chains to the configured direct-history set', () => {
+        // The test environment intentionally uses the production-safe default,
+        // BNB only. Production can opt into all supported IDs via Vite env.
         expect(walletHistoryInternals.normalizeChainIds([56, 56, 999999, 1]))
-            .toEqual([56, 1])
+            .toEqual([56])
     })
 })
