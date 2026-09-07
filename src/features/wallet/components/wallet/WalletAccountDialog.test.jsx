@@ -196,6 +196,25 @@ describe('WalletAccountDialog trust filtering', () => {
         expect(screen.getByText('10 USDT')).toBeTruthy()
         expect(screen.queryByText('RETURN TO MEMES')).toBeNull()
     })
+
+    it('renders swap activity as a half-sell half-buy token icon', () => {
+        mocks.activity = [{
+            ...activity('swapped', null, '105'),
+            sellToken: usdt,
+            buyToken: xaut,
+            sellAmount: '1',
+            buyAmount: '0.5',
+        }]
+
+        const { container } = renderDialog()
+
+        expect(screen.getByText('Swapped')).toBeTruthy()
+        expect(screen.getByText('1 USDT → 0.5 XAUt')).toBeTruthy()
+        const pair = container.querySelector('.uni-activity-swap-pair')
+        expect(pair).toBeTruthy()
+        expect(pair.querySelectorAll('.uni-activity-swap-half')).toHaveLength(2)
+        expect(pair.querySelectorAll('.ps-token-icon')).toHaveLength(2)
+    })
 })
 
 describe('WalletAccountDialog sign out', () => {
