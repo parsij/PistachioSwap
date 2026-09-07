@@ -1,3 +1,5 @@
+import './AppLayout.css'
+
 /**
  * Provides the existing top-level application shell and CSS-variable boundary.
  * @param {{style: object, header: import('react').ReactNode, children: import('react').ReactNode, overlays: import('react').ReactNode}} props Layout slots.
@@ -7,6 +9,7 @@
 export default function AppLayout({ style, header, children, overlays }) {
     return (
         <main className="app-shell" style={style}>
+            <h1 className="app-page-heading">Pistachio Swap</h1>
             {header}
             {children}
             {overlays}
