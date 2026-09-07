@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { rewritePublicGuideHtml } from '../web3/publicGuideRoutes.js'
 import AppLayout from './AppLayout.jsx'
 
 const guidePages = [
@@ -12,20 +13,20 @@ const guidePages = [
     'gas-assist/index.html',
     'landing/faq/index.html',
 ]
-const guides = ['/landing/wallet/', '/landing/gas-assist/', '/landing/how-it-works/']
+const guides = ['/wallet/', '/gas-assist/', '/how-it-works/']
 const swapFooterLinks = [
     ['/', 'About'],
-    ['/landing/wallet/', 'Pistachio Wallet'],
-    ['/landing/gas-assist/', 'Gas Assist'],
-    ['/landing/how-it-works/', 'How Pistachio Swap works'],
-    ['/landing/faq/', 'FAQ'],
+    ['/wallet/', 'Pistachio Wallet'],
+    ['/gas-assist/', 'Gas Assist'],
+    ['/how-it-works/', 'How Pistachio Swap works'],
+    ['/faq/', 'FAQ'],
     ['/legal/third-party/', 'Legal & third-party notices'],
 ]
-const parse = (html) => new DOMParser().parseFromString(html, 'text/html')
+const parse = (html) => new DOMParser().parseFromString(rewritePublicGuideHtml(html), 'text/html')
 const read = (path) => readFileSync(path, 'utf8')
 
 describe('discoverable product guides', () => {
-    it.each(guidePages)('%s links to all three guides in real HTML', (path) => {
+    it.each(guidePages)('%s links to all three guides in published HTML', (path) => {
         const doc = parse(read(path))
         for (const href of guides) {
             expect(doc.querySelectorAll(`a[href="${href}"]`).length).toBeGreaterThan(0)
@@ -52,7 +53,10 @@ describe('discoverable product guides', () => {
         }
     })
 
-    it.each(['wallet', 'how-it-works'])('%s is a standalone, accessible static guide', (slug) => {
+    it.each([
+        ['wallet', '/wallet/'],
+        ['how-it-works', '/how-it-works/'],
+    ])('%s is a standalone, accessible static guide', (slug, canonicalPath) => {
         const doc = parse(read(`landing/${slug}/index.html`))
         expect(doc.querySelectorAll('h1')).toHaveLength(1)
         expect(doc.querySelector('main').textContent.length).toBeGreaterThan(2500)
@@ -63,7 +67,7 @@ describe('discoverable product guides', () => {
         }
         const graph = JSON.parse(doc.querySelector('script[type="application/ld+json"]').textContent)['@graph']
         const crumb = graph.find((node) => node['@type'] === 'BreadcrumbList')
-        expect(crumb.itemListElement.at(-1).item).toBe(`https://pistachioswap.com/landing/${slug}/`)
+        expect(crumb.itemListElement.at(-1).item).toBe(`https://pistachioswap.com${canonicalPath}`)
     })
 
     it('allows Google to render assets without changing the training-crawler policy', () => {

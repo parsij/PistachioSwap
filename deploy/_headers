@@ -31,10 +31,19 @@
 /swap/*
   Cache-Control: no-store, must-revalidate
 
-/landing/*
+/wallet/*
   Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 
 /gas-assist/*
+  Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
+
+/how-it-works/*
+  Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
+
+/faq/*
+  Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
+
+/landing/*
   Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 
 /api/*

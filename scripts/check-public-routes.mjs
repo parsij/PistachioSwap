@@ -4,8 +4,7 @@ import { JSDOM } from 'jsdom'
 // Read-only HTTP acceptance check. Pass the local preview or deployed origin.
 const origin = new URL(process.argv[2] || 'http://127.0.0.1:5176').origin
 const canonicalOrigin = 'https://pistachioswap.com'
-const pages = ['/', '/swap/', '/landing/wallet/', '/landing/how-it-works/',
-    '/landing/gas-assist/', '/gas-assist/', '/landing/faq/']
+const pages = ['/', '/swap/', '/wallet/', '/gas-assist/', '/how-it-works/', '/faq/']
 const redirects = [
     ['/landing', '/'],
     ['/landing/', '/'],
@@ -14,6 +13,27 @@ const redirects = [
     ['/index.html', '/'],
     ['/swap', '/swap/'],
     ['/swap/index.html', '/swap/'],
+    ['/landing/wallet', '/wallet/'],
+    ['/landing/wallet/', '/wallet/'],
+    ['/landing/wallet/index.html', '/wallet/'],
+    ['/landing/wallet/?utm_source=migration-check', '/wallet/?utm_source=migration-check'],
+    ['/landing/gas-assist', '/gas-assist/'],
+    ['/landing/gas-assist/', '/gas-assist/'],
+    ['/landing/gas-assist/index.html', '/gas-assist/'],
+    ['/landing/how-it-works', '/how-it-works/'],
+    ['/landing/how-it-works/', '/how-it-works/'],
+    ['/landing/how-it-works/index.html', '/how-it-works/'],
+    ['/landing/faq', '/faq/'],
+    ['/landing/faq/', '/faq/'],
+    ['/landing/faq/index.html', '/faq/'],
+    ['/wallet', '/wallet/'],
+    ['/wallet/index.html', '/wallet/'],
+    ['/gas-assist', '/gas-assist/'],
+    ['/gas-assist/index.html', '/gas-assist/'],
+    ['/how-it-works', '/how-it-works/'],
+    ['/how-it-works/index.html', '/how-it-works/'],
+    ['/faq', '/faq/'],
+    ['/faq/index.html', '/faq/'],
     ['/?route=migration-check&ref=legacy', '/swap/?route=migration-check&ref=legacy'],
     ['/index.html?route=migration-check', '/swap/?route=migration-check'],
     ['/swap?route=migration-check', '/swap/?route=migration-check'],
@@ -37,8 +57,10 @@ for (const userAgent of ['Mozilla/5.0', 'Google-InspectionTool']) {
         assert.equal(doc.querySelectorAll('h1').length, 1, path + ' H1')
         assert.equal(Boolean(doc.querySelector('#wallet-kit-root')), path === '/swap/')
         for (const anchor of doc.querySelectorAll('a[href]')) {
+            const pathname = new URL(anchor.href).pathname
+            assert(!pathname.startsWith('/landing/'), path + ' contains legacy guide link ' + pathname)
             if (/^(Open wallet|Swap|Trade)$/.test(anchor.textContent.trim())) {
-                assert.equal(new URL(anchor.href).pathname, '/swap/', path + ' CTA')
+                assert.equal(pathname, '/swap/', path + ' CTA')
             }
         }
         console.log('PASS ' + userAgent + ' ' + path)

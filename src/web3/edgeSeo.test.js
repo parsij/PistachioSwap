@@ -21,7 +21,7 @@ describe('edge SEO response parity', () => {
         },
     )
 
-    it.each([['/landing/wallet/', 200], ['/landing/how-it-works/', 200], ['/landing/missing/', 404]])(
+    it.each([['/wallet/', 200], ['/how-it-works/', 200], ['/faq/', 200], ['/landing/missing/', 404]])(
         'preserves the response status for %s', async (path, status) => {
             vi.stubGlobal('fetch', vi.fn(async () => new Response('origin', { status })))
             const response = await worker.fetch(new Request(`https://pistachioswap.com${path}`))

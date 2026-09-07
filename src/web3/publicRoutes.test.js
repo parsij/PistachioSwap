@@ -12,15 +12,36 @@ const moved = [
     ['/index.html', '/'],
     ['/swap', '/swap/'],
     ['/swap/index.html', '/swap/'],
+    ['/landing/wallet', '/wallet/'],
+    ['/landing/wallet/', '/wallet/'],
+    ['/landing/wallet/index.html', '/wallet/'],
+    ['/landing/gas-assist', '/gas-assist/'],
+    ['/landing/gas-assist/', '/gas-assist/'],
+    ['/landing/gas-assist/index.html', '/gas-assist/'],
+    ['/landing/how-it-works', '/how-it-works/'],
+    ['/landing/how-it-works/', '/how-it-works/'],
+    ['/landing/how-it-works/index.html', '/how-it-works/'],
+    ['/landing/faq', '/faq/'],
+    ['/landing/faq/', '/faq/'],
+    ['/landing/faq/index.html', '/faq/'],
+    ['/wallet', '/wallet/'],
+    ['/wallet/index.html', '/wallet/'],
+    ['/gas-assist', '/gas-assist/'],
+    ['/gas-assist/index.html', '/gas-assist/'],
+    ['/how-it-works', '/how-it-works/'],
+    ['/how-it-works/index.html', '/how-it-works/'],
+    ['/faq', '/faq/'],
+    ['/faq/index.html', '/faq/'],
     ['/landing/?utm_source=profile', '/?utm_source=profile'],
+    ['/landing/wallet/?utm_source=profile', '/wallet/?utm_source=profile'],
     ['/swap?route=public%2Froute&ref=site', '/swap/?route=public%2Froute&ref=site'],
     ['/?route=public%2Froute&ref=site', '/swap/?route=public%2Froute&ref=site'],
     ['/index.html?route=public-route', '/swap/?route=public-route'],
 ]
 const unchanged = [
     '/', '/?utm_source=profile', '/?route=', '/swap/', '/swap/?route=public-route',
-    '/landing/wallet/', '/landing/gas-assist/', '/landing/how-it-works/',
-    '/landing/faq/', '/landing/missing/', '/gas-assist/', '/api/v1/quote', '/health',
+    '/wallet/', '/gas-assist/', '/how-it-works/', '/faq/',
+    '/landing/missing/', '/api/v1/quote', '/health',
 ]
 afterEach(() => vi.unstubAllGlobals())
 
@@ -55,6 +76,18 @@ describe('canonical public routes', () => {
             expect(res.end).toHaveBeenCalledOnce()
             expect(next).not.toHaveBeenCalled()
         }
+    })
+
+    it.each([
+        ['/wallet/', '/landing/wallet/'],
+        ['/how-it-works/', '/landing/how-it-works/'],
+        ['/faq/', '/landing/faq/'],
+    ])('Vite serves %s from its legacy source without changing the browser URL', (canonical, source) => {
+        const req = { method: 'GET', url: canonical }
+        const next = vi.fn()
+        createPublicRoutesMiddleware()(req, {}, next)
+        expect(req.url).toBe(source)
+        expect(next).toHaveBeenCalledOnce()
     })
 
     it('does not redirect non-navigation methods or API traffic', () => {

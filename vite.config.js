@@ -1,13 +1,40 @@
-import { resolve } from 'node:path'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 
 import { defineConfig, loadEnv } from 'vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 
+import { PUBLIC_GUIDE_MIGRATIONS, rewritePublicGuideHtml } from './src/web3/publicGuideRoutes.js'
 import { publicRoutesPlugin } from './src/web3/publicRoutesMiddleware.js'
 import { originCacheHeadersPlugin } from './src/web3/originCacheMiddleware.js'
 import { resolveModulePreloadDependencies } from './src/web3/walletChunkPreload.js'
+
+function legacyGuideFallback(canonical) {
+  return `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Pistachio Swap page moved</title>\n    <link rel="canonical" href="https://pistachioswap.com${canonical}" />\n    <meta name="theme-color" content="#191919" />\n    <meta http-equiv="refresh" content="0; url=${canonical}" />\n  </head>\n  <body style="background:#191919;color:#f4f4f4;font-family:system-ui,sans-serif;padding:3rem">\n    <p>This page moved to <a href="${canonical}" style="color:#8ac27c">${canonical}</a>.</p>\n  </body>\n</html>\n`
+}
+
+function publicGuideBuildPlugin() {
+  return {
+    name: 'pistachio-public-guide-build',
+    transformIndexHtml(html) {
+      return rewritePublicGuideHtml(html)
+    },
+    writeBundle(options) {
+      const outDir = resolve(import.meta.dirname, options.dir || 'dist')
+      for (const migration of PUBLIC_GUIDE_MIGRATIONS) {
+        const source = resolve(outDir, migration.source)
+        if (migration.output) {
+          const target = resolve(outDir, migration.output)
+          mkdirSync(dirname(target), { recursive: true })
+          copyFileSync(source, target)
+        }
+        writeFileSync(source, legacyGuideFallback(migration.canonical), 'utf8')
+      }
+    },
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -21,6 +48,7 @@ export default defineConfig(({ mode }) => {
     appType: 'mpa',
     plugins: [
       publicRoutesPlugin(),
+      publicGuideBuildPlugin(),
       originCacheHeadersPlugin(),
       tailwindcss(),
       react(),
@@ -69,17 +97,18 @@ export default defineConfig(({ mode }) => {
         },
         /*
          * The root is the static marketing page; only /swap/ mounts the wallet.
-         * /landing/ is a redirect fallback. Existing guide URLs stay unchanged.
+         * Legacy /landing/* guide sources are transformed and published at
+         * /wallet/, /faq/, /how-it-works/, and /gas-assist/.
          */
         input: {
           home: resolve(import.meta.dirname, 'index.html'),
           main: resolve(import.meta.dirname, 'swap/index.html'),
           landing: resolve(import.meta.dirname, 'landing/index.html'),
-          faq: resolve(import.meta.dirname, 'landing/faq/index.html'),
-          landingGasAssist: resolve(import.meta.dirname, 'landing/gas-assist/index.html'),
+          faqLegacy: resolve(import.meta.dirname, 'landing/faq/index.html'),
+          landingGasAssistLegacy: resolve(import.meta.dirname, 'landing/gas-assist/index.html'),
           gasAssist: resolve(import.meta.dirname, 'gas-assist/index.html'),
-          walletGuide: resolve(import.meta.dirname, 'landing/wallet/index.html'),
-          howItWorks: resolve(import.meta.dirname, 'landing/how-it-works/index.html'),
+          walletGuideLegacy: resolve(import.meta.dirname, 'landing/wallet/index.html'),
+          howItWorksLegacy: resolve(import.meta.dirname, 'landing/how-it-works/index.html'),
         },
       },
     },

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import { rewritePublicGuideHtml } from '../web3/publicGuideRoutes.js'
 
 /*
  * Public metadata and guides must be present in the HTML response, before a
@@ -11,7 +12,8 @@ import { describe, expect, it } from 'vitest'
 const SITE = 'https://pistachioswap.com'
 
 function read(path) {
-    return readFileSync(resolve(path), 'utf8')
+    const content = readFileSync(resolve(path), 'utf8')
+    return path.endsWith('.html') ? rewritePublicGuideHtml(content) : content
 }
 
 function decode(value) {
@@ -22,6 +24,12 @@ function decode(value) {
 
 function oneLine(value) {
     return decode(value).replace(/\s+/g, ' ').trim()
+}
+
+function comparableHeading(value) {
+    return oneLine(value)
+        .toLowerCase()
+        .replace(/\s*&\s*/g, ' and ')
 }
 
 function metaContent(html, attribute, name) {
@@ -52,10 +60,10 @@ function structuredData(html) {
 describe.each([
     ['index.html', `${SITE}/`],
     ['swap/index.html', `${SITE}/swap/`],
-    ['landing/wallet/index.html', `${SITE}/landing/wallet/`],
-    ['landing/how-it-works/index.html', `${SITE}/landing/how-it-works/`],
-    ['landing/faq/index.html', `${SITE}/landing/faq/`],
-    ['landing/gas-assist/index.html', `${SITE}/landing/gas-assist/`],
+    ['landing/wallet/index.html', `${SITE}/wallet/`],
+    ['landing/how-it-works/index.html', `${SITE}/how-it-works/`],
+    ['landing/faq/index.html', `${SITE}/faq/`],
+    ['gas-assist/index.html', `${SITE}/gas-assist/`],
 ])('%s document head', (path, canonical) => {
     const html = read(path)
 
@@ -77,8 +85,8 @@ describe.each([
         expect(headings).toHaveLength(1)
         const heading = headings[0]
         expect(heading.length).toBeGreaterThan(8)
-        expect(title.toLowerCase().startsWith(heading.toLowerCase())).toBe(true)
-        expect(description.toLowerCase()).toContain(heading.toLowerCase())
+        expect(comparableHeading(title).startsWith(comparableHeading(heading))).toBe(true)
+        expect(comparableHeading(description)).toContain(comparableHeading(heading))
 
         expect(metaContent(html, 'property', 'og:title')).toBe(title)
         expect(metaContent(html, 'property', 'og:description')).toBe(description)
@@ -106,7 +114,6 @@ describe.each([
         const image = /<meta\s+property="og:image"\s+content="([^"]+)"/
             .exec(html)?.[1] ?? ''
         expect(image.startsWith(SITE)).toBe(true)
-        // A 404 unfurl image is worse than none, so the file must be shipped.
         expect(() => read(`public${image.slice(SITE.length)}`)).not.toThrow()
     })
 
@@ -123,26 +130,27 @@ describe('crawler-facing static files', () => {
         const robots = read('public/robots.txt')
         expect(robots).toContain(`Sitemap: ${SITE}/sitemap.xml`)
         expect(robots).toContain('Disallow: /legal/third-party/')
-        expect(robots).toMatch(/User-agent:\s*Googlebot[\s\S]*Allow:\s*\/landing/)
+        expect(robots).toMatch(/User-agent:\s*Googlebot[\s\S]*Allow:\s*\//)
         expect(robots).toMatch(
-            /User-agent:\s*Google-Extended[\s\S]*Allow:\s*\/llms\.txt[\s\S]*Allow:\s*\/landing\/[\s\S]*Disallow:\s*\/assets\/[\s\S]*Disallow:\s*\//,
+            /User-agent:\s*Google-Extended[\s\S]*Allow:\s*\/llms\.txt[\s\S]*Disallow:\s*\/assets\/[\s\S]*Disallow:\s*\//,
         )
-        expect(robots).toMatch(/User-agent:\s*ChatGPT-User[\s\S]*Allow:\s*\/landing/)
+        expect(robots).toMatch(/User-agent:\s*ChatGPT-User[\s\S]*Allow:\s*\/wallet\//)
+        expect(robots).toMatch(/User-agent:\s*ChatGPT-User[\s\S]*Allow:\s*\/faq\//)
     })
 
-    it('lists every indexable page in the sitemap', () => {
+    it('lists every indexable page in the sitemap and no legacy guide URL', () => {
         const sitemap = read('public/sitemap.xml')
         for (const location of [
             `${SITE}/`,
             `${SITE}/swap/`,
+            `${SITE}/wallet/`,
             `${SITE}/gas-assist/`,
-            `${SITE}/landing/wallet/`,
-            `${SITE}/landing/how-it-works/`,
-            `${SITE}/landing/faq/`,
-            `${SITE}/landing/gas-assist/`,
+            `${SITE}/how-it-works/`,
+            `${SITE}/faq/`,
         ]) {
             expect(sitemap).toContain(`<loc>${location}</loc>`)
         }
+        expect(sitemap).not.toContain(`${SITE}/landing/`)
     })
 
     it('ships a parseable web manifest', () => {
@@ -207,9 +215,10 @@ describe('landing page', () => {
         expect(html).toContain('href="/swap/"')
         expect(html).toContain('>Open wallet</a>')
         expect(html).not.toContain('Open the wallet')
-        expect(html).toContain('href="/landing/faq/"')
-        expect(html).toContain('href="/landing/gas-assist/"')
+        expect(html).toContain('href="/wallet/"')
+        expect(html).toContain('href="/faq/"')
         expect(html).toContain('href="/gas-assist/"')
+        expect(html).toContain('href="/how-it-works/"')
     })
 
     it('shows network icons in a sticky auto-scrolling bar', () => {
@@ -310,13 +319,14 @@ describe('dedicated Gas Assist guide', () => {
     })
 })
 
-describe('Gas Assist page', () => {
+describe('legacy Gas Assist source', () => {
     const html = read('landing/gas-assist/index.html')
 
-    it('explains the flow in HTML, not only in the wallet app', () => {
+    it('still supplies the guide content used during the build', () => {
         expect(html).not.toContain('/src/main.jsx')
         expect(html).toContain('one sponsored transaction')
         expect(html).toContain('has not been independently audited')
+        expect(html).toContain(`${SITE}/gas-assist/`)
     })
 
     it('keeps a single H1 about Gas Assist on BNB Chain', () => {

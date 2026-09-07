@@ -1,24 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://pistachioswap.com/</loc>
+  </url>
+  <url>
     <loc>https://pistachioswap.com/swap/</loc>
   </url>
   <url>
-    <loc>https://pistachioswap.com/landing/gas-assist/</loc>
+    <loc>https://pistachioswap.com/wallet/</loc>
   </url>
   <url>
     <loc>https://pistachioswap.com/gas-assist/</loc>
   </url>
   <url>
-    <loc>https://pistachioswap.com/landing/faq/</loc>
+    <loc>https://pistachioswap.com/how-it-works/</loc>
   </url>
   <url>
-    <loc>https://pistachioswap.com/</loc>
-  </url>
-  <url>
-    <loc>https://pistachioswap.com/landing/wallet/</loc>
-  </url>
-  <url>
-    <loc>https://pistachioswap.com/landing/how-it-works/</loc>
+    <loc>https://pistachioswap.com/faq/</loc>
   </url>
 </urlset>

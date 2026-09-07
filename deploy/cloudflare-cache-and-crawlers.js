@@ -15,8 +15,8 @@
  *   /api/*              no-store
  *
  * All visitors receive the same document for a URL. Public product guides are
- * static HTML at / and under /landing/. The wallet is at /swap/.
- * This example requires the new dist/swap/index.html at the origin first.
+ * static HTML at /wallet/, /gas-assist/, /how-it-works/, and /faq/.
+ * Legacy /landing/* guide URLs redirect to those canonical paths.
  * Do not rewrite / based on User-Agent.
  */
 
@@ -34,6 +34,31 @@ const ICON_EXACT_PATHS = new Set([
     '/site.webmanifest',
     '/og-image.png',
 ])
+const GUIDE_PREFIXES = ['/landing/', '/wallet/', '/gas-assist/', '/how-it-works/', '/faq/']
+const LEGACY_GUIDES = new Map([
+    ['/landing/wallet', '/wallet/'],
+    ['/landing/wallet/', '/wallet/'],
+    ['/landing/wallet/index.html', '/wallet/'],
+    ['/landing/gas-assist', '/gas-assist/'],
+    ['/landing/gas-assist/', '/gas-assist/'],
+    ['/landing/gas-assist/index.html', '/gas-assist/'],
+    ['/landing/how-it-works', '/how-it-works/'],
+    ['/landing/how-it-works/', '/how-it-works/'],
+    ['/landing/how-it-works/index.html', '/how-it-works/'],
+    ['/landing/faq', '/faq/'],
+    ['/landing/faq/', '/faq/'],
+    ['/landing/faq/index.html', '/faq/'],
+])
+const CANONICAL_GUIDES = new Map([
+    ['/wallet', '/wallet/'],
+    ['/wallet/index.html', '/wallet/'],
+    ['/gas-assist', '/gas-assist/'],
+    ['/gas-assist/index.html', '/gas-assist/'],
+    ['/how-it-works', '/how-it-works/'],
+    ['/how-it-works/index.html', '/how-it-works/'],
+    ['/faq', '/faq/'],
+    ['/faq/index.html', '/faq/'],
+])
 
 function cacheControlForPath(pathname) {
     if (pathname === '/api' || pathname.startsWith('/api/')) return API_NO_STORE
@@ -46,11 +71,7 @@ function cacheControlForPath(pathname) {
     ) {
         return ICON_CACHE_CONTROL
     }
-    if (
-        pathname.startsWith('/landing/') ||
-        pathname.startsWith('/gas-assist/') ||
-        pathname.endsWith('.html')
-    ) {
+    if (GUIDE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || pathname.endsWith('.html')) {
         return HTML_NO_STORE
     }
     return null
@@ -87,6 +108,8 @@ export default {
                 target = '/'
             } else if (pathname === '/swap' || pathname === '/swap/index.html') {
                 target = '/swap/'
+            } else {
+                target = LEGACY_GUIDES.get(pathname) || CANONICAL_GUIDES.get(pathname)
             }
             if (target) {
                 url.pathname = target

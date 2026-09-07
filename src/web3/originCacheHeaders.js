@@ -12,6 +12,7 @@ const ICON_EXACT_PATHS = new Set([
     '/site.webmanifest',
     '/og-image.png',
 ])
+const GUIDE_PREFIXES = ['/landing/', '/wallet/', '/gas-assist/', '/how-it-works/', '/faq/']
 
 export function isHashedAssetPath(pathname) {
     return String(pathname).startsWith('/assets/')
@@ -41,11 +42,8 @@ export function cacheControlForPath(pathname) {
     if (isAppHtmlPath(pathname)) return HTML_NO_STORE
     if (isHashedAssetPath(pathname)) return ASSET_CACHE_CONTROL
     if (isIconPath(pathname)) return ICON_CACHE_CONTROL
-    if (
-        String(pathname).startsWith('/landing/') ||
-        String(pathname).startsWith('/gas-assist/') ||
-        String(pathname).endsWith('.html')
-    ) {
+    const path = String(pathname).split('?')[0]
+    if (GUIDE_PREFIXES.some((prefix) => path.startsWith(prefix)) || path.endsWith('.html')) {
         return HTML_NO_STORE
     }
     return null
