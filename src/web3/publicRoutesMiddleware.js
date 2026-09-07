@@ -1,15 +1,21 @@
-import { publicRouteRedirect } from './publicRoutes.js'
+import { publicRouteRedirect, publicRouteSourcePath } from './publicRoutes.js'
 
 export function createPublicRoutesMiddleware() {
     return function publicRoutesMiddleware(req, res, next) {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next()
-        const target = publicRouteRedirect(new URL(req.url, 'http://localhost'))
-        if (!target) return next()
-        res.statusCode = 301
-        res.setHeader('Location', target)
-        // Avoid sticky local redirects and let production cache policy be explicit.
-        res.setHeader('Cache-Control', 'no-store')
-        res.end()
+        const url = new URL(req.url, 'http://localhost')
+        const target = publicRouteRedirect(url)
+        if (target) {
+            res.statusCode = 301
+            res.setHeader('Location', target)
+            // Avoid sticky local redirects and let production cache policy be explicit.
+            res.setHeader('Cache-Control', 'no-store')
+            res.end()
+            return
+        }
+        const sourcePath = publicRouteSourcePath(url)
+        if (sourcePath) req.url = sourcePath + url.search
+        next()
     }
 }
 
