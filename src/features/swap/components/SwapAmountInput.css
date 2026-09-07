@@ -23,6 +23,12 @@
 
 @media (max-width: 520px) {
     .amount-input-shell {
-        --swap-amount-input-font-size: clamp(34px, 10vw, 40px);
+        --swap-amount-input-font-size: clamp(40px, 11vw, 46px);
+    }
+
+    .sell-fiat-value,
+    .buy-fiat-value,
+    .sell-balance {
+        font-size: 18px;
     }
 }
