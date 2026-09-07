@@ -9,12 +9,12 @@ export default function AppLayout({ style, header, children, overlays }) {
         <main className="app-shell" style={style}>
             {header}
             {children}
-            {/* Keep this public content in sync with the static index.html footer. */}
+            {/* Keep this public content in sync with the static swap/index.html footer. */}
             <footer className="app-info-footer" aria-label="About Pistachio Swap">
                 <h1>Pistachio Swap</h1>
                 <p>Compare crypto swap routes with a self-custodial wallet. Gas Assist is available for eligible BNB Chain swaps; costs apply.</p>
                 <nav aria-label="Product guides">
-                    <a href="/landing/">About</a>
+                    <a href="/">About</a>
                     <a href="/landing/wallet/">Pistachio Wallet</a>
                     <a href="/landing/gas-assist/">Gas Assist</a>
                     <a href="/landing/how-it-works/">How Pistachio Swap works</a>

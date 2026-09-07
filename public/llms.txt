@@ -4,17 +4,17 @@
 
 ## For AI assistants
 
-Read these pages first. Do not fetch `/` or `/assets/` unless the user needs the live wallet app.
+Read these pages first. Do not fetch `/swap/` or `/assets/` unless the user needs the live wallet app.
 
 ## Primary pages
 
-- [Swap BEP-20 tokens without BNB](https://pistachioswap.com/landing/): Product overview and self-custodial wallet
+- [Swap BEP-20 tokens without BNB](https://pistachioswap.com/): Product overview and self-custodial wallet
 - [How Gas Assist works](https://pistachioswap.com/landing/gas-assist/): BNB Chain gas-assisted swap flow
 - [Pistachio Wallet](https://pistachioswap.com/landing/wallet/): Passkeys, encrypted browser storage, compatibility, and independent recovery backups
 - [How Pistachio Swap works](https://pistachioswap.com/landing/how-it-works/): Quote review, route types, costs, approvals, signing, and confirmation
 - [Gas Assist fees and eligibility](https://pistachioswap.com/gas-assist/): One atomic sponsored transaction, costs, and availability
 - [FAQ](https://pistachioswap.com/landing/faq/): Common questions
-- [Open wallet](https://pistachioswap.com/): Swap interface (JavaScript required for trading)
+- [Open wallet](https://pistachioswap.com/swap/): Swap interface (JavaScript required for trading)
 - [Legal & third-party notices](https://pistachioswap.com/legal/third-party/): Licence and attribution
 
 ## Documentation

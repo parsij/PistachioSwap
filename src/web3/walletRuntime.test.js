@@ -30,6 +30,8 @@ describe('origin cache headers', () => {
     it('does not cache the app shell or live API', () => {
         expect(cacheControlForPath('/')).toBe(HTML_NO_STORE)
         expect(cacheControlForPath('/index.html')).toBe(HTML_NO_STORE)
+        expect(cacheControlForPath('/swap/')).toBe(HTML_NO_STORE)
+        expect(cacheControlForPath('/swap/index.html')).toBe(HTML_NO_STORE)
         expect(cacheControlForPath('/landing/')).toBe(HTML_NO_STORE)
         expect(cacheControlForPath('/gas-assist/')).toBe(HTML_NO_STORE)
         expect(cacheControlForPath('/api/v1/token-catalog')).toBe(API_NO_STORE)
@@ -111,6 +113,8 @@ describe('edge configs stay aligned', () => {
         expect(nginx).not.toContain('$http_user_agent')
         expect(worker).not.toContain('BOT_USER_AGENT_PATTERN')
         expect(nginx).toContain('try_files /index.html =404;')
+        expect(nginx).toContain('try_files /swap/index.html =404;')
+        expect(nginx).toContain('return 301 /$is_args$args;')
         expect(nginx).toContain('try_files $uri $uri/ =404;')
         expect(nginx).toContain('max-age=31536000')
         expect(nginx).toContain('immutable')

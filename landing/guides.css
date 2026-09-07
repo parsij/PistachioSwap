@@ -35,15 +35,36 @@
 .guide-related p { margin-top: 18px; font-size: 14px; color: var(--muted); }
 .guide-card-link { display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; }
 @media (max-width: 1040px) {
-  .guide-header { flex-wrap: wrap; gap: 12px; }
-  .guide-header .guide-nav { order: 3; display: flex; flex-basis: 100%; justify-content: center; flex-wrap: wrap; gap: 4px 20px; font-size: 14px; }
-  .guide-nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .guide-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .guide-header > .brand { grid-column: 1; grid-row: 1; }
+  .guide-header > .button { grid-column: 2; grid-row: 1; justify-self: end; }
+  /* Span both header columns: flex-basis has no effect in the mobile grid. */
+  .guide-header .guide-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px 12px;
+    font-size: 14px;
+  }
+  .guide-nav a {
+    display: flex;
+    min-width: 0;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    text-align: center;
+  }
+}
+@media (max-width: 600px) {
+  .guide-header .guide-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
 }
 @media (max-width: 520px) {
   .guide-header .brand { font-size: 15px; gap: 6px; }
   .guide-header > .button { padding-inline: 15px; font-size: 14px; }
-  .guide-header .guide-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  .guide-nav a { justify-content: center; }
   .guide-hero { margin-top: 36px; }
   .guide-page section[id], .guide-page h2[id] { scroll-margin-top: 220px; }
   .guide-toc { margin-top: 32px; justify-content: flex-start; gap: 0 18px; }

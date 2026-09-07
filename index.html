@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Pistachio Swap | Crypto Swaps &amp; Self-Custodial Wallet</title>
+    <title>Swap BEP-20 Tokens Without BNB | Pistachio Swap</title>
     <meta
       name="description"
-      content="Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB."
+      content="Swap BEP-20 tokens without BNB with a self-custodial wallet and Gas Assist on BNB Chain. You keep the keys; fees are shown before you sign."
     />
     <link rel="canonical" href="https://pistachioswap.com/" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -24,11 +24,11 @@
     <meta property="og:url" content="https://pistachioswap.com/" />
     <meta
       property="og:title"
-      content="Pistachio Swap | Crypto Swaps &amp; Self-Custodial Wallet"
+      content="Swap BEP-20 Tokens Without BNB | Pistachio Swap"
     />
     <meta
       property="og:description"
-      content="Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB."
+      content="Swap BEP-20 tokens without BNB with a self-custodial wallet and Gas Assist on BNB Chain. You keep the keys; fees are shown before you sign."
     />
     <meta property="og:image" content="https://pistachioswap.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
@@ -39,11 +39,11 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:title"
-      content="Pistachio Swap | Crypto Swaps &amp; Self-Custodial Wallet"
+      content="Swap BEP-20 Tokens Without BNB | Pistachio Swap"
     />
     <meta
       name="twitter:description"
-      content="Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB."
+      content="Swap BEP-20 tokens without BNB with a self-custodial wallet and Gas Assist on BNB Chain. You keep the keys; fees are shown before you sign."
     />
     <meta name="twitter:image" content="https://pistachioswap.com/og-image.png" />
 
@@ -56,155 +56,417 @@
             "@id": "https://pistachioswap.com/#organization",
             "name": "Pistachio Swap",
             "url": "https://pistachioswap.com/",
-            "logo": "https://pistachioswap.com/icons/PistachioLogo.svg"
+            "logo": "https://pistachioswap.com/icons/PistachioLogo.svg",
+            "sameAs": [
+              "https://github.com/parsij/PistachioSwap"
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://pistachioswap.com/#webpage",
+            "url": "https://pistachioswap.com/",
+            "name": "Swap BEP-20 tokens without BNB",
+            "isPartOf": {
+              "@id": "https://pistachioswap.com/#website"
+            },
+            "about": {
+              "@id": "https://pistachioswap.com/#organization"
+            },
+            "inLanguage": "en"
           },
           {
             "@type": "WebSite",
             "@id": "https://pistachioswap.com/#website",
             "url": "https://pistachioswap.com/",
             "name": "Pistachio Swap",
-            "publisher": { "@id": "https://pistachioswap.com/#organization" },
+            "publisher": {
+              "@id": "https://pistachioswap.com/#organization"
+            },
             "inLanguage": "en"
-          },
-          {
-            "@type": "WebApplication",
-            "@id": "https://pistachioswap.com/#app",
-            "name": "Pistachio Swap",
-            "url": "https://pistachioswap.com/",
-            "description": "Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB.",
-            "applicationCategory": "FinanceApplication",
-            "operatingSystem": "Web browser",
-            "browserRequirements": "Requires JavaScript and a secure context.",
-            "isAccessibleForFree": true,
-            "publisher": { "@id": "https://pistachioswap.com/#organization" }
           }
         ]
       }
     </script>
 
-    <style>
-      /*
-       * Static boot shell shown before React mounts. It gives Lighthouse and
-       * first-time visitors immediate content instead of a blank page while
-       * wallet bundles download and compile.
-       */
-      .app-boot-shell {
-        box-sizing: border-box;
-        min-height: 100vh;
-        padding: 53px 12px 2rem;
-        background: #191919;
-        color: #fff;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      }
-
-      .app-boot-header,
-      .app-boot-card {
-        width: min(480px, calc(100vw - 24px));
-        margin-inline: auto;
-      }
-
-      .app-boot-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        height: 72px;
-        margin-bottom: 0.5rem;
-      }
-
-      .app-boot-brand {
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-        color: #fff;
-        font-size: 1rem;
-        font-weight: 600;
-      }
-
-      .app-boot-brand img {
-        width: 24px;
-        height: 24px;
-      }
-
-      .app-boot-pill {
-        width: 108px;
-        height: 36px;
-        border-radius: 999px;
-        background: #252525;
-      }
-
-      .app-boot-card {
-        padding: 1rem;
-        border: 1px solid #353535;
-        border-radius: 22px;
-        background: #252525;
-      }
-
-      .app-boot-panel {
-        height: 136px;
-        margin-bottom: 0.5rem;
-        border-radius: 18px;
-        background: #191919;
-      }
-
-      .app-boot-panel:last-of-type {
-        height: 132px;
-      }
-
-      .app-boot-action {
-        height: 55px;
-        margin-top: 0.75rem;
-        border-radius: 18px;
-        background: #8ac27c;
-      }
-      .app-info-footer { position: relative; padding: 2rem 1rem; background: var(--color-background, #191919); color: var(--color-text-secondary, #a9a9a9); font: 13px/1.6 system-ui, sans-serif; text-align: center; }
-      .app-info-footer h1 { margin: 0; color: #f4f4f4; font-size: 16px; font-weight: 600; }
-      .app-info-footer p { max-width: 580px; margin: 8px auto 12px; }
-      .app-info-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; }
-      .app-info-footer a { display: inline-flex; align-items: center; min-height: 44px; color: #8ac27c; text-decoration: none; }
-      .app-info-footer a:hover { text-decoration: underline; }
-      .app-info-footer a:focus-visible { outline: 2px solid #8ac27c; outline-offset: 3px; }
-    </style>
+    <link rel="stylesheet" href="/landing/landing.css" />
+    <link rel="stylesheet" href="/landing/guides.css" />
   </head>
+
   <body>
-    <div id="wallet-kit-root"></div>
-    <div id="root">
-      <div class="app-boot-shell" aria-hidden="true">
-        <header class="app-boot-header">
-          <div class="app-boot-brand">
-            <img src="/icons/PistachioLogo.svg" alt="" width="24" height="24" />
-            Pistachio Swap
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="site-chrome">
+      <div class="site-nav">
+        <div class="shell">
+          <header class="site-header guide-header">
+            <a class="brand" href="/">
+              <img src="/icons/PistachioLogo.svg" alt="" width="26" height="26" />
+              Pistachio Swap
+            </a>
+            <nav class="header-nav guide-nav" aria-label="About pages">
+              <a href="/landing/wallet/">Pistachio Wallet</a>
+              <a href="/landing/gas-assist/">Gas Assist</a>
+              <a href="/landing/how-it-works/">How it works</a>
+              <a href="/landing/faq/">FAQ</a>
+            </nav>
+            <a class="button button-primary" href="/swap/">Open wallet</a>
+          </header>
+        </div>
+      </div>
+      <div class="network-ticker" role="region" aria-label="Supported EVM networks">
+        <div class="network-ticker-track">
+          <ul class="network-ticker-list">
+            <li><img src="/networkIcons/ethereum.svg" alt="" width="22" height="22"><span>Ethereum</span></li>
+            <li><img src="/icons/bnb.svg" alt="" width="22" height="22"><span>BNB Smart Chain</span></li>
+            <li><img src="/networkIcons/polygon.webp" alt="" width="22" height="22"><span>Polygon PoS</span></li>
+            <li><img src="/networkIcons/arbitrum.webp" alt="" width="22" height="22"><span>Arbitrum One</span></li>
+            <li><img src="/networkIcons/optimism.webp" alt="" width="22" height="22"><span>OP Mainnet</span></li>
+            <li><img src="/networkIcons/base.webp" alt="" width="22" height="22"><span>Base</span></li>
+            <li><img src="/networkIcons/avalanche.webp" alt="" width="22" height="22"><span>Avalanche</span></li>
+            <li><img src="/networkIcons/celo.webp" alt="" width="22" height="22"><span>Celo</span></li>
+            <li><img src="/networkIcons/gnosis.webp" alt="" width="22" height="22"><span>Gnosis Chain</span></li>
+            <li><img src="/networkIcons/linea.webp" alt="" width="22" height="22"><span>Linea</span></li>
+            <li><img src="/networkIcons/scroll.webp" alt="" width="22" height="22"><span>Scroll</span></li>
+            <li><img src="/networkIcons/zksync-era.webp" alt="" width="22" height="22"><span>zkSync Era</span></li>
+            <li><img src="/networkIcons/mantle.webp" alt="" width="22" height="22"><span>Mantle</span></li>
+            <li><img src="/networkIcons/sonic.webp" alt="" width="22" height="22"><span>Sonic</span></li>
+            <li><img src="/networkIcons/berachain.webp" alt="" width="22" height="22"><span>Berachain</span></li>
+            <li><img src="/networkIcons/unichain.webp" alt="" width="22" height="22"><span>Unichain</span></li>
+            <li><img src="/networkIcons/world-chain.webp" alt="" width="22" height="22"><span>World Chain</span></li>
+            <li><img src="/networkIcons/blast.webp" alt="" width="22" height="22"><span>Blast</span></li>
+            <li><img src="/networkIcons/mode.webp" alt="" width="22" height="22"><span>Mode</span></li>
+            <li><img src="/networkIcons/metis.webp" alt="" width="22" height="22"><span>Metis Andromeda</span></li>
+            <li><img src="/networkIcons/cronos.webp" alt="" width="22" height="22"><span>Cronos</span></li>
+            <li><img src="/networkIcons/moonbeam.webp" alt="" width="22" height="22"><span>Moonbeam</span></li>
+            <li><img src="/networkIcons/taiko.webp" alt="" width="22" height="22"><span>Taiko</span></li>
+            <li><img src="/networkIcons/opbnb.webp" alt="" width="22" height="22"><span>opBNB</span></li>
+            <li><img src="/networkIcons/polygon-zkevm.webp" alt="" width="22" height="22"><span>Polygon zkEVM</span></li>
+          </ul>
+          <ul class="network-ticker-list" aria-hidden="true">
+            <li><img src="/networkIcons/ethereum.svg" alt="" width="22" height="22"><span>Ethereum</span></li>
+            <li><img src="/icons/bnb.svg" alt="" width="22" height="22"><span>BNB Smart Chain</span></li>
+            <li><img src="/networkIcons/polygon.webp" alt="" width="22" height="22"><span>Polygon PoS</span></li>
+            <li><img src="/networkIcons/arbitrum.webp" alt="" width="22" height="22"><span>Arbitrum One</span></li>
+            <li><img src="/networkIcons/optimism.webp" alt="" width="22" height="22"><span>OP Mainnet</span></li>
+            <li><img src="/networkIcons/base.webp" alt="" width="22" height="22"><span>Base</span></li>
+            <li><img src="/networkIcons/avalanche.webp" alt="" width="22" height="22"><span>Avalanche</span></li>
+            <li><img src="/networkIcons/celo.webp" alt="" width="22" height="22"><span>Celo</span></li>
+            <li><img src="/networkIcons/gnosis.webp" alt="" width="22" height="22"><span>Gnosis Chain</span></li>
+            <li><img src="/networkIcons/linea.webp" alt="" width="22" height="22"><span>Linea</span></li>
+            <li><img src="/networkIcons/scroll.webp" alt="" width="22" height="22"><span>Scroll</span></li>
+            <li><img src="/networkIcons/zksync-era.webp" alt="" width="22" height="22"><span>zkSync Era</span></li>
+            <li><img src="/networkIcons/mantle.webp" alt="" width="22" height="22"><span>Mantle</span></li>
+            <li><img src="/networkIcons/sonic.webp" alt="" width="22" height="22"><span>Sonic</span></li>
+            <li><img src="/networkIcons/berachain.webp" alt="" width="22" height="22"><span>Berachain</span></li>
+            <li><img src="/networkIcons/unichain.webp" alt="" width="22" height="22"><span>Unichain</span></li>
+            <li><img src="/networkIcons/world-chain.webp" alt="" width="22" height="22"><span>World Chain</span></li>
+            <li><img src="/networkIcons/blast.webp" alt="" width="22" height="22"><span>Blast</span></li>
+            <li><img src="/networkIcons/mode.webp" alt="" width="22" height="22"><span>Mode</span></li>
+            <li><img src="/networkIcons/metis.webp" alt="" width="22" height="22"><span>Metis Andromeda</span></li>
+            <li><img src="/networkIcons/cronos.webp" alt="" width="22" height="22"><span>Cronos</span></li>
+            <li><img src="/networkIcons/moonbeam.webp" alt="" width="22" height="22"><span>Moonbeam</span></li>
+            <li><img src="/networkIcons/taiko.webp" alt="" width="22" height="22"><span>Taiko</span></li>
+            <li><img src="/networkIcons/opbnb.webp" alt="" width="22" height="22"><span>opBNB</span></li>
+            <li><img src="/networkIcons/polygon-zkevm.webp" alt="" width="22" height="22"><span>Polygon zkEVM</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <main id="main">
+      <div class="shell">
+        <section class="hero">
+          <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Pre-release · not yet audited</p>
+          <p class="hero-signature">Just Swap</p>
+          <h1>Swap BEP-20 tokens without BNB</h1>
+          <p class="hero-lede">
+            Pistachio Swap is a <span class="nowrap">self-custodial</span> crypto
+            wallet with Gas Assist on BNB Chain. Trade BEP-20 tokens even when
+            you hold no BNB for gas, and swap across 25 EVM networks.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary button-lg" href="/swap/">Open wallet</a>
+            <a class="button button-ghost button-lg" href="/landing/gas-assist/">How Gas Assist works</a>
           </div>
-          <div class="app-boot-pill"></div>
-        </header>
-        <section class="app-boot-card" aria-hidden="true">
-          <div class="app-boot-panel"></div>
-          <div class="app-boot-panel"></div>
-          <div class="app-boot-action"></div>
+          <p class="hero-note">No account · no email · your keys stay yours</p>
+        </section>
+
+        <dl class="stats">
+          <div class="stat">
+            <dt>EVM networks</dt>
+            <dd>25</dd>
+          </div>
+          <div class="stat">
+            <dt>Route providers</dt>
+            <dd>8</dd>
+          </div>
+          <div class="stat">
+            <dt>Custody of your keys</dt>
+            <dd>Yours</dd>
+          </div>
+          <div class="stat">
+            <dt>Signatures without review</dt>
+            <dd>0</dd>
+          </div>
+        </dl>
+
+        <section class="section" id="gas-assist">
+          <div class="section-head">
+            <h2>Gas assisted swaps on BNB Chain</h2>
+            <p>
+              Holding tokens you cannot move, because paying gas needs BNB you do
+              not have? That is what Gas Assist is for.
+            </p>
+          </div>
+
+          <div class="split">
+            <ol class="steps">
+              <li>
+                <strong>We prepare the whole swap</strong>
+                <span>The fee, the approval and the swap itself, as one sponsored transaction.</span>
+              </li>
+              <li>
+                <strong>You see the full cost first</strong>
+                <span>The exact fee and the minimum you receive, before anything is signed.</span>
+              </li>
+              <li>
+                <strong>One approval covers it</strong>
+                <span>With Pistachio Wallet the transaction is authorized once, then signed on your device.</span>
+              </li>
+              <li>
+                <strong>If it fails, no fee is taken</strong>
+                <span>Fee, approval, and swap revert together. The treasury receives nothing.</span>
+              </li>
+            </ol>
+
+            <aside class="callout">
+              <h3>Gas Assist is not free</h3>
+              <p>
+                The network cost, the sponsorship cost and our fee are all shown in
+                the quote before you sign.
+              </p>
+              <p>
+                It is not available for every token or every route. When it is not,
+                the app says so instead of failing quietly.
+              </p>
+              <p>
+                <a href="/gas-assist/">Read the full Gas Assist guide →</a>
+              </p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="section" id="how">
+          <div class="section-head">
+            <h2>A self-custodial wallet, not a custodian</h2>
+            <p>
+              Your tokens stay in your wallet. Nothing moves until you sign a
+              transaction you have seen in full.
+            </p>
+          </div>
+
+          <div class="cards">
+            <article class="card">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                </svg>
+              </span>
+              <h3>You see the whole transaction</h3>
+              <p>
+                Where it goes, who can spend what, and how much — before you approve.
+                What gets broadcast is checked against what you saw.
+              </p>
+            </article>
+
+            <article class="card">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12h18" />
+                  <path d="m14 5 7 7-7 7" />
+                  <path d="M10 19 3 12l7-7" />
+                </svg>
+              </span>
+              <h3>Routes compared after fees</h3>
+              <p>
+                Several exchanges and bridges are quoted, then ranked on what you
+                actually receive — not the headline number.
+              </p>
+            </article>
+
+            <article class="card">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v5" />
+                  <path d="M12 16h.01" />
+                </svg>
+              </span>
+              <h3>Fake tokens stay obvious</h3>
+              <p>
+                A token that copies a real name with lookalike letters is never shown
+                as the real thing. Unverified holdings are kept separate.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="networks">
+          <div class="section-head">
+            <h2>25 EVM networks</h2>
+            <p>Gas assisted swaps run on BNB Smart Chain. Other networks use a normal swap when you hold gas.</p>
+          </div>
+
+          <p class="providers">
+            Routed through Across, deBridge, Relay, Chainflip, 0x, KyberSwap and
+            Uniswap.
+          </p>
+        </section>
+
+        <section class="section" id="wallet">
+          <div class="section-head">
+            <h2>Your wallet, or the one in your browser</h2>
+            <p>
+              Any standard EVM wallet works. Pistachio Wallet is optional, and lives
+              on your device.
+            </p>
+          </div>
+
+          <div class="cards">
+            <article class="card">
+              <h3>Keys never leave your device</h3>
+              <p>
+                Your key is held in an isolated worker and wiped on lock. The stored
+                vault is encrypted and unlocked by your passkey.
+              </p>
+            </article>
+            <article class="card">
+              <h3>A passkey check every time</h3>
+              <p>
+                Signing, revealing a recovery phrase or exporting a key each need a
+                fresh check — not one unlock for the whole session.
+              </p>
+            </article>
+            <article class="card">
+              <h3>You can always take it with you</h3>
+              <p>
+                Export a recovery phrase or an encrypted backup whenever you like.
+                Removing it here does not touch anything on-chain.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="product-guides">
+          <div class="section-head">
+            <h2 id="product-guides">Get to know Pistachio Swap</h2>
+            <p>Understand your wallet, your swap, and the costs before you sign.</p>
+          </div>
+          <div class="cards">
+            <article class="card">
+              <h3>Pistachio Wallet</h3>
+              <p>Learn about passkeys, encrypted browser storage, and keeping a recovery backup you control.</p>
+              <a class="guide-card-link" href="/landing/wallet/">Pistachio Wallet →</a>
+            </article>
+            <article class="card">
+              <h3>Gas Assist</h3>
+              <p>Swap eligible BEP-20 tokens without holding BNB. Understand sponsorship, fees, and availability.</p>
+              <a class="guide-card-link" href="/landing/gas-assist/">Gas Assist →</a>
+            </article>
+            <article class="card">
+              <h3>How Pistachio Swap works</h3>
+              <p>Follow the steps from token selection and quote review to approvals and confirmation.</p>
+              <a class="guide-card-link" href="/landing/how-it-works/">How Pistachio Swap works →</a>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="faq">
+          <div class="section-head">
+            <h2>Common questions</h2>
+            <p>
+              Short answers below.
+              <a href="/landing/faq/">See the full FAQ</a>
+              for more detail.
+            </p>
+          </div>
+
+          <div class="faq">
+            <details>
+              <summary>Can I swap BEP-20 tokens without BNB?</summary>
+              <div>
+                <p>
+                  Yes, when Gas Assist is available for that token and route. The
+                  gas is covered for you, and the cost is taken from the swap.
+                  It is not free: the fee is shown before you sign.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>Is Pistachio Swap a self-custodial wallet?</summary>
+              <div>
+                <p>
+                  Yes. Your tokens stay in your own wallet. Nothing moves until you
+                  sign a transaction you have seen in full.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>Does Gas Assist work on every network?</summary>
+              <div>
+                <p>
+                  No. Gas Assist runs on BNB Smart Chain. You can still swap on the
+                  other supported EVM networks when you hold that network’s gas token.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="disclosure" aria-labelledby="risk">
+          <h2 id="risk">Before you start</h2>
+          <p>
+            Pistachio Swap is pre-release software and has not been independently audited.
+            Swapping tokens carries risk, including permanent loss. Use a
+            separate wallet and small amounts.
+          </p>
+        </section>
+
+        <section class="cta">
+          <h2>Open wallet and look around</h2>
+          <p>Nothing to sign up for. Connect only when you want to trade.</p>
+          <div class="hero-actions">
+            <a class="button button-primary button-lg" href="/swap/">Open wallet</a>
+            <a
+              class="button button-ghost button-lg"
+              href="https://github.com/parsij/PistachioSwap"
+              rel="noopener"
+            >Read the source</a>
+          </div>
         </section>
       </div>
-      <footer class="app-info-footer" aria-label="About Pistachio Swap">
-        <h1>Pistachio Swap</h1>
-        <p>Compare crypto swap routes with a self-custodial wallet. Gas Assist is available for eligible BNB Chain swaps; costs apply.</p>
-        <nav aria-label="Product guides">
-          <a href="/landing/">About</a>
-          <a href="/landing/wallet/">Pistachio Wallet</a>
-          <a href="/landing/gas-assist/">Gas Assist</a>
-          <a href="/landing/how-it-works/">How Pistachio Swap works</a>
-          <a href="/landing/faq/">FAQ</a>
-          <a href="/legal/third-party/">Legal &amp; third-party notices</a>
-        </nav>
-      </footer>
-    </div>
-    <noscript>
-      <div style="max-width: 40rem; margin: 12vh auto 0; padding: 0 1.5rem; color: #fff; font-family: system-ui, sans-serif; text-align: center;">
-        <h2 style="font-size: 1.5rem;">Enable JavaScript to swap</h2>
-        <p style="color: #a9a9a9; line-height: 1.5;">
-          The swap interface needs JavaScript to talk to your wallet and to price
-          routes. Enable JavaScript to continue, or read what Pistachio Swap does
-          on the <a href="/landing/" style="color: #8ac27c;">overview page</a>.
-        </p>
+
+      <div class="shell">
+        <footer class="site-footer">
+          <div class="footer-row">
+            <span>© Pistachio Swap</span>
+            <nav class="footer-links" aria-label="Footer">
+              <a href="/swap/">Swap</a>
+              <a href="/">About</a>
+              <a href="/landing/wallet/">Pistachio Wallet</a>
+              <a href="/landing/gas-assist/">Gas Assist</a>
+              <a href="/landing/how-it-works/">How it works</a>
+              <a href="/landing/faq/">FAQ</a>
+              <a href="https://github.com/parsij/PistachioSwap" rel="noopener">GitHub</a>
+              <a href="/legal/third-party/">Legal &amp; third-party notices</a>
+            </nav>
+          </div>
+        </footer>
       </div>
-    </noscript>
-    <script type="module" src="/src/main.jsx"></script>
+    </main>
+    <script type="module" src="/landing/legacy-app-entry.js"></script>
+    <script type="module" src="/landing/ticker.js"></script>
   </body>
 </html>

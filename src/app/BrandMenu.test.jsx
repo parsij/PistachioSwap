@@ -38,7 +38,7 @@ describe('brand menu', () => {
         it('sends the pistachio icon to the landing page', () => {
             render(<BrandMenu name="PistachioSwap" />)
             expect(screen.getByRole('link', { name: 'PistachioSwap landing page' }).getAttribute('href'))
-                .toBe('/landing/')
+                .toBe('/')
         })
 
         it('opens when hovering the brand while keeping the logo as a landing link', () => {
@@ -47,12 +47,12 @@ describe('brand menu', () => {
             fireEvent.mouseEnter(screen.getByRole('link', { name: 'PistachioSwap landing page' }))
             const menu = screen.getByRole('navigation', { name: 'PistachioSwap' })
             expect(menu.className).toContain('brand-menu-dropdown')
-            expect(screen.getByRole('link', { name: /Trade/ }).getAttribute('href')).toBe('/')
+            expect(screen.getByRole('link', { name: /Trade/ }).getAttribute('href')).toBe('/swap/')
             expect(screen.getAllByRole('link', { name: /Gas Assist/ })
                 .every((link) => link.getAttribute('href') === '/landing/gas-assist/'))
                 .toBe(true)
             expect(screen.getByRole('link', { name: /About/ }).getAttribute('href'))
-                .toBe('/landing/')
+                .toBe('/')
             expect(screen.getByRole('link', { name: /FAQ/ }).getAttribute('href'))
                 .toBe('/landing/faq/')
             expect(screen.getByRole('link', { name: /Pistachio Wallet/ }).getAttribute('href'))
@@ -92,7 +92,7 @@ describe('brand menu', () => {
             render(<BrandMenu name="PistachioSwap" />)
 
             expect(screen.getByRole('link', { name: 'PistachioSwap landing page' }).getAttribute('href'))
-                .toBe('/landing/')
+                .toBe('/')
 
             fireEvent.mouseEnter(document.querySelector('.brand-cluster'))
             expect(screen.queryByRole('navigation', { name: 'PistachioSwap' })).toBeNull()

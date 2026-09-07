@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom'
 // Run after the build. Check published files, not only Vite's source HTML.
 const root = resolve('dist')
 const origin = 'https://pistachioswap.com'
-const pages = ['/', '/landing/', '/landing/wallet/', '/landing/how-it-works/',
+const pages = ['/', '/swap/', '/landing/wallet/', '/landing/how-it-works/',
     '/landing/gas-assist/', '/gas-assist/', '/landing/faq/']
 const read = (path) => readFileSync(resolve(root, path.replace(/^\//, '')), 'utf8')
 const sitemap = new JSDOM(read('sitemap.xml'), { contentType: 'application/xml' }).window.document
@@ -51,7 +51,14 @@ for (const path of pages) {
             assert(doc.getElementById(decodeURIComponent(url.hash.slice(1))), path + ' missing anchor ' + url.hash)
         }
     }
-    if (path !== '/') assert(!doc.querySelector('#wallet-kit-root'), path + ' must be static')
+    if (path !== '/swap/') assert(!doc.querySelector('#wallet-kit-root'), path + ' must be static')
+    else assert(doc.querySelector('#wallet-kit-root'), 'The wallet must mount at /swap/')
+    for (const anchor of doc.querySelectorAll('a[href]')) {
+        assert.notEqual(new URL(anchor.href).pathname, '/landing/', path + ' links to a retired URL')
+        if (/^(Open wallet|Swap|Trade)$/.test(anchor.textContent.trim())) {
+            assert.equal(new URL(anchor.href).pathname, '/swap/', path + ' app CTA')
+        }
+    }
     console.log('PASS ' + path)
 }
 console.log('SEO build checks passed: 7 canonical pages, metadata, schema, sitemap, resources, and guide links.')

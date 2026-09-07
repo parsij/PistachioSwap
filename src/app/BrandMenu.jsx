@@ -10,13 +10,13 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
 import { ChevronDownIcon, GitHubIcon, MenuIcon } from '../shared/components/AppIcons.jsx'
 
-const LANDING_HREF = '/landing/'
+const LANDING_HREF = '/'
 // Keep in sync with the compact-header media query in src/index.css.
 const MOBILE_MEDIA = '(max-width: 1024px)'
 const HOVER_CLOSE_DELAY_MS = 160
 
 const APP_LINKS = [
-    { href: '/', label: 'Trade', Icon: ArrowLeftRight },
+    { href: '/swap/', label: 'Trade', Icon: ArrowLeftRight },
 ]
 
 const PRODUCT_LINKS = [
@@ -35,12 +35,12 @@ const PRODUCT_LINKS = [
 ]
 
 const PROTOCOL_LINKS = [
-    { href: '/', label: 'Trade' },
+    { href: '/swap/', label: 'Trade' },
     { href: '/landing/gas-assist/', label: 'Gas Assist' },
 ]
 
 const COMPANY_LINKS = [
-    { href: '/landing/', label: 'About' },
+    { href: '/', label: 'About' },
     { href: '/landing/how-it-works/', label: 'How Pistachio Swap works' },
     { href: '/landing/faq/', label: 'FAQ' },
 ]

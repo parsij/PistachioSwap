@@ -34,6 +34,8 @@ Disallow: /
 User-agent: ChatGPT-User
 User-agent: Claude-User
 User-agent: PerplexityBot
+Allow: /$
+Allow: /gas-assist/
 Allow: /llms.txt
 Allow: /landing
 Disallow: /assets/

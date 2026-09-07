@@ -36,14 +36,14 @@ describe('application header', () => {
             <AppHeader
                 brand={{ name: 'PistachioSwap' }}
                 navigation={[
-                    { label: 'Trade', href: '/', active: true },
+                    { label: 'Trade', href: '/swap/', active: true },
                 ]}
                 wallet={{}}
             />,
         )
 
         expect(screen.getByRole('link', { name: 'PistachioSwap landing page' }).getAttribute('href'))
-            .toBe('/landing/')
+            .toBe('/')
         expect(screen.getByRole('button', { name: 'Open product menu' })).toBeTruthy()
         expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy()
         expect(screen.getByRole('link', { name: 'Trade' }).getAttribute('aria-current')).toBe('page')

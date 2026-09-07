@@ -91,7 +91,7 @@ export const swapUiConfig = {
         {
             label: 'Trade',
             active: true,
-            href: '/',
+            href: '/swap/',
         },
     ],
 

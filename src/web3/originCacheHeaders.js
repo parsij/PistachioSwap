@@ -33,7 +33,7 @@ export function isApiPath(pathname) {
 
 export function isAppHtmlPath(pathname) {
     const path = String(pathname).split('?')[0]
-    return path === '/' || path === '/index.html'
+    return path === '/' || path === '/index.html' || path === '/swap' || path === '/swap/' || path === '/swap/index.html'
 }
 
 export function cacheControlForPath(pathname) {

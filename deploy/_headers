@@ -28,6 +28,9 @@
 /index.html
   Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 
+/swap/*
+  Cache-Control: no-store, must-revalidate
+
 /landing/*
   Cache-Control: public, max-age=0, s-maxage=300, must-revalidate
 

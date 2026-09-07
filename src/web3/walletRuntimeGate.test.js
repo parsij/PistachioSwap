@@ -35,6 +35,7 @@ describe('wallet JavaScript stays off first visit and off crawler HTML', () => {
 
     it('keeps landing pages free of the wallet entry script', () => {
         for (const path of [
+            'index.html',
             'landing/index.html',
             'landing/faq/index.html',
             'landing/gas-assist/index.html',
@@ -49,15 +50,17 @@ describe('wallet JavaScript stays off first visit and off crawler HTML', () => {
     })
 
     it('does not preload AppKit or Wagmi in the production app HTML', () => {
-        if (!existsSync('dist/index.html')) return
-        const html = readFileSync('dist/index.html', 'utf8')
+        if (!existsSync('dist/swap/index.html')) return
+        const html = readFileSync('dist/swap/index.html', 'utf8')
         expect(html).not.toMatch(/appkit/i)
         expect(html).not.toMatch(/wagmi/i)
         expect(html).not.toContain('LiveWalletBindings')
         expect(html).not.toContain('AppKitProvider')
-        expect(readFileSync('dist/landing/index.html', 'utf8')).not.toMatch(/\/assets\/main-/)
-        const landing = readFileSync('dist/landing/index.html', 'utf8')
+        expect(readFileSync('dist/index.html', 'utf8')).not.toMatch(/\/assets\/main-/)
+        const landing = readFileSync('dist/index.html', 'utf8')
         expect(landing).toMatch(/\/assets\/ticker-[^"]+\.js/)
-        expect(landing).not.toContain('src="./ticker.js"')
+        expect(landing).not.toContain('src="/landing/ticker.js"')
+        expect(landing).not.toContain('wallet-kit-root')
+        expect(html).toContain('wallet-kit-root')
     })
 })

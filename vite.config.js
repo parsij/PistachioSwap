@@ -5,6 +5,7 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 
+import { publicRoutesPlugin } from './src/web3/publicRoutesMiddleware.js'
 import { originCacheHeadersPlugin } from './src/web3/originCacheMiddleware.js'
 import { resolveModulePreloadDependencies } from './src/web3/walletChunkPreload.js'
 
@@ -17,7 +18,9 @@ export default defineConfig(({ mode }) => {
   const isFrontendTestRun = resolve(process.cwd()) === resolve(import.meta.dirname)
 
   return {
+    appType: 'mpa',
     plugins: [
+      publicRoutesPlugin(),
       originCacheHeadersPlugin(),
       tailwindcss(),
       react(),
@@ -65,13 +68,12 @@ export default defineConfig(({ mode }) => {
           },
         },
         /*
-         * App plus static HTML pages. `index.html` stays the swap application
-         * at `/` for visitors and crawlers alike. Product guides build to
-         * `dist/landing/...`; the in-depth fees guide stays at
-         * `dist/gas-assist/`. All guides are readable without wallet JavaScript.
+         * The root is the static marketing page; only /swap/ mounts the wallet.
+         * /landing/ is a redirect fallback. Existing guide URLs stay unchanged.
          */
         input: {
-          main: resolve(import.meta.dirname, 'index.html'),
+          home: resolve(import.meta.dirname, 'index.html'),
+          main: resolve(import.meta.dirname, 'swap/index.html'),
           landing: resolve(import.meta.dirname, 'landing/index.html'),
           faq: resolve(import.meta.dirname, 'landing/faq/index.html'),
           landingGasAssist: resolve(import.meta.dirname, 'landing/gas-assist/index.html'),

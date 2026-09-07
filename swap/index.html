@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Pistachio Swap | Crypto Swaps &amp; Self-Custodial Wallet</title>
+    <meta
+      name="description"
+      content="Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB."
+    />
+    <link rel="canonical" href="https://pistachioswap.com/swap/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content="#191919" />
+    <meta name="color-scheme" content="dark" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Pistachio Swap" />
+    <meta property="og:url" content="https://pistachioswap.com/swap/" />
+    <meta
+      property="og:title"
+      content="Pistachio Swap | Crypto Swaps &amp; Self-Custodial Wallet"
+    />
+    <meta
+      property="og:description"
+      content="Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB."
+    />
+    <meta property="og:image" content="https://pistachioswap.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Pistachio Swap" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Pistachio Swap | Crypto Swaps &amp; Self-Custodial Wallet"
+    />
+    <meta
+      name="twitter:description"
+      content="Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB."
+    />
+    <meta name="twitter:image" content="https://pistachioswap.com/og-image.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://pistachioswap.com/#organization",
+            "name": "Pistachio Swap",
+            "url": "https://pistachioswap.com/",
+            "logo": "https://pistachioswap.com/icons/PistachioLogo.svg"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://pistachioswap.com/#website",
+            "url": "https://pistachioswap.com/",
+            "name": "Pistachio Swap",
+            "publisher": { "@id": "https://pistachioswap.com/#organization" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://pistachioswap.com/swap/#app",
+            "name": "Pistachio Swap",
+            "url": "https://pistachioswap.com/swap/",
+            "description": "Pistachio Swap compares crypto swap routes across EVM networks. Use Pistachio Wallet and eligible Gas Assist swaps on BNB Chain without already holding BNB.",
+            "applicationCategory": "FinanceApplication",
+            "operatingSystem": "Web browser",
+            "browserRequirements": "Requires JavaScript and a secure context.",
+            "isAccessibleForFree": true,
+            "publisher": { "@id": "https://pistachioswap.com/#organization" }
+          }
+        ]
+      }
+    </script>
+
+    <style>
+      /*
+       * Static boot shell shown before React mounts. It gives Lighthouse and
+       * first-time visitors immediate content instead of a blank page while
+       * wallet bundles download and compile.
+       */
+      .app-boot-shell {
+        box-sizing: border-box;
+        min-height: 100vh;
+        padding: 53px 12px 2rem;
+        background: #191919;
+        color: #fff;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+
+      .app-boot-header,
+      .app-boot-card {
+        width: min(480px, calc(100vw - 24px));
+        margin-inline: auto;
+      }
+
+      .app-boot-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 72px;
+        margin-bottom: 0.5rem;
+      }
+
+      .app-boot-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+
+      .app-boot-brand img {
+        width: 24px;
+        height: 24px;
+      }
+
+      .app-boot-pill {
+        width: 108px;
+        height: 36px;
+        border-radius: 999px;
+        background: #252525;
+      }
+
+      .app-boot-card {
+        padding: 1rem;
+        border: 1px solid #353535;
+        border-radius: 22px;
+        background: #252525;
+      }
+
+      .app-boot-panel {
+        height: 136px;
+        margin-bottom: 0.5rem;
+        border-radius: 18px;
+        background: #191919;
+      }
+
+      .app-boot-panel:last-of-type {
+        height: 132px;
+      }
+
+      .app-boot-action {
+        height: 55px;
+        margin-top: 0.75rem;
+        border-radius: 18px;
+        background: #8ac27c;
+      }
+      .app-info-footer { position: relative; padding: 2rem 1rem; background: var(--color-background, #191919); color: var(--color-text-secondary, #a9a9a9); font: 13px/1.6 system-ui, sans-serif; text-align: center; }
+      .app-info-footer h1 { margin: 0; color: #f4f4f4; font-size: 16px; font-weight: 600; }
+      .app-info-footer p { max-width: 580px; margin: 8px auto 12px; }
+      .app-info-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; }
+      .app-info-footer a { display: inline-flex; align-items: center; min-height: 44px; color: #8ac27c; text-decoration: none; }
+      .app-info-footer a:hover { text-decoration: underline; }
+      .app-info-footer a:focus-visible { outline: 2px solid #8ac27c; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <div id="wallet-kit-root"></div>
+    <div id="root">
+      <div class="app-boot-shell" aria-hidden="true">
+        <header class="app-boot-header">
+          <div class="app-boot-brand">
+            <img src="/icons/PistachioLogo.svg" alt="" width="24" height="24" />
+            Pistachio Swap
+          </div>
+          <div class="app-boot-pill"></div>
+        </header>
+        <section class="app-boot-card" aria-hidden="true">
+          <div class="app-boot-panel"></div>
+          <div class="app-boot-panel"></div>
+          <div class="app-boot-action"></div>
+        </section>
+      </div>
+      <footer class="app-info-footer" aria-label="About Pistachio Swap">
+        <h1>Pistachio Swap</h1>
+        <p>Compare crypto swap routes with a self-custodial wallet. Gas Assist is available for eligible BNB Chain swaps; costs apply.</p>
+        <nav aria-label="Product guides">
+          <a href="/">About</a>
+          <a href="/landing/wallet/">Pistachio Wallet</a>
+          <a href="/landing/gas-assist/">Gas Assist</a>
+          <a href="/landing/how-it-works/">How Pistachio Swap works</a>
+          <a href="/landing/faq/">FAQ</a>
+          <a href="/legal/third-party/">Legal &amp; third-party notices</a>
+        </nav>
+      </footer>
+    </div>
+    <noscript>
+      <div style="max-width: 40rem; margin: 12vh auto 0; padding: 0 1.5rem; color: #fff; font-family: system-ui, sans-serif; text-align: center;">
+        <h2 style="font-size: 1.5rem;">Enable JavaScript to swap</h2>
+        <p style="color: #a9a9a9; line-height: 1.5;">
+          The swap interface needs JavaScript to talk to your wallet and to price
+          routes. Enable JavaScript to continue, or read what Pistachio Swap does
+          on the <a href="/" style="color: #8ac27c;">overview page</a>.
+        </p>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

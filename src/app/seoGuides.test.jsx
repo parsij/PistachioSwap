@@ -6,7 +6,7 @@ import AppLayout from './AppLayout.jsx'
 
 const pages = [
     'index.html',
-    'landing/index.html',
+    'swap/index.html',
     'landing/wallet/index.html',
     'landing/how-it-works/index.html',
     'landing/gas-assist/index.html',
@@ -26,7 +26,7 @@ describe('discoverable product guides', () => {
     })
 
     it('keeps identical visible guide content before and after the app mounts', () => {
-        const staticFooter = parse(read('index.html')).querySelector('.app-info-footer')
+        const staticFooter = parse(read('swap/index.html')).querySelector('.app-info-footer')
         const appFooter = parse(renderToStaticMarkup(
             <AppLayout header={null} overlays={null}>Swap interface</AppLayout>,
         )).querySelector('.app-info-footer')

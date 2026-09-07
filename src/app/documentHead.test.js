@@ -51,7 +51,7 @@ function structuredData(html) {
 
 describe.each([
     ['index.html', `${SITE}/`],
-    ['landing/index.html', `${SITE}/landing/`],
+    ['swap/index.html', `${SITE}/swap/`],
     ['landing/wallet/index.html', `${SITE}/landing/wallet/`],
     ['landing/how-it-works/index.html', `${SITE}/landing/how-it-works/`],
     ['landing/faq/index.html', `${SITE}/landing/faq/`],
@@ -134,7 +134,7 @@ describe('crawler-facing static files', () => {
         const sitemap = read('public/sitemap.xml')
         for (const location of [
             `${SITE}/`,
-            `${SITE}/landing/`,
+            `${SITE}/swap/`,
             `${SITE}/gas-assist/`,
             `${SITE}/landing/wallet/`,
             `${SITE}/landing/how-it-works/`,
@@ -148,7 +148,9 @@ describe('crawler-facing static files', () => {
     it('ships a parseable web manifest', () => {
         const manifest = JSON.parse(read('public/site.webmanifest'))
         expect(manifest.name).toBe('Pistachio Swap')
-        expect(manifest.start_url).toBe('/')
+        expect(manifest.start_url).toBe('/swap/')
+        expect(manifest.id).toBe('/')
+        expect(manifest.scope).toBe('/')
         expect(manifest.icons.length).toBeGreaterThan(0)
         for (const icon of manifest.icons) {
             expect(() => read(`public${icon.src}`)).not.toThrow()
@@ -157,7 +159,7 @@ describe('crawler-facing static files', () => {
 })
 
 describe('landing page', () => {
-    const html = read('landing/index.html')
+    const html = read('index.html')
 
     it('puts the terms people search for into its headings', () => {
         const h1 = /<h1>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? ''
@@ -202,7 +204,7 @@ describe('landing page', () => {
     })
 
     it('links to the wallet, FAQ, and Gas Assist pages', () => {
-        expect(html).toContain('href="/"')
+        expect(html).toContain('href="/swap/"')
         expect(html).toContain('>Open wallet</a>')
         expect(html).not.toContain('Open the wallet')
         expect(html).toContain('href="/landing/faq/"')
