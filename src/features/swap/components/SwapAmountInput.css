@@ -1,3 +1,17 @@
+.amount-input-shell {
+    --swap-amount-input-font-size: clamp(36px, 6vw, 40px);
+}
+
+.amount-input-shell .sell-amount-input,
+.amount-input-shell .buy-amount-input,
+.amount-input-shell .amount-input-prefix {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: var(--swap-amount-input-font-size);
+    font-variant-numeric: lining-nums tabular-nums;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+}
+
 .sell-amount-input:focus,
 .sell-amount-input:focus-visible,
 .buy-amount-input:focus,
@@ -5,4 +19,10 @@
     outline: none !important;
     box-shadow: none !important;
     border-color: transparent !important;
+}
+
+@media (max-width: 520px) {
+    .amount-input-shell {
+        --swap-amount-input-font-size: clamp(34px, 10vw, 40px);
+    }
 }
