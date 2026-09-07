@@ -62,8 +62,9 @@ export async function readWalletHistoryCache({ walletAddress, chainId } = {}) {
         database = await openDatabase()
         if (!database) return null
         const transaction = database.transaction(STORE_NAME, 'readonly')
+        const done = transactionDone(transaction)
         const record = await requestResult(transaction.objectStore(STORE_NAME).get(key))
-        await transactionDone(transaction)
+        await done
         if (!record || !Array.isArray(record.activities)) return null
         return record
     } catch {
@@ -90,6 +91,7 @@ export async function writeWalletHistoryCache({
         database = await openDatabase()
         if (!database) return false
         const transaction = database.transaction(STORE_NAME, 'readwrite')
+        const done = transactionDone(transaction)
         transaction.objectStore(STORE_NAME).put({
             key,
             walletAddress: normalizeWalletAddress(walletAddress),
@@ -104,7 +106,7 @@ export async function writeWalletHistoryCache({
             classifierVersion: Number(classifierVersion) || 0,
             truncated: truncated === true,
         })
-        await transactionDone(transaction)
+        await done
         return true
     } catch {
         return false
@@ -122,8 +124,9 @@ export async function deleteWalletHistoryCache({ walletAddress, chainId } = {}) 
         database = await openDatabase()
         if (!database) return false
         const transaction = database.transaction(STORE_NAME, 'readwrite')
+        const done = transactionDone(transaction)
         transaction.objectStore(STORE_NAME).delete(key)
-        await transactionDone(transaction)
+        await done
         return true
     } catch {
         return false
