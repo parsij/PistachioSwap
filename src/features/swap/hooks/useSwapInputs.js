@@ -215,7 +215,13 @@ export function useSwapInputs({
     }
 
     function selectToken({ token, side, selectorChainId }) {
-        const normalizedToken = normalizeMarketToken(token, selectorChainId, fallbackChainLogo)
+        // Keep selection intent separate from catalog/provider metadata. The
+        // selector uses this UI-only marker to distinguish the configured
+        // default input token from a token the user deliberately chose.
+        const normalizedToken = {
+            ...normalizeMarketToken(token, selectorChainId, fallbackChainLogo),
+            uiSelectionOrigin: 'user',
+        }
         diagnostic('input.token.selected', {
             side,
             token: tokenDiagnostic(normalizedToken),
