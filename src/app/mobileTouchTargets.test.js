@@ -38,6 +38,16 @@ describe('mobile touch targets', () => {
         expect(coarse).toMatch(/font-size:\s*16px/)
     })
 
+    it('keeps primary and secondary swap numbers readable on phones', () => {
+        const source = css('src/features/swap/components/SwapAmountInput.css')
+        expect(source).toMatch(
+            /@media\s*\(max-width:\s*520px\)[\s\S]*--swap-amount-input-font-size:\s*clamp\(40px,\s*11vw,\s*46px\)/,
+        )
+        expect(source).toMatch(
+            /\.sell-fiat-value,[\s\S]*\.buy-fiat-value,[\s\S]*\.sell-balance\s*\{[^}]*font-size:\s*18px/,
+        )
+    })
+
     it('extends the fixed-height panel controls to a 44px hit area', () => {
         // The controls measure 14–36px tall and are absolutely positioned inside
         // panels of fixed height, so the hit area grows instead of the box.
