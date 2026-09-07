@@ -13,6 +13,14 @@ const guidePages = [
     'landing/faq/index.html',
 ]
 const guides = ['/landing/wallet/', '/landing/gas-assist/', '/landing/how-it-works/']
+const swapFooterLinks = [
+    ['/', 'About'],
+    ['/landing/wallet/', 'Pistachio Wallet'],
+    ['/landing/gas-assist/', 'Gas Assist'],
+    ['/landing/how-it-works/', 'How Pistachio Swap works'],
+    ['/landing/faq/', 'FAQ'],
+    ['/legal/third-party/', 'Legal & third-party notices'],
+]
 const parse = (html) => new DOMParser().parseFromString(html, 'text/html')
 const read = (path) => readFileSync(path, 'utf8')
 
@@ -24,14 +32,24 @@ describe('discoverable product guides', () => {
         }
     })
 
-    it('keeps the focused swap application free of a duplicated marketing footer', () => {
+    it('keeps the swap footer links without the duplicated marketing copy', () => {
         const staticSwap = parse(read('swap/index.html'))
         const mountedSwap = parse(renderToStaticMarkup(
             <AppLayout header={null} overlays={null}>Swap interface</AppLayout>,
         ))
 
-        expect(staticSwap.querySelector('.app-info-footer')).toBeNull()
-        expect(mountedSwap.querySelector('.app-info-footer')).toBeNull()
+        for (const doc of [staticSwap, mountedSwap]) {
+            const footer = doc.querySelector('.app-info-footer')
+            expect(footer).not.toBeNull()
+            expect(footer.querySelector('h1')).toBeNull()
+            expect(footer.querySelector('p')).toBeNull()
+
+            const links = [...footer.querySelectorAll('a')].map((anchor) => [
+                anchor.getAttribute('href'),
+                anchor.textContent.trim(),
+            ])
+            expect(links).toEqual(swapFooterLinks)
+        }
     })
 
     it.each(['wallet', 'how-it-works'])('%s is a standalone, accessible static guide', (slug) => {
