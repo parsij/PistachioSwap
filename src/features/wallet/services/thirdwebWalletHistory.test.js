@@ -60,12 +60,16 @@ describe('thirdweb browser wallet history fallback', () => {
             truncated: false,
             source: 'thirdweb-browser',
         })
-        expect(urls).toContain(
-            `https://5000.insight.thirdweb.com/v1/wallets/${wallet}/transactions?page=0&limit=100&sort_by=block_number&sort_order=desc`,
-        )
-        expect(urls.some(url => url.startsWith(
-            'https://5000.insight.thirdweb.com/v1/tokens/transfers?',
-        ))).toBe(true)
+        const walletRequest = urls
+            .map(url => new URL(url))
+            .find(url => url.pathname === `/v1/wallets/${wallet}/transactions`)
+        expect(walletRequest?.origin).toBe('https://5000.insight.thirdweb.com')
+        expect(walletRequest?.searchParams.get('page')).toBe('0')
+        expect(walletRequest?.searchParams.get('limit')).toBe('100')
+        expect(walletRequest?.searchParams.get('sort_by')).toBe('block_number')
+        expect(walletRequest?.searchParams.get('sort_order')).toBe('desc')
+        expect(urls.some(url => new URL(url).pathname === '/v1/tokens/transfers'))
+            .toBe(true)
     })
 
     it('constructs chain-scoped Insight and RPC origins', () => {
