@@ -1,0 +1,45 @@
+/* SwapDetails owns the compact quote-summary presentation. Keep cross-chain CSS from adding a second legacy marker. */
+.swap-compact-details > summary::after,
+.swap-compact-details summary::after {
+    display: none !important;
+    content: none !important;
+}
+
+.swap-compact-rate,
+.swap-compact-summary-meta,
+.swap-compact-gas {
+    font-variant-numeric: tabular-nums lining-nums;
+}
+
+.swap-compact-summary-meta {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+}
+
+.swap-compact-gas {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 5px;
+    color: var(--color-muted);
+}
+
+.swap-compact-gas-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 420px) {
+    .swap-compact-summary-meta {
+        gap: 5px;
+    }
+
+    .swap-compact-gas-icon {
+        width: 15px;
+        height: 15px;
+    }
+}

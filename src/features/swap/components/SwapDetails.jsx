@@ -1,6 +1,7 @@
-import { ChevronDownIcon } from '../../../shared/components/AppIcons.jsx'
+import { ChevronDownIcon, GasPumpIcon } from '../../../shared/components/AppIcons.jsx'
 import SwapInfoTooltip from './SwapInfoTooltip.jsx'
 import { formatCostUsd } from '../model/swapDisplay.js'
+import './SwapDetails.css'
 
 function formatEstimatedArrival(value) {
     const seconds = Number(value)
@@ -17,6 +18,26 @@ function DetailRow({ label, ariaLabel, help, value }) {
     )
 }
 
+function usableGasCost(value) {
+    const text = String(value ?? '').trim()
+    return text && text !== 'Unavailable' ? text : null
+}
+
+function compactGasCost({ isCrossChain, sameChain, crossChain }) {
+    if (isCrossChain) {
+        return usableGasCost(
+            crossChain?.gasAssistFee?.estimatedSponsoredGasUsd ??
+            crossChain?.sourceGasCost,
+        )
+    }
+
+    return usableGasCost(
+        sameChain?.gasAssistFee?.estimatedSponsoredGasUsd ??
+        sameChain?.gasAssistFee?.networkReserveUsd ??
+        sameChain?.networkCost,
+    )
+}
+
 /**
  * Renders same-chain or cross-chain quote details without exposing internal routing providers.
  * The backend always selects the best executable route; provider identity remains internal for
@@ -25,11 +46,21 @@ function DetailRow({ label, ariaLabel, help, value }) {
 export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain, crossChain, slippage, exactOutputMaximum }) {
     if (!sameChain.visible && !crossChain?.route) return null
     const isCrossChain = mode === 'cross-chain'
+    const gasCost = compactGasCost({ isCrossChain, sameChain, crossChain })
+
     return (
         <details className="swap-compact-details" open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
-            <summary>
+            <summary aria-label={open ? 'Hide swap details' : 'Show swap details'}>
                 <span className="swap-compact-rate">{rate}</span>
-                <ChevronDownIcon className="swap-details-chevron" />
+                <span className="swap-compact-summary-meta">
+                    {gasCost && (
+                        <span className="swap-compact-gas" aria-label={`Estimated network gas: ${gasCost}`}>
+                            <GasPumpIcon className="swap-compact-gas-icon" />
+                            <span>{gasCost}</span>
+                        </span>
+                    )}
+                    <ChevronDownIcon className="swap-details-chevron" />
+                </span>
             </summary>
             <dl>
                 {!isCrossChain && (

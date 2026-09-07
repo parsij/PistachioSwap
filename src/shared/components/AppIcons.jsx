@@ -56,6 +56,17 @@ export function ArrowDownIcon() {
     )
 }
 
+/** Decorative fuel-pump glyph used for estimated network-gas cost. */
+export function GasPumpIcon({ className = '' }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+            <path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6.5 7h7v5h-7zM3 21h14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="m16 7 2 2v7.5a1.5 1.5 0 0 0 3 0V10l-2-2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    )
+}
+
 /** Decorative information glyph used inside accessible tooltip triggers. */
 export function InfoIcon() {
     return (
