@@ -45,7 +45,24 @@ describe('TokenSelector opening scope', () => {
         expect(queryByLabelText('Quick tokens')).toBeNull()
     })
 
-    it('defaults to the opposite token chain when one side is already selected', () => {
+    it('keeps an empty output selector on All Chains when the input token is BNB', () => {
+        const { onChainChange } = renderSelector({
+            side: 'buy',
+            currentToken: null,
+            oppositeToken: {
+                chainId: 56,
+                address: '0x0000000000000000000000000000000000000000',
+                symbol: 'BNB',
+                decimals: 18,
+                isNative: true,
+            },
+        })
+
+        expect(onChainChange).toHaveBeenCalledTimes(1)
+        expect(onChainChange).toHaveBeenCalledWith('all')
+    })
+
+    it('defaults the sell selector to the opposite token chain when one side is already selected', () => {
         const { onChainChange } = renderSelector({
             oppositeToken: {
                 chainId: 137,
