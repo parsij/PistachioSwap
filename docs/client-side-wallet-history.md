@@ -44,16 +44,16 @@ Only add a chain ID to `VITE_WALLET_HISTORY_CHAIN_IDS` after its Alchemy endpoin
 
 ## Alchemy security settings
 
-On the dedicated Alchemy app/key, configure a domain/origin allowlist for every production hostname that legitimately serves the frontend. At minimum, if both are used, add these separately:
+On the dedicated Alchemy app/key, configure a domain allowlist for every production hostname that legitimately serves the frontend. Alchemy documents domain entries as host/domain patterns, so add the parent and `www` hostname separately if both are used:
 
 ```text
-https://pistachioswap.com
-https://www.pistachioswap.com
+pistachioswap.com
+www.pistachioswap.com
 ```
 
-Do not assume the parent host automatically includes a subdomain. Test the restriction from an unapproved origin after it propagates.
+Do not assume the parent domain automatically includes a subdomain. With a domain allowlist enabled, Alchemy rejects requests that do not carry an allowed `Origin`; test the restriction from an unapproved origin after it propagates.
 
-The browser sends the Alchemy key in the `Authorization: Bearer ...` header rather than placing it in the URL. The credential remains visible to a determined user because it is frontend code, but it is kept out of request URLs and should be constrained by the Alchemy origin allowlist.
+The browser sends the Alchemy key in the `Authorization: Bearer ...` header rather than placing it in the URL. The credential remains visible to a determined user because it is frontend code, but it is kept out of request URLs and should be constrained by the Alchemy domain allowlist.
 
 ## Content Security Policy
 
