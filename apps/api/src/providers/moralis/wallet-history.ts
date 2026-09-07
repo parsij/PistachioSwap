@@ -8,11 +8,13 @@ export async function moralisWalletHistoryRequest({
     chainId,
     walletAddress,
     limit = 25,
+    cursor,
     signal,
 }: {
     chainId: number
     walletAddress: string
     limit?: number
+    cursor?: string
     signal?: AbortSignal
 }) {
     const wallet = normalizeAddress(walletAddress)
@@ -37,7 +39,8 @@ export async function moralisWalletHistoryRequest({
     url.searchParams.set('chain', moralisChain)
     url.searchParams.set('order', 'DESC')
     url.searchParams.set('limit', String(Math.max(1, Math.min(50, limit))))
-    url.searchParams.set('include_internal_transactions', 'false')
+    url.searchParams.set('include_internal_transactions', 'true')
+    if (cursor) url.searchParams.set('cursor', cursor)
     url.searchParams.set('nft_metadata', 'false')
 
     return fetchJson(url, {
@@ -45,6 +48,6 @@ export async function moralisWalletHistoryRequest({
         signal,
         timeoutMs: config.requestTimeoutMs,
         retries: 1,
-        dedupeKey: `moralis-history:${chainId}:${wallet}:${limit}`,
+        dedupeKey: `moralis-history:${chainId}:${wallet}:${limit}:${cursor ?? 'first'}`,
     })
 }

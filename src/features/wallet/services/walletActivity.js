@@ -1,3 +1,5 @@
+import { mergeWalletActivity } from './mergeWalletActivity.js'
+
 const STORAGE_KEY = 'pistachioswap:wallet-activity:v1'
 const CHANGE_EVENT = 'pistachioswap:wallet-activity-change'
 const MAX_ITEMS_PER_WALLET = 100
@@ -122,7 +124,7 @@ function writeStore(store) {
 }
 
 function createId(type, chainId, hash) {
-    if (hash) return `${type}:${chainId}:${hash}`
+    if (hash) return `${chainId}:${hash}`
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
     return `${type}:${chainId}:${Date.now()}:${Math.random().toString(16).slice(2)}`
 }
@@ -155,7 +157,7 @@ export function normalizeWalletActivity(input) {
         hash,
         timestamp: Number.isFinite(parsedTimestamp)
             ? new Date(parsedTimestamp).toISOString()
-            : new Date().toISOString(),
+            : input.source === 'remote' ? new Date(0).toISOString() : new Date().toISOString(),
         token: cleanToken(input.token),
         sellToken: cleanToken(input.sellToken),
         buyToken: cleanToken(input.buyToken),
@@ -164,6 +166,16 @@ export function normalizeWalletActivity(input) {
         buyAmount: cleanAmount(input.buyAmount),
         recipient: normalizeWalletAddress(input.recipient),
         provider: cleanText(input.provider, 40),
+        sender: normalizeWalletAddress(input.sender),
+        source: ['remote', 'merged'].includes(input.source) ? input.source : 'local',
+        status: input.status === 'failed' ? 'failed' : 'confirmed',
+        blockNumber: cleanText(input.blockNumber, 30),
+        from: normalizeWalletAddress(input.from),
+        to: normalizeWalletAddress(input.to),
+        detectedContract: normalizeWalletAddress(input.detectedContract),
+        providerType: cleanText(input.providerType, 60),
+        classificationReason: cleanText(input.classificationReason, 200),
+        nativeValue: cleanAmount(input.nativeValue),
     }
 }
 
@@ -175,19 +187,7 @@ export function recordWalletActivity(input) {
     const current = Array.isArray(store[activity.walletAddress])
         ? store[activity.walletAddress]
         : []
-    const dedupeKey = activity.hash
-        ? `${activity.type}:${activity.chainId}:${activity.hash}`
-        : activity.id
-
-    const next = [
-        activity,
-        ...current.filter((item) => {
-            const itemKey = item?.hash
-                ? `${item.type}:${item.chainId}:${String(item.hash).toLowerCase()}`
-                : item?.id
-            return itemKey !== dedupeKey
-        }),
-    ].slice(0, MAX_ITEMS_PER_WALLET)
+    const next = mergeWalletActivity(current.map(normalizeWalletActivity).filter(Boolean), [activity], MAX_ITEMS_PER_WALLET)
 
     store[activity.walletAddress] = next
     if (writeStore(store)) emitChange(activity.walletAddress)

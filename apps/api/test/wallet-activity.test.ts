@@ -2,9 +2,15 @@ import { encodeFunctionData } from 'viem'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+    alchemyRpcBatch: vi.fn(),
     moralisWalletHistoryRequest: vi.fn(),
     getWalletTokens: vi.fn(),
     getFallbackTokensForChain: vi.fn(),
+}))
+
+vi.mock('../src/providers/alchemy/alchemy-client.js', () => ({
+    alchemyRpcBatch: mocks.alchemyRpcBatch,
+    alchemyRpc: vi.fn().mockRejectedValue(new Error('Unexpected RPC call in activity test')),
 }))
 
 vi.mock('../src/providers/moralis/wallet-history.js', () => ({
@@ -322,6 +328,9 @@ describe('wallet activity route trust filtering', () => {
     })
 
     it('does not promote an arbitrary self-call with token movement into a swap', async () => {
+        mocks.alchemyRpcBatch.mockImplementation(async (requests) => new Map(
+            requests.map(request => [request.id, { result: { status: '0x1', logs: [] } }]),
+        ))
         mocks.getWalletTokens.mockResolvedValue([
             token(realBscUsdtAddress),
             token(wbnbAddress, { name: 'Wrapped BNB', symbol: 'WBNB' }),
@@ -350,6 +359,7 @@ describe('wallet activity route trust filtering', () => {
         expect(response.statusCode).toBe(200)
         expect(response.json().items).toHaveLength(1)
         expect(response.json().items[0].type).toBe('sent')
+        expect(mocks.alchemyRpcBatch).toHaveBeenCalledTimes(1)
     })
 
     it('recognizes a standard ERC20 approval even when there is no Transfer event', async () => {
