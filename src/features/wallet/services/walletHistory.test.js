@@ -118,6 +118,46 @@ describe('direct browser wallet history', () => {
         ])
     })
 
+    it('falls back to thirdweb when Alchemy Transfers is unavailable for a live chain', async () => {
+        vi.stubEnv('VITE_WALLET_HISTORY_THIRDWEB_CLIENT_ID', 'frontend-client-id')
+        const fetchMock = vi.fn(async (input, options = {}) => {
+            const url = String(input)
+            expect(url).not.toContain('pistachioswap.com/api')
+            if (url.startsWith('https://5000.insight.thirdweb.com/')) {
+                return jsonResponse({
+                    data: [],
+                    meta: { page: 0, limit: 100, total_pages: 0 },
+                })
+            }
+            if (url === 'https://5000.rpc.thirdweb.com/frontend-client-id') {
+                const request = JSON.parse(options.body)
+                return jsonResponse({
+                    jsonrpc: '2.0',
+                    id: request.id,
+                    result: '0x64',
+                })
+            }
+            throw new Error(`Unexpected provider URL ${url}`)
+        })
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await walletHistoryInternals.fetchChainProviderHistory({
+            chainId: 5000,
+            walletAddress: wallet,
+            fromBlock: 0,
+        })
+
+        expect(result).toMatchObject({
+            activities: [],
+            latestBlock: 100,
+            truncated: false,
+            source: 'thirdweb-browser',
+        })
+        expect(fetchMock.mock.calls.some(([url]) =>
+            String(url).startsWith('https://5000.insight.thirdweb.com/')))
+            .toBe(true)
+    })
+
     it('defines every live curated network as history-capable and excludes retired Polygon zkEVM', () => {
         expect(SUPPORTED_WALLET_HISTORY_CHAIN_IDS).toEqual([
             1, 56, 137, 42161, 10, 8453, 43114, 42220, 100, 59144,
