@@ -12,7 +12,7 @@ import { originCacheHeadersPlugin } from './src/web3/originCacheMiddleware.js'
 import { resolveModulePreloadDependencies } from './src/web3/walletChunkPreload.js'
 
 function legacyGuideFallback(canonical) {
-  return `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Pistachio Swap page moved</title>\n    <link rel="canonical" href="https://pistachioswap.com${canonical}" />\n    <meta name="theme-color" content="#191919" />\n    <script type="module" src="/landing/legacy-app-entry.js"></script>\n    <noscript><meta http-equiv="refresh" content="0; url=${canonical}" /></noscript>\n  </head>\n  <body style="background:#191919;color:#f4f4f4;font-family:system-ui,sans-serif;padding:3rem">\n    <p>This page moved to <a href="${canonical}" style="color:#8ac27c">${canonical}</a>.</p>\n  </body>\n</html>\n`
+  return `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Pistachio Swap page moved</title>\n    <link rel="canonical" href="https://pistachioswap.com${canonical}" />\n    <meta name="theme-color" content="#191919" />\n    <meta http-equiv="refresh" content="0; url=${canonical}" />\n  </head>\n  <body style="background:#191919;color:#f4f4f4;font-family:system-ui,sans-serif;padding:3rem">\n    <p>This page moved to <a href="${canonical}" style="color:#8ac27c">${canonical}</a>.</p>\n  </body>\n</html>\n`
 }
 
 function publicGuideBuildPlugin() {
