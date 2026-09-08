@@ -46,11 +46,3 @@
     box-shadow: none !important;
     border-color: transparent !important;
 }
-
-@media (max-width: 520px) {
-    .sell-fiat-value,
-    .buy-fiat-value,
-    .sell-balance {
-        font-size: 18px;
-    }
-}
