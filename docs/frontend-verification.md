@@ -27,7 +27,27 @@ Requirements:
 - the GitHub CLI (`gh`);
 - an authenticated GitHub CLI session (`gh auth login`).
 
-From a clean checkout of this repository, run:
+### No clone required
+
+A machine that has never cloned or downloaded the PistachioSwap repository can verify the live frontend with one command. The verifier is streamed from GitHub directly into Node and is not downloaded from `pistachioswap.com`.
+
+Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/verify-live-frontend.mjs | node --input-type=module -
+```
+
+Windows PowerShell:
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/verify-live-frontend.mjs').Content | node --input-type=module -
+```
+
+These commands do not clone the repository and do not run `pnpm install`. They only stream the standalone verifier from GitHub, then let it verify GitHub build provenance and the bytes served by the production site.
+
+### From an existing checkout
+
+If the repository is already available locally, run:
 
 ```bash
 node scripts/verify-live-frontend.mjs https://pistachioswap.com
