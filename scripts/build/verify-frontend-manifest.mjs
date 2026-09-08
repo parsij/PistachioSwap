@@ -5,7 +5,13 @@ import process from 'node:process'
 
 const DIST_DIR = path.resolve(process.cwd(), process.argv[2] || 'dist')
 const MANIFEST_RELATIVE_PATH = '.well-known/pistachio-build-manifest.json'
+const PUBLIC_MANIFEST_RELATIVE_PATH = 'pistachio-build-manifest.json'
 const MANIFEST_PATH = path.join(DIST_DIR, MANIFEST_RELATIVE_PATH)
+const PUBLIC_MANIFEST_PATH = path.join(DIST_DIR, PUBLIC_MANIFEST_RELATIVE_PATH)
+const MANIFEST_ALIASES = new Set([
+    MANIFEST_RELATIVE_PATH,
+    PUBLIC_MANIFEST_RELATIVE_PATH,
+])
 
 function normalizeManifestPath(value) {
     const text = String(value ?? '')
@@ -23,14 +29,22 @@ async function walk(directory, prefix = '') {
         const relative = prefix ? `${prefix}/${entry.name}` : entry.name
         if (entry.isDirectory()) {
             files.push(...await walk(absolute, relative))
-        } else if (entry.isFile() && relative !== MANIFEST_RELATIVE_PATH) {
+        } else if (entry.isFile() && !MANIFEST_ALIASES.has(relative)) {
             files.push(relative)
         }
     }
     return files
 }
 
-const manifest = JSON.parse(await readFile(MANIFEST_PATH, 'utf8'))
+const [manifestBytes, publicManifestBytes] = await Promise.all([
+    readFile(MANIFEST_PATH),
+    readFile(PUBLIC_MANIFEST_PATH),
+])
+if (!manifestBytes.equals(publicManifestBytes)) {
+    throw new Error('Public frontend manifest alias does not match the attested .well-known manifest.')
+}
+
+const manifest = JSON.parse(manifestBytes.toString('utf8'))
 if (manifest?.schemaVersion !== 1 || manifest?.project !== 'PistachioSwap') {
     throw new Error('Frontend verification manifest has an unsupported schema or project name.')
 }
@@ -70,4 +84,6 @@ for (const actual of actualPaths) {
     if (!expectedPaths.has(actual)) throw new Error(`Unmanifested production file found in dist: /${actual}`)
 }
 
-console.log(`Verified ${expectedPaths.size} frontend files against ${MANIFEST_RELATIVE_PATH}.`)
+console.log(
+    `Verified ${expectedPaths.size} frontend files against ${MANIFEST_RELATIVE_PATH} and ${PUBLIC_MANIFEST_RELATIVE_PATH}.`,
+)

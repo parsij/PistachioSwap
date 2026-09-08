@@ -63,13 +63,15 @@ Security-sensitive reports should not include private keys, recovery phrases, pa
 
 ## Verify the production frontend
 
-Source availability does not, by itself, prove that `pistachioswap.com` is serving the published source. Each production deployment therefore exposes an attested manifest at:
+Source availability does not, by itself, prove that `pistachioswap.com` is serving the published source. Each production deployment therefore exposes an attested manifest at the normal public root path:
 
 ```text
-https://pistachioswap.com/.well-known/pistachio-build-manifest.json
+https://pistachioswap.com/pistachio-build-manifest.json
 ```
 
-The manifest records the exact `main` commit and the SHA-256 digest and byte length of every built frontend file. GitHub independently stores a build-provenance attestation for that exact manifest. The VPS deploys the same prebuilt `dist/` directory and verifies it instead of rebuilding the frontend.
+The same bytes are also written to `/.well-known/pistachio-build-manifest.json` for compatibility. The verifier prefers the root path so CDN or security rules that special-case hidden `/.well-known` paths cannot make verification fail even when the deployed frontend is correct.
+
+The manifest records the exact `main` commit and the SHA-256 digest and byte length of every built frontend file. GitHub independently stores a build-provenance attestation for those exact manifest bytes. The VPS deploys the same prebuilt `dist/` directory and verifies it instead of rebuilding the frontend.
 
 ### One-line verification, no clone required
 

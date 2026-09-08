@@ -10,12 +10,14 @@ Every successful production deployment builds the frontend once on a GitHub-host
 
 1. builds the production `dist/` directory from the exact `main` commit being deployed;
 2. hashes every production file in `dist/` with SHA-256, including HTML, JavaScript, CSS, source maps, workers, images, fonts, and other static assets;
-3. writes `/.well-known/pistachio-build-manifest.json` containing those hashes, byte lengths, the full Git commit SHA, build workflow, Node/pnpm versions, and the browser-visible `VITE_*` build configuration;
-4. verifies the manifest against the local `dist/` directory before packaging;
+3. writes identical manifest bytes to `/pistachio-build-manifest.json` and `/.well-known/pistachio-build-manifest.json`, containing those hashes, byte lengths, the full Git commit SHA, build workflow, Node/pnpm versions, and the browser-visible `VITE_*` build configuration;
+4. verifies the manifest and both public aliases against the local `dist/` directory before packaging;
 5. creates a deterministic frontend archive and GitHub artifact attestations for both the manifest and the frontend archive;
 6. puts that already-built `dist/` directory into the VPS release archive;
 7. verifies the hashes again on the VPS and serves that directory without rebuilding it; and
-8. checks that the origin-served manifest is byte-for-byte identical to the manifest in the release.
+8. checks that the origin-served attested manifest is byte-for-byte identical to the manifest in the release.
+
+The root path `/pistachio-build-manifest.json` is the preferred public verification endpoint. The `/.well-known/` copy is retained as a compatibility alias. This avoids making verification depend on CDN, WAF, or other edge rules that may treat hidden `/.well-known` paths specially.
 
 The build provenance is created by GitHub's `actions/attest` action using GitHub Actions OIDC. The attestation is stored by GitHub independently of the PistachioSwap VPS, so replacing both the site files and the site's copy of the manifest is not enough to create a valid provenance record.
 
@@ -61,7 +63,7 @@ pnpm verify:frontend
 
 The verifier performs two independent checks:
 
-1. it downloads the live manifest and asks `gh attestation verify` to prove that exact manifest was attested by `parsij/PistachioSwap`, from `refs/heads/main`, by `.github/workflows/deploy-vps.yml`, on a GitHub-hosted runner, for the commit written in the manifest; and
+1. it downloads the live manifest, preferring `/pistachio-build-manifest.json` and falling back to the `/.well-known/` alias, then asks `gh attestation verify` to prove that exact manifest was attested by `parsij/PistachioSwap`, from `refs/heads/main`, by `.github/workflows/deploy-vps.yml`, on a GitHub-hosted runner, for the commit written in the manifest; and
 2. it downloads every file listed in the manifest from `pistachioswap.com`, hashes the raw response bytes, checks the byte length, and compares both with the attested manifest.
 
 A successful result ends with output similar to:
@@ -80,7 +82,7 @@ Download the manifest directly from the production site:
 
 ```bash
 curl -fsS \
-  https://pistachioswap.com/.well-known/pistachio-build-manifest.json \
+  https://pistachioswap.com/pistachio-build-manifest.json \
   -o pistachio-build-manifest.json
 ```
 
