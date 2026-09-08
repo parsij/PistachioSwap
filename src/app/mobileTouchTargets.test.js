@@ -43,6 +43,9 @@ describe('mobile touch targets', () => {
         expect(source).toMatch(/--swap-amount-input-font-size:\s*36px/)
         expect(source).toMatch(/\.amount-input-shell\.amount-input-compact\s*\{[^}]*32px/)
         expect(source).toMatch(/\.amount-input-shell\.amount-input-dense\s*\{[^}]*28px/)
+        expect(source).toMatch(
+            /\.amount-input-shell \.sell-amount-input,[\s\S]*font-size:\s*var\(--swap-amount-input-font-size\)\s*!important/,
+        )
         expect(source).not.toMatch(
             /@media\s*\(max-width:\s*520px\)[\s\S]*--swap-amount-input-font-size/,
         )
