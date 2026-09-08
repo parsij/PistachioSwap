@@ -14,11 +14,28 @@
 .amount-input-shell .buy-amount-input,
 .amount-input-shell .amount-input-prefix {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: var(--swap-amount-input-font-size) !important;
+    font-size: 36px !important;
     font-variant-numeric: lining-nums tabular-nums;
     font-weight: 485;
     letter-spacing: -0.025em;
     line-height: 1.2;
+}
+
+.amount-input-shell.amount-input-compact .sell-amount-input,
+.amount-input-shell.amount-input-compact .buy-amount-input,
+.amount-input-shell.amount-input-compact .amount-input-prefix {
+    font-size: 32px !important;
+}
+
+.amount-input-shell.amount-input-dense .sell-amount-input,
+.amount-input-shell.amount-input-dense .buy-amount-input,
+.amount-input-shell.amount-input-dense .amount-input-prefix {
+    font-size: 28px !important;
+}
+
+.amount-input-shell .sell-amount-input::placeholder,
+.amount-input-shell .buy-amount-input::placeholder {
+    font-size: inherit !important;
 }
 
 .sell-amount-input:focus,
