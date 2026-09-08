@@ -12,12 +12,16 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 
 env:
   NODE_VERSION: '24'
   PNPM_VERSION: '10.34.5'
   API_SERVICE: pistachioswap-api
   PUBLIC_ORIGIN: https://pistachioswap.com
+  VITE_API_BASE_URL: https://pistachioswap.com/api
+  VITE_DEFAULT_CHAIN_ID: '56'
 
 jobs:
   build-test-deploy:
@@ -130,13 +134,124 @@ jobs:
       - name: Deployment tests
         run: pnpm test
 
-      - name: Frontend build
+      - name: Prepare SSH
+        shell: bash
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          sed -i 's/\r$//' ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          sed -i 's/\r$//' ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
+
+      - name: Fetch public frontend build configuration
+        shell: bash
+        env:
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          set -euo pipefail
+
+          frontend_env="$RUNNER_TEMP/frontend-build.env"
+          scp \
+            -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -P "$VPS_PORT" \
+            "$VPS_USER@$VPS_HOST:$VPS_APP_DIR/env/frontend-build.env" \
+            "$frontend_env"
+
+          test -s "$frontend_env"
+          sed -i 's/\r$//' "$frontend_env"
+          cp "$frontend_env" .env.production.local
+
+      - name: Build and hash production frontend
+        shell: bash
         env:
           NODE_OPTIONS: --max-old-space-size=8192
-        run: pnpm build
+          VITE_VERSION: ${{ github.sha }}
+          PISTACHIO_SOURCE_COMMIT: ${{ github.sha }}
+          PISTACHIO_SOURCE_REF: refs/heads/main
+          PISTACHIO_PUBLIC_ORIGIN: ${{ env.PUBLIC_ORIGIN }}
+          PISTACHIO_BUILD_WORKFLOW: .github/workflows/deploy-vps.yml
+        run: |
+          set -euo pipefail
+          trap 'rm -f .env.production.local' EXIT
+
+          pnpm build
+          pnpm frontend:manifest
+          pnpm frontend:verify-build
+
+          if grep -RFl 'http://localhost:3001' dist >/dev/null 2>&1; then
+            echo "::error::Production frontend still contains the localhost API fallback."
+            exit 1
+          fi
 
       - name: License audit
         run: pnpm licenses:audit
+
+      - name: Package verifiable frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          staging_dir="$RUNNER_TEMP/pistachioswap-release"
+          frontend_archive="$staging_dir/pistachioswap-frontend-${GITHUB_SHA}.tar.gz"
+          mkdir -p "$staging_dir"
+
+          tar \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -czf "$frontend_archive" \
+            -C dist \
+            .
+
+          cp \
+            dist/.well-known/pistachio-build-manifest.json \
+            "$staging_dir/pistachio-build-manifest.json"
+
+          (
+            cd "$staging_dir"
+            sha256sum \
+              "pistachioswap-frontend-${GITHUB_SHA}.tar.gz" \
+              > "pistachioswap-frontend-${GITHUB_SHA}.tar.gz.sha256"
+          )
+
+      - name: Attest frontend manifest
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/.well-known/pistachio-build-manifest.json
+
+      - name: Attest frontend archive
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ runner.temp }}/pistachioswap-release/pistachioswap-frontend-${{ github.sha }}.tar.gz
+
+      - name: Upload verifiable frontend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pistachioswap-frontend-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            ${{ runner.temp }}/pistachioswap-release/pistachio-build-manifest.json
+            ${{ runner.temp }}/pistachioswap-release/pistachioswap-frontend-${{ github.sha }}.tar.gz
+            ${{ runner.temp }}/pistachioswap-release/pistachioswap-frontend-${{ github.sha }}.tar.gz.sha256
 
       - name: Create verified release archive
         shell: bash
@@ -147,15 +262,11 @@ jobs:
           archive="$staging_dir/${GITHUB_SHA}.tar.gz"
           listing="$staging_dir/${GITHUB_SHA}.files"
 
-          rm -rf "$staging_dir"
-          mkdir -p "$staging_dir"
-
           tar \
             --exclude-vcs \
             --exclude='./.github' \
             --exclude='./node_modules' \
             --exclude='*/node_modules' \
-            --exclude='./dist' \
             --exclude='./release' \
             --exclude='./.env' \
             --exclude='./.env.*' \
@@ -179,7 +290,11 @@ jobs:
             ./vite.config.js \
             ./apps/api/package.json \
             ./apps/api/src/server.ts \
-            ./scripts/deploy/activate-vps-release.sh
+            ./scripts/deploy/activate-vps-release.sh \
+            ./scripts/build/verify-frontend-manifest.mjs \
+            ./dist/index.html \
+            ./dist/swap/index.html \
+            ./dist/.well-known/pistachio-build-manifest.json
           do
             grep -Fxq "$required_path" "$listing" || {
               echo "::error::Release archive is missing $required_path"
@@ -196,25 +311,6 @@ jobs:
             cd "$staging_dir"
             sha256sum -c "${GITHUB_SHA}.tar.gz.sha256"
           )
-
-      - name: Prepare SSH
-        shell: bash
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
-          sed -i 's/\r$//' ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          sed -i 's/\r$//' ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-          ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
 
       - name: Upload release archive
         shell: bash
@@ -315,7 +411,7 @@ jobs:
 
           deployment_script="$RELEASE_DIR/scripts/deploy/activate-vps-release.sh"
           [[ -s "$deployment_script" ]] || {
-            echo "Deployment script is missing from the release." >&2
+            echo "Release deployment script is missing."
             exit 1
           }
 
@@ -329,6 +425,8 @@ jobs:
 
       - name: Verify public edge from runner
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -356,19 +454,18 @@ jobs:
           if [[ "$status" == '200' ]]; then
             test -s "$body"
             grep -Eiq '<!doctype html|<html' "$body"
-            echo "Public website returned HTML to the GitHub runner."
+            node scripts/verify-live-frontend.mjs "$PUBLIC_ORIGIN"
+            echo "Public website matches the GitHub-attested frontend build."
             exit 0
           fi
 
           if [[ "$status" == '403' ]] &&
             grep -Eiq '^server:[[:space:]]*cloudflare' "$headers"
           then
-            echo \
-              "::warning::Cloudflare returned 403 to the GitHub-hosted runner. Origin verification passed."
+            echo "::warning::Cloudflare returned 403 to the GitHub-hosted runner. Origin verification passed."
             exit 0
           fi
 
-          echo \
-            "::warning::Public runner verification returned HTTP ${status:-000}. Origin verification passed."
+          echo "::warning::Public runner verification returned HTTP ${status:-000}. Origin verification passed."
           sed -n '1,20p' "$headers"
           exit 0
