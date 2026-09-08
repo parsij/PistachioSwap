@@ -38,13 +38,19 @@ describe('mobile touch targets', () => {
         expect(coarse).toMatch(/font-size:\s*16px/)
     })
 
-    it('keeps primary swap numbers the same size on desktop and phones', () => {
+    it('keeps the actual primary amount input the same size on desktop and phones', () => {
         const source = css('src/features/swap/components/SwapAmountInput.css')
-        expect(source).toMatch(/--swap-amount-input-font-size:\s*36px/)
-        expect(source).toMatch(/\.amount-input-shell\.amount-input-compact\s*\{[^}]*32px/)
-        expect(source).toMatch(/\.amount-input-shell\.amount-input-dense\s*\{[^}]*28px/)
         expect(source).toMatch(
-            /\.amount-input-shell \.sell-amount-input,[\s\S]*font-size:\s*var\(--swap-amount-input-font-size\)\s*!important/,
+            /\.amount-input-shell \.sell-amount-input,[\s\S]*font-size:\s*36px\s*!important/,
+        )
+        expect(source).toMatch(
+            /\.amount-input-shell\.amount-input-compact \.sell-amount-input,[\s\S]*font-size:\s*32px\s*!important/,
+        )
+        expect(source).toMatch(
+            /\.amount-input-shell\.amount-input-dense \.sell-amount-input,[\s\S]*font-size:\s*28px\s*!important/,
+        )
+        expect(source).toMatch(
+            /\.amount-input-shell \.sell-amount-input::placeholder,[\s\S]*font-size:\s*inherit\s*!important/,
         )
         expect(source).not.toMatch(
             /@media\s*\(max-width:\s*520px\)[\s\S]*--swap-amount-input-font-size/,
