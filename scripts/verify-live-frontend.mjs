@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -84,11 +84,13 @@ async function fetchBytes(url) {
 
 async function fetchManifest() {
     const failures = []
+    const cacheBust = randomUUID()
     for (const manifestPath of MANIFEST_PATHS) {
-        const url = new URL(manifestPath, `${origin}/`).href
+        const url = new URL(manifestPath, `${origin}/`)
+        url.searchParams.set('pistachio_verify', cacheBust)
         try {
             return {
-                bytes: await fetchBytes(url),
+                bytes: await fetchBytes(url.href),
                 path: manifestPath,
             }
         } catch (error) {
