@@ -8,7 +8,13 @@ import { loadEnv } from 'vite'
 const ROOT = process.cwd()
 const DIST_DIR = path.resolve(ROOT, process.argv[2] || 'dist')
 const MANIFEST_RELATIVE_PATH = '.well-known/pistachio-build-manifest.json'
+const PUBLIC_MANIFEST_RELATIVE_PATH = 'pistachio-build-manifest.json'
 const MANIFEST_PATH = path.join(DIST_DIR, MANIFEST_RELATIVE_PATH)
+const PUBLIC_MANIFEST_PATH = path.join(DIST_DIR, PUBLIC_MANIFEST_RELATIVE_PATH)
+const MANIFEST_ALIASES = new Set([
+    MANIFEST_RELATIVE_PATH,
+    PUBLIC_MANIFEST_RELATIVE_PATH,
+])
 
 function requireValue(name, fallback = '') {
     const value = String(process.env[name] ?? fallback).trim()
@@ -41,7 +47,7 @@ async function walk(directory, prefix = '') {
         const relative = prefix ? `${prefix}/${entry.name}` : entry.name
         if (entry.isDirectory()) {
             files.push(...await walk(absolute, relative))
-        } else if (entry.isFile() && relative !== MANIFEST_RELATIVE_PATH) {
+        } else if (entry.isFile() && !MANIFEST_ALIASES.has(relative)) {
             files.push(relative)
         }
     }
@@ -109,7 +115,13 @@ const manifest = {
     files,
 }
 
+const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
 await mkdir(path.dirname(MANIFEST_PATH), { recursive: true })
-await writeFile(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+await Promise.all([
+    writeFile(MANIFEST_PATH, manifestText, 'utf8'),
+    writeFile(PUBLIC_MANIFEST_PATH, manifestText, 'utf8'),
+])
 
-console.log(`Wrote ${MANIFEST_RELATIVE_PATH} with ${files.length} hashed production files.`)
+console.log(
+    `Wrote ${PUBLIC_MANIFEST_RELATIVE_PATH} and ${MANIFEST_RELATIVE_PATH} with ${files.length} hashed production files.`,
+)
