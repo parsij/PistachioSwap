@@ -53,6 +53,7 @@ PistachioSwap is designed to fail closed around signing and private-service boun
 - Browser code does not contain private service credentials, private keys, or recovery phrases.
 - Gas Assist requires explicit wallet review and authorization.
 - The optional local wallet keeps unlocked secret material inside a dedicated worker-owned session and clears it on lock, timeout, account change, or disposal.
+- Production frontend releases are built once by GitHub Actions, SHA-256 manifested, cryptographically attested with GitHub build provenance, and deployed without a second frontend rebuild on the VPS.
 - APIs use bounded bodies, timeouts, rate limits, restricted CORS, no-store responses for sensitive paths, and log redaction for credentials and raw signed transactions.
 - Public blockchain transactions remain public, generally irreversible, and outside PistachioSwap's control once broadcast.
 
@@ -60,14 +61,42 @@ These controls reduce risk. They do **not** prove that the software is vulnerabi
 
 Security-sensitive reports should not include private keys, recovery phrases, passkey secrets, raw signed transactions, API credentials, internal service tokens, or other live secrets in public issues.
 
+## Verify the production frontend
+
+Source availability does not, by itself, prove that `pistachioswap.com` is serving the published source. Each production deployment therefore exposes an attested manifest at:
+
+```text
+https://pistachioswap.com/.well-known/pistachio-build-manifest.json
+```
+
+The manifest records the exact `main` commit and the SHA-256 digest and byte length of every built frontend file. GitHub independently stores a build-provenance attestation for that exact manifest. The VPS deploys the same prebuilt `dist/` directory and verifies it instead of rebuilding the frontend.
+
+With Node.js and an authenticated GitHub CLI installed, a clean checkout can verify both the GitHub provenance and every live production file:
+
+```bash
+node scripts/verify-live-frontend.mjs https://pistachioswap.com
+```
+
+or:
+
+```bash
+pnpm verify:frontend
+```
+
+The verifier rejects a manifest that is not attested by the expected `parsij/PistachioSwap` deployment workflow on `refs/heads/main`, then downloads every listed HTML, JavaScript, CSS, worker, source-map, image, font, and other static asset from the live site and compares its raw bytes with the attested hashes.
+
+For the manual `gh attestation verify` procedure, build-input details, threat model, limitations, and the distinction between frontend files and on-chain EVM bytecode, see [`docs/frontend-verification.md`](docs/frontend-verification.md).
+
+A successful verification proves that the static frontend bytes served during the check match a GitHub-attested build from the stated source commit. It does **not** prove that the code is bug-free, that the backend is running its public source, that third-party services are honest, or that a smart contract at an arbitrary address contains expected bytecode.
+
 ## Repository layout
 
 ```text
 .
 ├── apps/api/                 Public Fastify + TypeScript API
-├── docs/                     Operations, security, integration, and licensing notes
+├── docs/                     Operations, security, integration, verification, and licensing notes
 ├── public/                   Static application assets
-├── scripts/                  Build, deployment, catalog, licensing, and audit tooling
+├── scripts/                  Build, deployment, verification, catalog, licensing, and audit tooling
 ├── src/                      React application, routing, wallet, and signing features
 └── tests/                    Unit and browser integration tests
 ```

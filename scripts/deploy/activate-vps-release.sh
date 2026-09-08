@@ -14,7 +14,6 @@ PUBLIC_ORIGIN="${5%/}"
 
 RELEASES_DIR="$APP_DIR/releases"
 CURRENT_LINK="$APP_DIR/current"
-FRONTEND_ENV="$APP_DIR/env/frontend-build.env"
 PERSISTENT_API_ENV="$APP_DIR/env/api.env"
 RUNTIME_DIR="$APP_DIR/.runtime"
 REDUCED_API_ENV="$RUNTIME_DIR/api.env"
@@ -22,7 +21,7 @@ NODE_HOME="$HOME/.local/nodejs/current"
 API_PID_FILE="$RUNTIME_DIR/api.pid"
 API_PORT='3006'
 COREPACK_BIN=''
-PNPM_VERSION='10.30.3'
+PNPM_VERSION='10.34.5'
 NODE_MAJOR='24'
 
 if [[ -x "$NODE_HOME/bin/node" ]]; then
@@ -54,8 +53,13 @@ fi
     exit 1
 }
 
-[[ -f "$FRONTEND_ENV" ]] || {
-    echo "Missing frontend environment file: $FRONTEND_ENV" >&2
+[[ -s "$RELEASE_DIR/dist/index.html" ]] || {
+    echo "Release is missing the prebuilt frontend." >&2
+    exit 1
+}
+
+[[ -s "$RELEASE_DIR/dist/.well-known/pistachio-build-manifest.json" ]] || {
+    echo "Release is missing the frontend verification manifest." >&2
     exit 1
 }
 
@@ -148,24 +152,23 @@ rm -f apps/api/.env
 ln -s "$API_ENV" apps/api/.env
 
 corepack pnpm licenses:sync
+node scripts/build/verify-frontend-manifest.mjs dist
 
-(
-    set -a
-    # shellcheck disable=SC1090
-    source "$FRONTEND_ENV"
-    set +a
-
-    VITE_API_BASE_URL="${VITE_API_BASE_URL:-$PUBLIC_ORIGIN/api}" \
-        VITE_DEFAULT_CHAIN_ID="${VITE_DEFAULT_CHAIN_ID:-56}" \
-        VITE_VERSION="$SHA" \
-        NODE_OPTIONS=--max-old-space-size=8192 \
-        corepack pnpm exec vite build --mode production
+node - "$SHA" "$PUBLIC_ORIGIN" <<'NODE'
+const fs = require('node:fs')
+const [sha, origin] = process.argv.slice(2)
+const manifest = JSON.parse(
+    fs.readFileSync('dist/.well-known/pistachio-build-manifest.json', 'utf8'),
 )
-
-[[ -s dist/index.html ]] || {
-    echo "Frontend build output is missing: $RELEASE_DIR/dist/index.html" >&2
-    exit 1
+if (manifest?.source?.commit !== sha) {
+    console.error(`Frontend manifest commit ${manifest?.source?.commit} does not match release ${sha}.`)
+    process.exit(1)
 }
+if (manifest?.origin !== origin) {
+    console.error(`Frontend manifest origin ${manifest?.origin} does not match ${origin}.`)
+    process.exit(1)
+}
+NODE
 
 if grep -RFl 'http://localhost:3001' dist >/dev/null 2>&1; then
     echo "Production frontend still contains the localhost API fallback." >&2
@@ -382,7 +385,8 @@ origin_headers="$(mktemp)"
 origin_body="$(mktemp)"
 public_headers="$(mktemp)"
 public_body="$(mktemp)"
-trap 'rm -f "$health_file" "$catalog_file" "$proxy_health_file" "$proxy_catalog_file" "$origin_headers" "$origin_body" "$public_headers" "$public_body"' EXIT
+manifest_body="$(mktemp)"
+trap 'rm -f "$health_file" "$catalog_file" "$proxy_health_file" "$proxy_catalog_file" "$origin_headers" "$origin_body" "$public_headers" "$public_body" "$manifest_body"' EXIT
 
 curl \
     --fail \
@@ -425,6 +429,24 @@ curl \
 
 test -s "$origin_body"
 grep -Eiq '<!doctype html|<html' "$origin_body"
+
+curl \
+    --fail \
+    --silent \
+    --show-error \
+    --insecure \
+    --max-time 10 \
+    --resolve pistachioswap.com:443:127.0.0.1 \
+    --output "$manifest_body" \
+    "$PUBLIC_ORIGIN/.well-known/pistachio-build-manifest.json"
+
+cmp -s \
+    "$manifest_body" \
+    "$RELEASE_DIR/dist/.well-known/pistachio-build-manifest.json" || {
+    echo "Origin-served frontend manifest does not match the attested release manifest." >&2
+    rollback
+    exit 1
+}
 
 curl \
     --fail \
@@ -500,6 +522,7 @@ fi
 echo "API health check passed on port $API_PORT."
 echo "Prefixed token catalog smoke test passed."
 echo "Origin TLS HTML check passed."
+echo "Origin frontend manifest check passed."
 echo "Nginx API proxy checks passed."
 echo "Active release source: $SHA"
 echo "Release activation complete."
