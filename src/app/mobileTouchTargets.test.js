@@ -60,6 +60,12 @@ describe('mobile touch targets', () => {
         )
     })
 
+    it('does not let mobile form hardening force swap amounts back to 16px', () => {
+        const source = css('src/mobileHardening.css')
+        expect(source).toContain(':not(.sell-amount-input):not(.buy-amount-input)')
+        expect(source).toMatch(/font-size:\s*16px\s*!important/)
+    })
+
     it('extends the fixed-height panel controls to a 44px hit area', () => {
         // The controls measure 14–36px tall and are absolutely positioned inside
         // panels of fixed height, so the hit area grows instead of the box.
