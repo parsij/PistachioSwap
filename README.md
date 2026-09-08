@@ -71,7 +71,25 @@ https://pistachioswap.com/.well-known/pistachio-build-manifest.json
 
 The manifest records the exact `main` commit and the SHA-256 digest and byte length of every built frontend file. GitHub independently stores a build-provenance attestation for that exact manifest. The VPS deploys the same prebuilt `dist/` directory and verifies it instead of rebuilding the frontend.
 
-With Node.js and an authenticated GitHub CLI installed, a clean checkout can verify both the GitHub provenance and every live production file:
+### One-line verification, no clone required
+
+You do **not** need to clone this repository or install its dependencies. The command downloads the verifier directly from GitHub, not from `pistachioswap.com`, and then checks the GitHub provenance plus every live production frontend file. You only need Node.js 24 (or another recent Node.js with built-in `fetch`) and the authenticated GitHub CLI (`gh auth login`).
+
+Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/verify-live-frontend.mjs | node --input-type=module -
+```
+
+Windows PowerShell:
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/verify-live-frontend.mjs').Content | node --input-type=module -
+```
+
+A successful run ends with `pistachioswap.com matches the GitHub-attested PistachioSwap frontend build.` If provenance or even one served file differs, the verifier exits with an error instead of blessing whatever bytes the server happened to hand it.
+
+If you already have a checkout, the equivalent commands are:
 
 ```bash
 node scripts/verify-live-frontend.mjs https://pistachioswap.com
