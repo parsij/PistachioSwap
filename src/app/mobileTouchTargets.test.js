@@ -55,8 +55,16 @@ describe('mobile touch targets', () => {
         expect(source).not.toMatch(
             /@media\s*\(max-width:\s*520px\)[\s\S]*--swap-amount-input-font-size/,
         )
-        expect(source).toMatch(
-            /\.sell-fiat-value,[\s\S]*\.buy-fiat-value,[\s\S]*\.sell-balance\s*\{[^}]*font-size:\s*18px/,
+    })
+
+    it('keeps fiat values and token balances the desktop size on phones', () => {
+        const amountSource = css('src/features/swap/components/SwapAmountInput.css')
+        const appSource = css('src/index.css')
+        expect(amountSource).not.toContain('.sell-fiat-value')
+        expect(amountSource).not.toContain('.buy-fiat-value')
+        expect(amountSource).not.toContain('.sell-balance')
+        expect(appSource).toMatch(
+            /\.sell-fiat-value,\s*\.buy-fiat-value,\s*\.sell-balance\s*\{[^}]*font-size:\s*var\(--size-secondary-font\)/,
         )
     })
 
