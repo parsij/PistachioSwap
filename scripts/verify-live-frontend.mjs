@@ -7,7 +7,10 @@ import { spawnSync } from 'node:child_process'
 
 const REPOSITORY = 'parsij/PistachioSwap'
 const SIGNER_WORKFLOW = 'parsij/PistachioSwap/.github/workflows/deploy-vps.yml'
-const MANIFEST_PATH = '/.well-known/pistachio-build-manifest.json'
+const MANIFEST_PATHS = [
+    '/pistachio-build-manifest.json',
+    '/.well-known/pistachio-build-manifest.json',
+]
 const CONCURRENCY = 8
 
 const args = process.argv.slice(2)
@@ -77,6 +80,22 @@ async function fetchBytes(url) {
     })
     if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`)
     return Buffer.from(await response.arrayBuffer())
+}
+
+async function fetchManifest() {
+    const failures = []
+    for (const manifestPath of MANIFEST_PATHS) {
+        const url = new URL(manifestPath, `${origin}/`).href
+        try {
+            return {
+                bytes: await fetchBytes(url),
+                path: manifestPath,
+            }
+        } catch (error) {
+            failures.push(error instanceof Error ? error.message : String(error))
+        }
+    }
+    throw new Error(`Unable to fetch a production build manifest:\n- ${failures.join('\n- ')}`)
 }
 
 async function verifyAttestation(manifestBytes, manifest) {
@@ -177,10 +196,12 @@ async function checkMainHead(manifest) {
 }
 
 console.log(`Verifying ${origin}`)
-const manifestBytes = await fetchBytes(new URL(MANIFEST_PATH, `${origin}/`).href)
+const fetchedManifest = await fetchManifest()
+const manifestBytes = fetchedManifest.bytes
 const manifest = JSON.parse(manifestBytes.toString('utf8'))
 validateManifest(manifest)
 
+console.log(`Manifest: ${fetchedManifest.path}`)
 console.log(`Source commit: ${manifest.source.commit}`)
 await verifyAttestation(manifestBytes, manifest)
 await verifyFiles(manifest.files)
