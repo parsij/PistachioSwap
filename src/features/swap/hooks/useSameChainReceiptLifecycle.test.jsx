@@ -45,7 +45,7 @@ describe('useSameChainReceiptLifecycle', () => {
         receiptState.isSuccess = true
         rerender()
         await waitFor(() => expect(result.current.transactionStatus).toBe('confirmed'))
-        expect(config.setVisibleStatus).toHaveBeenCalledWith('Swap confirmed.')
+        expect(config.setVisibleStatus).toHaveBeenCalledWith('Swap confirmed. Updating wallet balances…')
         expect(config.closeReview).toHaveBeenCalledTimes(1)
         expect(config.resetInputsAfterSuccess).toHaveBeenCalledTimes(1)
         expect(config.invalidateQuoteAfterSuccess).toHaveBeenCalledTimes(1)
