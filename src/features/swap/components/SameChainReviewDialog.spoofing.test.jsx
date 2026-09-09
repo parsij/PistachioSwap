@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import SameChainReviewDialog from './SameChainReviewDialog.jsx'
 
@@ -12,7 +12,7 @@ const REAL_USDC = {
     decimals: 18,
 }
 
-function renderReview(buyToken) {
+function renderReview(buyToken, overrides = {}) {
     return render(
         <SameChainReviewDialog
             open
@@ -32,6 +32,7 @@ function renderReview(buyToken) {
             confirmDisabled={false}
             confirmLabel="Confirm swap"
             onConfirm={() => {}}
+            {...overrides}
         />,
     )
 }
@@ -61,5 +62,26 @@ describe('review dialog token identity', () => {
         expect(container.textContent).not.toContain(symbol)
         // Falls back to the contract identity, which cannot be impersonated.
         expect(screen.getByText(/4900 0x0000…00ff/)).toBeTruthy()
+    })
+
+    it('shows a non-dismissible waiting screen after the transaction is submitted', () => {
+        const onOpenChange = vi.fn()
+        renderReview(
+            { ...REAL_USDC, symbol: 'CAKE' },
+            {
+                onOpenChange,
+                confirmDisabled: true,
+                confirmLabel: 'Waiting for confirmation...',
+            },
+        )
+
+        expect(screen.getByText('Swap submitted')).toBeTruthy()
+        expect(screen.getByText('Waiting for confirmation')).toBeTruthy()
+        expect(screen.getByText(/Recent Activity and your wallet token balances will refresh automatically/)).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Close review' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+        expect(onOpenChange).not.toHaveBeenCalledWith(false)
     })
 })
