@@ -107,7 +107,7 @@ describe('useWalletActivity direct browser history', () => {
         expect(result.current.error).toBeNull()
     })
 
-    it('refetches after confirmations, chain changes and reopening the wallet', async () => {
+    it('refetches after confirmations and reopening without rescanning on chain changes', async () => {
         const { result, rerender } = renderHook(props => useWalletActivity(props), {
             initialProps: { walletAddress, chainId: 56, enabled: true },
         })
@@ -119,11 +119,11 @@ describe('useWalletActivity direct browser history', () => {
         expect(mocks.fetchWalletHistory.mock.calls.at(-1)[0].force).toBe(true)
 
         rerender({ walletAddress, chainId: 1, enabled: true })
-        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(3))
+        expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(2)
 
         rerender({ walletAddress, chainId: 1, enabled: false })
         rerender({ walletAddress, chainId: 1, enabled: true })
-        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(4))
+        await waitFor(() => expect(mocks.fetchWalletHistory).toHaveBeenCalledTimes(3))
     })
 
     it('reports a partial direct response rather than treating it as complete history', async () => {

@@ -93,7 +93,6 @@ async function fetchHistoryBatches({
 
 export function useWalletActivity({
     walletAddress,
-    chainId,
     enabled = true,
     limit = 50,
 } = {}) {
@@ -172,7 +171,7 @@ export function useWalletActivity({
         })
 
         return () => controller.abort()
-    }, [batches, chainId, enabled, limit, revision, walletAddress])
+    }, [batches, enabled, limit, revision, walletAddress])
 
     const items = useMemo(() => {
         return mergeWalletActivity(localItems, remoteItems, limit)
