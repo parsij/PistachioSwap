@@ -1,3 +1,5 @@
+import { keccak256 } from 'viem'
+
 import { getGasAssistBaseUrl } from './gasAssist.js'
 import {
     gasAssistTrace,
@@ -5,6 +7,7 @@ import {
 } from './gasAssistTrace.js'
 
 const sessions = new Map()
+const PUBLIC_MEGAFUEL_HOST = 'bsc-megafuel.nodereal.io'
 
 function requestPath(url) {
     try {
@@ -85,12 +88,12 @@ async function requestJson(url, options = {}, stage = 'sponsorship.request') {
     }
 
     if (!response.ok) {
-            const gatewayTimeout = !payload?.error?.code &&
-                [502, 503, 504].includes(response.status)
-            const error = sponsorshipError(
-                gatewayTimeout
-                    ? 'CROSS_CHAIN_GATEWAY_TIMEOUT'
-                    : payload?.error?.code ?? 'SPONSORSHIP_FAILED',
+        const gatewayTimeout = !payload?.error?.code &&
+            [502, 503, 504].includes(response.status)
+        const error = sponsorshipError(
+            gatewayTimeout
+                ? 'CROSS_CHAIN_GATEWAY_TIMEOUT'
+                : payload?.error?.code ?? 'SPONSORSHIP_FAILED',
             payload?.error?.message ?? `Gas Assist request failed with HTTP ${response.status}.`,
             {
                 stage,
@@ -158,6 +161,119 @@ function deleteExpiredSessions(now = Date.now()) {
             sessions.delete(key)
         }
     }
+}
+
+function normalizeDirectMegaFuelRpc(value) {
+    let url
+    try {
+        url = new URL(String(value ?? ''))
+    } catch {
+        throw sponsorshipError(
+            'DIRECT_SUBMISSION_INVALID',
+            'Gas Assist returned an invalid direct MegaFuel endpoint.',
+            { stage: 'atomic.authorize-direct' },
+        )
+    }
+    if (
+        url.protocol !== 'https:' ||
+        url.hostname !== PUBLIC_MEGAFUEL_HOST ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+    ) {
+        throw sponsorshipError(
+            'DIRECT_SUBMISSION_INVALID',
+            'Gas Assist returned an untrusted direct MegaFuel endpoint.',
+            { stage: 'atomic.authorize-direct' },
+        )
+    }
+    url.pathname = '/'
+    return url.toString()
+}
+
+async function confirmDirectAtomicSubmission(
+    quoteEndpoint,
+    sessionToken,
+    orderId,
+    transactionHash,
+    signal,
+) {
+    return post(
+        quoteEndpoint,
+        `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/confirm-direct`,
+        { transactionHash },
+        { sessionToken, signal, stage: 'atomic.confirm-direct' },
+    )
+}
+
+async function sendRawTransactionDirectly(rpcUrl, signedRawTransaction, expectedHash, signal) {
+    gasAssistTrace('atomic.direct-megafuel.start', {
+        transactionHash: expectedHash,
+        rpcHost: PUBLIC_MEGAFUEL_HOST,
+    })
+    let response
+    try {
+        response = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'eth_sendRawTransaction',
+                params: [signedRawTransaction],
+            }),
+            redirect: 'error',
+            signal,
+        })
+    } catch (cause) {
+        throw sponsorshipError(
+            cause?.name === 'AbortError'
+                ? 'DIRECT_SUBMISSION_ABORTED'
+                : 'DIRECT_SUBMISSION_NETWORK_ERROR',
+            cause?.name === 'AbortError'
+                ? 'The direct MegaFuel submission was cancelled.'
+                : 'The wallet could not reach MegaFuel directly.',
+            {
+                stage: 'atomic.direct-megafuel',
+                transactionHash: expectedHash,
+                cause: cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause),
+            },
+        )
+    }
+
+    const payload = await response.json().catch(() => null)
+    const providerHash = typeof payload?.result === 'string'
+        ? payload.result.toLowerCase()
+        : null
+    if (!response.ok || payload?.error || !/^0x[0-9a-f]{64}$/.test(providerHash ?? '')) {
+        throw sponsorshipError(
+            response.status === 429 ? 'PAYMASTER_RATE_LIMITED' : 'PAYMASTER_REJECTED',
+            response.status === 429
+                ? 'MegaFuel rate limited the direct wallet submission.'
+                : 'MegaFuel rejected the direct wallet submission.',
+            {
+                stage: 'atomic.direct-megafuel',
+                status: response.status,
+                transactionHash: expectedHash,
+                providerCode: payload?.error?.code,
+            },
+        )
+    }
+    if (providerHash !== expectedHash.toLowerCase()) {
+        throw sponsorshipError(
+            'PAYMASTER_HASH_MISMATCH',
+            'MegaFuel returned a different transaction hash.',
+            {
+                stage: 'atomic.direct-megafuel',
+                transactionHash: expectedHash,
+            },
+        )
+    }
+    gasAssistTrace('atomic.direct-megafuel.success', {
+        transactionHash: providerHash,
+    })
+    return providerHash
 }
 
 /** Fetches abortable prepaid-sponsorship capability data from the backend derived from `quoteEndpoint`. */
@@ -274,22 +390,85 @@ export function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, s
     })
 }
 
-/** Submits the single signed atomic sponsored transaction. */
-export function submitAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signedRawTransaction, signal) {
+/**
+ * Lets the backend authorize sponsorship, then sends the already-signed transaction
+ * from the browser directly to MegaFuel. Only the resulting transaction hash is
+ * reported back to PistachioSwap; signed raw bytes never enter the app backend.
+ */
+export async function submitAtomicSponsorship(
+    quoteEndpoint,
+    sessionToken,
+    orderId,
+    signedRawTransaction,
+    signal,
+) {
     if (typeof signedRawTransaction !== 'string' || !/^0x(?:[0-9a-f]{2})+$/i.test(signedRawTransaction)) {
         throw sponsorshipError(
             'WALLET_RAW_TRANSACTION_MALFORMED',
             'The signed atomic transaction is invalid.',
-            { stage: 'atomic.submit' },
+            { stage: 'atomic.direct-megafuel' },
         )
     }
-    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/submit`, {
-        signedRawTransaction,
-    }, {
-        sessionToken,
-        signal,
-        stage: 'atomic.submit',
-    })
+    const transactionHash = keccak256(signedRawTransaction).toLowerCase()
+    const authorization = await post(
+        quoteEndpoint,
+        `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/authorize-direct`,
+        {},
+        { sessionToken, signal, stage: 'atomic.authorize-direct' },
+    )
+    if (
+        authorization?.mode !== 'wallet-direct-megafuel' ||
+        authorization?.orderId !== orderId ||
+        !Number.isFinite(Date.parse(authorization?.expiresAt)) ||
+        Date.parse(authorization.expiresAt) <= Date.now()
+    ) {
+        throw sponsorshipError(
+            'DIRECT_SUBMISSION_INVALID',
+            'Gas Assist returned an invalid direct-submission authorization.',
+            { stage: 'atomic.authorize-direct' },
+        )
+    }
+    const rpcUrl = normalizeDirectMegaFuelRpc(authorization.rpcUrl)
+
+    try {
+        const providerHash = await sendRawTransactionDirectly(
+            rpcUrl,
+            signedRawTransaction,
+            transactionHash,
+            signal,
+        )
+        return await confirmDirectAtomicSubmission(
+            quoteEndpoint,
+            sessionToken,
+            orderId,
+            providerHash,
+            signal,
+        )
+    } catch (error) {
+        // A browser can lose the HTTP response after MegaFuel accepted the raw tx.
+        // Reconcile by hash only. The backend fetches and exactly validates the BSC
+        // transaction; it never needs the signed bytes for this recovery attempt.
+        try {
+            const confirmed = await confirmDirectAtomicSubmission(
+                quoteEndpoint,
+                sessionToken,
+                orderId,
+                transactionHash,
+                signal,
+            )
+            gasAssistTrace('atomic.direct-megafuel.reconciled', {
+                orderId,
+                transactionHash,
+            })
+            return confirmed
+        } catch {
+            gasAssistTraceError('atomic.direct-megafuel.error', error, {
+                orderId,
+                transactionHash,
+            })
+            throw error
+        }
+    }
 }
 
 /** Fetches the current server-authoritative state of one prepaid sponsorship order. */
@@ -306,4 +485,6 @@ export const prepaidSponsorshipInternals = {
     deleteExpiredSessions,
     requestJson,
     sponsorshipError,
+    normalizeDirectMegaFuelRpc,
+    sendRawTransactionDirectly,
 }
