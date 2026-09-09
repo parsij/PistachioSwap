@@ -26,12 +26,14 @@ function usableGasCost(value) {
 function compactGasCost({ isCrossChain, sameChain, crossChain }) {
     if (isCrossChain) {
         return usableGasCost(
+            crossChain?.gasAssistFee?.totalUsd ??
             crossChain?.gasAssistFee?.estimatedSponsoredGasUsd ??
             crossChain?.sourceGasCost,
         )
     }
 
     return usableGasCost(
+        sameChain?.gasAssistFee?.totalUsd ??
         sameChain?.gasAssistFee?.estimatedSponsoredGasUsd ??
         sameChain?.gasAssistFee?.networkReserveUsd ??
         sameChain?.networkCost,
@@ -54,7 +56,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                 <span className="swap-compact-rate">{rate}</span>
                 <span className="swap-compact-summary-meta">
                     {gasCost && (
-                        <span className="swap-compact-gas" aria-label={`Estimated network gas: ${gasCost}`}>
+                        <span className="swap-compact-gas" aria-label={`Gas Assist fee: ${gasCost}`}>
                             <GasPumpIcon className="swap-compact-gas-icon" />
                             <span>{gasCost}</span>
                         </span>
@@ -66,16 +68,12 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                 {!isCrossChain && (
                     <>
                         {sameChain.gasAssistFee ? (
-                            <>
-                                <DetailRow
-                                    label="Gas Assist fee (all-in)"
-                                    ariaLabel="Explain all-in Gas Assist fee"
-                                    help="Exact sell-token fee already deducted before quoting the net swap input. It includes the network reserve and PistachioSwap fees."
-                                    value={`${sameChain.gasAssistFee.totalToken}${sameChain.gasAssistFee.totalUsd ? ` (${sameChain.gasAssistFee.totalUsd})` : ''}`}
-                                />
-                                <DetailRow label="Network reserve (included)" ariaLabel="Explain included network reserve" help="Network-gas reserve already included in the all-in Gas Assist fee." value={sameChain.gasAssistFee.networkReserveUsd ?? 'Unavailable'} />
-                                <DetailRow label="PistachioSwap fee (included)" ariaLabel="Explain included PistachioSwap fee" help="Service and trade fees already included in the all-in Gas Assist fee." value={sameChain.gasAssistFee.commercialUsd ?? 'Unavailable'} />
-                            </>
+                            <DetailRow
+                                label="Gas Assist fee"
+                                ariaLabel="Explain Gas Assist fee"
+                                help="Exact sell-token fee already deducted before quoting the net swap input. It includes sponsored network gas and the PistachioSwap fee."
+                                value={`${sameChain.gasAssistFee.totalToken}${sameChain.gasAssistFee.totalUsd ? ` (${sameChain.gasAssistFee.totalUsd})` : ''}`}
+                            />
                         ) : (
                             <>
                                 <DetailRow label="Fee" ariaLabel="Explain fee" help="Provider and PistachioSwap fees included in this quote." value={sameChain.serviceFee} />
@@ -88,7 +86,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                 {isCrossChain && crossChain?.route && (
                     <>
                         {crossChain.gasAssistFee?.routeCostUsd && crossChain.gasAssistFee.allInCostUsd ? (
-                            <DetailRow label="Estimated total cost (all-in)" ariaLabel="Explain all-in estimated total cost" help="Cross-chain route costs plus the exact Gas Assist fee already reflected in this sponsored quote." value={crossChain.gasAssistFee.allInCostUsd} />
+                            <DetailRow label="Estimated total cost" ariaLabel="Explain estimated total cost" help="Cross-chain route costs plus the Gas Assist fee already reflected in this sponsored quote." value={crossChain.gasAssistFee.allInCostUsd} />
                         ) : crossChain.estimatedTotalCost ? (
                             <DetailRow label="Estimated total cost" ariaLabel="Explain estimated total cost" help="Estimated combined route and network costs." value={crossChain.estimatedTotalCost} />
                         ) : crossChain.estimatedRouteCost ? (
@@ -97,10 +95,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                             <DetailRow label="Route costs" ariaLabel="Explain route costs" help="Route costs are included in the displayed quote." value="Included in quote" />
                         ) : null}
                         {crossChain.gasAssistFee ? (
-                            <>
-                                <DetailRow label="Gas Assist fee (included)" ariaLabel="Explain included Gas Assist fee" help="Exact sell-token charge for sponsored source gas and PistachioSwap fees. It is already deducted from the quoted input." value={`${crossChain.gasAssistFee.totalToken}${crossChain.gasAssistFee.totalUsd ? ` (${crossChain.gasAssistFee.totalUsd})` : ''}`} />
-                                <DetailRow label="Network reserve (included)" ariaLabel="Explain included network reserve" help="Sponsored BNB gas reserve already included in the Gas Assist fee." value={crossChain.gasAssistFee.networkReserveUsd ?? 'Unavailable'} />
-                            </>
+                            <DetailRow label="Gas Assist fee" ariaLabel="Explain Gas Assist fee" help="Exact sell-token charge for sponsored source gas and PistachioSwap fees. It is already deducted from the quoted input." value={`${crossChain.gasAssistFee.totalToken}${crossChain.gasAssistFee.totalUsd ? ` (${crossChain.gasAssistFee.totalUsd})` : ''}`} />
                         ) : (
                             <DetailRow label="Source network gas" ariaLabel="Explain source network gas" help="Estimated gas required on the source network." value={crossChain.sourceGasCost ?? 'Calculated at confirmation'} />
                         )}
