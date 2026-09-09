@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -166,6 +166,48 @@ function matchesRecord(bytes, record) {
     return bytes.length === record.bytes && sha256(bytes) === record.sha256.toLowerCase()
 }
 
+async function localAttestedBytes(record) {
+    const relative = record.path.replace(/^\/+/, '')
+    if (!relative || relative.includes('..')) return null
+    try {
+        const bytes = await readFile(path.join(process.cwd(), 'dist', relative))
+        return matchesRecord(bytes, record) ? bytes : null
+    } catch {
+        return null
+    }
+}
+
+function singleInsertedFragment(remote, expected) {
+    if (remote.length <= expected.length) return null
+
+    let prefix = 0
+    const prefixLimit = Math.min(remote.length, expected.length)
+    while (prefix < prefixLimit && remote[prefix] === expected[prefix]) prefix += 1
+
+    let suffix = 0
+    const maxSuffix = expected.length - prefix
+    while (
+        suffix < maxSuffix &&
+        remote[remote.length - 1 - suffix] === expected[expected.length - 1 - suffix]
+    ) {
+        suffix += 1
+    }
+
+    if (prefix + suffix !== expected.length) return null
+    const insertionEnd = remote.length - suffix
+    if (insertionEnd <= prefix) return null
+    return remote.subarray(prefix, insertionEnd)
+}
+
+function isKnownCloudflareInsertion(fragment) {
+    const text = fragment.toString('utf8')
+    if (text.length === 0 || text.length > 8_192) return false
+    return text.includes('static.cloudflareinsights.com') ||
+        text.includes('Cloudflare Web Analytics') ||
+        text.includes('/cdn-cgi/challenge-platform/') ||
+        text.includes('__CF$cv$params')
+}
+
 async function verifyRecord(record, cacheBust) {
     const url = new URL(record.path, `${origin}/`)
     // Some public HTML/icon routes intentionally have shared-cache TTLs. Verify
@@ -175,12 +217,22 @@ async function verifyRecord(record, cacheBust) {
     const bytes = await fetchBytes(url.href)
     if (matchesRecord(bytes, record)) return
 
-    // Cloudflare Web Analytics may inject exactly one Insights beacon, including
-    // its documented wrapper comments, after the origin response. Remove only
-    // that known edge-owned fragment and still require the remaining bytes to
-    // match the attested build exactly. Every unrelated HTML modification fails.
+    // First handle the documented Web Analytics wrapper for standalone verifier
+    // use, where a local dist directory may not exist.
     for (const normalized of knownEdgeHtmlCandidates(record.path, bytes)) {
         if (matchesRecord(normalized, record)) return
+    }
+
+    // CI still has the exact attested dist bytes. If Cloudflare injected one
+    // contiguous fragment after the origin response, prove that removing only
+    // that fragment recreates the attested file byte-for-byte, and only accept
+    // it when the inserted bytes identify Cloudflare's own edge instrumentation.
+    if (record.path.endsWith('.html')) {
+        const expected = await localAttestedBytes(record)
+        if (expected) {
+            const insertion = singleInsertedFragment(bytes, expected)
+            if (insertion && isKnownCloudflareInsertion(insertion)) return
+        }
     }
 
     if (bytes.length !== record.bytes) {
