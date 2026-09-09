@@ -208,22 +208,34 @@ export const methods = {
                 return
             }
             try {
-                this.vaults = await this.storage.listVaults()
-                this.vault = await this.storage.readActiveVault()
+                const bootstrap = typeof this.storage.readWalletBootstrapState === 'function'
+                    ? await this.storage.readWalletBootstrapState()
+                    : null
+                const preference = async (key) => bootstrap
+                    ? bootstrap.preferences?.[key] ?? null
+                    : this.storage.readPreference(key)
+
+                if (bootstrap) {
+                    this.vaults = bootstrap.vaults
+                    this.vault = bootstrap.activeVault
+                } else {
+                    this.vaults = await this.storage.listVaults()
+                    this.vault = await this.storage.readActiveVault()
+                }
                 if (!this.vault && this.vaults.length > 0) {
                     this.vault = await this.storage.selectActiveVault(this.vaults[0].vaultId)
                 }
-                this.vaultPreferences = normalizeVaultPreferences(await this.storage.readPreference('vaultPreferences'))
-                this.lastUnlockByWrap = await this.storage.readPreference('lastUnlockByWrap') ?? {}
-                this.recoveryBackupConfirmed = await this.storage.readPreference('recoveryBackupConfirmed') === true
-                const activeSessionVaultId = await this.storage.readPreference(ACTIVE_SESSION_VAULT_PREFERENCE)
+                this.vaultPreferences = normalizeVaultPreferences(await preference('vaultPreferences'))
+                this.lastUnlockByWrap = await preference('lastUnlockByWrap') ?? {}
+                this.recoveryBackupConfirmed = await preference('recoveryBackupConfirmed') === true
+                const activeSessionVaultId = await preference(ACTIVE_SESSION_VAULT_PREFERENCE)
                 this.activeSessionVaultId = typeof activeSessionVaultId === 'string' ? activeSessionVaultId : null
                 this.sessionActive = this.activeSessionVaultId === this.vault?.vaultId
                 const storedActivity = Number(
-                    await this.storage.readPreference(LAST_WALLET_ACTIVITY_PREFERENCE),
+                    await preference(LAST_WALLET_ACTIVITY_PREFERENCE),
                 )
                 const resumeEligible =
-                    await this.storage.readPreference(
+                    await preference(
                         SESSION_RESUME_ELIGIBLE_PREFERENCE,
                     ) === true
                 this.lastWalletActivityAt = Number.isFinite(storedActivity)

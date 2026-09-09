@@ -1,5 +1,5 @@
 import { IDBFactory } from 'fake-indexeddb'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { bytesToBase64Url } from './passkeyEncoding.js'
 import { createEncryptedVault } from './vaultCrypto.js'
@@ -10,6 +10,7 @@ import {
     readActiveVault,
     readPreference,
     readVault,
+    readWalletBootstrapState,
     saveAndReadBackVault,
     selectActiveVault,
     writePreference,
@@ -49,6 +50,29 @@ describe('Pistachio IndexedDB vault storage', () => {
         expect(serialized).not.toContain('mnemonic')
         expect(serialized).not.toContain('privateKey')
         expect(serialized).not.toContain('prfOutput')
+    })
+
+    it('reads encrypted vaults and startup preferences through one database open', async () => {
+        const vault = await fixture()
+        const activityAt = Date.now() - 30_000
+        await saveAndReadBackVault(vault, indexedDb)
+        await writePreference('activeSessionVaultId', vault.vaultId, indexedDb)
+        await writePreference('lastWalletActivityAt', activityAt, indexedDb)
+        await writePreference('sessionResumeEligible', true, indexedDb)
+
+        const openSpy = vi.spyOn(indexedDb, 'open')
+        const bootstrap = await readWalletBootstrapState(indexedDb)
+
+        expect(openSpy).toHaveBeenCalledTimes(1)
+        expect(bootstrap.vaults).toEqual([vault])
+        expect(bootstrap.activeVault).toEqual(vault)
+        expect(bootstrap.preferences).toMatchObject({
+            activeVaultId: vault.vaultId,
+            activeSessionVaultId: vault.vaultId,
+            lastWalletActivityAt: activityAt,
+            sessionResumeEligible: true,
+        })
+        expect(bootstrap.preferences.vaultPreferences).toBeNull()
     })
 
     it('rejects corrupted and future-schema records', async () => {

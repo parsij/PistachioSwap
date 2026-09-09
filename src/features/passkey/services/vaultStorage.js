@@ -7,6 +7,16 @@ import {
 import { pistachioError } from './passkeyErrors.js'
 import { validatePistachioVault } from './vaultSchema.js'
 
+const WALLET_BOOTSTRAP_PREFERENCE_KEYS = Object.freeze([
+    'activeVaultId',
+    'vaultPreferences',
+    'lastUnlockByWrap',
+    'recoveryBackupConfirmed',
+    'activeSessionVaultId',
+    'lastWalletActivityAt',
+    'sessionResumeEligible',
+])
+
 function requestResult(request) {
     return new Promise((resolve, reject) => {
         request.addEventListener('success', () => resolve(request.result), { once: true })
@@ -59,6 +69,46 @@ export async function saveAndReadBackVault(vault, indexedDb = globalThis.indexed
         await transactionDone(readTransaction)
         return validatePistachioVault(stored)
     } catch (error) {
+        throw pistachioError('PISTACHIO_WALLET_STORAGE_FAILED', undefined, error)
+    } finally {
+        database.close()
+    }
+}
+
+/** Reads the wallet's encrypted vaults and initialization preferences in one readonly transaction. */
+export async function readWalletBootstrapState(indexedDb = globalThis.indexedDB) {
+    const database = await openPistachioWalletDatabase(indexedDb)
+    try {
+        const transaction = database.transaction(
+            [PISTACHIO_VAULT_STORE, PISTACHIO_PREFERENCES_STORE],
+            'readonly',
+        )
+        const completion = transactionDone(transaction)
+        const vaultStore = transaction.objectStore(PISTACHIO_VAULT_STORE)
+        const preferenceStore = transaction.objectStore(PISTACHIO_PREFERENCES_STORE)
+        const vaultsPromise = requestResult(vaultStore.getAll())
+        const preferencePromises = WALLET_BOOTSTRAP_PREFERENCE_KEYS.map(async (key) => {
+            const record = await requestResult(preferenceStore.get(key))
+            return [key, record?.value ?? null]
+        })
+        const [storedVaults, preferenceEntries] = await Promise.all([
+            vaultsPromise,
+            Promise.all(preferencePromises),
+        ])
+        await completion
+
+        const vaults = storedVaults.map(validatePistachioVault)
+        const preferences = Object.fromEntries(preferenceEntries)
+        const activeVaultId = typeof preferences.activeVaultId === 'string'
+            ? preferences.activeVaultId
+            : null
+        const activeVault = activeVaultId
+            ? vaults.find((vault) => vault.vaultId === activeVaultId) ?? null
+            : null
+
+        return { vaults, activeVault, preferences }
+    } catch (error) {
+        if (error instanceof TypeError) throw error
         throw pistachioError('PISTACHIO_WALLET_STORAGE_FAILED', undefined, error)
     } finally {
         database.close()
@@ -187,4 +237,8 @@ export async function clearDiagnosticVault(indexedDb = globalThis.indexedDB) {
     }
 }
 
-export const vaultStorageInternals = { requestResult, transactionDone }
+export const vaultStorageInternals = {
+    requestResult,
+    transactionDone,
+    WALLET_BOOTSTRAP_PREFERENCE_KEYS,
+}
