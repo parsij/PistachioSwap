@@ -12,7 +12,14 @@ const MANIFEST_PATHS = [
     '/.well-known/pistachio-build-manifest.json',
 ]
 const CONCURRENCY = 8
-const CLOUDFLARE_INSIGHTS_SCRIPT = /<script\b[^>]*\bsrc=(['"])https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js[^'"<>]*\1[^>]*><\/script>/gi
+const CLOUDFLARE_INSIGHTS_SCRIPT_SOURCE = String.raw`<script\b[^>]*\bsrc=(['"])https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js[^'"<>]*\1[^>]*><\/script>`
+const CLOUDFLARE_EDGE_PATTERNS = [
+    new RegExp(
+        String.raw`<!--\s*Cloudflare Web Analytics\s*-->\s*${CLOUDFLARE_INSIGHTS_SCRIPT_SOURCE}\s*<!--\s*End Cloudflare Web Analytics\s*-->`,
+        'gi',
+    ),
+    new RegExp(CLOUDFLARE_INSIGHTS_SCRIPT_SOURCE, 'gi'),
+]
 
 const args = process.argv.slice(2)
 const skipAttestationIndex = args.indexOf('--skip-attestation')
@@ -138,14 +145,21 @@ async function verifyAttestation(manifestBytes, manifest) {
     }
 }
 
-function normalizeKnownEdgeHtml(recordPath, bytes) {
-    if (!recordPath.endsWith('.html')) return null
+function knownEdgeHtmlCandidates(recordPath, bytes) {
+    if (!recordPath.endsWith('.html')) return []
     const html = bytes.toString('utf8')
-    const matches = [...html.matchAll(CLOUDFLARE_INSIGHTS_SCRIPT)]
-    if (matches.length !== 1) return null
-    const match = matches[0]
-    const normalized = html.slice(0, match.index) + html.slice(match.index + match[0].length)
-    return Buffer.from(normalized, 'utf8')
+    const candidates = []
+    for (const pattern of CLOUDFLARE_EDGE_PATTERNS) {
+        pattern.lastIndex = 0
+        const matches = [...html.matchAll(pattern)]
+        if (matches.length !== 1) continue
+        const match = matches[0]
+        candidates.push(Buffer.from(
+            html.slice(0, match.index) + html.slice(match.index + match[0].length),
+            'utf8',
+        ))
+    }
+    return candidates
 }
 
 function matchesRecord(bytes, record) {
@@ -161,12 +175,13 @@ async function verifyRecord(record, cacheBust) {
     const bytes = await fetchBytes(url.href)
     if (matchesRecord(bytes, record)) return
 
-    // Cloudflare Web Analytics may inject exactly one Insights beacon into HTML
-    // after the origin response. Strip only that known edge-owned script and then
-    // require the remaining bytes to match the attested build exactly. This is
-    // deliberately not a general HTML normalizer: every other modification fails.
-    const normalized = normalizeKnownEdgeHtml(record.path, bytes)
-    if (normalized && matchesRecord(normalized, record)) return
+    // Cloudflare Web Analytics may inject exactly one Insights beacon, including
+    // its documented wrapper comments, after the origin response. Remove only
+    // that known edge-owned fragment and still require the remaining bytes to
+    // match the attested build exactly. Every unrelated HTML modification fails.
+    for (const normalized of knownEdgeHtmlCandidates(record.path, bytes)) {
+        if (matchesRecord(normalized, record)) return
+    }
 
     if (bytes.length !== record.bytes) {
         throw new Error(`${record.path}: expected ${record.bytes} bytes, received ${bytes.length}`)
