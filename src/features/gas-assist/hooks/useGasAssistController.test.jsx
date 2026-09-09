@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     preview: null,
     prepaidArgs: null,
     previewArgs: null,
+    recordWalletActivity: vi.fn(),
 }))
 
 vi.mock('./usePrepaidSponsorship.js', () => ({
@@ -21,6 +22,9 @@ vi.mock('./useSponsorshipPreview.js', () => ({
         mocks.previewArgs = args
         return mocks.preview
     },
+}))
+vi.mock('../../wallet/services/walletActivity.js', () => ({
+    recordWalletActivity: mocks.recordWalletActivity,
 }))
 
 import { useGasAssistController } from './useGasAssistController.js'
@@ -81,11 +85,14 @@ describe('exact prepaid Gas Assist route ownership', () => {
         }
         mocks.prepaidArgs = null
         mocks.previewArgs = null
+        mocks.recordWalletActivity.mockReset()
         baseProps.setBuyAmount.mockReset()
         baseProps.setVisibleStatus.mockReset()
+        baseProps.onConfirmed.mockReset()
     })
 
     afterEach(() => {
+        vi.useRealTimers()
         vi.restoreAllMocks()
     })
 
@@ -142,6 +149,46 @@ describe('exact prepaid Gas Assist route ownership', () => {
             totalPrepaymentUsdMicros: '1000000',
         }))
         expect(mocks.prepaid.start).not.toHaveBeenCalled()
+    })
+
+    it('records completed Gas Assist swaps and retries the wallet refresh while discovery catches up', async () => {
+        vi.useFakeTimers()
+        const { unmount } = renderHook(() => useGasAssistController(baseProps))
+        const order = {
+            status: 'completed',
+            swapTransactionHash: `0x${'a'.repeat(64)}`,
+            grossInputAmountRaw: '51000000',
+            expectedOutputRaw: '2000000000000000000',
+        }
+
+        await act(async () => {
+            await mocks.prepaidArgs.onConfirmed(order)
+        })
+
+        expect(mocks.recordWalletActivity).toHaveBeenCalledWith(expect.objectContaining({
+            walletAddress: baseProps.account,
+            chainId: 56,
+            type: 'swapped',
+            hash: order.swapTransactionHash,
+            sellToken: baseProps.sellToken,
+            buyToken: baseProps.buyToken,
+            sellAmount: '51',
+            buyAmount: '2',
+            provider: 'Gas Assist',
+        }))
+        expect(baseProps.onConfirmed).toHaveBeenCalledTimes(1)
+        expect(baseProps.onConfirmed).toHaveBeenLastCalledWith(order, { refreshOnly: false })
+        expect(baseProps.setVisibleStatus).toHaveBeenLastCalledWith(
+            'Gas Assist swap confirmed. Updating wallet balances…',
+        )
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(8_000)
+        })
+
+        expect(baseProps.onConfirmed).toHaveBeenCalledTimes(3)
+        expect(baseProps.onConfirmed).toHaveBeenLastCalledWith(order, { refreshOnly: true })
+        unmount()
     })
 
     it('fails closed without putting backend codes in the customer status area', async () => {

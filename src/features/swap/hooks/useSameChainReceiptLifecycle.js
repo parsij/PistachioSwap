@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWaitForTransactionReceipt } from '#wallet-runtime'
 
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+
+const POST_SWAP_REFRESH_DELAYS_MS = Object.freeze([2_000, 8_000])
 
 /**
  * Owns same-chain transaction hash/status and applies the existing receipt side effects once.
@@ -40,11 +42,30 @@ export function useSameChainReceiptLifecycle({
 }) {
     const [transactionHash, setTransactionHash] = useState(null)
     const [transactionStatus, setTransactionStatus] = useState('idle')
+    const refreshTimersRef = useRef(new Set())
     const receipt = useWaitForTransactionReceipt({
         hash: transactionHash ?? undefined,
         chainId,
         query: { enabled: Boolean(transactionHash) },
     })
+
+    const clearRefreshTimers = useCallback(() => {
+        for (const timer of refreshTimersRef.current) globalThis.clearTimeout(timer)
+        refreshTimersRef.current.clear()
+    }, [])
+
+    const refreshSettledWallet = useCallback(() => {
+        void refreshWalletBalances()
+        for (const delay of POST_SWAP_REFRESH_DELAYS_MS) {
+            const timer = globalThis.setTimeout(() => {
+                refreshTimersRef.current.delete(timer)
+                void refreshWalletBalances()
+            }, delay)
+            refreshTimersRef.current.add(timer)
+        }
+    }, [refreshWalletBalances])
+
+    useEffect(() => clearRefreshTimers, [account, clearRefreshTimers])
 
     const resetReceiptLifecycle = useCallback(() => {
         setTransactionHash(null)
@@ -72,7 +93,7 @@ export function useSameChainReceiptLifecycle({
 
         if (receipt.isSuccess && transactionStatus === 'submitted') {
             setTransactionStatus('confirmed')
-            setVisibleStatus('Swap confirmed.')
+            setVisibleStatus('Swap confirmed. Updating wallet balances…')
             diagnostic('receipt.confirmed', { hash: transactionHash, chainId })
             recordWalletActivity({
                 walletAddress: account,
@@ -83,7 +104,7 @@ export function useSameChainReceiptLifecycle({
             closeReview()
             resetInputsAfterSuccess()
             invalidateQuoteAfterSuccess()
-            void refreshWalletBalances()
+            refreshSettledWallet()
         }
 
         if (receipt.isError && transactionStatus === 'submitted') {
@@ -101,7 +122,7 @@ export function useSameChainReceiptLifecycle({
         invalidateQuoteAfterSuccess,
         receipt.isError,
         receipt.isSuccess,
-        refreshWalletBalances,
+        refreshSettledWallet,
         resetInputsAfterSuccess,
         setReviewError,
         setReviewOperation,

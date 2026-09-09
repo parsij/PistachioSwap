@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { formatUnits } from 'viem'
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
 import { useSponsorshipPreview } from './useSponsorshipPreview.js'
@@ -6,6 +6,9 @@ import {
     getGasAssistFeeBreakdown,
     usdDecimalToMicros,
 } from '../model/gasAssistFee.js'
+import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+
+const POST_SWAP_REFRESH_DELAYS_MS = Object.freeze([2_000, 8_000])
 
 function previewReviewOrder(preview, walletAddress) {
     if (!preview) return null
@@ -38,6 +41,14 @@ function commercialFeeRaw(preview, fees = getGasAssistFeeBreakdown(preview)) {
         ) / fees.totalFeeUsdMicros
     } catch {
         return 0n
+    }
+}
+
+function activityAmount(raw, decimals) {
+    try {
+        return formatUnits(BigInt(raw), Number(decimals))
+    } catch {
+        return null
     }
 }
 
@@ -94,8 +105,61 @@ export function useGasAssistController({
     normalQuoteStatus,
     buyInputDenomination,
     setBuyAmount,
+    setVisibleStatus,
     onConfirmed,
 }) {
+    const refreshTimersRef = useRef(new Set())
+    const clearRefreshTimers = useCallback(() => {
+        for (const timer of refreshTimersRef.current) globalThis.clearTimeout(timer)
+        refreshTimersRef.current.clear()
+    }, [])
+
+    useEffect(() => clearRefreshTimers, [account, clearRefreshTimers])
+
+    const handleConfirmedSwap = useCallback(async (order) => {
+        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
+        recordWalletActivity({
+            walletAddress: account,
+            chainId: 56,
+            type: 'swapped',
+            hash,
+            sellToken,
+            buyToken,
+            sellAmount: activityAmount(
+                order?.grossInputAmountRaw ?? activeAmountIn,
+                sellToken?.decimals,
+            ),
+            buyAmount: activityAmount(order?.expectedOutputRaw, buyToken?.decimals),
+            provider: 'Gas Assist',
+        })
+
+        const refresh = async (refreshOnly) => {
+            try {
+                await onConfirmed?.(order, { refreshOnly })
+            } catch {
+                // Wallet refresh is best-effort after a transaction the backend
+                // has already marked completed. Never turn settlement into failure.
+            }
+            setVisibleStatus?.('Gas Assist swap confirmed. Updating wallet balances…')
+        }
+
+        await refresh(false)
+        for (const delay of POST_SWAP_REFRESH_DELAYS_MS) {
+            const timer = globalThis.setTimeout(() => {
+                refreshTimersRef.current.delete(timer)
+                void refresh(true)
+            }, delay)
+            refreshTimersRef.current.add(timer)
+        }
+    }, [
+        account,
+        activeAmountIn,
+        buyToken,
+        onConfirmed,
+        sellToken,
+        setVisibleStatus,
+    ])
+
     const gasAssistRequested = routingMode === gasAssistRoutingMode
     const prepaidSponsorship = usePrepaidSponsorship({
         quoteEndpoint,
@@ -105,7 +169,7 @@ export function useGasAssistController({
         grossInputAmount: activeAmountIn,
         slippageBps: Math.max(30, configuredSlippageBps),
         required: gasAssistRequested,
-        onConfirmed,
+        onConfirmed: handleConfirmedSwap,
     })
 
     const prepaidRequired = gasAssistRequested
@@ -266,6 +330,7 @@ export function useGasAssistController({
 }
 
 export const gasAssistControllerInternals = {
+    activityAmount,
     commercialFeeRaw,
     logGasAssistDiagnostic,
     previewReviewOrder,
