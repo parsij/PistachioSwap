@@ -137,9 +137,13 @@ async function verifyAttestation(manifestBytes, manifest) {
     }
 }
 
-async function verifyRecord(record) {
-    const url = new URL(record.path, `${origin}/`).href
-    const bytes = await fetchBytes(url)
+async function verifyRecord(record, cacheBust) {
+    const url = new URL(record.path, `${origin}/`)
+    // Some public HTML/icon routes intentionally have shared-cache TTLs. Verify
+    // the newly deployed release through a distinct cache key instead of
+    // comparing a fresh manifest to an older, still-valid CDN cache entry.
+    url.searchParams.set('pistachio_verify', cacheBust)
+    const bytes = await fetchBytes(url.href)
     if (bytes.length !== record.bytes) {
         throw new Error(`${record.path}: expected ${record.bytes} bytes, received ${bytes.length}`)
     }
@@ -149,7 +153,7 @@ async function verifyRecord(record) {
     }
 }
 
-async function verifyFiles(records) {
+async function verifyFiles(records, cacheBust) {
     let nextIndex = 0
     let verified = 0
     const failures = []
@@ -161,7 +165,7 @@ async function verifyFiles(records) {
             if (index >= records.length) return
             const record = records[index]
             try {
-                await verifyRecord(record)
+                await verifyRecord(record, cacheBust)
                 verified += 1
                 if (verified % 25 === 0 || verified === records.length) {
                     console.log(`  ${verified}/${records.length} production files verified`)
@@ -206,7 +210,7 @@ validateManifest(manifest)
 console.log(`Manifest: ${fetchedManifest.path}`)
 console.log(`Source commit: ${manifest.source.commit}`)
 await verifyAttestation(manifestBytes, manifest)
-await verifyFiles(manifest.files)
+await verifyFiles(manifest.files, manifest.source.commit)
 await checkMainHead(manifest)
 
 console.log(`✓ ${origin} matches the GitHub-attested PistachioSwap frontend build.`)
