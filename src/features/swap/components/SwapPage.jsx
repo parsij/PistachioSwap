@@ -1,4 +1,5 @@
-import PasskeyVaultTestPanel from '../../passkey/components/PasskeyVaultTestPanel.jsx'
+import { lazy, Suspense } from 'react'
+
 import PistachioWalletController from '../../passkey/components/PistachioWalletController.jsx'
 import SwapToolbar from './SwapToolbar.jsx'
 import SwapCard from './SwapCard.jsx'
@@ -6,6 +7,10 @@ import TokenSelectorOverlay from '../../tokens/components/TokenSelectorOverlay.j
 import SameChainReviewDialog from './SameChainReviewDialog.jsx'
 import GasAssistDialogs from '../../gas-assist/components/GasAssistDialogs.jsx'
 import CrossChainReviewDialog from '../../cross-chain/components/CrossChainReviewDialog.jsx'
+
+const PasskeyVaultTestPanel = import.meta.env.DEV
+    ? lazy(() => import('../../passkey/components/PasskeyVaultTestPanel.jsx'))
+    : null
 
 /**
  * Composes the complete swap feature page from grouped presentation view models.
@@ -16,7 +21,11 @@ import CrossChainReviewDialog from '../../cross-chain/components/CrossChainRevie
 export default function SwapPage({ toolbar, card, tokenSelector, sameChainReview, gasAssistDialogs, crossChainReview }) {
     return (
         <>
-            <PasskeyVaultTestPanel />
+            {PasskeyVaultTestPanel && (
+                <Suspense fallback={null}>
+                    <PasskeyVaultTestPanel />
+                </Suspense>
+            )}
             <section className="swap-root">
                 <SwapToolbar {...toolbar} />
                 <SwapCard {...card} />
