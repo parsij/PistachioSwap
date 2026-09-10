@@ -67,30 +67,43 @@ describe('Gas Assist quote details', () => {
 
         expect(screen.getByText('Gas Assist fee')).toBeTruthy()
         expect(screen.getByText('1 SELL ($1)')).toBeTruthy()
-        expect(screen.queryByText('Gas Assist fee (included)')).toBeNull()
+        expect(screen.queryByText('Estimated fee')).toBeNull()
         expect(screen.queryByText('Estimated total cost')).toBeNull()
-        expect(screen.queryByText('Estimated total cost (all-in)')).toBeNull()
         expect(screen.queryByText('Source network gas')).toBeNull()
         expect(screen.queryByText('$4')).toBeNull()
         expect(screen.queryByText('$1.50')).toBeNull()
     })
 
-    it('does not display a meaningless zero sponsored amount', () => {
+    it('shows one combined cross-chain fee without component rows', () => {
         render(<SwapDetails
             {...baseProps}
             mode="cross-chain"
             sameChain={{ visible: false }}
             crossChain={{
                 route: { feeIncluded: true, durationSeconds: 30 },
-                costs: { routeCostUsd: '0.23', sponsoredUsd: '0' },
-                estimatedRouteCost: '$0.23',
+                costs: {
+                    providerFeeUsd: '0.01',
+                    destinationGasUsd: '0.02',
+                    swapImpactUsd: '0.005',
+                    sponsoredUsd: '0',
+                },
+                estimatedTotalCost: null,
+                estimatedRouteCost: '~$0.03',
                 sourceGasCost: null,
-                appFee: null,
+                appFee: '<$0.01',
                 minimumReceived: '0.37 BUY',
                 gasAssistFee: null,
             }}
         />)
 
+        expect(screen.getByText('Estimated fee')).toBeTruthy()
+        expect(screen.getAllByText('~$0.03').length).toBeGreaterThan(0)
+        expect(screen.queryByText('Estimated route cost')).toBeNull()
+        expect(screen.queryByText('Source network gas')).toBeNull()
+        expect(screen.queryByText('Routing fee')).toBeNull()
+        expect(screen.queryByText('Destination execution cost')).toBeNull()
+        expect(screen.queryByText('Swap/route impact')).toBeNull()
+        expect(screen.queryByText('PistachioSwap fee')).toBeNull()
         expect(screen.queryByText('Sponsored amount')).toBeNull()
     })
 })
