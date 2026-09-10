@@ -78,16 +78,6 @@ function Countdown({ expiresAt, onExpired }) {
     return <span>{remaining}s</span>
 }
 
-function providerFeeRows(fees) {
-    if (!fees || typeof fees !== 'object') return []
-    return ['gasFee', 'zeroExFee'].flatMap((key) => {
-        const fee = fees[key]
-        return fee?.amount != null
-            ? [[key === 'gasFee' ? 'Provider gas fee' : 'Provider fee', `${fee.amount} base units`]]
-            : []
-    })
-}
-
 function packageExecutionInFlight(phase, order) {
     if (order?.preSignedPackage) return true
     return [
@@ -214,6 +204,8 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
         order.atomicExecution === true ||
         hashes.length === 1
     )
+    const feeUsd = formatUsdMicros(fees?.totalFeeUsdMicros)
+    const feeUsdSuffix = feeUsd === 'Unavailable' ? '' : ` (${feeUsd})`
     return (
         <details className="gas-assist-technical">
             <summary>
@@ -225,24 +217,8 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                     <div className="gas-assist-details">
                         <div><span>Gross input</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
-                        <div><span>Exact Gas Assist fee</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}</strong></div>
-                        <div><span>Total Gas Assist fee value</span><strong>{formatUsdMicros(fees?.totalFeeUsdMicros)}</strong></div>
-                        {purpose === 'cross-chain-gas' && fees?.routeCostUsdMicros != null && fees.allInCostUsdMicros != null && (
-                            <div><span>Total cross-chain cost (all-in)</span><strong>{formatUsdMicros(fees.allInCostUsdMicros)}</strong></div>
-                        )}
-                        {purpose === 'cross-chain-gas' && fees?.routeCostUsdMicros != null && (
-                            <div><span>Route costs</span><strong>{formatUsdMicros(fees.routeCostUsdMicros)}</strong></div>
-                        )}
-                        <div><span>Network-fee reserve</span><strong>{formatUsdMicros(order.gasReserveUsdMicros)}</strong></div>
-                        {fees?.estimatedSponsoredGasUsdMicros != null && (
-                            <div><span>Estimated sponsored gas</span><strong>{formatUsdMicros(fees.estimatedSponsoredGasUsdMicros)}</strong></div>
-                        )}
-                        <div><span>Service fee</span><strong>{formatUsdMicros(order.fixedServiceFeeUsdMicros)}</strong></div>
-                        <div><span>Trade fee</span><strong>{formatUsdMicros(order.platformFeeUsdMicros)}</strong></div>
+                        <div><span>Gas Assist fee</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong></div>
                         <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong></div>
-                        {providerFeeRows(order.providerFees).map(([label, value]) => (
-                            <div key={`${label}:${value}`}><span>{label}</span><strong>{value}</strong></div>
-                        ))}
                         <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>
                         {atomic && hashes[0] && (
                             <div><span>Transaction</span><code>{hashes[0]}</code></div>
@@ -331,6 +307,9 @@ export default function GasAssistPrepaymentDialog({
         ? (sponsorship.refreshing ? 'Refreshing quote…' : 'Refresh quote')
         : 'Try again'
 
+    const feeUsd = formatUsdMicros(feeBreakdown?.totalFeeUsdMicros)
+    const feeUsdSuffix = feeUsd === 'Unavailable' ? '' : ` (${feeUsd})`
+
     return (
         <Dialog.Root open onOpenChange={(open) => !open && !walletBusy && !waitingForChain && sponsorship.close()}>
             <Dialog.Portal>
@@ -369,17 +348,9 @@ export default function GasAssistPrepaymentDialog({
                                 </div>
                             </div>
                             <div className="gas-assist-summary-fee">
-                                <span>{purpose === 'cross-chain-gas' ? 'Gas Assist fee (included)' : 'Gas Assist fee (all-in)'}</span>
-                                <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}</strong>
-                                <small>{formatUsdMicros(feeBreakdown?.totalFeeUsdMicros)} · network reserve + PistachioSwap fee</small>
+                                <span>Gas Assist fee</span>
+                                <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong>
                             </div>
-                            {purpose === 'cross-chain-gas' && feeBreakdown?.routeCostUsdMicros != null && feeBreakdown.allInCostUsdMicros != null && (
-                                <div className="gas-assist-summary-fee">
-                                    <span>Total cross-chain cost (all-in)</span>
-                                    <strong>{formatUsdMicros(feeBreakdown.allInCostUsdMicros)}</strong>
-                                    <small>Route costs + Gas Assist fee</small>
-                                </div>
-                            )}
                             <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />
                         </div>
                     )}
