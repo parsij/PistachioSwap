@@ -6,10 +6,26 @@ import './TransactionStatus.css'
 const GAS_ASSIST_GAS_EXPLANATION =
     "Every blockchain transaction needs gas, paid with that network's native token. On BNB Chain, gas is paid in BNB. Because this wallet is short on BNB, PistachioSwap can sponsor it; the exact Gas Assist fee is shown before you confirm."
 
+function visibleQuoteStatusMessage(message) {
+    const text = String(message ?? '').trim()
+    if (!text) return null
+
+    const normalized = text.toLowerCase()
+    if (
+        normalized.includes('gas cap') ||
+        normalized.includes('no usable sponsored route') ||
+        normalized.includes('no economically valid gas assist route')
+    ) {
+        return null
+    }
+
+    return text
+}
+
 /**
  * Renders native-balance, execution-mode, and current visible swap status messages.
- * Gas Assist's low-BNB explanation stays compact and moves the longer disclosure
- * behind a conventional info control instead of occupying the swap page.
+ * Internal route-cap failures stay behind the compact "No usable quote" CTA instead
+ * of exposing implementation details below the quote.
  */
 export default function TransactionStatus({
     nativeBalanceError,
@@ -18,6 +34,7 @@ export default function TransactionStatus({
     statusMessage,
 }) {
     const showGasAssistInfo = executionMessage === GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE
+    const visibleStatusMessage = visibleQuoteStatusMessage(statusMessage)
 
     return (
         <>
@@ -41,8 +58,8 @@ export default function TransactionStatus({
                     )}
                 </p>
             )}
-            {statusMessage && (
-                <p className="swap-status" role="status" aria-live="polite">{statusMessage}</p>
+            {visibleStatusMessage && (
+                <p className="swap-status" role="status" aria-live="polite">{visibleStatusMessage}</p>
             )}
         </>
     )
