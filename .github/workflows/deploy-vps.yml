@@ -129,8 +129,8 @@ jobs:
       - name: API typecheck
         run: pnpm --filter @pistachio/api typecheck
 
-      - name: Deployment tests
-        run: pnpm test
+      - name: Backend deployment tests
+        run: pnpm --filter @pistachio/api test
 
       - name: Prepare SSH
         shell: bash

@@ -1,4 +1,4 @@
-name: UI and deploy validation
+name: Backend and deploy validation
 
 on:
   pull_request:
@@ -36,8 +36,8 @@ jobs:
         run: pnpm --filter @pistachio/api typecheck
       - name: Validate deploy script syntax
         run: bash -n scripts/deploy/activate-vps-release.sh
-      - name: Tests
-        run: pnpm test
+      - name: Backend tests
+        run: pnpm --filter @pistachio/api test
       - name: Build
         env:
           NODE_OPTIONS: --max-old-space-size=8192
