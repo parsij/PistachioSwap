@@ -7,8 +7,14 @@ import {
     usdDecimalToMicros,
 } from '../model/gasAssistFee.js'
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+import {
+    beginOptimisticWalletTransaction,
+    finishOptimisticWalletTransaction,
+    rollbackOptimisticWalletTransaction,
+} from '../../wallet/services/optimisticBalances.js'
 
 const POST_SWAP_REFRESH_DELAYS_MS = Object.freeze([2_000, 8_000])
+const OPTIMISTIC_SETTLE_DELAY_MS = 9_000
 
 function previewReviewOrder(preview, walletAddress) {
     if (!preview) return null
@@ -109,12 +115,43 @@ export function useGasAssistController({
     onConfirmed,
 }) {
     const refreshTimersRef = useRef(new Set())
+    const optimisticHashRef = useRef(null)
     const clearRefreshTimers = useCallback(() => {
         for (const timer of refreshTimersRef.current) globalThis.clearTimeout(timer)
         refreshTimersRef.current.clear()
     }, [])
 
     useEffect(() => clearRefreshTimers, [account, clearRefreshTimers])
+
+    const handleSubmittedSwap = useCallback((order) => {
+        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
+        if (!hash || !account || !sellToken || !buyToken) return
+        try {
+            const grossInputRaw = BigInt(order?.grossInputAmountRaw ?? activeAmountIn)
+            const expectedOutputRaw = BigInt(order?.expectedOutputRaw ?? 0)
+            const changes = [{
+                chainId: 56,
+                token: sellToken,
+                deltaRaw: -grossInputRaw,
+            }]
+            if (expectedOutputRaw > 0n) {
+                changes.push({
+                    chainId: 56,
+                    token: buyToken,
+                    deltaRaw: expectedOutputRaw,
+                })
+            }
+            if (beginOptimisticWalletTransaction({
+                walletAddress: account,
+                transactionHash: hash,
+                changes,
+            })) {
+                optimisticHashRef.current = hash
+            }
+        } catch {
+            // An optimistic display update must never interfere with submission.
+        }
+    }, [account, activeAmountIn, buyToken, sellToken])
 
     const handleConfirmedSwap = useCallback(async (order) => {
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
@@ -151,6 +188,16 @@ export function useGasAssistController({
             }, delay)
             refreshTimersRef.current.add(timer)
         }
+        if (hash) {
+            const timer = globalThis.setTimeout(() => {
+                refreshTimersRef.current.delete(timer)
+                finishOptimisticWalletTransaction(hash)
+                if (optimisticHashRef.current?.toLowerCase() === hash.toLowerCase()) {
+                    optimisticHashRef.current = null
+                }
+            }, OPTIMISTIC_SETTLE_DELAY_MS)
+            refreshTimersRef.current.add(timer)
+        }
     }, [
         account,
         activeAmountIn,
@@ -169,8 +216,17 @@ export function useGasAssistController({
         grossInputAmount: activeAmountIn,
         slippageBps: Math.max(30, configuredSlippageBps),
         required: gasAssistRequested,
+        onSubmitted: handleSubmittedSwap,
         onConfirmed: handleConfirmedSwap,
     })
+
+    useEffect(() => {
+        if (!['failed', 'cancelled', 'expired', 'unsupported'].includes(prepaidSponsorship.phase)) return
+        const hash = optimisticHashRef.current
+        if (!hash) return
+        rollbackOptimisticWalletTransaction(hash)
+        optimisticHashRef.current = null
+    }, [prepaidSponsorship.phase])
 
     const prepaidRequired = gasAssistRequested
     const prepaidEnabled = prepaidSponsorship.configStatus === 'success' &&
