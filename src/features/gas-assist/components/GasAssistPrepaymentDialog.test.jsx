@@ -80,7 +80,8 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByText('No BNB needed')).toBeTruthy()
         expect(screen.getByText('You pay')).toBeTruthy()
         expect(screen.getByText('You receive')).toBeTruthy()
-        expect(screen.getByText('Gas Assist fee (all-in)')).toBeTruthy()
+        expect(screen.getAllByText('Gas Assist fee').length).toBeGreaterThan(0)
+        expect(screen.queryByText('Gas Assist fee (all-in)')).toBeNull()
         expect(screen.getByText(/One tap starts the flow/)).toBeTruthy()
 
         const details = screen.getByText('Transaction details').closest('details')
@@ -115,9 +116,10 @@ describe('Gas Assist prepayment review', () => {
 
         expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
         expect(screen.getByText(/No BNB is sent to your wallet/)).toBeTruthy()
-        expect(screen.getByText('Gas Assist fee (included)')).toBeTruthy()
-        expect(screen.getAllByText('Total cross-chain cost (all-in)').length).toBeGreaterThan(0)
-        expect(screen.getAllByText('$3.702').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Gas Assist fee').length).toBeGreaterThan(0)
+        expect(screen.queryByText('Gas Assist fee (included)')).toBeNull()
+        expect(screen.queryByText('Total cross-chain cost (all-in)')).toBeNull()
+        expect(screen.queryByText('$3.702')).toBeNull()
         expect(screen.queryByText(/converts only/i)).toBeNull()
     })
 
@@ -309,7 +311,7 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
     })
 
-    it('explains when a route exceeds the stablecoin BNB gas-cost cap', () => {
+    it('shows a simple no-route message when the sponsored BNB gas-cost cap is exceeded', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
                 phase: 'failed',
@@ -322,9 +324,7 @@ describe('Gas Assist prepayment review', () => {
             buyToken={buyToken}
         />)
 
-        expect(screen.getByText(
-            'This route exceeds the sponsored BNB gas-cost limit. Choose a lower-gas route or try again.',
-        )).toBeTruthy()
+        expect(screen.getByText('No usable route found.')).toBeTruthy()
         expect(screen.queryByText(
             'The quoted transaction exceeds the stablecoin BNB gas-cost cap.',
         )).toBeNull()
