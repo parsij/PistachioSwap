@@ -15,8 +15,8 @@ const baseProps = {
 
 afterEach(() => cleanup())
 
-describe('all-in Gas Assist quote details', () => {
-    it('shows the exact same-chain fee with included network and commercial breakdowns', () => {
+describe('Gas Assist quote details', () => {
+    it('shows one exact same-chain Gas Assist fee without duplicated breakdown rows', () => {
         render(<SwapDetails
             {...baseProps}
             mode="same-chain"
@@ -34,14 +34,15 @@ describe('all-in Gas Assist quote details', () => {
             crossChain={null}
         />)
 
-        expect(screen.getByText('Gas Assist fee (all-in)')).toBeTruthy()
+        expect(screen.getByText('Gas Assist fee')).toBeTruthy()
         expect(screen.getByText('1 SELL ($1)')).toBeTruthy()
-        expect(screen.getByText('Network reserve (included)')).toBeTruthy()
-        expect(screen.getByText('PistachioSwap fee (included)')).toBeTruthy()
+        expect(screen.queryByText('Gas Assist fee (all-in)')).toBeNull()
+        expect(screen.queryByText('Network reserve (included)')).toBeNull()
+        expect(screen.queryByText('PistachioSwap fee (included)')).toBeNull()
         expect(screen.queryByText('Network cost')).toBeNull()
     })
 
-    it('uses the sponsored all-in cross-chain cost instead of unsponsored source gas', () => {
+    it('shows only the sponsored Gas Assist fee instead of unsponsored cross-chain costs', () => {
         render(<SwapDetails
             {...baseProps}
             mode="cross-chain"
@@ -64,11 +65,14 @@ describe('all-in Gas Assist quote details', () => {
             }}
         />)
 
-        expect(screen.getByText('Estimated total cost (all-in)')).toBeTruthy()
-        expect(screen.getByText('$1.50')).toBeTruthy()
-        expect(screen.getByText('Gas Assist fee (included)')).toBeTruthy()
+        expect(screen.getByText('Gas Assist fee')).toBeTruthy()
+        expect(screen.getByText('1 SELL ($1)')).toBeTruthy()
+        expect(screen.queryByText('Gas Assist fee (included)')).toBeNull()
+        expect(screen.queryByText('Estimated total cost')).toBeNull()
+        expect(screen.queryByText('Estimated total cost (all-in)')).toBeNull()
         expect(screen.queryByText('Source network gas')).toBeNull()
         expect(screen.queryByText('$4')).toBeNull()
+        expect(screen.queryByText('$1.50')).toBeNull()
     })
 
     it('does not display a meaningless zero sponsored amount', () => {
