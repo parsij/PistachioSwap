@@ -47,8 +47,14 @@ import {
     isCuratedEvmChainId,
 } from '../../../../web3/curatedEvmChains.js'
 import { recordWalletActivity } from '../../services/walletActivity.js'
+import {
+    beginOptimisticWalletTransaction,
+    finishOptimisticWalletTransaction,
+    rollbackOptimisticWalletTransaction,
+} from '../../services/optimisticBalances.js'
 import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
 
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 /** Renders wallet transfer selection/validation/review and delegates explicit submission to Wagmi. */
 export default function SendAssetDialog({
@@ -208,24 +214,52 @@ export default function SendAssetDialog({
         setError(null)
         setStatus('confirming')
         let phase = 'switch-network'
+        let transactionHash = null
         try {
             if (Number(connectedChainId) !== Number(review.chainId)) {
                 await switchNetwork(targetChain)
             }
             phase = 'send'
-            let transactionHash
             if (review.plan.kind === 'native') {
                 transactionHash = await sendTransactionAsync(review.plan.request)
             } else {
                 const simulation = await publicClient.simulateContract(review.plan.request)
                 transactionHash = await writeContractAsync(simulation.request)
             }
+
+            const optimisticChanges = isNativeEvmToken(review.token)
+                ? [{
+                    chainId: review.chainId,
+                    token: review.token,
+                    deltaRaw: -(review.plan.amountWei + review.feeWei),
+                }]
+                : [
+                    {
+                        chainId: review.chainId,
+                        token: review.token,
+                        deltaRaw: -review.plan.amountWei,
+                    },
+                    {
+                        chainId: review.chainId,
+                        tokenAddress: NATIVE_TOKEN_ADDRESS,
+                        deltaRaw: -review.feeWei,
+                    },
+                ]
+            beginOptimisticWalletTransaction({
+                walletAddress: review.account,
+                transactionHash,
+                changes: optimisticChanges,
+            })
+
             setHash(transactionHash)
             setStatus('submitted')
             const receipt = await publicClient.waitForTransactionReceipt({
                 hash: transactionHash,
             })
-            if (receipt.status !== 'success') throw new Error('Transaction failed on-chain.')
+            if (receipt.status !== 'success') {
+                rollbackOptimisticWalletTransaction(transactionHash)
+                throw new Error('Transaction failed on-chain.')
+            }
             setStatus('sent')
             recordWalletActivity({
                 walletAddress: review.account,
@@ -236,7 +270,13 @@ export default function SendAssetDialog({
                 amount: review.amount,
                 recipient: review.recipient,
             })
-            await onConfirmed?.()
+            let refreshed = true
+            try {
+                await onConfirmed?.()
+            } catch {
+                refreshed = false
+            }
+            if (refreshed) finishOptimisticWalletTransaction(transactionHash)
         } catch (caught) {
             if (isTransferRejectedError(caught)) {
                 setStatus('rejected')
