@@ -16,7 +16,11 @@ export default function SwapPrimaryAction({ action, reducedMotion, triggerRef, o
     const restoring = action.type === 'connect' && runtime.visible
     const busy = Boolean(action.loading || connecting || restoring)
     const automaticNetworkSwitch = action.type === 'switch-network'
-    const label = action.type === 'connect' && busy ? 'Connecting…' : action.label
+    const label = action.type === 'connect' && busy
+        ? 'Connecting…'
+        : action.type === 'gas-assist-unavailable'
+            ? 'No usable quote'
+            : action.label
 
     useEffect(() => {
         onActionRef.current = onAction
