@@ -3,9 +3,14 @@ import {
     useEffect,
     useRef,
     useState,
+    useSyncExternalStore,
 } from 'react'
+import { formatUnits } from 'viem'
 
-import { fetchWalletTokens } from '../services/walletTokens.js'
+import {
+    fetchWalletTokens,
+    isCurrentWalletTokenRecord,
+} from '../services/walletTokens.js'
 import {
     fetchKnownWalletTokenBalances,
     mergeKnownWalletTokenBalances,
@@ -13,6 +18,12 @@ import {
     walletTokenCacheKey,
     writeWalletTokenCache,
 } from '../services/walletTokenCache.js'
+import {
+    applyOptimisticRawBalance,
+    getOptimisticWalletBalanceRevision,
+    getOptimisticWalletDeltas,
+    subscribeOptimisticWalletBalances,
+} from '../../wallet/services/optimisticBalances.js'
 
 const SECURITY_REFRESH_DELAY_MS = 5_000
 const WALLET_REFRESH_DELAY_MS = 30_000
@@ -27,6 +38,51 @@ function hasPositiveBalance(token) {
     if (/^\d+$/.test(raw)) return BigInt(raw) > 0n
     const balance = String(token?.formattedBalance ?? token?.balance ?? '').trim()
     return /[1-9]/.test(balance)
+}
+
+function applyPendingBalanceChanges(tokens, walletAddress) {
+    if (!walletAddress) return tokens
+    const deltas = getOptimisticWalletDeltas(walletAddress)
+    if (deltas.length === 0) return tokens
+
+    const byIdentity = new Map(deltas.map((change) => [
+        `${Number(change.chainId)}:${change.tokenAddress}`,
+        change,
+    ]))
+    const consumed = new Set()
+    const updated = tokens.map((token) => {
+        const identity = `${Number(token.chainId)}:${String(token.address ?? '').toLowerCase()}`
+        const change = byIdentity.get(identity)
+        if (!change) return token
+        consumed.add(identity)
+        const rawBalance = applyOptimisticRawBalance(token.rawBalance ?? '0', change.deltaRaw)
+        const formattedBalance = formatUnits(rawBalance, Number(token.decimals ?? 18))
+        return {
+            ...token,
+            rawBalance: rawBalance.toString(),
+            balance: formattedBalance,
+            formattedBalance,
+            valueUSD: null,
+            optimisticPending: true,
+        }
+    })
+
+    for (const [identity, change] of byIdentity) {
+        if (consumed.has(identity) || BigInt(change.deltaRaw) <= 0n ||
+            !isCurrentWalletTokenRecord(change.token)) continue
+        const rawBalance = applyOptimisticRawBalance('0', change.deltaRaw)
+        const formattedBalance = formatUnits(rawBalance, Number(change.token.decimals ?? 18))
+        updated.push({
+            ...change.token,
+            rawBalance: rawBalance.toString(),
+            balance: formattedBalance,
+            formattedBalance,
+            valueUSD: null,
+            optimisticPending: true,
+        })
+    }
+
+    return updated
 }
 
 const DISCONNECTED_STATE = {
@@ -87,6 +143,8 @@ function shouldKeepLastKnownGood(current, responseState) {
 /**
  * Paints cached wallet assets immediately, verifies those known balances through
  * the fast RPC endpoint, and replaces them with full backend discovery results.
+ * Pending locally submitted transactions are overlaid until they settle so the
+ * wallet reacts immediately instead of waiting for indexers or RPC confirmation.
  */
 export function useWalletTokens({
     chainId = 56,
@@ -106,6 +164,11 @@ export function useWalletTokens({
     const refreshQueued = useRef(false)
     const [refreshIndex, setRefreshIndex] = useState(0)
     const [state, setState] = useState(DISCONNECTED_STATE)
+    const optimisticRevision = useSyncExternalStore(
+        subscribeOptimisticWalletBalances,
+        getOptimisticWalletBalanceRevision,
+        getOptimisticWalletBalanceRevision,
+    )
 
     const refetch = useCallback(() => {
         if (!requestKey) return false
@@ -327,9 +390,14 @@ export function useWalletTokens({
     const visibleState = requestKey && state.requestKey === requestKey
         ? state
         : DISCONNECTED_STATE
+    const visibleTokens = requestKey
+        ? applyPendingBalanceChanges(visibleState.tokens, normalizedAddress)
+        : visibleState.tokens
+    void optimisticRevision
 
     return {
         ...visibleState,
+        tokens: visibleTokens,
         refetch,
     }
 }
