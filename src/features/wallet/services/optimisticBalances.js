@@ -45,6 +45,7 @@ export function beginOptimisticWalletTransaction({
     transactionHash,
     changes,
 } = {}) {
+    pruneExpired()
     const wallet = normalizeAddress(walletAddress)
     const hash = normalizeHash(transactionHash)
     if (!wallet || !hash || !Array.isArray(changes)) return false
@@ -97,12 +98,10 @@ export function subscribeOptimisticWalletBalances(listener) {
 }
 
 export function getOptimisticWalletBalanceRevision() {
-    pruneExpired()
     return revision
 }
 
 export function getOptimisticWalletDeltas(walletAddress) {
-    pruneExpired()
     const wallet = normalizeAddress(walletAddress)
     if (!wallet) return []
 
