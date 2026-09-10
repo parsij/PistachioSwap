@@ -1,6 +1,5 @@
 import { ChevronDownIcon, GasPumpIcon } from '../../../shared/components/AppIcons.jsx'
 import SwapInfoTooltip from './SwapInfoTooltip.jsx'
-import { formatCostUsd } from '../model/swapDisplay.js'
 import './SwapDetails.css'
 
 function formatEstimatedArrival(value) {
@@ -18,47 +17,56 @@ function DetailRow({ label, ariaLabel, help, value }) {
     )
 }
 
-function usableGasCost(value) {
+function usableFee(value) {
     const text = String(value ?? '').trim()
     return text && text !== 'Unavailable' ? text : null
 }
 
-function compactGasCost({ isCrossChain, sameChain, crossChain }) {
+function compactFeeSummary({ isCrossChain, sameChain, crossChain }) {
     if (isCrossChain) {
-        return usableGasCost(
-            crossChain?.gasAssistFee?.totalUsd ??
-            crossChain?.gasAssistFee?.estimatedSponsoredGasUsd ??
+        const gasAssist = crossChain?.gasAssistFee
+        const value = usableFee(
+            gasAssist?.totalUsd ??
+            crossChain?.estimatedTotalCost ??
+            crossChain?.estimatedRouteCost ??
             crossChain?.sourceGasCost,
         )
+        return value
+            ? { label: gasAssist ? 'Gas Assist fee' : 'Estimated fee', value }
+            : null
     }
 
-    return usableGasCost(
-        sameChain?.gasAssistFee?.totalUsd ??
-        sameChain?.gasAssistFee?.estimatedSponsoredGasUsd ??
-        sameChain?.gasAssistFee?.networkReserveUsd ??
+    const gasAssist = sameChain?.gasAssistFee
+    const value = usableFee(
+        gasAssist?.totalUsd ??
+        gasAssist?.estimatedSponsoredGasUsd ??
+        gasAssist?.networkReserveUsd ??
         sameChain?.networkCost,
     )
+    return value
+        ? { label: gasAssist ? 'Gas Assist fee' : 'Network cost', value }
+        : null
 }
 
 /**
  * Renders same-chain or cross-chain quote details without exposing internal routing providers.
- * The backend always selects the best executable route; provider identity remains internal for
- * execution, validation, diagnostics, and status tracking.
+ * Cross-chain costs stay intentionally compact: one combined fee is shown instead of repeating
+ * routing, destination, impact, application, and sponsorship accounting as separate rows.
  */
 export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain, crossChain, slippage, exactOutputMaximum }) {
     if (!sameChain.visible && !crossChain?.route) return null
     const isCrossChain = mode === 'cross-chain'
-    const gasCost = compactGasCost({ isCrossChain, sameChain, crossChain })
+    const feeSummary = compactFeeSummary({ isCrossChain, sameChain, crossChain })
 
     return (
         <details className="swap-compact-details" open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
             <summary aria-label={open ? 'Hide swap details' : 'Show swap details'}>
                 <span className="swap-compact-rate">{rate}</span>
                 <span className="swap-compact-summary-meta">
-                    {gasCost && (
-                        <span className="swap-compact-gas" aria-label={`Gas Assist fee: ${gasCost}`}>
+                    {feeSummary && (
+                        <span className="swap-compact-gas" aria-label={`${feeSummary.label}: ${feeSummary.value}`}>
                             <GasPumpIcon className="swap-compact-gas-icon" />
-                            <span>{gasCost}</span>
+                            <span>{feeSummary.value}</span>
                         </span>
                     )}
                     <ChevronDownIcon className="swap-details-chevron" />
@@ -93,21 +101,16 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                                 value={`${crossChain.gasAssistFee.totalToken}${crossChain.gasAssistFee.totalUsd ? ` (${crossChain.gasAssistFee.totalUsd})` : ''}`}
                             />
                         ) : (
-                            <>
-                                {crossChain.estimatedTotalCost ? (
-                                    <DetailRow label="Estimated total cost" ariaLabel="Explain estimated total cost" help="Estimated combined route and network costs." value={crossChain.estimatedTotalCost} />
-                                ) : crossChain.estimatedRouteCost ? (
-                                    <DetailRow label="Estimated route cost" ariaLabel="Explain estimated route cost" help="Estimated bridge, routing, and destination costs." value={crossChain.estimatedRouteCost} />
-                                ) : crossChain.route.feeIncluded ? (
-                                    <DetailRow label="Route costs" ariaLabel="Explain route costs" help="Route costs are included in the displayed quote." value="Included in quote" />
-                                ) : null}
-                                <DetailRow label="Source network gas" ariaLabel="Explain source network gas" help="Estimated gas required on the source network." value={crossChain.sourceGasCost ?? 'Calculated at confirmation'} />
-                                {crossChain.costs?.providerFeeUsd != null && <DetailRow label="Routing fee" ariaLabel="Explain routing fee" help="Fee included by the selected execution route." value={formatCostUsd(crossChain.costs.providerFeeUsd)} />}
-                                {crossChain.costs?.destinationGasUsd != null && <DetailRow label="Destination execution cost" ariaLabel="Explain destination execution cost" help="Estimated execution cost on the destination network." value={formatCostUsd(crossChain.costs.destinationGasUsd)} />}
-                                {crossChain.costs?.swapImpactUsd != null && <DetailRow label="Swap/route impact" ariaLabel="Explain route impact" help="Estimated value impact from swaps and routing." value={formatCostUsd(crossChain.costs.swapImpactUsd)} />}
-                                {crossChain.appFee !== null && <DetailRow label="PistachioSwap fee" ariaLabel="Explain PistachioSwap fee" help="Application fee charged by PistachioSwap." value={crossChain.appFee} />}
-                                {crossChain.costs?.sponsoredUsd != null && crossChain.costs.sponsoredUsd !== '0' && <DetailRow label="Sponsored amount" ariaLabel="Explain sponsored amount" help="Amount of transaction cost covered by sponsorship." value={`-${formatCostUsd(crossChain.costs.sponsoredUsd)}`} />}
-                            </>
+                            <DetailRow
+                                label="Estimated fee"
+                                ariaLabel="Explain estimated fee"
+                                help="One combined cross-chain fee estimate. Source-network gas is included when available and finalized before confirmation."
+                                value={
+                                    crossChain.estimatedTotalCost ??
+                                    crossChain.estimatedRouteCost ??
+                                    (crossChain.route.feeIncluded ? 'Included in quote' : 'Unavailable')
+                                }
+                            />
                         )}
                     </>
                 )}
