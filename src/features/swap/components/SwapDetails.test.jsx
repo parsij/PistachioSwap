@@ -15,8 +15,8 @@ const baseProps = {
 
 afterEach(() => cleanup())
 
-describe('Gas Assist quote details', () => {
-    it('shows one exact same-chain Gas Assist fee without duplicated breakdown rows', () => {
+describe('compact swap quote details', () => {
+    it('shows one exact same-chain Gas Assist fee without duplicated rows', () => {
         render(<SwapDetails
             {...baseProps}
             mode="same-chain"
@@ -36,13 +36,32 @@ describe('Gas Assist quote details', () => {
 
         expect(screen.getByText('Gas Assist fee')).toBeTruthy()
         expect(screen.getByText('1 SELL ($1)')).toBeTruthy()
-        expect(screen.queryByText('Gas Assist fee (all-in)')).toBeNull()
-        expect(screen.queryByText('Network reserve (included)')).toBeNull()
-        expect(screen.queryByText('PistachioSwap fee (included)')).toBeNull()
+        expect(screen.queryByText('Estimated fee')).toBeNull()
         expect(screen.queryByText('Network cost')).toBeNull()
+        expect(screen.queryByText('Route')).toBeNull()
     })
 
-    it('shows only the sponsored Gas Assist fee instead of unsponsored cross-chain costs', () => {
+    it('shows one same-chain fee row instead of separate fee and network rows', () => {
+        render(<SwapDetails
+            {...baseProps}
+            mode="same-chain"
+            sameChain={{
+                visible: true,
+                serviceFee: '0.3 SELL (0.30%)',
+                networkCost: '$0.03',
+                gasAssistFee: null,
+            }}
+            crossChain={null}
+        />)
+
+        expect(screen.getByText('Estimated fee')).toBeTruthy()
+        expect(screen.getAllByText('0.3 SELL (0.30%) + $0.03').length).toBeGreaterThan(0)
+        expect(screen.queryByText('Fee')).toBeNull()
+        expect(screen.queryByText('Network cost')).toBeNull()
+        expect(screen.queryByText('Route')).toBeNull()
+    })
+
+    it('shows only the sponsored Gas Assist fee for cross-chain swaps', () => {
         render(<SwapDetails
             {...baseProps}
             mode="cross-chain"
@@ -68,13 +87,13 @@ describe('Gas Assist quote details', () => {
         expect(screen.getByText('Gas Assist fee')).toBeTruthy()
         expect(screen.getByText('1 SELL ($1)')).toBeTruthy()
         expect(screen.queryByText('Estimated fee')).toBeNull()
-        expect(screen.queryByText('Estimated total cost')).toBeNull()
-        expect(screen.queryByText('Source network gas')).toBeNull()
+        expect(screen.queryByText('Minimum received')).toBeNull()
+        expect(screen.queryByText('Estimated arrival')).toBeNull()
         expect(screen.queryByText('$4')).toBeNull()
         expect(screen.queryByText('$1.50')).toBeNull()
     })
 
-    it('shows one combined cross-chain fee without component rows', () => {
+    it('shows one combined cross-chain fee without component, minimum, or arrival rows', () => {
         render(<SwapDetails
             {...baseProps}
             mode="cross-chain"
@@ -105,5 +124,7 @@ describe('Gas Assist quote details', () => {
         expect(screen.queryByText('Swap/route impact')).toBeNull()
         expect(screen.queryByText('PistachioSwap fee')).toBeNull()
         expect(screen.queryByText('Sponsored amount')).toBeNull()
+        expect(screen.queryByText('Minimum received')).toBeNull()
+        expect(screen.queryByText('Estimated arrival')).toBeNull()
     })
 })
