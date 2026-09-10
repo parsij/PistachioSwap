@@ -204,6 +204,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
         order.atomicExecution === true ||
         hashes.length === 1
     )
+    const completed = order.status === 'completed'
     const feeUsd = formatUsdMicros(fees?.totalFeeUsdMicros)
     const feeUsdSuffix = feeUsd === 'Unavailable' ? '' : ` (${feeUsd})`
     return (
@@ -219,7 +220,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                         <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Gas Assist fee</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong></div>
                         <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong></div>
-                        <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>
+                        {!completed && <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>}
                         {atomic && hashes[0] && (
                             <div><span>Transaction</span><code>{hashes[0]}</code></div>
                         )}
@@ -268,7 +269,9 @@ export default function GasAssistPrepaymentDialog({
         sponsorship.phase.endsWith('-signing')
     const waitingForChain = ['payment-confirming', 'approval-confirming', 'swap-confirming'].includes(sponsorship.phase) ||
         ['payment-submitting', 'payment-submitted', 'approval-submitted', 'swap-submitted', 'atomic-submitting', 'atomic-submitted'].includes(order?.status)
-    const orderExpired = !packageExecutionInFlight(sponsorship.phase, order) &&
+    const completed = sponsorship.phase === 'completed' || order?.status === 'completed'
+    const orderExpired = !completed &&
+        !packageExecutionInFlight(sponsorship.phase, order) &&
         (expired || Boolean(order?.expiresAt && Date.parse(order.expiresAt) <= Date.now()))
     const requiredAction = order?.currentRequiredAction
     const showPayment = sponsorship.phase === 'review' &&
@@ -351,7 +354,7 @@ export default function GasAssistPrepaymentDialog({
                                 <span>Gas Assist fee</span>
                                 <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong>
                             </div>
-                            <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />
+                            {!completed && <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />}
                         </div>
                     )}
 
