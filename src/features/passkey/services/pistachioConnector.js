@@ -3,9 +3,9 @@ import { createConnector } from 'wagmi'
 import { getCuratedEvmChain, isCuratedEvmChainId } from '../../../web3/curatedEvmChains.js'
 import { PISTACHIO_CHAIN_ID, PISTACHIO_CONNECTOR_ID } from './constants.js'
 import { getPistachioWalletManager } from './walletManager.js'
-import { methods as alchemySigningMethods } from './walletManagerAlchemySigning.js'
+import { methods as particleSigningMethods } from './walletManagerParticleSigning.js'
 
-const ALCHEMY_AUTH_SIGN_METHOD = 'pistachio_signAlchemyAuthorization'
+const PARTICLE_AUTH_SIGN_METHOD = 'pistachio_signParticleAuthorization'
 
 function snapshotAccount(snapshot) {
     if (snapshot.phase === 'unlocked' && snapshot.address) return snapshot.address
@@ -35,13 +35,13 @@ function createProvider(manager) {
     })
     return Object.freeze({
         request: (request) => {
-            if (request?.method === ALCHEMY_AUTH_SIGN_METHOD) {
+            if (request?.method === PARTICLE_AUTH_SIGN_METHOD) {
                 if (!Array.isArray(request.params) || request.params.length !== 1) {
-                    const error = new Error('A single Alchemy EIP-7702 authorization is required.')
-                    error.code = 'ALCHEMY_AUTHORIZATION_INVALID'
+                    const error = new Error('A single Particle EIP-7702 authorization is required.')
+                    error.code = 'PARTICLE_AUTHORIZATION_INVALID'
                     throw error
                 }
-                return alchemySigningMethods.signAlchemyAuthorization.call(manager, request.params[0])
+                return particleSigningMethods.signParticleAuthorization.call(manager, request.params[0])
             }
             return manager.providerRequest(request)
         },
@@ -157,18 +157,12 @@ function createConnectorConfig(config, manager, {
     }
 }
 
-/**
- * Creates the AppKit/Wagmi connector for the local passkey wallet manager.
- * @param {object} [appKitModal] Modal bridge used to synchronize connection UI.
- * @returns {import('wagmi').CreateConnectorFn} Connector factory with account, chain, signing, and lifecycle methods.
- * @sideEffects Connector methods may unlock the vault, sign, broadcast, or emit Wagmi events after user action.
- */
 export function pistachioWalletConnector(appKitModal = {}) {
     return createConnector((config) => createConnectorConfig(config, getPistachioWalletManager(), appKitModal))
 }
 
 export const pistachioConnectorInternals = {
-    ALCHEMY_AUTH_SIGN_METHOD,
+    PARTICLE_AUTH_SIGN_METHOD,
     createConnectorConfig,
     createProvider,
     snapshotAccount,
