@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { formatUnits } from 'viem'
 
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
+import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+
+function activityAmount(raw, decimals) {
+    try {
+        if (raw === null || raw === undefined) return null
+        return formatUnits(BigInt(raw), Number(decimals))
+    } catch {
+        return null
+    }
+}
 
 /**
  * Sponsors the exact BNB Chain source transaction through the direct atomic
@@ -92,8 +103,28 @@ export function useCrossChainGasAssist({
     }, [completeSponsorship])
 
     const handleConfirmed = useCallback(async (order) => {
-        await onConfirmed?.(order, preparedResponseRef.current?.preparedRoute)
-    }, [onConfirmed])
+        const preparedRoute = preparedResponseRef.current?.preparedRoute
+        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
+        recordWalletActivity({
+            walletAddress: account,
+            chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId ?? 56),
+            destinationChainId: Number(
+                preparedRoute?.destinationChainId ?? buyToken?.chainId ?? 0,
+            ) || null,
+            type: 'swapped',
+            hash,
+            sellToken,
+            buyToken,
+            sellAmount: activityAmount(
+                order?.grossInputAmountRaw ?? totalInputRaw,
+                sellToken?.decimals,
+            ),
+            buyAmount: activityAmount(order?.expectedOutputRaw, buyToken?.decimals),
+            recipient: account,
+            provider: 'Gas Assist',
+        })
+        await onConfirmed?.(order, preparedRoute)
+    }, [account, buyToken, onConfirmed, sellToken, totalInputRaw])
 
     const sponsorship = usePrepaidSponsorship({
         quoteEndpoint,
