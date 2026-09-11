@@ -145,6 +145,21 @@ export function useCrossChainGasAssist({
             optimisticTransactionRef.current = hash
         }
 
+        recordWalletActivity({
+            walletAddress: account,
+            chainId: sourceChainId,
+            destinationChainId: destinationChainId > 0 ? destinationChainId : null,
+            type: 'swapped',
+            hash,
+            sellToken,
+            buyToken,
+            sellAmount: sellRaw ? activityAmount(sellRaw, sellToken?.decimals) : null,
+            buyAmount: buyRaw ? activityAmount(buyRaw, buyToken?.decimals) : null,
+            recipient: account,
+            provider: 'Gas Assist',
+            status: 'pending',
+        })
+
         await completeSponsorship({
             preparedRoute,
             transactionHash: hash,
@@ -175,6 +190,7 @@ export function useCrossChainGasAssist({
             ),
             recipient: account,
             provider: 'Gas Assist',
+            status: 'confirmed',
         })
         await onConfirmed?.(order, preparedRoute)
         if (hash) {
@@ -218,8 +234,25 @@ export function useCrossChainGasAssist({
         const hash = optimisticTransactionRef.current
         if (!hash) return
         rollbackOptimisticWalletTransaction(hash)
+        const preparedRoute = preparedResponseRef.current?.preparedRoute
+        recordWalletActivity({
+            walletAddress: account,
+            chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId ?? 56),
+            destinationChainId: Number(
+                preparedRoute?.destinationChainId ?? buyToken?.chainId ?? 0,
+            ) || null,
+            type: 'swapped',
+            hash,
+            sellToken,
+            buyToken,
+            sellAmount: activityAmount(totalInputRaw, sellToken?.decimals),
+            buyAmount: null,
+            recipient: account,
+            provider: 'Gas Assist',
+            status: 'failed',
+        })
         optimisticTransactionRef.current = null
-    }, [sponsorship.phase])
+    }, [account, buyToken, sellToken, sponsorship.phase, totalInputRaw])
 
     const loadPreview = useCallback(async ({ minimumValidityMs = 0 } = {}) => {
         if (!available || !routeReady) return null
