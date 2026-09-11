@@ -10,6 +10,7 @@ const VALID_TYPES = new Set([
     'received',
     'contract',
 ])
+const VALID_STATUSES = new Set(['pending', 'confirmed', 'failed'])
 
 function browserStorage() {
     try {
@@ -185,7 +186,7 @@ export function normalizeWalletActivity(input) {
         provider: cleanText(input.provider, 40),
         sender: normalizeWalletAddress(input.sender),
         source: ['remote', 'merged'].includes(input.source) ? input.source : 'local',
-        status: input.status === 'failed' ? 'failed' : 'confirmed',
+        status: VALID_STATUSES.has(input.status) ? input.status : 'confirmed',
         blockNumber: cleanText(input.blockNumber, 30),
         from: normalizeWalletAddress(input.from),
         to: normalizeWalletAddress(input.to),
