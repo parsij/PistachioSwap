@@ -1,3 +1,5 @@
+import { recordWalletActivity } from './walletActivity.js'
+
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 const MAX_PENDING_AGE_MS = 30 * 60 * 1_000
 const VALID_OPERATIONS = new Set(['sending', 'swapping'])
@@ -32,6 +34,64 @@ function operationForChanges(operation, changes) {
     return changes.some((change) => BigInt(change.deltaRaw) > 0n)
         ? 'swapping'
         : 'sending'
+}
+
+function formatRawAmount(rawValue, decimalsValue) {
+    let raw
+    try {
+        raw = BigInt(rawValue)
+    } catch {
+        return null
+    }
+    const decimals = Number(decimalsValue)
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) return null
+    if (raw < 0n) raw = -raw
+    if (decimals === 0) return raw.toString()
+    const padded = raw.toString().padStart(decimals + 1, '0')
+    const whole = padded.slice(0, -decimals)
+    const fraction = padded.slice(-decimals).replace(/0+$/, '')
+    return fraction ? `${whole}.${fraction}` : whole
+}
+
+function publishSemanticActivity(transaction, status) {
+    try {
+        const tokenChanges = transaction.changes.filter((change) => change.token)
+        if (transaction.operation === 'swapping') {
+            const sell = tokenChanges.find((change) => BigInt(change.deltaRaw) < 0n)
+            const buy = tokenChanges.find((change) => BigInt(change.deltaRaw) > 0n)
+            if (!sell || !buy) return
+            recordWalletActivity({
+                walletAddress: transaction.walletAddress,
+                chainId: sell.chainId,
+                destinationChainId: buy.chainId,
+                type: 'swapped',
+                hash: transaction.transactionHash,
+                sellToken: sell.token,
+                buyToken: buy.token,
+                sellAmount: formatRawAmount(sell.deltaRaw, sell.token.decimals),
+                buyAmount: formatRawAmount(buy.deltaRaw, buy.token.decimals),
+                recipient: transaction.walletAddress,
+                status,
+            })
+            return
+        }
+
+        if (transaction.operation === 'sending') {
+            const sent = tokenChanges.find((change) => BigInt(change.deltaRaw) < 0n)
+            if (!sent) return
+            recordWalletActivity({
+                walletAddress: transaction.walletAddress,
+                chainId: sent.chainId,
+                type: 'sent',
+                hash: transaction.transactionHash,
+                token: sent.token,
+                amount: formatRawAmount(sent.deltaRaw, sent.token.decimals),
+                status,
+            })
+        }
+    } catch {
+        // Activity is presentation state. Never interfere with a submitted tx.
+    }
 }
 
 function notify() {
@@ -81,26 +141,35 @@ export function beginOptimisticWalletTransaction({
     })
 
     if (normalizedChanges.length === 0) return false
-    pendingTransactions.set(hash, {
+    const transaction = {
         walletAddress: wallet,
         transactionHash: hash,
         changes: normalizedChanges,
         operation: operationForChanges(operation, normalizedChanges),
         createdAt: Date.now(),
-    })
+    }
+    pendingTransactions.set(hash, transaction)
+    publishSemanticActivity(transaction, 'pending')
+    notify()
+    return true
+}
+
+function settleOptimisticWalletTransaction(transactionHash, status) {
+    const hash = normalizeHash(transactionHash)
+    if (!hash) return false
+    const transaction = pendingTransactions.get(hash)
+    if (!transaction || !pendingTransactions.delete(hash)) return false
+    publishSemanticActivity(transaction, status)
     notify()
     return true
 }
 
 export function finishOptimisticWalletTransaction(transactionHash) {
-    const hash = normalizeHash(transactionHash)
-    if (!hash || !pendingTransactions.delete(hash)) return false
-    notify()
-    return true
+    return settleOptimisticWalletTransaction(transactionHash, 'confirmed')
 }
 
 export function rollbackOptimisticWalletTransaction(transactionHash) {
-    return finishOptimisticWalletTransaction(transactionHash)
+    return settleOptimisticWalletTransaction(transactionHash, 'failed')
 }
 
 export function subscribeOptimisticWalletBalances(listener) {
@@ -164,6 +233,7 @@ export function applyOptimisticRawBalance(rawBalance, deltaRaw) {
 export const optimisticBalanceInternals = {
     NATIVE_TOKEN_ADDRESS,
     MAX_PENDING_AGE_MS,
+    formatRawAmount,
     normalizeAddress,
     normalizeHash,
     operationForChanges,
