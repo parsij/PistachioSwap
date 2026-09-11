@@ -60,6 +60,11 @@ function validRawAmount(value) {
     return /^[1-9]\d*$/.test(String(value ?? ''))
 }
 
+function validTransactionHash(value) {
+    const hash = String(value ?? '').trim().toLowerCase()
+    return /^0x[a-f0-9]{64}$/.test(hash) ? hash : null
+}
+
 function createIdempotencyKey() {
     if (typeof globalThis.crypto?.randomUUID === 'function') {
         return globalThis.crypto.randomUUID()
@@ -128,6 +133,49 @@ export function usePrepaidSponsorship({
     const finishOperation = useCallback((name) => {
         if (operationRef.current === name) operationRef.current = null
         gasAssistTrace('flow.operation.finish', { operation: name })
+    }, [])
+
+    const notifySubmitted = useCallback(async (submittedOrder, transactionHash) => {
+        const orderId = submittedOrder?.id
+        const hash = validTransactionHash(
+            transactionHash ??
+            submittedOrder?.swapTransactionHash ??
+            submittedOrder?.atomicTransactionHash ??
+            submittedOrder?.transactionHash,
+        )
+        if (!orderId || !hash || submittedOrderIdsRef.current.has(orderId)) return
+
+        const callbackOrder = {
+            ...submittedOrder,
+            swapTransactionHash: hash,
+            atomicTransactionHash: hash,
+        }
+        setState((current) => current.order?.id === orderId
+            ? {
+                  ...current,
+                  order: {
+                      ...current.order,
+                      swapTransactionHash: hash,
+                      atomicTransactionHash: hash,
+                  },
+              }
+            : current)
+
+        try {
+            await onSubmittedRef.current?.(callbackOrder)
+            submittedOrderIdsRef.current.add(orderId)
+            gasAssistTrace('flow.submitted.published', {
+                orderId,
+                transactionHash: hash,
+            })
+        } catch (error) {
+            // The transaction is already broadcast. A UI/reporting callback must
+            // not turn that successful broadcast into a fake submission failure.
+            gasAssistTraceError('flow.submitted.callback-error', error, {
+                orderId,
+                transactionHash: hash,
+            })
+        }
     }, [])
 
     const publishFailure = useCallback((error, {
@@ -457,70 +505,75 @@ export function usePrepaidSponsorship({
                     { stage: 'atomic.prepare' },
                 )
             }
-                setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
-                const prepared = await gasAssistTraceStep(
-                    'flow.atomic-prepare',
-                    { orderId: order.id },
-                    () => prepareAtomicSponsorship(
+            setState((current) => ({ ...current, phase: 'package-preparing', error: null }))
+            const prepared = await gasAssistTraceStep(
+                'flow.atomic-prepare',
+                { orderId: order.id },
+                () => prepareAtomicSponsorship(
+                    quoteEndpoint,
+                    sessionToken,
+                    order.id,
+                ),
+            )
+            if (!isCurrent(walletEpoch, flowEpoch)) return
+            setState((current) => ({
+                ...current,
+                phase: 'package-signing',
+                intentExpiresAt: prepared.expiresAt,
+                order: current.order
+                    ? {
+                        ...current.order,
+                        expiresAt: prepared.expiresAt ?? current.order.expiresAt,
+                    }
+                    : current.order,
+            }))
+            const submission = await signPreparedAtomicSponsoredTransaction({
+                transport: capability.transport,
+                capability,
+                walletClient,
+                prepared,
+                authenticatedWalletAddress: walletAddress,
+                submitSignedTransaction: async (signedRawTransaction) => {
+                    if (!isCurrent(walletEpoch, flowEpoch)) {
+                        throw flowError(
+                            'PISTACHIO_ACCOUNT_MISMATCH',
+                            'The connected wallet changed during signing.',
+                            { stage: 'atomic.submit' },
+                        )
+                    }
+                    if (Date.parse(prepared.expiresAt) <= Date.now()) {
+                        throw flowError(
+                            'INTENT_EXPIRED',
+                            'The signed atomic transaction expired.',
+                            { stage: 'atomic.submit' },
+                        )
+                    }
+                    return submitAtomicSponsorship(
                         quoteEndpoint,
                         sessionToken,
                         order.id,
-                    ),
-                )
-                if (!isCurrent(walletEpoch, flowEpoch)) return
-                setState((current) => ({
-                    ...current,
-                    phase: 'package-signing',
-                    intentExpiresAt: prepared.expiresAt,
-                    order: current.order
-                        ? {
-                            ...current.order,
-                            expiresAt: prepared.expiresAt ?? current.order.expiresAt,
-                        }
-                        : current.order,
-                }))
-                await signPreparedAtomicSponsoredTransaction({
-                    transport: capability.transport,
-                    capability,
-                    walletClient,
-                    prepared,
-                    authenticatedWalletAddress: walletAddress,
-                    submitSignedTransaction: async (signedRawTransaction) => {
-                        if (!isCurrent(walletEpoch, flowEpoch)) {
-                            throw flowError(
-                                'PISTACHIO_ACCOUNT_MISMATCH',
-                                'The connected wallet changed during signing.',
-                                { stage: 'atomic.submit' },
-                            )
-                        }
-                        if (Date.parse(prepared.expiresAt) <= Date.now()) {
-                            throw flowError(
-                                'INTENT_EXPIRED',
-                                'The signed atomic transaction expired.',
-                                { stage: 'atomic.submit' },
-                            )
-                        }
-                        return submitAtomicSponsorship(
-                            quoteEndpoint,
-                            sessionToken,
-                            order.id,
-                            signedRawTransaction,
-                        )
-                    },
-                })
-                if (!isCurrent(walletEpoch, flowEpoch)) return
-                setState((current) => ({
-                    ...current,
-                    phase: 'swap-confirming',
-                    intentExpiresAt: null,
-                    order: { ...current.order, atomicExecution: true },
-                }))
+                        signedRawTransaction,
+                    )
+                },
+            })
+            if (!isCurrent(walletEpoch, flowEpoch)) return
+            await notifySubmitted(
+                { ...order, ...submission },
+                submission?.transactionHash ?? submission?.swapTransactionHash,
+            )
+            if (!isCurrent(walletEpoch, flowEpoch)) return
+            setState((current) => ({
+                ...current,
+                phase: 'swap-confirming',
+                intentExpiresAt: null,
+                order: { ...current.order, atomicExecution: true },
+            }))
         } catch (error) {
             publishFailure(error, { walletEpoch, flowEpoch })
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, capability, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
+    }, [beginOperation, buyToken, capability, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
 
     const pollOrderId = state.order?.id ?? null
     const pollOrderIsPreview = state.order?.isPreview === true
@@ -548,8 +601,7 @@ export function usePrepaidSponsorship({
                 if (controller.signal.aborted || !isCurrent(walletEpoch, flowEpoch)) return
                 if (order.swapTransactionHash &&
                     !submittedOrderIdsRef.current.has(orderId)) {
-                    await onSubmittedRef.current?.(order)
-                    submittedOrderIdsRef.current.add(orderId)
+                    await notifySubmitted(order, order.swapTransactionHash)
                 }
                 setState((current) => {
                     if (current.order?.id !== orderId) return current
@@ -601,6 +653,7 @@ export function usePrepaidSponsorship({
         }
     }, [
         isCurrent,
+        notifySubmitted,
         pollOrderId,
         pollOrderIsPreview,
         pollOrderStatus,
