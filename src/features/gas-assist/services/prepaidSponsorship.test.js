@@ -100,7 +100,7 @@ describe('prepaid sponsorship frontend trust boundary', () => {
             })
     })
 
-    it('sends signed atomic bytes only to the public MegaFuel endpoint', async () => {
+    it('registers only the tx hash with the backend before sending raw bytes to MegaFuel', async () => {
         const signedRawTransaction = '0x01'
         const expectedHash = keccak256(signedRawTransaction).toLowerCase()
         const calls = []
@@ -108,12 +108,16 @@ describe('prepaid sponsorship frontend trust boundary', () => {
             calls.push({ url: String(url), options })
             const pathname = new URL(String(url)).pathname
             if (pathname.endsWith('/atomic/authorize-direct')) {
+                expect(JSON.parse(String(options.body))).toEqual({
+                    transactionHash: expectedHash,
+                })
                 return new Response(JSON.stringify({
                     mode: 'wallet-direct-megafuel',
                     orderId: 'order-1',
                     intentId: 'intent-1',
                     rpcUrl: 'https://bsc-megafuel.nodereal.io/',
                     expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                    transactionHash: expectedHash,
                 }), { status: 200 })
             }
             if (String(url) === 'https://bsc-megafuel.nodereal.io/') {
@@ -153,6 +157,9 @@ describe('prepaid sponsorship frontend trust boundary', () => {
             expect(String(call.options.body ?? '')).not.toContain(signedRawTransaction)
             expect(String(call.options.body ?? '')).not.toContain('signedRawTransaction')
         }
+        expect(JSON.parse(String(backendCalls[0].options.body))).toEqual({
+            transactionHash: expectedHash,
+        })
         const directBody = JSON.parse(String(calls[1].options.body))
         expect(directBody).toEqual({
             jsonrpc: '2.0',
@@ -160,8 +167,9 @@ describe('prepaid sponsorship frontend trust boundary', () => {
             method: 'eth_sendRawTransaction',
             params: [signedRawTransaction],
         })
-        const confirmation = JSON.parse(String(backendCalls[1].options.body))
-        expect(confirmation).toEqual({ transactionHash: expectedHash })
+        expect(JSON.parse(String(backendCalls[1].options.body))).toEqual({
+            transactionHash: expectedHash,
+        })
     })
 
     it('rejects a backend-selected MegaFuel host outside the official public endpoint', () => {
