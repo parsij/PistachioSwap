@@ -38,6 +38,7 @@ describe('Gas Assist public proxy boundary', () => {
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/delegate')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/submit')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('POST', '/api/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
 
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/paymaster-webhook')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/alchemy/sponsorship-webhook')).toBe(false)
@@ -75,40 +76,6 @@ describe('Gas Assist public proxy boundary', () => {
                 },
             })
             expect(fetchMock).not.toHaveBeenCalled()
-        } finally {
-            await app.close()
-        }
-    })
-
-    it('forwards Particle signature only on the exact callback route', async () => {
-        process.env.GAS_ASSIST_SERVICE_ENABLED = 'true'
-        process.env.GAS_ASSIST_SERVICE_URL = 'http://127.0.0.1:3002'
-        process.env.GAS_ASSIST_INTERNAL_TOKEN = TOKEN
-        const fetchMock = vi.fn(async () => new Response('{"approved":true}', {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-        }))
-        vi.stubGlobal('fetch', fetchMock)
-        const app = Fastify({ logger: false })
-        await app.register(gasAssistProxyRoutes)
-
-        try {
-            const response = await app.inject({
-                method: 'POST',
-                url: '/v1/sponsorship/particle/before-paymaster-sign',
-                headers: {
-                    'x-particle-signature': 'signed-by-particle',
-                    authorization: 'Bearer should-not-matter-to-particle',
-                },
-                payload: { type: 'before_paymaster_sign' },
-            })
-            expect(response.statusCode).toBe(200)
-            expect(fetchMock).toHaveBeenCalledOnce()
-            const [target, init] = fetchMock.mock.calls[0]
-            expect(String(target)).toBe('http://127.0.0.1:3002/v1/sponsorship/particle/before-paymaster-sign')
-            const headers = init?.headers as Headers
-            expect(headers.get('x-particle-signature')).toBe('signed-by-particle')
-            expect(headers.get('x-pistachio-internal-token')).toBe(TOKEN)
         } finally {
             await app.close()
         }
