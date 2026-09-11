@@ -7,6 +7,7 @@ import { getTokenLogoCandidates } from './tokenIconUtils.js'
 
 const bankAddress = '0x1111111111111111111111111111111111111111'
 const asterAddress = '0x2222222222222222222222222222222222222222'
+const optimismUsdtAddress = '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58'
 
 describe('activity token icon metadata reuse', () => {
     afterEach(() => {
@@ -72,5 +73,18 @@ describe('activity token icon metadata reuse', () => {
             logoURI: '/icons/bnb.svg',
             logoCandidates: ['/networkIcons/bsc.webp'],
         })).toEqual([BNB_CHAIN_LOGO_URI])
+    })
+
+    it('pins canonical Optimism USDT artwork ahead of stale fallback metadata', () => {
+        expect(getTokenLogoCandidates({
+            chainId: 10,
+            address: optimismUsdtAddress,
+            symbol: 'USDT',
+            logoURI: '/icons/token-fallback.svg',
+            logoCandidates: ['/icons/token-fallback.svg'],
+        })).toEqual([
+            '/icons/usdt.svg',
+            '/icons/token-fallback.svg',
+        ])
     })
 })
