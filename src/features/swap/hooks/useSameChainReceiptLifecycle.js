@@ -31,29 +31,8 @@ function activityAmount(value, decimals) {
 
 /**
  * Owns same-chain transaction hash/status and applies the existing receipt side effects once.
- * Pending balance deltas are painted as soon as the wallet returns a submitted
- * transaction hash, then reconciled back to canonical RPC/indexer balances.
- *
- * @param {object} config Hook dependencies.
- * @param {number} config.chainId Expected receipt chain.
- * @param {string|null} config.account Connected account; changes reset the lifecycle.
- * @param {number|null} config.walletChainId Connected wallet chain; changes reset the lifecycle.
- * @param {string} config.executionMode Active execution mode; changes reset hash/status.
- * @param {object|null} config.sellToken Selected sell token.
- * @param {object|null} config.buyToken Selected buy token.
- * @param {object|null} config.quote Executed quote used to derive pending balance deltas.
- * @param {(message: string|null) => void} config.setVisibleStatus Updates the shared visible status.
- * @param {() => void} config.closeReview Closes and restores focus for same-chain review.
- * @param {() => void} config.resetInputsAfterSuccess Clears sell/buy inputs.
- * @param {() => void} config.invalidateQuoteAfterSuccess Clears the executed quote.
- * @param {() => Promise<unknown>} config.refreshWalletBalances Refreshes native/token balances.
- * @param {(message: string|null) => void} config.setReviewError Updates visible review error.
- * @param {(operation: string) => void} config.setReviewOperation Updates review progress.
- * @param {(event: string, payload?: object, level?: string) => void} config.diagnostic Existing logger.
- * @returns {{transactionHash: string|null, transactionStatus: string, setTransactionHash: Function, setTransactionStatus: Function, resetReceiptLifecycle: Function}} Public lifecycle API.
- * @sideEffects Uses Wagmi receipt polling; success closes review, records activity, resets inputs/quote, and refreshes balances.
- * @throws Does not throw receipt errors; maps them to existing state and diagnostics.
- * @security Assumes the supplied hash was produced by the validated same-chain submission path.
+ * Pending balance deltas and semantic swap activity are painted as soon as the
+ * wallet returns a submitted transaction hash, then reconciled after settlement.
  */
 export function useSameChainReceiptLifecycle({
     chainId,
@@ -140,13 +119,25 @@ export function useSameChainReceiptLifecycle({
             })
         }
 
-        if (beginOptimisticWalletTransaction({
+        beginOptimisticWalletTransaction({
             walletAddress: account,
             transactionHash,
+            operation: 'swapping',
             changes,
-        })) {
-            optimisticHashRef.current = transactionHash
-        }
+        })
+        optimisticHashRef.current = transactionHash
+
+        recordWalletActivity({
+            walletAddress: account,
+            chainId,
+            type: 'swapped',
+            hash: transactionHash,
+            sellToken,
+            buyToken,
+            sellAmount: activityAmount(sellAmountRaw, sellToken.decimals),
+            buyAmount: activityAmount(buyAmountRaw, buyToken.decimals),
+            status: 'pending',
+        })
     }, [
         account,
         buyToken,
@@ -180,6 +171,7 @@ export function useSameChainReceiptLifecycle({
                 buyToken,
                 sellAmount: activityAmount(quote?.selectedQuote?.sellAmount, sellToken?.decimals),
                 buyAmount: activityAmount(quote?.selectedQuote?.buyAmount, buyToken?.decimals),
+                status: 'confirmed',
             })
             closeReview()
             resetInputsAfterSuccess()
@@ -200,6 +192,17 @@ export function useSameChainReceiptLifecycle({
             if (optimisticHashRef.current?.toLowerCase() === transactionHash.toLowerCase()) {
                 optimisticHashRef.current = null
             }
+            recordWalletActivity({
+                walletAddress: account,
+                chainId,
+                type: 'swapped',
+                hash: transactionHash,
+                sellToken,
+                buyToken,
+                sellAmount: activityAmount(quote?.selectedQuote?.sellAmount, sellToken?.decimals),
+                buyAmount: activityAmount(quote?.selectedQuote?.buyAmount, buyToken?.decimals),
+                status: 'failed',
+            })
             setTransactionStatus('failed')
             setVisibleStatus('The transaction failed before confirmation.')
             setReviewError('The transaction failed before confirmation.')
