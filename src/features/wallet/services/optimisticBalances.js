@@ -1,5 +1,6 @@
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 const MAX_PENDING_AGE_MS = 30 * 60 * 1_000
+const VALID_OPERATIONS = new Set(['sending', 'swapping'])
 
 const pendingTransactions = new Map()
 const listeners = new Set()
@@ -25,6 +26,14 @@ function tokenAddress(change) {
     return normalizeAddress(change?.tokenAddress ?? change?.token?.address)
 }
 
+function operationForChanges(operation, changes) {
+    const requested = String(operation ?? '').trim().toLowerCase()
+    if (VALID_OPERATIONS.has(requested)) return requested
+    return changes.some((change) => BigInt(change.deltaRaw) > 0n)
+        ? 'swapping'
+        : 'sending'
+}
+
 function notify() {
     revision += 1
     for (const listener of listeners) listener()
@@ -44,6 +53,7 @@ export function beginOptimisticWalletTransaction({
     walletAddress,
     transactionHash,
     changes,
+    operation,
 } = {}) {
     pruneExpired()
     const wallet = normalizeAddress(walletAddress)
@@ -75,6 +85,7 @@ export function beginOptimisticWalletTransaction({
         walletAddress: wallet,
         transactionHash: hash,
         changes: normalizedChanges,
+        operation: operationForChanges(operation, normalizedChanges),
         createdAt: Date.now(),
     })
     notify()
@@ -99,6 +110,21 @@ export function subscribeOptimisticWalletBalances(listener) {
 
 export function getOptimisticWalletBalanceRevision() {
     return revision
+}
+
+export function getOptimisticWalletTransactions(walletAddress) {
+    const wallet = normalizeAddress(walletAddress)
+    if (!wallet) return []
+    return [...pendingTransactions.values()]
+        .filter((transaction) => transaction.walletAddress === wallet)
+        .toSorted((left, right) => right.createdAt - left.createdAt)
+        .map((transaction) => ({
+            walletAddress: transaction.walletAddress,
+            transactionHash: transaction.transactionHash,
+            operation: transaction.operation,
+            createdAt: transaction.createdAt,
+            changes: transaction.changes.map((change) => ({ ...change })),
+        }))
 }
 
 export function getOptimisticWalletDeltas(walletAddress) {
@@ -140,5 +166,6 @@ export const optimisticBalanceInternals = {
     MAX_PENDING_AGE_MS,
     normalizeAddress,
     normalizeHash,
+    operationForChanges,
     tokenAddress,
 }
