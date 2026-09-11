@@ -1,12 +1,26 @@
+import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 import { recordWalletActivity } from './walletActivity.js'
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
-const MAX_PENDING_AGE_MS = 30 * 60 * 1_000
+const STORAGE_KEY = 'pistachioswap:pending-wallet-operations:v1'
+const MAX_PENDING_AGE_MS = 24 * 60 * 60 * 1_000
+const SETTLED_DISPLAY_MS = 2_200
 const VALID_OPERATIONS = new Set(['sending', 'swapping'])
+const VALID_SETTLEMENT_MODES = new Set(['receipt', 'external'])
 
 const pendingTransactions = new Map()
+const settledOperations = new Map()
+const receiptChecks = new Map()
 const listeners = new Set()
 let revision = 0
+
+function browserStorage() {
+    try {
+        return globalThis.localStorage ?? null
+    } catch {
+        return null
+    }
+}
 
 function normalizeAddress(value) {
     const text = String(value ?? '').trim().toLowerCase()
@@ -23,6 +37,11 @@ function normalizeChainId(value) {
     return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : null
 }
 
+function normalizeReferenceId(value) {
+    const text = String(value ?? '').trim()
+    return text && text.length <= 200 ? text : null
+}
+
 function tokenAddress(change) {
     if (change?.token?.isNative === true) return NATIVE_TOKEN_ADDRESS
     return normalizeAddress(change?.tokenAddress ?? change?.token?.address)
@@ -34,6 +53,13 @@ function operationForChanges(operation, changes) {
     return changes.some((change) => BigInt(change.deltaRaw) > 0n)
         ? 'swapping'
         : 'sending'
+}
+
+function settlementModeForChanges(mode, changes) {
+    const requested = String(mode ?? '').trim().toLowerCase()
+    if (VALID_SETTLEMENT_MODES.has(requested)) return requested
+    const chainIds = new Set(changes.map((change) => change.chainId))
+    return chainIds.size > 1 ? 'external' : 'receipt'
 }
 
 function formatRawAmount(rawValue, decimalsValue) {
@@ -51,6 +77,110 @@ function formatRawAmount(rawValue, decimalsValue) {
     const whole = padded.slice(0, -decimals)
     const fraction = padded.slice(-decimals).replace(/0+$/, '')
     return fraction ? `${whole}.${fraction}` : whole
+}
+
+function normalizePersistedToken(token, chainId, address) {
+    if (!token || typeof token !== 'object' || Array.isArray(token)) return null
+    const decimals = Number(token.decimals)
+    const logoCandidates = Array.isArray(token.logoCandidates)
+        ? token.logoCandidates
+            .filter((value) => typeof value === 'string' && value.length <= 500)
+            .slice(0, 12)
+        : []
+    const text = (value, maximumLength) => {
+        if (typeof value !== 'string') return null
+        const normalized = value.trim()
+        return normalized ? normalized.slice(0, maximumLength) : null
+    }
+    return {
+        chainId,
+        address,
+        symbol: text(token.symbol, 24),
+        name: text(token.name, 80),
+        decimals: Number.isInteger(decimals) && decimals >= 0 && decimals <= 255
+            ? decimals
+            : null,
+        isNative: token.isNative === true || address === NATIVE_TOKEN_ADDRESS,
+        logoURI: text(token.logoURI ?? token.logoUri, 500),
+        logoCandidates,
+    }
+}
+
+function normalizeChanges(changes) {
+    if (!Array.isArray(changes)) return []
+    return changes.flatMap((change) => {
+        const chainId = normalizeChainId(change?.chainId)
+        const address = tokenAddress(change)
+        let deltaRaw
+        try {
+            deltaRaw = BigInt(change?.deltaRaw ?? 0)
+        } catch {
+            return []
+        }
+        if (!chainId || !address || deltaRaw === 0n) return []
+        return [{
+            chainId,
+            tokenAddress: address,
+            deltaRaw: deltaRaw.toString(),
+            token: normalizePersistedToken(change?.token, chainId, address),
+        }]
+    })
+}
+
+function normalizeStoredTransaction(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const walletAddress = normalizeAddress(value.walletAddress)
+    const transactionHash = normalizeHash(value.transactionHash)
+    const createdAt = Number(value.createdAt)
+    const changes = normalizeChanges(value.changes)
+    if (
+        !walletAddress ||
+        !transactionHash ||
+        !Number.isFinite(createdAt) ||
+        createdAt <= 0 ||
+        changes.length === 0
+    ) return null
+    return {
+        walletAddress,
+        transactionHash,
+        changes,
+        operation: operationForChanges(value.operation, changes),
+        settlementMode: settlementModeForChanges(value.settlementMode, changes),
+        referenceId: normalizeReferenceId(value.referenceId),
+        createdAt,
+    }
+}
+
+function persistPendingTransactions() {
+    const storage = browserStorage()
+    if (!storage) return
+    try {
+        storage.setItem(STORAGE_KEY, JSON.stringify([...pendingTransactions.values()]))
+    } catch {
+        // Persistence is a convenience layer. Submission must never depend on it.
+    }
+}
+
+function hydratePendingTransactions() {
+    const storage = browserStorage()
+    if (!storage) return
+    try {
+        const parsed = JSON.parse(storage.getItem(STORAGE_KEY) ?? '[]')
+        if (!Array.isArray(parsed)) return
+        const now = Date.now()
+        for (const value of parsed) {
+            const transaction = normalizeStoredTransaction(value)
+            if (!transaction || now - transaction.createdAt > MAX_PENDING_AGE_MS) continue
+            pendingTransactions.set(transaction.transactionHash, transaction)
+        }
+        persistPendingTransactions()
+    } catch {
+        try {
+            storage.removeItem(STORAGE_KEY)
+        } catch {
+            // Ignore unavailable browser storage.
+        }
+    }
 }
 
 function publishSemanticActivity(transaction, status) {
@@ -106,49 +236,98 @@ function pruneExpired(now = Date.now()) {
         pendingTransactions.delete(hash)
         changed = true
     }
-    if (changed) notify()
+    if (changed) {
+        persistPendingTransactions()
+        notify()
+    }
 }
+
+function transactionSourceChainId(transaction) {
+    const outgoing = transaction?.changes?.find((change) => {
+        try {
+            return BigInt(change.deltaRaw) < 0n
+        } catch {
+            return false
+        }
+    })
+    return outgoing?.chainId ?? transaction?.changes?.[0]?.chainId ?? null
+}
+
+function configuredRpcUrl(chainId) {
+    const numericChainId = normalizeChainId(chainId)
+    if (!numericChainId) return null
+    const env = import.meta.env ?? {}
+    const configured = numericChainId === 56
+        ? env.VITE_BSC_PUBLIC_RPC_URL
+        : env[`VITE_EVM_${numericChainId}_PUBLIC_RPC_URL`]
+    const explicit = String(configured ?? '').trim()
+    if (explicit) return explicit
+    const chain = getCuratedEvmChain(numericChainId)
+    return chain?.rpcUrls?.default?.http?.[0] ?? null
+}
+
+async function receiptStatus(transaction, signal) {
+    const chainId = transactionSourceChainId(transaction)
+    const rpcUrl = configuredRpcUrl(chainId)
+    if (!rpcUrl) return 'pending'
+    const response = await fetch(rpcUrl, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+            accept: 'application/json',
+            'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: `pending-wallet:${transaction.transactionHash}`,
+            method: 'eth_getTransactionReceipt',
+            params: [transaction.transactionHash],
+        }),
+        signal,
+    })
+    if (!response.ok) return 'pending'
+    const payload = await response.json().catch(() => null)
+    const status = String(payload?.result?.status ?? '').toLowerCase()
+    if (status === '0x1' || status === '1') return 'confirmed'
+    if (status === '0x0' || status === '0') return 'failed'
+    return 'pending'
+}
+
+function scheduleSettledRemoval(transactionHash) {
+    globalThis.setTimeout(() => {
+        if (!settledOperations.delete(transactionHash)) return
+        notify()
+    }, SETTLED_DISPLAY_MS)
+}
+
+hydratePendingTransactions()
 
 export function beginOptimisticWalletTransaction({
     walletAddress,
     transactionHash,
     changes,
     operation,
+    settlementMode,
+    referenceId,
 } = {}) {
     pruneExpired()
     const wallet = normalizeAddress(walletAddress)
     const hash = normalizeHash(transactionHash)
-    if (!wallet || !hash || !Array.isArray(changes)) return false
+    const normalizedChanges = normalizeChanges(changes)
+    if (!wallet || !hash || normalizedChanges.length === 0) return false
 
-    const normalizedChanges = changes.flatMap((change) => {
-        const chainId = normalizeChainId(change?.chainId)
-        const address = tokenAddress(change)
-        let deltaRaw
-        try {
-            deltaRaw = BigInt(change?.deltaRaw ?? 0)
-        } catch {
-            return []
-        }
-        if (!chainId || !address || deltaRaw === 0n) return []
-        return [{
-            chainId,
-            tokenAddress: address,
-            deltaRaw: deltaRaw.toString(),
-            token: change?.token && typeof change.token === 'object'
-                ? { ...change.token, chainId, address }
-                : null,
-        }]
-    })
-
-    if (normalizedChanges.length === 0) return false
     const transaction = {
         walletAddress: wallet,
         transactionHash: hash,
         changes: normalizedChanges,
         operation: operationForChanges(operation, normalizedChanges),
+        settlementMode: settlementModeForChanges(settlementMode, normalizedChanges),
+        referenceId: normalizeReferenceId(referenceId),
         createdAt: Date.now(),
     }
+    settledOperations.delete(hash)
     pendingTransactions.set(hash, transaction)
+    persistPendingTransactions()
     publishSemanticActivity(transaction, 'pending')
     notify()
     return true
@@ -159,8 +338,16 @@ function settleOptimisticWalletTransaction(transactionHash, status) {
     if (!hash) return false
     const transaction = pendingTransactions.get(hash)
     if (!transaction || !pendingTransactions.delete(hash)) return false
+
+    persistPendingTransactions()
     publishSemanticActivity(transaction, status)
+    settledOperations.set(hash, {
+        ...transaction,
+        status,
+        settledAt: Date.now(),
+    })
     notify()
+    scheduleSettledRemoval(hash)
     return true
 }
 
@@ -182,6 +369,7 @@ export function getOptimisticWalletBalanceRevision() {
 }
 
 export function getOptimisticWalletTransactions(walletAddress) {
+    pruneExpired()
     const wallet = normalizeAddress(walletAddress)
     if (!wallet) return []
     return [...pendingTransactions.values()]
@@ -191,12 +379,74 @@ export function getOptimisticWalletTransactions(walletAddress) {
             walletAddress: transaction.walletAddress,
             transactionHash: transaction.transactionHash,
             operation: transaction.operation,
+            settlementMode: transaction.settlementMode,
+            referenceId: transaction.referenceId,
             createdAt: transaction.createdAt,
             changes: transaction.changes.map((change) => ({ ...change })),
         }))
 }
 
+export function findOptimisticWalletTransaction({
+    walletAddress,
+    referenceId,
+} = {}) {
+    const wallet = normalizeAddress(walletAddress)
+    const reference = normalizeReferenceId(referenceId)
+    if (!wallet || !reference) return null
+    return [...pendingTransactions.values()].find((transaction) =>
+        transaction.walletAddress === wallet &&
+        transaction.referenceId === reference) ?? null
+}
+
+export function getWalletOperationDisplayState(walletAddress) {
+    pruneExpired()
+    const wallet = normalizeAddress(walletAddress)
+    if (!wallet) return null
+    const pending = [...pendingTransactions.values()]
+        .filter((transaction) => transaction.walletAddress === wallet)
+        .map((transaction) => ({
+            ...transaction,
+            status: 'pending',
+            displayAt: transaction.createdAt,
+        }))
+    const settled = [...settledOperations.values()]
+        .filter((transaction) => transaction.walletAddress === wallet)
+        .map((transaction) => ({
+            ...transaction,
+            displayAt: transaction.settledAt,
+        }))
+    return [...pending, ...settled]
+        .toSorted((left, right) => right.displayAt - left.displayAt)[0] ?? null
+}
+
+export async function reconcilePersistedWalletTransactions(walletAddress, { signal } = {}) {
+    pruneExpired()
+    const wallet = normalizeAddress(walletAddress)
+    if (!wallet) return
+    const transactions = [...pendingTransactions.values()].filter((transaction) =>
+        transaction.walletAddress === wallet &&
+        transaction.settlementMode === 'receipt')
+
+    await Promise.all(transactions.map(async (transaction) => {
+        const existing = receiptChecks.get(transaction.transactionHash)
+        if (existing) return existing
+        const check = receiptStatus(transaction, signal)
+            .then((status) => {
+                if (status === 'confirmed') {
+                    finishOptimisticWalletTransaction(transaction.transactionHash)
+                } else if (status === 'failed') {
+                    rollbackOptimisticWalletTransaction(transaction.transactionHash)
+                }
+            })
+            .catch(() => undefined)
+            .finally(() => receiptChecks.delete(transaction.transactionHash))
+        receiptChecks.set(transaction.transactionHash, check)
+        return check
+    }))
+}
+
 export function getOptimisticWalletDeltas(walletAddress) {
+    pruneExpired()
     const wallet = normalizeAddress(walletAddress)
     if (!wallet) return []
 
@@ -232,10 +482,15 @@ export function applyOptimisticRawBalance(rawBalance, deltaRaw) {
 
 export const optimisticBalanceInternals = {
     NATIVE_TOKEN_ADDRESS,
+    STORAGE_KEY,
     MAX_PENDING_AGE_MS,
+    SETTLED_DISPLAY_MS,
+    configuredRpcUrl,
     formatRawAmount,
     normalizeAddress,
     normalizeHash,
     operationForChanges,
+    settlementModeForChanges,
     tokenAddress,
+    transactionSourceChainId,
 }
