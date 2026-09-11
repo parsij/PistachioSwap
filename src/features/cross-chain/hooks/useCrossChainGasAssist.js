@@ -4,11 +4,25 @@ import { formatUnits } from 'viem'
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+import {
+    beginOptimisticWalletTransaction,
+    finishOptimisticWalletTransaction,
+    rollbackOptimisticWalletTransaction,
+} from '../../wallet/services/optimisticBalances.js'
 
 function activityAmount(raw, decimals) {
     try {
         if (raw === null || raw === undefined) return null
         return formatUnits(BigInt(raw), Number(decimals))
+    } catch {
+        return null
+    }
+}
+
+function positiveRaw(value) {
+    try {
+        const raw = BigInt(value ?? 0)
+        return raw > 0n ? raw : null
     } catch {
         return null
     }
@@ -42,6 +56,7 @@ export function useCrossChainGasAssist({
     const previewResultRef = useRef(null)
     const contextRef = useRef(null)
     const candidateRoutesRef = useRef([])
+    const optimisticTransactionRef = useRef(null)
     const candidateRoutes = []
     const seenRouteIds = new Set()
     for (const candidate of [route, ...(Array.isArray(routes) ? routes : [])]) {
@@ -93,18 +108,53 @@ export function useCrossChainGasAssist({
 
     const handleSubmitted = useCallback(async (order) => {
         const prepared = preparedResponseRef.current
-        if (!prepared?.preparedRoute || !order?.swapTransactionHash) {
+        const preparedRoute = prepared?.preparedRoute
+        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
+        if (!preparedRoute || !hash) {
             throw new Error('The sponsored cross-chain transaction is incomplete.')
         }
+
+        const sourceChainId = Number(preparedRoute.sourceChainId ?? sellToken?.chainId ?? 56)
+        const destinationChainId = Number(
+            preparedRoute.destinationChainId ?? buyToken?.chainId ?? 0,
+        )
+        const sellRaw = positiveRaw(order?.grossInputAmountRaw ?? totalInputRaw)
+        const buyRaw = positiveRaw(order?.expectedOutputRaw ?? preparedRoute.outputAmount)
+        const changes = []
+        if (sellRaw && sellToken) {
+            changes.push({
+                chainId: sourceChainId,
+                token: sellToken,
+                deltaRaw: -sellRaw,
+            })
+        }
+        if (buyRaw && buyToken && destinationChainId > 0) {
+            changes.push({
+                chainId: destinationChainId,
+                token: buyToken,
+                deltaRaw: buyRaw,
+            })
+        }
+        if (changes.length > 0) {
+            beginOptimisticWalletTransaction({
+                walletAddress: account,
+                transactionHash: hash,
+                operation: 'swapping',
+                changes,
+            })
+            optimisticTransactionRef.current = hash
+        }
+
         await completeSponsorship({
-            preparedRoute: prepared.preparedRoute,
-            transactionHash: order.swapTransactionHash,
+            preparedRoute,
+            transactionHash: hash,
         })
-    }, [completeSponsorship])
+    }, [account, buyToken, completeSponsorship, sellToken, totalInputRaw])
 
     const handleConfirmed = useCallback(async (order) => {
         const preparedRoute = preparedResponseRef.current?.preparedRoute
-        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
+        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ??
+            optimisticTransactionRef.current ?? null
         recordWalletActivity({
             walletAddress: account,
             chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId ?? 56),
@@ -127,6 +177,14 @@ export function useCrossChainGasAssist({
             provider: 'Gas Assist',
         })
         await onConfirmed?.(order, preparedRoute)
+        if (hash) {
+            window.setTimeout(() => {
+                finishOptimisticWalletTransaction(hash)
+                if (optimisticTransactionRef.current === hash) {
+                    optimisticTransactionRef.current = null
+                }
+            }, 9_000)
+        }
     }, [account, buyToken, onConfirmed, sellToken, totalInputRaw])
 
     const sponsorship = usePrepaidSponsorship({
@@ -154,6 +212,14 @@ export function useCrossChainGasAssist({
         available ? 'available' : 'unavailable',
     ].join(':')
     contextRef.current = currentContext
+
+    useEffect(() => {
+        if (!['failed', 'cancelled', 'expired'].includes(sponsorship.phase)) return
+        const hash = optimisticTransactionRef.current
+        if (!hash) return
+        rollbackOptimisticWalletTransaction(hash)
+        optimisticTransactionRef.current = null
+    }, [sponsorship.phase])
 
     const loadPreview = useCallback(async ({ minimumValidityMs = 0 } = {}) => {
         if (!available || !routeReady) return null
