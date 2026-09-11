@@ -26,7 +26,7 @@ const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['POST', /^\/v1\/sponsorship\/orders$/u],
     ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/(?:prepare|delegate|submit)$`, 'u')],
-    ['POST', /^\/v1\/sponsorship\/particle\/paymaster-webhook$/u],
+    ['POST', /^\/v1\/sponsorship\/particle\/before-paymaster-sign$/u],
 ] as const)
 
 type ProxyConfig = {
@@ -205,7 +205,7 @@ function proxyHeaders(request: FastifyRequest, config: ProxyConfig) {
         request.raw.url || request.url,
         'http://pistachio.local',
     ).pathname)
-    if (normalizedPath === '/v1/sponsorship/particle/paymaster-webhook') {
+    if (normalizedPath === '/v1/sponsorship/particle/before-paymaster-sign') {
         const particleSignature = request.headers['x-particle-signature']
         if (typeof particleSignature === 'string' && particleSignature.length <= 2048) {
             headers.set('x-particle-signature', particleSignature)
