@@ -6,10 +6,13 @@ import { gasAssistProxyInternals } from '../src/modules/gas-assist-proxy.js'
 const originalTrust = process.env.COMPLIANCE_TRUST_CLOUDFLARE_GEO
 
 function request(headers: Record<string, string>, ip = '203.0.113.8') {
+    const url = '/v1/sponsorship/config'
     return {
         ip,
         protocol: 'https',
         headers,
+        url,
+        raw: { url },
     } as unknown as FastifyRequest
 }
 
