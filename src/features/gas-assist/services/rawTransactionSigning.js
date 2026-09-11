@@ -1,7 +1,5 @@
 import {
-    normalizePreparedAtomicTransaction,
     normalizePreparedSponsoredTransaction,
-    validateSignedAtomicTransaction,
     validateSignedPreparedTransaction,
 } from './metamaskMultichain.js'
 import {
@@ -12,7 +10,9 @@ import {
 const SUPPORTED_CONNECTOR_IDS = new Set([
     'pistachio-local',
 ])
-const ATOMIC_SIGN_METHOD = 'pistachio_signAtomicMegaFuel'
+const ALCHEMY_AUTH_SIGN_METHOD = 'pistachio_signAlchemyAuthorization'
+const ALCHEMY_CONTINUE_PERMIT = Symbol.for('pistachioswap.alchemy.continue-permit')
+const SIGNATURE = /^0x[0-9a-f]{130}$/iu
 
 function signingError(code, message, details = {}) {
     const error = new Error(message)
@@ -33,23 +33,115 @@ function transactionSummary(transaction) {
     }
 }
 
-/** Derives raw-transaction signing capability without prompting the connected wallet. */
+function assertAlchemyPackage(prepared, authenticatedWalletAddress) {
+    if (
+        !prepared ||
+        prepared.provider !== 'alchemy' ||
+        prepared.execution !== 'alchemy-wallet-api' ||
+        Number(prepared.chainId) !== 56 ||
+        !['permit-required', 'sign'].includes(prepared.stage) ||
+        !['erc20-preop', 'sponsored'].includes(prepared.paymentMode) ||
+        !Number.isFinite(Date.parse(prepared.expiresAt)) ||
+        Date.parse(prepared.expiresAt) <= Date.now() ||
+        typeof prepared.orderId !== 'string' ||
+        !prepared.orderId ||
+        !Array.isArray(prepared.signatureRequests) ||
+        prepared.signatureRequests.length < 1 ||
+        prepared.signatureRequests.length > 3 ||
+        !/^0x[0-9a-f]{40}$/iu.test(String(authenticatedWalletAddress ?? ''))
+    ) {
+        throw signingError(
+            'ALCHEMY_PREPARED_CALL_INVALID',
+            'Gas Assist did not return a valid Alchemy signing package.',
+            { stage: 'alchemy.validate' },
+        )
+    }
+    return prepared
+}
+
+async function signAlchemySignatureRequest({
+    walletClient,
+    request,
+    authenticatedWalletAddress,
+}) {
+    if (!request || typeof request !== 'object' || Array.isArray(request)) {
+        throw signingError('ALCHEMY_SIGNATURE_REQUEST_INVALID', 'Alchemy returned an invalid signature request.')
+    }
+    const type = String(request.type ?? '')
+    if (type === 'personal_sign') {
+        if (typeof walletClient?.signMessage !== 'function') {
+            throw signingError('WALLET_MESSAGE_SIGNING_UNAVAILABLE', 'Pistachio Wallet cannot sign the Alchemy operation.')
+        }
+        const data = request.data
+        const message = data && typeof data === 'object' && !Array.isArray(data) && typeof data.raw === 'string'
+            ? { raw: data.raw }
+            : typeof data === 'string'
+                ? data
+                : null
+        if (!message) {
+            throw signingError('ALCHEMY_SIGNATURE_REQUEST_INVALID', 'Alchemy returned an invalid personal-sign request.')
+        }
+        const signature = await walletClient.signMessage({
+            account: authenticatedWalletAddress,
+            message,
+        })
+        if (!SIGNATURE.test(String(signature ?? ''))) {
+            throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid Alchemy owner signature.')
+        }
+        return signature
+    }
+
+    if (type === 'eth_signTypedData_v4') {
+        if (typeof walletClient?.signTypedData !== 'function' ||
+            !request.data || typeof request.data !== 'object' || Array.isArray(request.data)) {
+            throw signingError('ALCHEMY_SIGNATURE_REQUEST_INVALID', 'Alchemy returned an invalid typed-data request.')
+        }
+        const signature = await walletClient.signTypedData({
+            account: authenticatedWalletAddress,
+            ...request.data,
+        })
+        if (!SIGNATURE.test(String(signature ?? ''))) {
+            throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid Alchemy typed-data signature.')
+        }
+        return signature
+    }
+
+    if (type === 'eip7702Auth') {
+        if (typeof walletClient?.request !== 'function') {
+            throw signingError('PISTACHIO_WALLET_REQUIRED', 'Pistachio Wallet cannot sign the Alchemy authorization.')
+        }
+        const signature = await walletClient.request({
+            method: ALCHEMY_AUTH_SIGN_METHOD,
+            params: [request],
+        })
+        if (!SIGNATURE.test(String(signature ?? ''))) {
+            throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid EIP-7702 authorization signature.')
+        }
+        return signature
+    }
+
+    throw signingError(
+        'ALCHEMY_SIGNATURE_TYPE_UNSUPPORTED',
+        'Alchemy requested an unsupported signature type.',
+        { signatureType: type },
+    )
+}
+
+/** Derives Gas Assist signing capability without prompting the connected wallet. */
 export function detectRawTransactionSigning({ connector, walletClient }) {
     const connectorId = String(connector?.id ?? '').trim().toLowerCase()
-    const supported =
-        SUPPORTED_CONNECTOR_IDS.has(connectorId) &&
-        typeof walletClient?.request === 'function'
+    const supported = SUPPORTED_CONNECTOR_IDS.has(connectorId) && typeof walletClient?.request === 'function'
     const transport = supported ? 'pistachio-local' : null
     const result = Object.freeze({
         rawTransactionSigningSupported: supported,
         method: supported ? 'eth_signTransaction' : null,
-        atomicMethod: supported ? ATOMIC_SIGN_METHOD : null,
+        atomicMethod: supported ? ALCHEMY_AUTH_SIGN_METHOD : null,
         transport,
         status: supported ? 'verified' : 'unsupported',
         scope: supported ? 'eip155:56' : null,
         account: null,
         approvedMethods: supported
-            ? ['eth_signTransaction', ATOMIC_SIGN_METHOD]
+            ? ['personal_sign', 'eth_signTypedData_v4', ALCHEMY_AUTH_SIGN_METHOD]
             : [],
         reasonCode: supported ? null : 'PISTACHIO_WALLET_REQUIRED',
     })
@@ -62,10 +154,8 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
 }
 
 /**
- * Requests raw transaction signing from Pistachio Wallet.
- * @returns {Promise<string>} Signed serialized transaction bytes.
- * @throws A safe capability, account-binding, or wallet-signing error.
- * @sideEffects Displays the Pistachio Wallet transaction review when explicitly invoked.
+ * Signs an exact raw transaction. Retained for provider-neutral wallet flows;
+ * Alchemy Gas Assist uses signature requests instead of raw sponsored transactions.
  */
 export async function signRawSponsoredTransaction({
     capability,
@@ -75,7 +165,6 @@ export async function signRawSponsoredTransaction({
 }) {
     if (
         capability?.rawTransactionSigningSupported !== true ||
-        capability.method !== 'eth_signTransaction' ||
         capability.transport !== 'pistachio-local' ||
         typeof walletClient?.request !== 'function'
     ) {
@@ -90,35 +179,27 @@ export async function signRawSponsoredTransaction({
         action,
         transaction: transactionSummary(transaction),
     })
-    let signedRawTransaction
-    try {
-        signedRawTransaction = await walletClient.request({
-            method: 'eth_signTransaction',
-            params: [transaction],
-        })
-    } catch (error) {
+    const signedRawTransaction = await walletClient.request({
+        method: 'eth_signTransaction',
+        params: [transaction],
+    }).catch((error) => {
         gasAssistTraceError('signing.wallet-request.error', error, {
             action,
             transaction: transactionSummary(transaction),
         })
         throw error
-    }
-    if (typeof signedRawTransaction !== 'string' ||
-        !/^0x(?:[0-9a-f]{2})+$/i.test(signedRawTransaction)) {
+    })
+    if (typeof signedRawTransaction !== 'string' || !/^0x(?:[0-9a-f]{2})+$/i.test(signedRawTransaction)) {
         throw signingError(
             'WALLET_RAW_TRANSACTION_MALFORMED',
             'Pistachio Wallet returned an invalid signed transaction.',
             { stage: 'wallet.sign', action },
         )
     }
-    gasAssistTrace('signing.wallet-request.success', {
-        action,
-        signedBytes: (signedRawTransaction.length - 2) / 2,
-    })
     return signedRawTransaction
 }
 
-/** Signs and validates the exact backend-prepared sponsored transaction. */
+/** Signs and validates a provider-neutral raw prepared transaction. */
 export async function signPreparedSponsoredTransaction({
     transport,
     capability,
@@ -132,7 +213,7 @@ export async function signPreparedSponsoredTransaction({
     if (typeof submitSignedTransaction !== 'function') {
         throw signingError(
             'SPONSORSHIP_SUBMISSION_REQUIRED',
-            'A direct sponsorship submission callback is required.',
+            'A sponsorship submission callback is required.',
             { stage: 'intent.submit', action },
         )
     }
@@ -144,16 +225,10 @@ export async function signPreparedSponsoredTransaction({
         )
     }
 
-    gasAssistTrace('signing.intent.normalize.start', { action })
     const normalizedTransaction = normalizePreparedSponsoredTransaction(
         preparedTransaction,
         authenticatedWalletAddress,
     )
-    gasAssistTrace('signing.intent.normalize.success', {
-        action,
-        transaction: transactionSummary(normalizedTransaction),
-    })
-
     let signedRawTransaction = null
     try {
         signedRawTransaction = await signRawSponsoredTransaction({
@@ -162,26 +237,23 @@ export async function signPreparedSponsoredTransaction({
             transaction: normalizedTransaction,
             action,
         })
-        gasAssistTrace('signing.intent.validate.start', { action })
         await validateSignedPreparedTransaction({
             signedRawTransaction,
             normalizedTransaction,
             authenticatedWalletAddress,
             multichainAccount: multichainAccount ?? authenticatedWalletAddress,
         })
-        gasAssistTrace('signing.intent.validate.success', { action })
-        gasAssistTrace('signing.intent.submit.start', { action })
-        const result = await submitSignedTransaction(signedRawTransaction)
-        gasAssistTrace('signing.intent.submit.success', { action })
-        return result
-    } catch (error) {
-        gasAssistTraceError('signing.intent.error', error, { action })
-        throw error
+        return await submitSignedTransaction(signedRawTransaction)
     } finally {
         signedRawTransaction = null
     }
 }
 
+/**
+ * Signs an Alchemy Wallet API Gas Assist package. If pre-op token payment needs
+ * a permit, the permit is signed first and the backend obtains the final package
+ * before any operation signatures are requested.
+ */
 export async function signPreparedAtomicSponsoredTransaction({
     transport,
     capability,
@@ -192,90 +264,85 @@ export async function signPreparedAtomicSponsoredTransaction({
 }) {
     if (
         transport !== 'pistachio-local' ||
-        capability?.atomicMethod !== ATOMIC_SIGN_METHOD ||
+        capability?.atomicMethod !== ALCHEMY_AUTH_SIGN_METHOD ||
         typeof walletClient?.request !== 'function' ||
         typeof submitSignedTransaction !== 'function'
     ) {
         throw signingError(
             'PISTACHIO_WALLET_REQUIRED',
-            'Atomic Gas Assist requires Pistachio Wallet.',
-            { stage: 'atomic.validate' },
-        )
-    }
-    if (prepared?.execution !== 'atomic' || prepared?.mode !== 'eip7702' ||
-        prepared?.action !== 'atomic-swap' ||
-        prepared?.chainId !== 56) {
-        throw signingError(
-            'ATOMIC_PATH_UNAVAILABLE',
-            'Gas Assist did not return a direct BNB Chain EIP-7702 transaction.',
-            { stage: 'atomic.validate' },
-        )
-    }
-    if (!Number.isFinite(Date.parse(prepared.expiresAt)) || Date.parse(prepared.expiresAt) <= Date.now()) {
-        throw signingError(
-            'INTENT_EXPIRED',
-            'The atomic Gas Assist swap expired or is malformed.',
-            { stage: 'atomic.validate' },
-        )
-    }
-    const normalizedTransaction = normalizePreparedAtomicTransaction(
-        prepared.transaction,
-        authenticatedWalletAddress,
-    )
-    if (String(prepared.recipient).toLowerCase() !== String(authenticatedWalletAddress).toLowerCase()) {
-        throw signingError(
-            'WALLET_SIGNER_MISMATCH',
-            'Atomic Gas Assist bought tokens must return to the signing wallet.',
-            { stage: 'atomic.validate' },
+            'Alchemy Gas Assist requires Pistachio Wallet.',
+            { stage: 'alchemy.validate' },
         )
     }
 
-    gasAssistTrace('signing.atomic.start', {
-        orderId: prepared.orderId,
-        mode: prepared.mode,
-        transaction: transactionSummary(normalizedTransaction),
+    let current = assertAlchemyPackage(prepared, authenticatedWalletAddress)
+    gasAssistTrace('signing.alchemy.start', {
+        orderId: current.orderId,
+        paymentMode: current.paymentMode,
+        stage: current.stage,
     })
-    let signedRawTransaction = null
+
     try {
-        const response = await walletClient.request({
-            method: ATOMIC_SIGN_METHOD,
-            params: [{
-                ...prepared,
-                transaction: normalizedTransaction,
-            }],
-        })
-        signedRawTransaction = typeof response === 'string'
-            ? response
-            : response?.signedRawTransaction
-        if (typeof signedRawTransaction !== 'string' ||
-            !/^0x(?:[0-9a-f]{2})+$/i.test(signedRawTransaction)) {
-            throw signingError(
-                'WALLET_RAW_TRANSACTION_MALFORMED',
-                'Pistachio Wallet returned an invalid atomic signature.',
-                { stage: 'atomic.sign' },
+        if (current.stage === 'permit-required') {
+            if (current.signatureRequests.length !== 1) {
+                throw signingError(
+                    'ALCHEMY_PREPARED_CALL_INVALID',
+                    'Alchemy returned an unexpected gas-token permit package.',
+                    { stage: 'alchemy.permit' },
+                )
+            }
+            const continuePermit = current[ALCHEMY_CONTINUE_PERMIT]
+            if (typeof continuePermit !== 'function') {
+                throw signingError(
+                    'ALCHEMY_PERMIT_CONTINUATION_MISSING',
+                    'The Alchemy gas-token permit can no longer be continued.',
+                    { stage: 'alchemy.permit' },
+                )
+            }
+            const permitSignature = await signAlchemySignatureRequest({
+                walletClient,
+                request: current.signatureRequests[0],
+                authenticatedWalletAddress,
+            })
+            current = assertAlchemyPackage(
+                await continuePermit(permitSignature),
+                authenticatedWalletAddress,
             )
+            if (current.stage !== 'sign') {
+                throw signingError(
+                    'ALCHEMY_PREPARED_CALL_INVALID',
+                    'Alchemy did not return the final operation after the gas-token permit.',
+                    { stage: 'alchemy.permit' },
+                )
+            }
         }
-        await validateSignedAtomicTransaction({
-            signedRawTransaction,
-            normalizedTransaction,
-            authenticatedWalletAddress,
-            feeRecipient: prepared.feeRecipient,
-            minOutRaw: prepared.minOutRaw,
-            recipient: prepared.recipient,
+
+        const signatures = []
+        for (const request of current.signatureRequests) {
+            signatures.push(await signAlchemySignatureRequest({
+                walletClient,
+                request,
+                authenticatedWalletAddress,
+            }))
+        }
+        const result = await submitSignedTransaction(signatures)
+        gasAssistTrace('signing.alchemy.success', {
+            orderId: current.orderId,
+            paymentMode: current.paymentMode,
+            signatureCount: signatures.length,
         })
-        const result = await submitSignedTransaction(signedRawTransaction)
-        gasAssistTrace('signing.atomic.success', { orderId: prepared.orderId })
         return result
     } catch (error) {
-        gasAssistTraceError('signing.atomic.error', error, { orderId: prepared?.orderId })
+        gasAssistTraceError('signing.alchemy.error', error, { orderId: current?.orderId })
         throw error
-    } finally {
-        signedRawTransaction = null
     }
 }
 
 export const rawSigningInternals = {
-    ATOMIC_SIGN_METHOD,
+    ALCHEMY_AUTH_SIGN_METHOD,
+    ALCHEMY_CONTINUE_PERMIT,
+    assertAlchemyPackage,
+    signAlchemySignatureRequest,
     supportedConnectorIds: SUPPORTED_CONNECTOR_IDS,
     transactionSummary,
 }
