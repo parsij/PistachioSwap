@@ -7,10 +7,7 @@ import {
 } from 'react'
 import { formatUnits } from 'viem'
 
-import {
-    fetchWalletTokens,
-    isCurrentWalletTokenRecord,
-} from '../services/walletTokens.js'
+import { fetchWalletTokens } from '../services/walletTokens.js'
 import {
     fetchKnownWalletTokenBalances,
     mergeKnownWalletTokenBalances,
@@ -38,6 +35,27 @@ function hasPositiveBalance(token) {
     if (/^\d+$/.test(raw)) return BigInt(raw) > 0n
     const balance = String(token?.formattedBalance ?? token?.balance ?? '').trim()
     return /[1-9]/.test(balance)
+}
+
+function isUsableOptimisticToken(change) {
+    const token = change?.token
+    if (!token || typeof token !== 'object' || Array.isArray(token)) return false
+    const chainId = Number(token.chainId)
+    const decimals = Number(token.decimals)
+    const address = String(token.address ?? '').toLowerCase()
+    if (
+        !Number.isSafeInteger(chainId) ||
+        chainId !== Number(change.chainId) ||
+        !/^0x[a-f0-9]{40}$/.test(address) ||
+        address !== String(change.tokenAddress ?? '').toLowerCase() ||
+        !Number.isInteger(decimals) ||
+        decimals < 0 ||
+        decimals > 255
+    ) return false
+    if (token.possibleSpam === true) return false
+    if (['high', 'blocked'].includes(token.securityStatus)) return false
+    if (token.classificationTier === 'blocked') return false
+    return true
 }
 
 function applyPendingBalanceChanges(tokens, walletAddress) {
@@ -68,8 +86,11 @@ function applyPendingBalanceChanges(tokens, walletAddress) {
     })
 
     for (const [identity, change] of byIdentity) {
-        if (consumed.has(identity) || BigInt(change.deltaRaw) <= 0n ||
-            !isCurrentWalletTokenRecord(change.token)) continue
+        if (
+            consumed.has(identity) ||
+            BigInt(change.deltaRaw) <= 0n ||
+            !isUsableOptimisticToken(change)
+        ) continue
         const rawBalance = applyOptimisticRawBalance('0', change.deltaRaw)
         const formattedBalance = formatUnits(rawBalance, Number(change.token.decimals ?? 18))
         updated.push({
