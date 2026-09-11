@@ -1,0 +1,62 @@
+.uni-wallet-pending-operation {
+    display: inline-flex;
+    min-width: 104px;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    margin-inline: auto;
+    padding: 8px 14px;
+    border: 1px solid var(--uni-wallet-border);
+    border-radius: 999px;
+    background: var(--uni-wallet-surface);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 3%) inset;
+    color: var(--uni-wallet-text);
+    white-space: nowrap;
+}
+
+.uni-wallet-pending-operation strong {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+
+.uni-wallet-pending-spinner {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    border: 2px solid rgb(255 255 255 / 18%);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    color: var(--uni-wallet-accent);
+    animation: uni-wallet-pending-spin 800ms linear infinite;
+}
+
+.uni-wallet-pending-spinner svg {
+    display: none;
+}
+
+@keyframes uni-wallet-pending-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .uni-wallet-pending-spinner {
+        animation-duration: 1.8s;
+    }
+}
+
+@media (max-width: 520px) {
+    .uni-wallet-pending-operation {
+        min-width: 96px;
+        min-height: 40px;
+        padding-inline: 12px;
+    }
+
+    .uni-wallet-pending-operation strong {
+        font-size: 13px;
+    }
+}
