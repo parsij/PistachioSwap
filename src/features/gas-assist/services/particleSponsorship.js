@@ -3,6 +3,8 @@ import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
 const sessions = new Map()
 const SIGNATURE = /^0x[0-9a-f]{130}$/iu
+const HASH = /^0x[0-9a-f]{64}$/iu
+const PARTICLE_CONTINUE_DELEGATION = Symbol.for('pistachioswap.particle.continue-delegation')
 
 function requestPath(url) {
     try {
@@ -120,16 +122,15 @@ function validateParticlePrepared(prepared, orderId) {
     if (
         !prepared ||
         prepared.provider !== 'particle' ||
-        prepared.execution !== 'particle-paymaster' ||
+        prepared.execution !== 'particle-paymaster-v06' ||
         Number(prepared.chainId) !== 56 ||
         prepared.orderId !== orderId ||
-        prepared.stage !== 'sign' ||
+        !['delegation-required', 'sign'].includes(prepared.stage) ||
         prepared.paymentMode !== 'sponsored' ||
         !Number.isFinite(Date.parse(prepared.expiresAt)) ||
         Date.parse(prepared.expiresAt) <= Date.now() ||
         !Array.isArray(prepared.signatureRequests) ||
-        prepared.signatureRequests.length < 1 ||
-        prepared.signatureRequests.length > 2
+        prepared.signatureRequests.length !== 1
     ) {
         throw sponsorshipError(
             'PARTICLE_USEROP_INVALID',
@@ -137,15 +138,54 @@ function validateParticlePrepared(prepared, orderId) {
             { stage: 'atomic.prepare' },
         )
     }
-    const types = prepared.signatureRequests.map((request) => String(request?.type ?? ''))
-    if (!types.includes('eth_signTypedData_v4') ||
-        types.some((type) => type !== 'eth_signTypedData_v4' && type !== 'eip7702Auth')) {
+
+    const request = prepared.signatureRequests[0]
+    const type = String(request?.type ?? '')
+    if (prepared.stage === 'delegation-required') {
+        if (type !== 'eip7702Auth' || prepared.signing?.method !== 'pistachio_signParticleAuthorization') {
+            throw sponsorshipError(
+                'PARTICLE_SIGNATURE_REQUEST_INVALID',
+                'Particle returned an invalid EIP-7702 delegation request.',
+                { stage: 'atomic.delegate' },
+            )
+        }
+    } else if (type !== 'personal_sign' || !HASH.test(String(request?.data?.raw ?? ''))) {
         throw sponsorshipError(
             'PARTICLE_SIGNATURE_REQUEST_INVALID',
-            'Particle returned an unsupported Gas Assist signature request.',
-            { stage: 'atomic.prepare' },
+            'Particle returned an invalid UserOperation signature request.',
+            { stage: 'atomic.sign' },
         )
     }
+    return prepared
+}
+
+function attachDelegationContinuation(prepared, context) {
+    if (prepared.stage !== 'delegation-required') return prepared
+    Object.defineProperty(prepared, PARTICLE_CONTINUE_DELEGATION, {
+        configurable: false,
+        enumerable: false,
+        writable: false,
+        value: async (signature) => {
+            if (!SIGNATURE.test(String(signature ?? ''))) {
+                throw sponsorshipError(
+                    'INVALID_SIGNATURE',
+                    'The Particle EIP-7702 authorization signature is invalid.',
+                    { stage: 'atomic.delegate' },
+                )
+            }
+            const next = await post(
+                context.quoteEndpoint,
+                `/v1/sponsorship/orders/${encodeURIComponent(context.orderId)}/atomic/delegate`,
+                { signature },
+                {
+                    sessionToken: context.sessionToken,
+                    signal: context.signal,
+                    stage: 'atomic.delegate',
+                },
+            )
+            return validateParticlePrepared(next, context.orderId)
+        },
+    })
     return prepared
 }
 
@@ -228,12 +268,18 @@ export function createSponsorshipOrder(quoteEndpoint, sessionToken, request, ide
 }
 
 export async function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signal) {
-    return validateParticlePrepared(await post(
+    const prepared = validateParticlePrepared(await post(
         quoteEndpoint,
         `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`,
         {},
         { sessionToken, signal, stage: 'atomic.prepare' },
     ), orderId)
+    return attachDelegationContinuation(prepared, {
+        quoteEndpoint,
+        sessionToken,
+        orderId,
+        signal,
+    })
 }
 
 export async function submitAtomicSponsorship(
@@ -243,11 +289,10 @@ export async function submitAtomicSponsorship(
     signatures,
     signal,
 ) {
-    if (!Array.isArray(signatures) || signatures.length < 1 || signatures.length > 2 ||
-        signatures.some((signature) => typeof signature !== 'string' || !SIGNATURE.test(signature))) {
+    if (!Array.isArray(signatures) || signatures.length !== 1 || !SIGNATURE.test(String(signatures[0] ?? ''))) {
         throw sponsorshipError(
             'INVALID_SIGNATURE',
-            'The Particle Gas Assist signatures are invalid.',
+            'The Particle Gas Assist UserOperation signature is invalid.',
             { stage: 'atomic.submit' },
         )
     }
@@ -258,7 +303,7 @@ export async function submitAtomicSponsorship(
         { sessionToken, signal, stage: 'atomic.submit' },
     )
     if (result?.orderId !== orderId || typeof result?.userOperationHash !== 'string' ||
-        !/^0x[0-9a-f]{64}$/i.test(result.userOperationHash)) {
+        !HASH.test(result.userOperationHash)) {
         throw sponsorshipError(
             'PARTICLE_SUBMISSION_INVALID',
             'Particle returned an invalid Gas Assist UserOperation identifier.',
@@ -277,6 +322,8 @@ export function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, sign
 }
 
 export const prepaidSponsorshipInternals = {
+    PARTICLE_CONTINUE_DELEGATION,
+    attachDelegationContinuation,
     clearSessions: () => sessions.clear(),
     deleteExpiredSessions,
     requestJson,
