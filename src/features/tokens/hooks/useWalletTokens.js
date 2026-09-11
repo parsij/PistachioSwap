@@ -190,6 +190,7 @@ export function useWalletTokens({
         getOptimisticWalletBalanceRevision,
         getOptimisticWalletBalanceRevision,
     )
+    const previousOptimisticRevisionRef = useRef(optimisticRevision)
 
     const refetch = useCallback(() => {
         if (!requestKey) return false
@@ -200,6 +201,12 @@ export function useWalletTokens({
         setRefreshIndex((value) => value + 1)
         return true
     }, [requestKey])
+
+    useEffect(() => {
+        if (previousOptimisticRevisionRef.current === optimisticRevision) return
+        previousOptimisticRevisionRef.current = optimisticRevision
+        refetch()
+    }, [optimisticRevision, refetch])
 
     useEffect(() => {
         const sequence = ++requestSequence.current
@@ -414,7 +421,6 @@ export function useWalletTokens({
     const visibleTokens = requestKey
         ? applyPendingBalanceChanges(visibleState.tokens, normalizedAddress)
         : visibleState.tokens
-    void optimisticRevision
 
     return {
         ...visibleState,
