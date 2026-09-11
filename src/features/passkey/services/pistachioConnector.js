@@ -3,8 +3,9 @@ import { createConnector } from 'wagmi'
 import { getCuratedEvmChain, isCuratedEvmChainId } from '../../../web3/curatedEvmChains.js'
 import { PISTACHIO_CHAIN_ID, PISTACHIO_CONNECTOR_ID } from './constants.js'
 import { getPistachioWalletManager } from './walletManager.js'
+import { methods as alchemySigningMethods } from './walletManagerAlchemySigning.js'
 
-const ATOMIC_MEGAFUEL_SIGN_METHOD = 'pistachio_signAtomicMegaFuel'
+const ALCHEMY_AUTH_SIGN_METHOD = 'pistachio_signAlchemyAuthorization'
 
 function snapshotAccount(snapshot) {
     if (snapshot.phase === 'unlocked' && snapshot.address) return snapshot.address
@@ -34,13 +35,13 @@ function createProvider(manager) {
     })
     return Object.freeze({
         request: (request) => {
-            if (request?.method === ATOMIC_MEGAFUEL_SIGN_METHOD) {
+            if (request?.method === ALCHEMY_AUTH_SIGN_METHOD) {
                 if (!Array.isArray(request.params) || request.params.length !== 1) {
-                    const error = new Error('A single atomic Gas Assist transaction is required.')
-                    error.code = 'SPONSORSHIP_PACKAGE_INVALID'
+                    const error = new Error('A single Alchemy EIP-7702 authorization is required.')
+                    error.code = 'ALCHEMY_AUTHORIZATION_INVALID'
                     throw error
                 }
-                return manager.signAtomicMegaFuel(request.params[0])
+                return alchemySigningMethods.signAlchemyAuthorization.call(manager, request.params[0])
             }
             return manager.providerRequest(request)
         },
@@ -167,6 +168,7 @@ export function pistachioWalletConnector(appKitModal = {}) {
 }
 
 export const pistachioConnectorInternals = {
+    ALCHEMY_AUTH_SIGN_METHOD,
     createConnectorConfig,
     createProvider,
     snapshotAccount,
