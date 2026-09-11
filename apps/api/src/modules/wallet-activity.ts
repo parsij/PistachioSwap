@@ -54,15 +54,19 @@ const MORALIS_CHAIN_IDS = new Set(
         .map((chain) => chain.chainId),
 )
 
-// Current direct EIP-7702 same-chain executor.
+// Current direct EIP-7702 executors.
 export const GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS =
-    '0x973731be76bdb84b994d32ef1e9607edebfbe470'
+    '0xf401666648f16ccceb0025a7f6e051b85e029b36'
+export const GAS_ASSIST_CROSS_CHAIN_EXECUTOR_ADDRESS =
+    '0xb736299015a21e717f2bfcf2f069803818fb32bf'
 
 // Pistachio-owned BNB Chain contracts that have been used by the product.
 // Keep these as transaction-history identities only. Their presence here does
 // not grant execution privileges or alter Gas Assist routing/security policy.
 export const KNOWN_PISTACHIO_BSC_CONTRACT_ADDRESSES = Object.freeze([
     GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS,
+    GAS_ASSIST_CROSS_CHAIN_EXECUTOR_ADDRESS,
+    '0x973731be76bdb84b994d32ef1e9607edebfbe470',
     '0x517b6c94da086f3f69dc725d7d70cdba7c4a9b62',
     '0x21331d393a0622eeddffce3e9db29448b6110bc6',
 ])
@@ -86,6 +90,28 @@ const gasAssistAtomicExecutorAbi = [
             { name: 'router', type: 'address' },
             { name: 'swapCalldata', type: 'bytes' },
             { name: 'minOut', type: 'uint256' },
+        ],
+        outputs: [],
+    },
+    {
+        type: 'function',
+        name: 'executeAtomicCrossChain',
+        stateMutability: 'nonpayable',
+        inputs: [
+            { name: 'treasury', type: 'address' },
+            { name: 'paymentToken', type: 'address' },
+            { name: 'feeAmount', type: 'uint256' },
+            { name: 'sellToken', type: 'address' },
+            { name: 'swapAmount', type: 'uint256' },
+            { name: 'destinationChainId', type: 'uint256' },
+            { name: 'buyToken', type: 'address' },
+            { name: 'allowanceTarget', type: 'address' },
+            { name: 'router', type: 'address' },
+            { name: 'swapCalldata', type: 'bytes' },
+            { name: 'minOut', type: 'uint256' },
+            { name: 'authorizationNonce', type: 'uint256' },
+            { name: 'authorizationDeadline', type: 'uint256' },
+            { name: 'authorizationSignature', type: 'bytes' },
         ],
         outputs: [],
     },
@@ -407,6 +433,56 @@ function decodeGasAssistActivity({
             abi: gasAssistAtomicExecutorAbi,
             data: input as Hex,
         })
+
+        if (decoded.functionName === 'executeAtomicCrossChain') {
+            const [
+                ,
+                ,
+                ,
+                rawSellToken,
+                swapAmount,
+                destinationChainIdRaw,
+                rawBuyToken,
+            ] = decoded.args
+            const sellAddress = normalizeAddress(rawSellToken)
+            const buyAddress = normalizeAddress(rawBuyToken)
+            const destinationChainId = Number(destinationChainIdRaw)
+            if (
+                !sellAddress ||
+                !buyAddress ||
+                swapAmount <= 0n ||
+                !Number.isSafeInteger(destinationChainId) ||
+                destinationChainId <= 0 ||
+                destinationChainId === chainId
+            ) return null
+
+            const exactSell = exactTransfer(outgoing, sellAddress, swapAmount)
+            const anySell = exactSell ?? exactTransfer(outgoing, sellAddress)
+            const buyToken = activityTokenForAddress(destinationChainId, buyAddress)
+            // A source-chain cross-chain transaction cannot prove the eventual
+            // destination amount. Require the exact observed source principal,
+            // classify it as a swap, and leave buyAmount for destination data.
+            if (!anySell || !buyToken) return null
+
+            return {
+                id: `${chainId}:${hash}`,
+                walletAddress: wallet,
+                type: 'swapped',
+                chainId,
+                destinationChainId,
+                hash,
+                timestamp,
+                sellToken: anySell.token,
+                buyToken,
+                sellAmount:
+                    formatRawAmount(swapAmount, anySell.token) ?? anySell.amount ?? null,
+                buyAmount: null,
+                recipient: wallet,
+                provider: 'pistachio-gas-assist',
+                contractAddress: GAS_ASSIST_CROSS_CHAIN_EXECUTOR_ADDRESS,
+            }
+        }
+
         if (decoded.functionName !== 'executeAtomicSwap') return null
 
         const [
@@ -450,6 +526,7 @@ function decodeGasAssistActivity({
             buyAmount: buyTransfer.amount ?? null,
             recipient: wallet,
             provider: 'pistachio-gas-assist',
+            contractAddress: GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS,
         }
     } catch {
         return null
@@ -696,10 +773,13 @@ function normalizeMoralisActivity(chainId: number, wallet: string, value: unknow
         from: normalizeAddress(value.from_address), to: normalizeAddress(value.to_address),
         nativeValue: decimalValue(value.value), provider: item.provider ?? value.provider ?? 'moralis',
         providerType: stringValue(value.category),
-        detectedContract: contracts.find(address => address && KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address)) ??
+        detectedContract: normalizeAddress(item.contractAddress) ??
+            contracts.find(address => address && KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address)) ??
             (item.type === 'swapped' ? normalizeAddress(value.to_address) : null),
         classificationReason: item.type === 'swapped'
-            ? 'Successful swap interaction with outgoing and incoming distinct assets'
+            ? Number(item.destinationChainId) > 0 && Number(item.destinationChainId) !== chainId
+                ? 'Successful Pistachio cross-chain Gas Assist source swap'
+                : 'Successful swap interaction with outgoing and incoming distinct assets'
             : item.type === 'approved' ? 'Approval calldata or provider approval evidence'
             : item.type === 'sent' ? 'Outgoing wallet movement; no confirmed distinct buy flow'
             : item.type === 'received' ? 'Incoming wallet movement'
@@ -861,6 +941,10 @@ function enrichActivityTokens(
 ) {
     const chainId = Number(item.chainId)
     if (item.type === 'swapped') {
+        const destinationChainId = Number(item.destinationChainId)
+        const buyChainId = Number.isSafeInteger(destinationChainId) && destinationChainId > 0
+            ? destinationChainId
+            : chainId
         return {
             ...item,
             sellToken: enrichActivityToken(
@@ -869,7 +953,7 @@ function enrichActivityTokens(
                 trustedTokens,
             ),
             buyToken: enrichActivityToken(
-                chainId,
+                buyChainId,
                 item.buyToken as ActivityToken | null,
                 trustedTokens,
             ),
