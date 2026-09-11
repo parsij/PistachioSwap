@@ -25,8 +25,8 @@ const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['POST', /^\/v1\/sponsorship\/auth\/(?:challenge|verify)$/u],
     ['POST', /^\/v1\/sponsorship\/orders$/u],
     ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/(?:prepare|permit|submit)$`, 'u')],
-    ['POST', /^\/v1\/sponsorship\/alchemy\/sponsorship-webhook$/u],
+    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/(?:prepare|delegate|submit)$`, 'u')],
+    ['POST', /^\/v1\/sponsorship\/particle\/before-paymaster-sign$/u],
 ] as const)
 
 type ProxyConfig = {
@@ -196,6 +196,20 @@ function proxyHeaders(request: FastifyRequest, config: ProxyConfig) {
     const idempotencyKey = request.headers['idempotency-key']
     if (typeof idempotencyKey === 'string') {
         headers.set('idempotency-key', idempotencyKey)
+    }
+
+    // This header is not a client credential. Particle signs the webhook body
+    // with its project RSA key and Gas Assist verifies it against the dashboard
+    // public key. Forward it only on the one allowlisted Particle callback route.
+    const normalizedPath = publicPathname(new URL(
+        request.raw.url || request.url,
+        'http://pistachio.local',
+    ).pathname)
+    if (normalizedPath === '/v1/sponsorship/particle/before-paymaster-sign') {
+        const particleSignature = request.headers['x-particle-signature']
+        if (typeof particleSignature === 'string' && particleSignature.length <= 2048) {
+            headers.set('x-particle-signature', particleSignature)
+        }
     }
 
     return headers

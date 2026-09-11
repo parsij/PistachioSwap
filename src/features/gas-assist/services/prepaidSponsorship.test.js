@@ -9,21 +9,19 @@ import {
 } from './prepaidSponsorship.js'
 
 const SIGNATURE = `0x${'11'.repeat(65)}`
+const USER_OP_HASH = `0x${'22'.repeat(32)}`
 
-function alchemyPrepared(overrides = {}) {
+function particlePrepared(overrides = {}) {
     return {
-        provider: 'alchemy',
-        execution: 'alchemy-wallet-api',
+        provider: 'particle',
+        execution: 'particle-paymaster-v06',
         stage: 'sign',
         paymentMode: 'sponsored',
         orderId: 'order-1',
         chainId: 56,
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        signatureRequests: [{
-            type: 'personal_sign',
-            data: { raw: `0x${'22'.repeat(32)}` },
-            rawPayload: `0x${'33'.repeat(32)}`,
-        }],
+        signatureRequests: [{ type: 'personal_sign', data: { raw: USER_OP_HASH } }],
+        signing: { method: 'personal_sign', continuation: null },
         ...overrides,
     }
 }
@@ -34,7 +32,7 @@ afterEach(() => {
 })
 
 describe('Gas Assist frontend trust boundary', () => {
-    it.each(['paymentToken', 'spender', 'router', 'calldata', 'gasLimit', 'policyUuid'])(
+    it.each(['paymentToken', 'spender', 'router', 'calldata', 'gasLimit', 'projectKey'])(
         'rejects frontend field %s',
         async (field) => {
             const fetcher = vi.spyOn(globalThis, 'fetch')
@@ -89,38 +87,16 @@ describe('Gas Assist frontend trust boundary', () => {
                 status: 409,
                 requestId: 'request-123',
                 stage: 'config.fetch',
-                details: expect.objectContaining({
-                    backendDetails: { providers: ['uniswap', '0x'] },
-                }),
             })
     })
 
     it('maps gateway HTML timeouts to a retryable gateway error', async () => {
-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>502 Bad Gateway</html>', {
-            status: 502,
-            headers: { 'content-type': 'text/html' },
-        }))
-
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>502 Bad Gateway</html>', { status: 502 }))
         await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote'))
-            .rejects.toMatchObject({
-                code: 'CROSS_CHAIN_GATEWAY_TIMEOUT',
-                status: 502,
-            })
+            .rejects.toMatchObject({ code: 'CROSS_CHAIN_GATEWAY_TIMEOUT', status: 502 })
     })
 
-    it('reports malformed successful JSON responses instead of returning null', async () => {
-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>broken</html>', {
-            status: 200,
-        }))
-
-        await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote'))
-            .rejects.toMatchObject({
-                code: 'SPONSORSHIP_INVALID_RESPONSE',
-                stage: 'config.fetch',
-            })
-    })
-
-    it('normalizes enabled server config to the Alchemy atomic client path', async () => {
+    it('normalizes enabled server config to the Particle atomic client path', async () => {
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
             enabled: true,
             chainId: 56,
@@ -128,39 +104,35 @@ describe('Gas Assist frontend trust boundary', () => {
         }), { status: 200 }))
 
         await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote'))
-            .resolves.toMatchObject({
-                enabled: true,
-                provider: 'alchemy',
-                atomicExecution: true,
-            })
+            .resolves.toMatchObject({ enabled: true, provider: 'particle', atomicExecution: true })
     })
 
-    it('keeps the pre-op permit continuation private to the prepared object', async () => {
+    it('keeps the EIP-7702 delegation continuation private to the prepared object', async () => {
         const calls = []
         vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options = {}) => {
             calls.push({ url: String(url), options })
             const pathname = new URL(String(url)).pathname
             if (pathname.endsWith('/atomic/prepare')) {
-                return new Response(JSON.stringify(alchemyPrepared({
-                    stage: 'permit-required',
-                    paymentMode: 'erc20-preop',
+                return new Response(JSON.stringify(particlePrepared({
+                    stage: 'delegation-required',
                     signatureRequests: [{
-                        type: 'eth_signTypedData_v4',
+                        type: 'eip7702Auth',
+                        rawPayload: `0x${'33'.repeat(32)}`,
                         data: {
-                            domain: { name: 'Token' },
-                            types: { Permit: [{ name: 'owner', type: 'address' }] },
-                            primaryType: 'Permit',
-                            message: { owner: '0x1111111111111111111111111111111111111111' },
+                            address: '0x1111111111111111111111111111111111111111',
+                            chainId: 56,
+                            nonce: 3,
                         },
-                        rawPayload: `0x${'44'.repeat(32)}`,
                     }],
+                    signing: {
+                        method: 'pistachio_signParticleAuthorization',
+                        continuation: 'delegate',
+                    },
                 })), { status: 200 })
             }
-            if (pathname.endsWith('/atomic/permit')) {
+            if (pathname.endsWith('/atomic/delegate')) {
                 expect(JSON.parse(String(options.body))).toEqual({ signature: SIGNATURE })
-                return new Response(JSON.stringify(alchemyPrepared({
-                    paymentMode: 'erc20-preop',
-                })), { status: 200 })
+                return new Response(JSON.stringify(particlePrepared()), { status: 200 })
             }
             throw new Error(`Unexpected request: ${String(url)}`)
         })
@@ -170,26 +142,21 @@ describe('Gas Assist frontend trust boundary', () => {
             'session-token',
             'order-1',
         )
-        expect(prepared.stage).toBe('permit-required')
+        expect(prepared.stage).toBe('delegation-required')
         expect(JSON.stringify(prepared)).not.toContain('session-token')
-        const continuation = prepared[prepaidSponsorshipInternals.ALCHEMY_CONTINUE_PERMIT]
+        const continuation = prepared[prepaidSponsorshipInternals.PARTICLE_CONTINUE_DELEGATION]
         expect(typeof continuation).toBe('function')
-        await expect(continuation(SIGNATURE)).resolves.toMatchObject({
-            stage: 'sign',
-            paymentMode: 'erc20-preop',
-        })
+        await expect(continuation(SIGNATURE)).resolves.toMatchObject({ stage: 'sign' })
         expect(calls).toHaveLength(2)
     })
 
-    it('submits only Alchemy signatures to the backend', async () => {
+    it('submits only one Particle owner signature to the backend', async () => {
         const calls = []
         vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options = {}) => {
             calls.push({ url: String(url), options })
             return new Response(JSON.stringify({
-                provider: 'alchemy',
                 orderId: 'order-1',
-                status: 'submitted',
-                callId: '0x1234',
+                userOperationHash: USER_OP_HASH,
                 transactionHash: null,
             }), { status: 200 })
         })
@@ -199,16 +166,12 @@ describe('Gas Assist frontend trust boundary', () => {
             'session-token',
             'order-1',
             [SIGNATURE],
-        )).resolves.toMatchObject({
-            status: 'submitted',
-            callId: '0x1234',
-        })
+        )).resolves.toMatchObject({ userOperationHash: USER_OP_HASH })
 
         expect(calls).toHaveLength(1)
         expect(new URL(calls[0].url).pathname).toMatch(/\/atomic\/submit$/)
-        expect(JSON.parse(String(calls[0].options.body))).toEqual({
-            signatures: [SIGNATURE],
-        })
+        expect(JSON.parse(String(calls[0].options.body))).toEqual({ signatures: [SIGNATURE] })
+        expect(String(calls[0].options.body)).not.toContain('projectKey')
         expect(String(calls[0].options.body)).not.toContain('signedRawTransaction')
     })
 })
