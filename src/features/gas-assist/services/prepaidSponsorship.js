@@ -285,12 +285,7 @@ export function fetchSponsorshipConfig(quoteEndpoint, signal) {
     )
 }
 
-/**
- * Authenticates the exact wallet address with a backend nonce and wallet signature.
- * @returns {Promise<object>} Backend session token and authentication metadata.
- * @throws For malformed challenges, wallet rejection, or backend authentication failure.
- * @sideEffects Performs backend HTTP and invokes the supplied signing callback once.
- */
+/** Authenticates the exact wallet address with a backend nonce and wallet signature. */
 export async function authenticateSponsorshipWallet({
     quoteEndpoint,
     walletAddress,
@@ -391,9 +386,11 @@ export function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, s
 }
 
 /**
- * Lets the backend authorize sponsorship, then sends the already-signed transaction
- * from the browser directly to MegaFuel. Only the resulting transaction hash is
- * reported back to PistachioSwap; signed raw bytes never enter the app backend.
+ * Registers only the deterministic transaction hash with Gas Assist before
+ * broadcast, then sends the signed raw bytes from this browser directly to
+ * MegaFuel. The backend never receives the raw transaction. Pre-registering the
+ * hash lets the backend recover the on-chain transaction if the tab disappears
+ * after MegaFuel accepts it but before the confirmation callback completes.
  */
 export async function submitAtomicSponsorship(
     quoteEndpoint,
@@ -413,12 +410,13 @@ export async function submitAtomicSponsorship(
     const authorization = await post(
         quoteEndpoint,
         `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/authorize-direct`,
-        {},
+        { transactionHash },
         { sessionToken, signal, stage: 'atomic.authorize-direct' },
     )
     if (
         authorization?.mode !== 'wallet-direct-megafuel' ||
         authorization?.orderId !== orderId ||
+        String(authorization?.transactionHash ?? '').toLowerCase() !== transactionHash ||
         !Number.isFinite(Date.parse(authorization?.expiresAt)) ||
         Date.parse(authorization.expiresAt) <= Date.now()
     ) {
@@ -445,9 +443,6 @@ export async function submitAtomicSponsorship(
             signal,
         )
     } catch (error) {
-        // A browser can lose the HTTP response after MegaFuel accepted the raw tx.
-        // Reconcile by hash only. The backend fetches and exactly validates the BSC
-        // transaction; it never needs the signed bytes for this recovery attempt.
         try {
             const confirmed = await confirmDirectAtomicSubmission(
                 quoteEndpoint,
