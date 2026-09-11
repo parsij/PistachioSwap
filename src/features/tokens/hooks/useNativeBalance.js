@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useBalance } from '#wallet-runtime'
 import { formatEther } from 'viem'
 
@@ -39,6 +39,13 @@ export function useNativeBalance({
         getOptimisticWalletBalanceRevision,
         getOptimisticWalletBalanceRevision,
     )
+    const previousOptimisticRevisionRef = useRef(optimisticRevision)
+
+    useEffect(() => {
+        if (previousOptimisticRevisionRef.current === optimisticRevision) return
+        previousOptimisticRevisionRef.current = optimisticRevision
+        if (active) void query.refetch()
+    }, [active, optimisticRevision, query.refetch])
 
     const canonicalValue = active && query.data ? query.data.value : null
     const nativeDelta = active
@@ -51,7 +58,6 @@ export function useNativeBalance({
         : nativeDelta
             ? applyOptimisticRawBalance(canonicalValue, nativeDelta.deltaRaw)
             : canonicalValue
-    void optimisticRevision
 
     const status = !active
         ? 'idle'
