@@ -141,13 +141,27 @@ export function useGasAssistController({
                     deltaRaw: expectedOutputRaw,
                 })
             }
-            if (beginOptimisticWalletTransaction({
+            beginOptimisticWalletTransaction({
                 walletAddress: account,
                 transactionHash: hash,
+                operation: 'swapping',
                 changes,
-            })) {
-                optimisticHashRef.current = hash
-            }
+            })
+            optimisticHashRef.current = hash
+            recordWalletActivity({
+                walletAddress: account,
+                chainId: 56,
+                type: 'swapped',
+                hash,
+                sellToken,
+                buyToken,
+                sellAmount: activityAmount(grossInputRaw, sellToken.decimals),
+                buyAmount: expectedOutputRaw > 0n
+                    ? activityAmount(expectedOutputRaw, buyToken.decimals)
+                    : null,
+                provider: 'Gas Assist',
+                status: 'pending',
+            })
         } catch {
             // An optimistic display update must never interfere with submission.
         }
@@ -168,6 +182,7 @@ export function useGasAssistController({
             ),
             buyAmount: activityAmount(order?.expectedOutputRaw, buyToken?.decimals),
             provider: 'Gas Assist',
+            status: 'confirmed',
         })
 
         const refresh = async (refreshOnly) => {
@@ -225,8 +240,26 @@ export function useGasAssistController({
         const hash = optimisticHashRef.current
         if (!hash) return
         rollbackOptimisticWalletTransaction(hash)
+        recordWalletActivity({
+            walletAddress: account,
+            chainId: 56,
+            type: 'swapped',
+            hash,
+            sellToken,
+            buyToken,
+            sellAmount: activityAmount(activeAmountIn, sellToken?.decimals),
+            buyAmount: null,
+            provider: 'Gas Assist',
+            status: 'failed',
+        })
         optimisticHashRef.current = null
-    }, [prepaidSponsorship.phase])
+    }, [
+        account,
+        activeAmountIn,
+        buyToken,
+        prepaidSponsorship.phase,
+        sellToken,
+    ])
 
     const prepaidRequired = gasAssistRequested
     const prepaidEnabled = prepaidSponsorship.configStatus === 'success' &&
