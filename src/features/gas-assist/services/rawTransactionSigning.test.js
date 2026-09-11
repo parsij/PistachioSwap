@@ -5,11 +5,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
     detectRawTransactionSigning,
+    signPreparedAtomicSponsoredTransaction,
     signPreparedSponsoredTransaction,
     signRawSponsoredTransaction,
 } from './rawTransactionSigning.js'
 
 const localWallet = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d')
+const SIGNATURE = `0x${'11'.repeat(65)}`
 const preparedTransaction = {
     type: '0x0',
     chainId: '0x38',
@@ -22,8 +24,8 @@ const preparedTransaction = {
     data: '0x',
 }
 
-describe('private sponsored wallet compatibility', () => {
-    it('supports only Pistachio local wallet using eth_signTransaction', async () => {
+describe('Gas Assist wallet compatibility', () => {
+    it('supports only Pistachio local wallet and exposes the Alchemy authorization method', async () => {
         const request = vi.fn().mockResolvedValue('0x1234')
         const walletClient = { request }
         const capability = detectRawTransactionSigning({
@@ -33,7 +35,7 @@ describe('private sponsored wallet compatibility', () => {
         expect(capability).toMatchObject({
             rawTransactionSigningSupported: true,
             method: 'eth_signTransaction',
-            atomicMethod: 'pistachio_signAtomicMegaFuel',
+            atomicMethod: 'pistachio_signAlchemyAuthorization',
             transport: 'pistachio-local',
             status: 'verified',
         })
@@ -58,7 +60,7 @@ describe('private sponsored wallet compatibility', () => {
         },
     )
 
-    it('does not substitute personal_sign, eth_sign, or typed-data signing', async () => {
+    it('does not substitute raw signing for unsupported wallets', async () => {
         const request = vi.fn()
         await expect(signRawSponsoredTransaction({
             capability: { rawTransactionSigningSupported: false, method: null },
@@ -68,7 +70,7 @@ describe('private sponsored wallet compatibility', () => {
         expect(request).not.toHaveBeenCalled()
     })
 
-    it('passes a locally verified raw transaction directly to the existing submission callback', async () => {
+    it('passes a locally verified raw transaction directly to the generic submission callback', async () => {
         const raw = await localWallet.signTransaction({
             chainId: 56,
             type: 'legacy',
@@ -93,7 +95,7 @@ describe('private sponsored wallet compatibility', () => {
         expect(submitSignedTransaction).toHaveBeenCalledWith(raw)
     })
 
-    it('never submits when local raw-transaction validation fails', async () => {
+    it('never submits a generic raw transaction when local validation fails', async () => {
         const walletClient = { request: vi.fn().mockResolvedValue('0x1234') }
         const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
         const submitSignedTransaction = vi.fn()
@@ -106,6 +108,50 @@ describe('private sponsored wallet compatibility', () => {
             submitSignedTransaction,
         })).rejects.toMatchObject({ code: 'WALLET_RAW_TRANSACTION_MALFORMED' })
         expect(submitSignedTransaction).not.toHaveBeenCalled()
+    })
+
+    it('signs Alchemy owner requests and submits only the signature array', async () => {
+        const request = vi.fn()
+        const signMessage = vi.fn().mockResolvedValue(SIGNATURE)
+        const walletClient = { request, signMessage }
+        const capability = detectRawTransactionSigning({
+            connector: { id: 'pistachio-local' },
+            walletClient,
+        })
+        const submitSignedTransaction = vi.fn().mockResolvedValue({
+            provider: 'alchemy',
+            callId: '0x1234',
+            status: 'submitted',
+        })
+        const prepared = {
+            provider: 'alchemy',
+            execution: 'alchemy-wallet-api',
+            stage: 'sign',
+            paymentMode: 'sponsored',
+            orderId: 'order-1',
+            chainId: 56,
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            signatureRequests: [{
+                type: 'personal_sign',
+                data: { raw: `0x${'22'.repeat(32)}` },
+                rawPayload: `0x${'33'.repeat(32)}`,
+            }],
+        }
+
+        await expect(signPreparedAtomicSponsoredTransaction({
+            transport: 'pistachio-local',
+            capability,
+            walletClient,
+            prepared,
+            authenticatedWalletAddress: localWallet.address,
+            submitSignedTransaction,
+        })).resolves.toMatchObject({ callId: '0x1234' })
+        expect(signMessage).toHaveBeenCalledWith({
+            account: localWallet.address,
+            message: { raw: `0x${'22'.repeat(32)}` },
+        })
+        expect(submitSignedTransaction).toHaveBeenCalledWith([SIGNATURE])
+        expect(request).not.toHaveBeenCalled()
     })
 
     it('rejects every non-Pistachio transport before wallet invocation', async () => {
@@ -123,7 +169,7 @@ describe('private sponsored wallet compatibility', () => {
         expect(submitSignedTransaction).not.toHaveBeenCalled()
     })
 
-    it('does not persist raw transactions and contains no frontend MegaFuel credentials', async () => {
+    it('does not persist signed payloads or contain frontend provider credentials', async () => {
         const sources = await Promise.all([
             readFile(new URL('../hooks/usePrepaidSponsorship.js', import.meta.url), 'utf8'),
             readFile(new URL('./prepaidSponsorship.js', import.meta.url), 'utf8'),
@@ -131,8 +177,9 @@ describe('private sponsored wallet compatibility', () => {
         ])
         const joined = sources.join('\n')
         expect(joined).not.toMatch(/localStorage|sessionStorage/)
+        expect(joined).not.toMatch(/ALCHEMY_API_KEY|ALCHEMY_ERC20_POLICY_ID|ALCHEMY_SPONSORSHIP_POLICY_ID/)
         expect(joined).not.toMatch(/MEGAFUEL_API_KEY|MEGAFUEL_PRIVATE_POLICY_UUID|x-megafuel-policy-uuid/)
         expect(joined).not.toMatch(/console\.(?:log|debug|info|warn|error).*signedRawTransaction/)
-        expect(joined).not.toMatch(/pistachio_signMegaFuelPackage|\/package\/|\/payment\/prepare|\/approval\/prepare|\/continuation/u)
+        expect(joined).not.toMatch(/\/package\/|\/payment\/prepare|\/approval\/prepare|\/continuation/u)
     })
 })

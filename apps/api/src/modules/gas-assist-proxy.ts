@@ -25,7 +25,8 @@ const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['POST', /^\/v1\/sponsorship\/auth\/(?:challenge|verify)$/u],
     ['POST', /^\/v1\/sponsorship\/orders$/u],
     ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/(?:prepare|authorize-direct|confirm-direct)$`, 'u')],
+    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/(?:prepare|permit|submit)$`, 'u')],
+    ['POST', /^\/v1\/sponsorship\/alchemy\/sponsorship-webhook$/u],
 ] as const)
 
 type ProxyConfig = {
