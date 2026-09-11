@@ -13,6 +13,10 @@ const TOKEN_METADATA_STORAGE_PREFIXES = Object.freeze([
 ])
 const storedLogoCandidates = new Map()
 
+const CANONICAL_TOKEN_LOGOS = Object.freeze({
+    '10:0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': '/icons/usdt.svg',
+})
+
 function normalizeAddress(value) {
     const address = String(value ?? '').trim().toLowerCase()
     return /^0x[a-f0-9]{40}$/.test(address) ? address : null
@@ -123,7 +127,11 @@ export function getTokenLogoCandidates(token) {
     // BNB has one canonical yellow mark throughout PistachioSwap.
     if (isNativeBnb(token)) return [BNB_CHAIN_LOGO_URI]
 
+    const identity = tokenIdentity(token)
+    const canonicalLogo = identity ? CANONICAL_TOKEN_LOGOS[identity] : null
+
     return dedupeLogoCandidates([
+        canonicalLogo,
         ...logoCandidatesFromToken(token),
         ...getStoredLogoCandidates(token),
     ])
