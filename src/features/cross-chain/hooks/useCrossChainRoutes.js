@@ -23,10 +23,47 @@ import {
     readPersistedPublicRouteId,
     sortCrossChainRoutes,
 } from '../services/crossChainRoutes.js'
+import {
+    beginOptimisticWalletTransaction,
+    finishOptimisticWalletTransaction,
+    rollbackOptimisticWalletTransaction,
+} from '../../wallet/services/optimisticBalances.js'
 
 const INITIAL_POLL_MS = 3_000
 const MAX_POLL_MS = 30_000
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'expired', 'refunded'])
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+function positiveRaw(value) {
+    try {
+        const raw = BigInt(value ?? 0)
+        return raw > 0n ? raw : null
+    } catch {
+        return null
+    }
+}
+
+function optimisticToken(asset) {
+    if (!asset || typeof asset !== 'object') return null
+    const chainId = Number(asset.chainId)
+    const decimals = Number(asset.decimals)
+    const address = String(asset.address ?? '').trim().toLowerCase()
+    if (
+        !Number.isSafeInteger(chainId) ||
+        chainId <= 0 ||
+        !/^0x[a-f0-9]{40}$/.test(address) ||
+        !Number.isInteger(decimals) ||
+        decimals < 0 ||
+        decimals > 255
+    ) return null
+    return {
+        ...asset,
+        chainId,
+        address,
+        decimals,
+        isNative: asset.isNative === true || address === NATIVE_TOKEN_ADDRESS,
+    }
+}
 
 export function getCrossChainPollDelay(failedAttempts = 0) {
     return Math.min(
@@ -76,6 +113,7 @@ export function useCrossChainRoutes({
     const prepareSequenceRef = useRef(0)
     const lastQuotedKeyRef = useRef(null)
     const executionPhaseRef = useRef(onExecutionPhase)
+    const optimisticRouteTransactionsRef = useRef(new Map())
 
     useEffect(() => {
         executionPhaseRef.current = onExecutionPhase
@@ -306,6 +344,46 @@ export function useCrossChainRoutes({
     const markSubmitted = useCallback(async (transactionHash) => {
         const currentPreparedRoute = preparedRouteRef.current
         if (!currentPreparedRoute) return false
+
+        const walletAddress = accountRef.current ?? account
+        const sourceAsset = optimisticToken(
+            currentPreparedRoute.sourceAsset ?? request?.sourceAsset,
+        )
+        const destinationAsset = optimisticToken(
+            currentPreparedRoute.destinationAsset ?? request?.destinationAsset,
+        )
+        const inputRaw = positiveRaw(
+            currentPreparedRoute.inputAmount ?? request?.amount,
+        )
+        const outputRaw = positiveRaw(currentPreparedRoute.outputAmount)
+        const changes = []
+        if (sourceAsset && inputRaw) {
+            changes.push({
+                chainId: sourceAsset.chainId,
+                token: sourceAsset,
+                deltaRaw: -inputRaw,
+            })
+        }
+        if (destinationAsset && outputRaw) {
+            changes.push({
+                chainId: destinationAsset.chainId,
+                token: destinationAsset,
+                deltaRaw: outputRaw,
+            })
+        }
+        if (walletAddress && changes.length > 0) {
+            beginOptimisticWalletTransaction({
+                walletAddress,
+                transactionHash,
+                operation: 'swapping',
+                changes,
+            })
+            optimisticRouteTransactionsRef.current.set(
+                currentPreparedRoute.publicRouteId,
+                transactionHash,
+            )
+        }
+
         try {
             executionPhaseRef.current?.('report-submitted', {
                 sourceChainId: currentPreparedRoute.sourceChainId,
@@ -325,7 +403,7 @@ export function useCrossChainRoutes({
             setError(caught instanceof Error ? caught.message : 'Transaction sent, but status reporting failed.')
             return false
         }
-    }, [endpoint])
+    }, [account, endpoint, request])
 
     const prepareSponsorship = useCallback(async (idempotencyKey) => {
         const route = preparedRouteRef.current
@@ -455,6 +533,19 @@ export function useCrossChainRoutes({
         let controller = null
         let failedAttempts = 0
 
+        function settleOptimistic(nextStatus) {
+            const transactionHash = optimisticRouteTransactionsRef.current.get(routeId)
+            if (!transactionHash) return
+            optimisticRouteTransactionsRef.current.delete(routeId)
+            if (nextStatus === 'completed') {
+                window.setTimeout(() => {
+                    finishOptimisticWalletTransaction(transactionHash)
+                }, 9_000)
+                return
+            }
+            rollbackOptimisticWalletTransaction(transactionHash)
+        }
+
         function schedule() {
             if (document.hidden) return
             timeoutId = window.setTimeout(poll, getCrossChainPollDelay(failedAttempts))
@@ -481,7 +572,10 @@ export function useCrossChainRoutes({
                     .endsWith('_STATUS_UNAVAILABLE')
                 setStatusUnavailable(isUnavailable)
                 const next = String(nextStatus?.status ?? '').toLowerCase()
-                if (TERMINAL_STATUSES.has(next)) return
+                if (TERMINAL_STATUSES.has(next)) {
+                    settleOptimistic(next)
+                    return
+                }
                 failedAttempts = isUnavailable ? failedAttempts + 1 : 0
             } catch {
                 if (!requestController.signal.aborted) {
