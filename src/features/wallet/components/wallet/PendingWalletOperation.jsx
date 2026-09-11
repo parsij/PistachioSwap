@@ -14,9 +14,9 @@ import {
 import {
     getOptimisticWalletBalanceRevision,
     getWalletOperationDisplayState,
-    reconcilePersistedWalletTransactions,
     subscribeOptimisticWalletBalances,
 } from '../../services/optimisticBalances.js'
+import { reconcilePendingWalletOperations } from '../../services/reconcilePendingWalletOperations.js'
 import './walletPendingOperation.css'
 
 const RECEIPT_POLL_MS = 4_000
@@ -95,7 +95,7 @@ export default function PendingWalletOperation({ walletAddress }) {
         let timeoutId = null
 
         const poll = async () => {
-            await reconcilePersistedWalletTransactions(walletAddress, {
+            await reconcilePendingWalletOperations(walletAddress, {
                 signal: controller.signal,
             })
             if (!controller.signal.aborted) {
