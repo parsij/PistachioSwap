@@ -178,6 +178,7 @@ describe('Gas Assist wallet compatibility', () => {
         const joined = sources.join('\n')
         expect(joined).not.toMatch(/localStorage|sessionStorage/)
         expect(joined).not.toMatch(/ALCHEMY_API_KEY|ALCHEMY_ERC20_POLICY_ID|ALCHEMY_SPONSORSHIP_POLICY_ID/)
+        expect(joined).not.toMatch(/VITE_WALLET_HISTORY_ALCHEMY_PUBLIC_KEY(?:_\d+)?/)
         expect(joined).not.toMatch(/MEGAFUEL_API_KEY|MEGAFUEL_PRIVATE_POLICY_UUID|x-megafuel-policy-uuid/)
         expect(joined).not.toMatch(/console\.(?:log|debug|info|warn|error).*signedRawTransaction/)
         expect(joined).not.toMatch(/\/package\/|\/payment\/prepare|\/approval\/prepare|\/continuation/u)
