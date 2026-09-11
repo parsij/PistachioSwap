@@ -119,7 +119,10 @@ export function useCrossChainGasAssist({
                 order?.grossInputAmountRaw ?? totalInputRaw,
                 sellToken?.decimals,
             ),
-            buyAmount: activityAmount(order?.expectedOutputRaw, buyToken?.decimals),
+            buyAmount: activityAmount(
+                order?.expectedOutputRaw ?? preparedRoute?.outputAmount,
+                buyToken?.decimals,
+            ),
             recipient: account,
             provider: 'Gas Assist',
         })
