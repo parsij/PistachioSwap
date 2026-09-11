@@ -6,7 +6,9 @@ import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
 const SUPPORTED_CONNECTOR_IDS = new Set(['pistachio-local'])
 const PARTICLE_AUTH_SIGN_METHOD = 'pistachio_signParticleAuthorization'
+const PARTICLE_CONTINUE_DELEGATION = Symbol.for('pistachioswap.particle.continue-delegation')
 const SIGNATURE = /^0x[0-9a-f]{130}$/iu
+const HASH = /^0x[0-9a-f]{64}$/iu
 
 function signingError(code, message, details = {}) {
     const error = new Error(message)
@@ -31,17 +33,16 @@ function assertParticlePackage(prepared, authenticatedWalletAddress) {
     if (
         !prepared ||
         prepared.provider !== 'particle' ||
-        prepared.execution !== 'particle-paymaster' ||
+        prepared.execution !== 'particle-paymaster-v06' ||
         Number(prepared.chainId) !== 56 ||
-        prepared.stage !== 'sign' ||
+        !['delegation-required', 'sign'].includes(prepared.stage) ||
         prepared.paymentMode !== 'sponsored' ||
         !Number.isFinite(Date.parse(prepared.expiresAt)) ||
         Date.parse(prepared.expiresAt) <= Date.now() ||
         typeof prepared.orderId !== 'string' ||
         !prepared.orderId ||
         !Array.isArray(prepared.signatureRequests) ||
-        prepared.signatureRequests.length < 1 ||
-        prepared.signatureRequests.length > 2 ||
+        prepared.signatureRequests.length !== 1 ||
         !/^0x[0-9a-f]{40}$/iu.test(String(authenticatedWalletAddress ?? ''))
     ) {
         throw signingError(
@@ -50,14 +51,22 @@ function assertParticlePackage(prepared, authenticatedWalletAddress) {
             { stage: 'particle.validate' },
         )
     }
-    const types = prepared.signatureRequests.map((request) => String(request?.type ?? ''))
-    if (types.filter((type) => type === 'eth_signTypedData_v4').length !== 1 ||
-        types.filter((type) => type === 'eip7702Auth').length > 1 ||
-        types.some((type) => type !== 'eth_signTypedData_v4' && type !== 'eip7702Auth')) {
+
+    const request = prepared.signatureRequests[0]
+    if (prepared.stage === 'delegation-required') {
+        if (String(request?.type ?? '') !== 'eip7702Auth') {
+            throw signingError(
+                'PARTICLE_SIGNATURE_REQUEST_INVALID',
+                'Particle returned an invalid EIP-7702 authorization package.',
+                { stage: 'particle.delegate' },
+            )
+        }
+    } else if (String(request?.type ?? '') !== 'personal_sign' ||
+        !HASH.test(String(request?.data?.raw ?? ''))) {
         throw signingError(
             'PARTICLE_SIGNATURE_REQUEST_INVALID',
-            'Particle returned an unsupported Gas Assist signing package.',
-            { stage: 'particle.validate' },
+            'Particle returned an invalid UserOperation signing package.',
+            { stage: 'particle.sign' },
         )
     }
     return prepared
@@ -68,14 +77,15 @@ async function signParticleSignatureRequest({ walletClient, request, authenticat
         throw signingError('PARTICLE_SIGNATURE_REQUEST_INVALID', 'Particle returned an invalid signature request.')
     }
     const type = String(request.type ?? '')
-    if (type === 'eth_signTypedData_v4') {
-        if (typeof walletClient?.signTypedData !== 'function' ||
-            !request.data || typeof request.data !== 'object' || Array.isArray(request.data)) {
-            throw signingError('PARTICLE_SIGNATURE_REQUEST_INVALID', 'Particle returned invalid UserOperation typed data.')
+
+    if (type === 'personal_sign') {
+        const raw = String(request.data?.raw ?? '')
+        if (!HASH.test(raw) || typeof walletClient?.signMessage !== 'function') {
+            throw signingError('PARTICLE_SIGNATURE_REQUEST_INVALID', 'Particle returned an invalid UserOperation hash.')
         }
-        const signature = await walletClient.signTypedData({
+        const signature = await walletClient.signMessage({
             account: authenticatedWalletAddress,
-            ...request.data,
+            message: { raw },
         })
         if (!SIGNATURE.test(String(signature ?? ''))) {
             throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid UserOperation signature.')
@@ -117,7 +127,7 @@ export function detectRawTransactionSigning({ connector, walletClient }) {
         scope: supported ? 'eip155:56' : null,
         account: null,
         approvedMethods: supported
-            ? ['eth_signTypedData_v4', PARTICLE_AUTH_SIGN_METHOD]
+            ? ['personal_sign', PARTICLE_AUTH_SIGN_METHOD]
             : [],
         reasonCode: supported ? null : 'PISTACHIO_WALLET_REQUIRED',
     })
@@ -195,31 +205,56 @@ export async function signPreparedAtomicSponsoredTransaction({
         )
     }
 
-    const current = assertParticlePackage(prepared, authenticatedWalletAddress)
-    gasAssistTrace('signing.particle.start', { orderId: current.orderId })
+    let current = assertParticlePackage(prepared, authenticatedWalletAddress)
+    gasAssistTrace('signing.particle.start', { orderId: current.orderId, stage: current.stage })
     try {
-        const signatures = []
-        for (const request of current.signatureRequests) {
-            signatures.push(await signParticleSignatureRequest({
+        if (current.stage === 'delegation-required') {
+            const continueDelegation = current[PARTICLE_CONTINUE_DELEGATION]
+            if (typeof continueDelegation !== 'function') {
+                throw signingError(
+                    'PARTICLE_DELEGATION_CONTINUATION_MISSING',
+                    'The Particle delegation can no longer be continued.',
+                    { stage: 'particle.delegate' },
+                )
+            }
+            const authorizationSignature = await signParticleSignatureRequest({
                 walletClient,
-                request,
+                request: current.signatureRequests[0],
                 authenticatedWalletAddress,
-            }))
+            })
+            current = assertParticlePackage(
+                await continueDelegation(authorizationSignature),
+                authenticatedWalletAddress,
+            )
+            if (current.stage !== 'sign') {
+                throw signingError(
+                    'PARTICLE_USEROP_INVALID',
+                    'Particle did not return the UserOperation after delegation.',
+                    { stage: 'particle.delegate' },
+                )
+            }
         }
-        const result = await submitSignedTransaction(signatures)
+
+        const signature = await signParticleSignatureRequest({
+            walletClient,
+            request: current.signatureRequests[0],
+            authenticatedWalletAddress,
+        })
+        const result = await submitSignedTransaction([signature])
         gasAssistTrace('signing.particle.success', {
             orderId: current.orderId,
-            signatureCount: signatures.length,
+            signatureCount: 1,
         })
         return result
     } catch (error) {
-        gasAssistTraceError('signing.particle.error', error, { orderId: current.orderId })
+        gasAssistTraceError('signing.particle.error', error, { orderId: current?.orderId })
         throw error
     }
 }
 
 export const rawSigningInternals = {
     PARTICLE_AUTH_SIGN_METHOD,
+    PARTICLE_CONTINUE_DELEGATION,
     assertParticlePackage,
     signParticleSignatureRequest,
     supportedConnectorIds: SUPPORTED_CONNECTOR_IDS,
