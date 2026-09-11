@@ -43,15 +43,16 @@
     "name": "Tether USD",
     "symbol": "USDT",
     "decimals": 6,
-    "logoURI": "/icons/token-fallback.svg",
+    "logoURI": "/icons/usdt.svg",
     "logoCandidates": [
+      "/icons/usdt.svg",
       "/icons/token-fallback.svg"
     ],
     "coinGeckoId": "tether",
     "metadataSources": [
       "curated-token-list"
     ],
-    "iconSource": null,
+    "iconSource": "local",
     "generatedAt": "2026-07-22T00:00:00.000Z",
     "catalogSource": "static-fallback",
     "directoryStatus": "listed"
