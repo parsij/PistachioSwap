@@ -1,7 +1,9 @@
 .uni-wallet-pending-operation {
+    position: relative;
     display: inline-flex;
     min-width: 104px;
     min-height: 42px;
+    overflow: hidden;
     align-items: center;
     justify-content: center;
     gap: 9px;
@@ -13,6 +15,70 @@
     box-shadow: 0 1px 0 rgb(255 255 255 / 3%) inset;
     color: var(--uni-wallet-text);
     white-space: nowrap;
+    isolation: isolate;
+    transition:
+        border-color 220ms ease,
+        background 220ms ease,
+        box-shadow 220ms ease,
+        color 220ms ease;
+}
+
+.uni-wallet-pending-operation::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background: radial-gradient(
+        circle at 28% 50%,
+        rgb(155 216 135 / 10%),
+        transparent 58%
+    );
+    content: '';
+    opacity: .75;
+    transition: opacity 220ms ease, background 220ms ease;
+}
+
+.uni-wallet-pending-operation[data-status='confirmed'] {
+    border-color: rgb(155 216 135 / 42%);
+    background: linear-gradient(
+        135deg,
+        rgb(155 216 135 / 17%),
+        rgb(155 216 135 / 7%)
+    ), var(--uni-wallet-surface);
+    box-shadow:
+        0 1px 0 rgb(255 255 255 / 5%) inset,
+        0 8px 26px rgb(94 176 76 / 10%);
+    color: #c9f4bb;
+}
+
+.uni-wallet-pending-operation[data-status='confirmed']::before {
+    background: radial-gradient(
+        circle at 28% 50%,
+        rgb(155 216 135 / 23%),
+        transparent 62%
+    );
+    opacity: 1;
+}
+
+.uni-wallet-pending-operation[data-status='failed'] {
+    border-color: rgb(255 107 107 / 43%);
+    background: linear-gradient(
+        135deg,
+        rgb(255 107 107 / 16%),
+        rgb(255 107 107 / 6%)
+    ), var(--uni-wallet-surface);
+    box-shadow:
+        0 1px 0 rgb(255 255 255 / 4%) inset,
+        0 8px 26px rgb(255 72 72 / 9%);
+    color: #ff9d9d;
+}
+
+.uni-wallet-pending-operation[data-status='failed']::before {
+    background: radial-gradient(
+        circle at 28% 50%,
+        rgb(255 107 107 / 20%),
+        transparent 62%
+    );
+    opacity: 1;
 }
 
 .uni-wallet-pending-operation strong {
@@ -21,20 +87,56 @@
     letter-spacing: -.01em;
 }
 
-.uni-wallet-pending-spinner {
+.uni-wallet-operation-mark {
+    position: relative;
+    display: grid;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    place-items: center;
+}
+
+.uni-wallet-operation-spinner {
+    display: block;
+    width: 22px;
+    height: 22px;
+    border: 2px solid rgb(255 255 255 / 17%);
+    border-top-color: var(--uni-wallet-accent);
+    border-right-color: rgb(155 216 135 / 46%);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgb(155 216 135 / 8%);
+    animation: uni-wallet-pending-spin 760ms linear infinite;
+}
+
+.uni-wallet-operation-result {
     display: grid;
     width: 24px;
     height: 24px;
     place-items: center;
-    border: 2px solid rgb(255 255 255 / 18%);
-    border-top-color: currentColor;
     border-radius: 50%;
-    color: var(--uni-wallet-accent);
-    animation: uni-wallet-pending-spin 800ms linear infinite;
 }
 
-.uni-wallet-pending-spinner svg {
-    display: none;
+.uni-wallet-pending-operation[data-status='confirmed'] .uni-wallet-operation-result {
+    background: rgb(155 216 135 / 18%);
+    box-shadow:
+        0 0 0 1px rgb(155 216 135 / 18%) inset,
+        0 0 14px rgb(155 216 135 / 13%);
+}
+
+.uni-wallet-pending-operation[data-status='failed'] .uni-wallet-operation-result {
+    background: rgb(255 107 107 / 17%);
+    box-shadow:
+        0 0 0 1px rgb(255 107 107 / 18%) inset,
+        0 0 14px rgb(255 107 107 / 11%);
+}
+
+.uni-wallet-operation-result svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2.7;
+    stroke-dasharray: 36;
+    stroke-dashoffset: 36;
+    animation: uni-wallet-status-draw 380ms 80ms cubic-bezier(.22, 1, .36, 1) forwards;
 }
 
 @keyframes uni-wallet-pending-spin {
@@ -43,9 +145,24 @@
     }
 }
 
+@keyframes uni-wallet-status-draw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .uni-wallet-pending-spinner {
+    .uni-wallet-pending-operation {
+        transition-duration: 0ms;
+    }
+
+    .uni-wallet-operation-spinner {
         animation-duration: 1.8s;
+    }
+
+    .uni-wallet-operation-result svg {
+        animation: none;
+        stroke-dashoffset: 0;
     }
 }
 
