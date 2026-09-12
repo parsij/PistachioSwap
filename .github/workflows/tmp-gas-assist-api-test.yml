@@ -9,16 +9,25 @@ permissions:
   contents: read
 
 jobs:
-  proxy-test:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      files: ${{ steps.tests.outputs.files }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tests
+        shell: bash
+        run: |
+          files=$(find apps/api/test -maxdepth 1 -type f -name '*.test.ts' -printf '%f\n' | sort | node -e "const fs=require('fs'); const a=fs.readFileSync(0,'utf8').trim().split(/\n+/).filter(Boolean); process.stdout.write(JSON.stringify(a))")
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+  api-test:
+    needs: discover
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        file:
-          - test/gas-assist-proxy-boundary.test.ts
-          - test/gas-assist-proxy.test.ts
-          - test/gas-assist-proxy-path.test.ts
-          - test/gas-assist-proxy-geo.test.ts
+        file: ${{ fromJSON(needs.discover.outputs.files) }}
     name: ${{ matrix.file }}
     steps:
       - uses: actions/checkout@v4
@@ -32,4 +41,4 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run isolated API test
-        run: pnpm --filter @pistachio/api exec vitest run "${{ matrix.file }}"
+        run: pnpm --filter @pistachio/api exec vitest run "test/${{ matrix.file }}"
