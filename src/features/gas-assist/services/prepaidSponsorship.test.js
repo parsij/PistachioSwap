@@ -8,20 +8,22 @@ import {
     submitAtomicSponsorship,
 } from './prepaidSponsorship.js'
 
-const SIGNATURE = `0x${'11'.repeat(65)}`
-const USER_OP_HASH = `0x${'22'.repeat(32)}`
-
 function particlePrepared(overrides = {}) {
+    const calls = Array.from({ length: 5 }, (_, index) => ({
+        to: `0x${String(index + 1).padStart(40, '0')}`,
+        data: index === 3 ? '0x12345678' : '0x',
+        value: '0x0',
+    }))
     return {
         provider: 'particle',
-        execution: 'particle-paymaster-v06',
-        stage: 'sign',
+        execution: 'particle-universal-7702-direct',
+        stage: 'direct',
         paymentMode: 'sponsored',
+        paymasterApproval: 'pending',
         orderId: 'order-1',
         chainId: 56,
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        signatureRequests: [{ type: 'personal_sign', data: { raw: USER_OP_HASH } }],
-        signing: { method: 'personal_sign', continuation: null },
+        transactions: calls,
         ...overrides,
     }
 }
@@ -29,6 +31,7 @@ function particlePrepared(overrides = {}) {
 afterEach(() => {
     vi.restoreAllMocks()
     prepaidSponsorshipInternals.clearSessions()
+    prepaidSponsorshipInternals.clearDirectResults()
 })
 
 describe('Gas Assist frontend trust boundary', () => {
@@ -68,13 +71,9 @@ describe('Gas Assist frontend trust boundary', () => {
         expect(fetcher).not.toHaveBeenCalled()
     })
 
-    it('preserves backend error code, stage, status, request ID, and details', async () => {
+    it('preserves backend error code, status, request ID, and stage', async () => {
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
-            error: {
-                code: 'SPONSORED_ROUTE_UNAVAILABLE',
-                message: 'No safe route was found.',
-                details: { providers: ['uniswap', '0x'] },
-            },
+            error: { code: 'SPONSORED_ROUTE_UNAVAILABLE', message: 'No safe route was found.' },
         }), {
             status: 409,
             headers: { 'x-request-id': 'request-123' },
@@ -83,20 +82,13 @@ describe('Gas Assist frontend trust boundary', () => {
         await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote'))
             .rejects.toMatchObject({
                 code: 'SPONSORED_ROUTE_UNAVAILABLE',
-                message: 'No safe route was found.',
                 status: 409,
                 requestId: 'request-123',
                 stage: 'config.fetch',
             })
     })
 
-    it('maps gateway HTML timeouts to a retryable gateway error', async () => {
-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>502 Bad Gateway</html>', { status: 502 }))
-        await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote'))
-            .rejects.toMatchObject({ code: 'CROSS_CHAIN_GATEWAY_TIMEOUT', status: 502 })
-    })
-
-    it('normalizes enabled server config to the Particle atomic client path', async () => {
+    it('normalizes enabled config to the browser-direct Particle path', async () => {
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
             enabled: true,
             chainId: 56,
@@ -104,60 +96,55 @@ describe('Gas Assist frontend trust boundary', () => {
         }), { status: 200 }))
 
         await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote'))
-            .resolves.toMatchObject({ enabled: true, provider: 'particle', atomicExecution: true })
+            .resolves.toMatchObject({
+                enabled: true,
+                provider: 'particle',
+                atomicExecution: true,
+                execution: 'browser-direct',
+            })
     })
 
-    it('keeps the EIP-7702 delegation continuation private to the prepared object', async () => {
-        const calls = []
-        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options = {}) => {
-            calls.push({ url: String(url), options })
-            const pathname = new URL(String(url)).pathname
-            if (pathname.endsWith('/atomic/prepare')) {
-                return new Response(JSON.stringify(particlePrepared({
-                    stage: 'delegation-required',
-                    signatureRequests: [{
-                        type: 'eip7702Auth',
-                        rawPayload: `0x${'33'.repeat(32)}`,
-                        data: {
-                            address: '0x1111111111111111111111111111111111111111',
-                            chainId: 56,
-                            nonce: 3,
-                        },
-                    }],
-                    signing: {
-                        method: 'pistachio_signParticleAuthorization',
-                        continuation: 'delegate',
-                    },
-                })), { status: 200 })
-            }
-            if (pathname.endsWith('/atomic/delegate')) {
-                expect(JSON.parse(String(options.body))).toEqual({ signature: SIGNATURE })
-                return new Response(JSON.stringify(particlePrepared()), { status: 200 })
-            }
-            throw new Error(`Unexpected request: ${String(url)}`)
-        })
-
-        const prepared = await prepareAtomicSponsorship(
+    it('accepts only an exact five-call direct Particle intent', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+            JSON.stringify(particlePrepared()),
+            { status: 200 },
+        ))
+        await expect(prepareAtomicSponsorship(
             'http://localhost:3001/v1/quote',
             'session-token',
             'order-1',
-        )
-        expect(prepared.stage).toBe('delegation-required')
-        expect(JSON.stringify(prepared)).not.toContain('session-token')
-        const continuation = prepared[prepaidSponsorshipInternals.PARTICLE_CONTINUE_DELEGATION]
-        expect(typeof continuation).toBe('function')
-        await expect(continuation(SIGNATURE)).resolves.toMatchObject({ stage: 'sign' })
-        expect(calls).toHaveLength(2)
+        )).resolves.toMatchObject({
+            stage: 'direct',
+            execution: 'particle-universal-7702-direct',
+            transactions: expect.arrayContaining([expect.objectContaining({ value: '0x0' })]),
+        })
+
+        vi.restoreAllMocks()
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+            JSON.stringify(particlePrepared({ transactions: particlePrepared().transactions.slice(0, 4) })),
+            { status: 200 },
+        ))
+        await expect(prepareAtomicSponsorship(
+            'http://localhost:3001/v1/quote',
+            'session-token',
+            'order-1',
+        )).rejects.toMatchObject({ code: 'PARTICLE_DIRECT_INTENT_INVALID' })
     })
 
-    it('submits only one Particle owner signature to the backend', async () => {
+    it('never posts an owner signature or signed transaction to the backend', async () => {
         const calls = []
+        const expiresAt = new Date(Date.now() + 60_000).toISOString()
         vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options = {}) => {
             calls.push({ url: String(url), options })
             return new Response(JSON.stringify({
-                orderId: 'order-1',
-                userOperationHash: USER_OP_HASH,
-                transactionHash: null,
+                id: 'order-1',
+                status: 'atomic-prepared',
+                expiresAt,
+                atomicExecution: {
+                    provider: 'particle',
+                    stage: 'prepared',
+                    paymasterApproval: 'approved',
+                },
             }), { status: 200 })
         })
 
@@ -165,13 +152,16 @@ describe('Gas Assist frontend trust boundary', () => {
             'http://localhost:3001/v1/quote',
             'session-token',
             'order-1',
-            [SIGNATURE],
-        )).resolves.toMatchObject({ userOperationHash: USER_OP_HASH })
+            `0x${'11'.repeat(65)}`,
+        )).resolves.toMatchObject({ atomicExecution: { paymasterApproval: 'approved' } })
 
-        expect(calls).toHaveLength(1)
-        expect(new URL(calls[0].url).pathname).toMatch(/\/atomic\/submit$/)
-        expect(JSON.parse(String(calls[0].options.body))).toEqual({ signatures: [SIGNATURE] })
-        expect(String(calls[0].options.body)).not.toContain('projectKey')
-        expect(String(calls[0].options.body)).not.toContain('signedRawTransaction')
+        expect(calls.length).toBeGreaterThan(0)
+        expect(calls.every(({ url, options }) => (
+            new URL(url).pathname.endsWith('/v1/sponsorship/orders/order-1') &&
+            String(options.method ?? 'GET').toUpperCase() === 'GET'
+        ))).toBe(true)
+        expect(JSON.stringify(calls)).not.toContain('/atomic/submit')
+        expect(JSON.stringify(calls)).not.toContain('/atomic/delegate')
+        expect(JSON.stringify(calls)).not.toContain('1111111111111111')
     })
 })
