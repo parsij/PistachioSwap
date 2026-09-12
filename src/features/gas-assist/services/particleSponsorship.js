@@ -2,9 +2,9 @@ import { getGasAssistBaseUrl } from './gasAssist.js'
 import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
 const sessions = new Map()
-const SIGNATURE = /^0x[0-9a-f]{130}$/iu
-const HASH = /^0x[0-9a-f]{64}$/iu
-const PARTICLE_CONTINUE_DELEGATION = Symbol.for('pistachioswap.particle.continue-delegation')
+const directResults = new Map()
+const ADDRESS = /^0x[0-9a-f]{40}$/iu
+const HEX = /^0x(?:[0-9a-f]{2})*$/iu
 
 function requestPath(url) {
     try {
@@ -118,74 +118,39 @@ function deleteExpiredSessions(now = Date.now()) {
     }
 }
 
+function validDirectCall(call) {
+    if (!call || typeof call !== 'object' || Array.isArray(call)) return false
+    if (!ADDRESS.test(String(call.to ?? ''))) return false
+    if (!HEX.test(String(call.data ?? ''))) return false
+    try {
+        return BigInt(String(call.value ?? '0')) === 0n
+    } catch {
+        return false
+    }
+}
+
 function validateParticlePrepared(prepared, orderId) {
     if (
         !prepared ||
         prepared.provider !== 'particle' ||
-        prepared.execution !== 'particle-paymaster-v06' ||
+        prepared.execution !== 'particle-universal-7702-direct' ||
         Number(prepared.chainId) !== 56 ||
         prepared.orderId !== orderId ||
-        !['delegation-required', 'sign'].includes(prepared.stage) ||
+        prepared.stage !== 'direct' ||
         prepared.paymentMode !== 'sponsored' ||
         !Number.isFinite(Date.parse(prepared.expiresAt)) ||
         Date.parse(prepared.expiresAt) <= Date.now() ||
-        !Array.isArray(prepared.signatureRequests) ||
-        prepared.signatureRequests.length !== 1
+        !Array.isArray(prepared.transactions) ||
+        prepared.transactions.length !== 5 ||
+        !prepared.transactions.every(validDirectCall) ||
+        !['pending', 'approved'].includes(prepared.paymasterApproval)
     ) {
         throw sponsorshipError(
-            'PARTICLE_USEROP_INVALID',
-            'Gas Assist returned an invalid Particle signing package.',
+            'PARTICLE_DIRECT_INTENT_INVALID',
+            'Gas Assist returned an invalid direct Particle sponsorship intent.',
             { stage: 'atomic.prepare' },
         )
     }
-
-    const request = prepared.signatureRequests[0]
-    const type = String(request?.type ?? '')
-    if (prepared.stage === 'delegation-required') {
-        if (type !== 'eip7702Auth' || prepared.signing?.method !== 'pistachio_signParticleAuthorization') {
-            throw sponsorshipError(
-                'PARTICLE_SIGNATURE_REQUEST_INVALID',
-                'Particle returned an invalid EIP-7702 delegation request.',
-                { stage: 'atomic.delegate' },
-            )
-        }
-    } else if (type !== 'personal_sign' || !HASH.test(String(request?.data?.raw ?? ''))) {
-        throw sponsorshipError(
-            'PARTICLE_SIGNATURE_REQUEST_INVALID',
-            'Particle returned an invalid UserOperation signature request.',
-            { stage: 'atomic.sign' },
-        )
-    }
-    return prepared
-}
-
-function attachDelegationContinuation(prepared, context) {
-    if (prepared.stage !== 'delegation-required') return prepared
-    Object.defineProperty(prepared, PARTICLE_CONTINUE_DELEGATION, {
-        configurable: false,
-        enumerable: false,
-        writable: false,
-        value: async (signature) => {
-            if (!SIGNATURE.test(String(signature ?? ''))) {
-                throw sponsorshipError(
-                    'INVALID_SIGNATURE',
-                    'The Particle EIP-7702 authorization signature is invalid.',
-                    { stage: 'atomic.delegate' },
-                )
-            }
-            const next = await post(
-                context.quoteEndpoint,
-                `/v1/sponsorship/orders/${encodeURIComponent(context.orderId)}/atomic/delegate`,
-                { signature },
-                {
-                    sessionToken: context.sessionToken,
-                    signal: context.signal,
-                    stage: 'atomic.delegate',
-                },
-            )
-            return validateParticlePrepared(next, context.orderId)
-        },
-    })
     return prepared
 }
 
@@ -196,7 +161,7 @@ export async function fetchSponsorshipConfig(quoteEndpoint, signal) {
         'config.fetch',
     )
     return payload?.enabled === true
-        ? { ...payload, provider: payload.provider ?? 'particle', atomicExecution: true }
+        ? { ...payload, provider: 'particle', atomicExecution: true, execution: 'browser-direct' }
         : payload
 }
 
@@ -268,65 +233,132 @@ export function createSponsorshipOrder(quoteEndpoint, sessionToken, request, ide
 }
 
 export async function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signal) {
-    const prepared = validateParticlePrepared(await post(
+    return validateParticlePrepared(await post(
         quoteEndpoint,
         `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`,
         {},
         { sessionToken, signal, stage: 'atomic.prepare' },
     ), orderId)
-    return attachDelegationContinuation(prepared, {
-        quoteEndpoint,
-        sessionToken,
-        orderId,
-        signal,
+}
+
+export function recordParticleBrowserResult(orderId, result) {
+    if (!orderId || !result?.transactionId) return
+    directResults.set(orderId, {
+        transactionId: String(result.transactionId),
+        particleStatus: String(result.particleStatus ?? 'submitted'),
+        recordedAt: Date.now(),
     })
 }
 
-export async function submitAtomicSponsorship(
-    quoteEndpoint,
-    sessionToken,
-    orderId,
-    signatures,
-    signal,
-) {
-    if (!Array.isArray(signatures) || signatures.length !== 1 || !SIGNATURE.test(String(signatures[0] ?? ''))) {
-        throw sponsorshipError(
-            'INVALID_SIGNATURE',
-            'The Particle Gas Assist UserOperation signature is invalid.',
-            { stage: 'atomic.submit' },
-        )
-    }
-    const result = await post(
-        quoteEndpoint,
-        `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/submit`,
-        { signatures },
-        { sessionToken, signal, stage: 'atomic.submit' },
-    )
-    if (result?.orderId !== orderId || typeof result?.userOperationHash !== 'string' ||
-        !HASH.test(result.userOperationHash)) {
-        throw sponsorshipError(
-            'PARTICLE_SUBMISSION_INVALID',
-            'Particle returned an invalid Gas Assist UserOperation identifier.',
-            { stage: 'atomic.submit' },
-        )
-    }
-    return result
-}
-
-export function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
-    return requestJson(
+export async function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
+    const order = await requestJson(
         `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/orders/${encodeURIComponent(orderId)}`,
         { headers: { authorization: `Bearer ${sessionToken}` }, signal },
         'order.poll',
     )
+    const direct = directResults.get(orderId)
+    if (!direct) return order
+    if (Date.now() - direct.recordedAt > 15 * 60_000) {
+        directResults.delete(orderId)
+        return order
+    }
+    if (direct.particleStatus === 'success') {
+        return {
+            ...order,
+            status: 'completed',
+            particleTransactionId: direct.transactionId,
+            atomicExecution: {
+                ...(order.atomicExecution ?? {}),
+                provider: 'particle',
+                execution: 'particle-universal-7702-direct',
+                stage: 'confirmed',
+                paymasterApproval: 'approved',
+                providerStatus: 'confirmed-in-browser',
+            },
+        }
+    }
+    return {
+        ...order,
+        status: 'atomic-submitted',
+        particleTransactionId: direct.transactionId,
+        atomicExecution: {
+            ...(order.atomicExecution ?? {}),
+            provider: 'particle',
+            execution: 'particle-universal-7702-direct',
+            stage: 'submitted',
+            paymasterApproval: 'approved',
+            providerStatus: direct.particleStatus,
+        },
+    }
+}
+
+export async function waitForParticlePaymasterApproval(
+    quoteEndpoint,
+    sessionToken,
+    orderId,
+    expiresAt,
+    signal,
+) {
+    const deadline = Date.parse(expiresAt)
+    if (!Number.isFinite(deadline) || deadline <= Date.now()) {
+        throw sponsorshipError('INTENT_EXPIRED', 'The Particle sponsorship intent expired.', {
+            stage: 'particle.paymaster-approval',
+        })
+    }
+    while (Date.now() < deadline) {
+        if (signal?.aborted) {
+            throw sponsorshipError('SPONSORSHIP_REQUEST_ABORTED', 'The Gas Assist request was cancelled.', {
+                stage: 'particle.paymaster-approval',
+            })
+        }
+        const order = await fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal)
+        if (order?.atomicExecution?.paymasterApproval === 'approved' ||
+            order?.atomicExecution?.stage === 'prepared') {
+            return order
+        }
+        if (['expired', 'rejected', 'failed'].includes(order?.status)) {
+            throw sponsorshipError(
+                order?.safeErrorCode || 'PARTICLE_SPONSORSHIP_REJECTED',
+                'Particle sponsorship was rejected by the Gas Assist policy.',
+                { stage: 'particle.paymaster-approval' },
+            )
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    throw sponsorshipError(
+        'PARTICLE_PAYMASTER_WEBHOOK_NOT_OBSERVED',
+        'Particle did not obtain PistachioSwap paymaster approval for this exact operation. Nothing was submitted.',
+        { stage: 'particle.paymaster-approval' },
+    )
+}
+
+// Compatibility boundary for the existing hook. Despite the historical name,
+// this function NEVER submits a signature or transaction to Pistachio's backend.
+// It only waits for the RSA-authenticated Particle paymaster callback to approve
+// the exact prepared intent. The fourth argument is intentionally ignored.
+export function submitAtomicSponsorship(
+    quoteEndpoint,
+    sessionToken,
+    orderId,
+    _unusedSignedPayload,
+    signal,
+) {
+    return fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal)
+        .then((order) => waitForParticlePaymasterApproval(
+            quoteEndpoint,
+            sessionToken,
+            orderId,
+            order?.expiresAt,
+            signal,
+        ))
 }
 
 export const prepaidSponsorshipInternals = {
-    PARTICLE_CONTINUE_DELEGATION,
-    attachDelegationContinuation,
+    clearDirectResults: () => directResults.clear(),
     clearSessions: () => sessions.clear(),
     deleteExpiredSessions,
     requestJson,
     sponsorshipError,
+    validDirectCall,
     validateParticlePrepared,
 }
