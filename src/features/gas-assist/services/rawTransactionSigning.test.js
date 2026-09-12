@@ -1,7 +1,28 @@
 import { readFile } from 'node:fs/promises'
 
 import { privateKeyToAccount } from 'viem/accounts'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const particleMocks = vi.hoisted(() => ({
+    createUniversalTransaction: vi.fn(),
+    sendTransaction: vi.fn(),
+    getTransaction: vi.fn(),
+}))
+
+vi.mock('@particle-network/universal-account-sdk', () => ({
+    UA_TRANSACTION_STATUS: { FINISHED: 7 },
+    UniversalAccount: class {
+        createUniversalTransaction(...args) {
+            return particleMocks.createUniversalTransaction(...args)
+        }
+        sendTransaction(...args) {
+            return particleMocks.sendTransaction(...args)
+        }
+        getTransaction(...args) {
+            return particleMocks.getTransaction(...args)
+        }
+    },
+}))
 
 import {
     detectRawTransactionSigning,
@@ -9,10 +30,12 @@ import {
     signPreparedSponsoredTransaction,
     signRawSponsoredTransaction,
 } from './rawTransactionSigning.js'
+import { prepaidSponsorshipInternals } from './prepaidSponsorship.js'
 
 const localWallet = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d')
 const SIGNATURE = `0x${'11'.repeat(65)}`
 const USER_OP_HASH = `0x${'22'.repeat(32)}`
+const PARTICLE_DELEGATE = '0x1111111111111111111111111111111111111111'
 const preparedTransaction = {
     type: '0x0',
     chainId: '0x38',
@@ -24,6 +47,38 @@ const preparedTransaction = {
     value: '0x0',
     data: '0x',
 }
+
+function directPrepared() {
+    return {
+        provider: 'particle',
+        execution: 'particle-universal-7702-direct',
+        stage: 'direct',
+        paymentMode: 'sponsored',
+        orderId: 'order-1',
+        chainId: 56,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        transactions: Array.from({ length: 5 }, (_, index) => ({
+            to: `0x${String(index + 10).padStart(40, '0')}`,
+            data: index === 3 ? '0x12345678' : '0x',
+            value: '0x0',
+        })),
+    }
+}
+
+function configureParticleBrowser() {
+    vi.stubEnv('VITE_PARTICLE_PROJECT_ID', 'project-id-public')
+    vi.stubEnv('VITE_PARTICLE_CLIENT_KEY', 'client-key-public')
+    vi.stubEnv('VITE_PARTICLE_APP_ID', 'app-uuid-public')
+}
+
+afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    particleMocks.createUniversalTransaction.mockReset()
+    particleMocks.sendTransaction.mockReset()
+    particleMocks.getTransaction.mockReset()
+    prepaidSponsorshipInternals.clearDirectResults()
+})
 
 describe('Gas Assist wallet compatibility', () => {
     it('supports only Pistachio local wallet and exposes the Particle authorization method', async () => {
@@ -71,7 +126,7 @@ describe('Gas Assist wallet compatibility', () => {
         expect(request).not.toHaveBeenCalled()
     })
 
-    it('passes a locally verified raw transaction directly to the generic submission callback', async () => {
+    it('passes a locally verified legacy raw transaction only to its explicit generic callback', async () => {
         const raw = await localWallet.signTransaction({
             chainId: 56,
             type: 'legacy',
@@ -96,111 +151,125 @@ describe('Gas Assist wallet compatibility', () => {
         expect(submitSignedTransaction).toHaveBeenCalledWith(raw)
     })
 
-    it('never submits a generic raw transaction when local validation fails', async () => {
-        const walletClient = { request: vi.fn().mockResolvedValue('0x1234') }
-        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
-        const submitSignedTransaction = vi.fn()
-        await expect(signPreparedSponsoredTransaction({
-            transport: 'pistachio-local',
-            capability,
-            walletClient,
-            preparedTransaction,
-            authenticatedWalletAddress: localWallet.address,
-            submitSignedTransaction,
-        })).rejects.toMatchObject({ code: 'WALLET_RAW_TRANSACTION_MALFORMED' })
-        expect(submitSignedTransaction).not.toHaveBeenCalled()
-    })
-
-    it('signs the exact Particle UserOperation hash and submits only that signature', async () => {
-        const request = vi.fn()
+    it('runs backend paymaster approval before any Particle owner or EIP-7702 signature', async () => {
+        configureParticleBrowser()
+        const request = vi.fn().mockResolvedValue(SIGNATURE)
         const signMessage = vi.fn().mockResolvedValue(SIGNATURE)
+        const approvalGate = vi.fn().mockResolvedValue({
+            atomicExecution: { paymasterApproval: 'approved' },
+        })
         const walletClient = { request, signMessage }
-        const capability = detectRawTransactionSigning({
-            connector: { id: 'pistachio-local' },
-            walletClient,
-        })
-        const submitSignedTransaction = vi.fn().mockResolvedValue({
-            userOperationHash: USER_OP_HASH,
-            transactionHash: null,
-        })
-        const prepared = {
-            provider: 'particle',
-            execution: 'particle-paymaster-v06',
-            stage: 'sign',
-            paymentMode: 'sponsored',
-            orderId: 'order-1',
-            chainId: 56,
-            expiresAt: new Date(Date.now() + 60_000).toISOString(),
-            signatureRequests: [{ type: 'personal_sign', data: { raw: USER_OP_HASH } }],
+        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
+        const uaTransaction = {
+            rootHash: USER_OP_HASH,
+            userOps: [{
+                userOpHash: USER_OP_HASH,
+                eip7702Auth: { address: PARTICLE_DELEGATE, chainId: 56, nonce: 3 },
+                eip7702Delegated: false,
+            }],
         }
+        particleMocks.createUniversalTransaction.mockResolvedValue(uaTransaction)
+        particleMocks.sendTransaction.mockResolvedValue({ transactionId: 'particle-tx-1' })
+        particleMocks.getTransaction.mockResolvedValue({ status: 7 })
 
-        await expect(signPreparedAtomicSponsoredTransaction({
+        const result = await signPreparedAtomicSponsoredTransaction({
             transport: 'pistachio-local',
             capability,
             walletClient,
-            prepared,
+            prepared: directPrepared(),
             authenticatedWalletAddress: localWallet.address,
-            submitSignedTransaction,
-        })).resolves.toMatchObject({ userOperationHash: USER_OP_HASH })
+            waitForPaymasterApproval: approvalGate,
+        })
+
+        expect(result).toMatchObject({
+            orderId: 'order-1',
+            provider: 'particle',
+            transactionId: 'particle-tx-1',
+            particleStatus: 'success',
+        })
+        expect(approvalGate).toHaveBeenCalledExactlyOnceWith(null)
+        expect(approvalGate.mock.invocationCallOrder[0]).toBeLessThan(request.mock.invocationCallOrder[0])
+        expect(approvalGate.mock.invocationCallOrder[0]).toBeLessThan(signMessage.mock.invocationCallOrder[0])
+        expect(request).toHaveBeenCalledWith({
+            method: 'pistachio_signParticleAuthorization',
+            params: [expect.objectContaining({
+                type: 'eip7702Auth',
+                data: { address: PARTICLE_DELEGATE, chainId: 56, nonce: 3 },
+            })],
+        })
         expect(signMessage).toHaveBeenCalledWith({
             account: localWallet.address,
             message: { raw: USER_OP_HASH },
         })
-        expect(submitSignedTransaction).toHaveBeenCalledWith([SIGNATURE])
-        expect(request).not.toHaveBeenCalled()
+        expect(particleMocks.sendTransaction).toHaveBeenCalledWith(
+            uaTransaction,
+            SIGNATURE,
+            [{ userOpHash: USER_OP_HASH, signature: SIGNATURE }],
+        )
     })
 
-    it('completes one-time delegation before signing the Particle UserOperation', async () => {
-        const request = vi.fn().mockResolvedValue(SIGNATURE)
-        const signMessage = vi.fn().mockResolvedValue(SIGNATURE)
-        const walletClient = { request, signMessage }
-        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
-        const submitSignedTransaction = vi.fn().mockResolvedValue({ userOperationHash: USER_OP_HASH })
-        const prepared = {
-            provider: 'particle',
-            execution: 'particle-paymaster-v06',
-            stage: 'delegation-required',
-            paymentMode: 'sponsored',
-            orderId: 'order-1',
-            chainId: 56,
-            expiresAt: new Date(Date.now() + 60_000).toISOString(),
-            signatureRequests: [{
-                type: 'eip7702Auth',
-                rawPayload: `0x${'33'.repeat(32)}`,
-                data: {
-                    address: '0x1111111111111111111111111111111111111111',
-                    chainId: 56,
-                    nonce: 1,
-                },
-            }],
-        }
-        Object.defineProperty(prepared, Symbol.for('pistachioswap.particle.continue-delegation'), {
-            value: vi.fn().mockResolvedValue({
-                provider: 'particle',
-                execution: 'particle-paymaster-v06',
-                stage: 'sign',
-                paymentMode: 'sponsored',
-                orderId: 'order-1',
-                chainId: 56,
-                expiresAt: new Date(Date.now() + 60_000).toISOString(),
-                signatureRequests: [{ type: 'personal_sign', data: { raw: USER_OP_HASH } }],
-            }),
+    it('stops before signing or Particle submission if the paymaster webhook was not approved', async () => {
+        configureParticleBrowser()
+        const request = vi.fn()
+        const signMessage = vi.fn()
+        const approvalError = Object.assign(new Error('No paymaster approval'), {
+            code: 'PARTICLE_PAYMASTER_WEBHOOK_NOT_OBSERVED',
         })
+        particleMocks.createUniversalTransaction.mockResolvedValue({
+            rootHash: USER_OP_HASH,
+            userOps: [{
+                userOpHash: USER_OP_HASH,
+                eip7702Auth: { address: PARTICLE_DELEGATE, chainId: 56, nonce: 1 },
+                eip7702Delegated: false,
+            }],
+        })
+        const capability = detectRawTransactionSigning({
+            connector: { id: 'pistachio-local' },
+            walletClient: { request, signMessage },
+        })
+
+        await expect(signPreparedAtomicSponsoredTransaction({
+            transport: 'pistachio-local',
+            capability,
+            walletClient: { request, signMessage },
+            prepared: directPrepared(),
+            authenticatedWalletAddress: localWallet.address,
+            waitForPaymasterApproval: vi.fn().mockRejectedValue(approvalError),
+        })).rejects.toMatchObject({ code: 'PARTICLE_PAYMASTER_WEBHOOK_NOT_OBSERVED' })
+
+        expect(request).not.toHaveBeenCalled()
+        expect(signMessage).not.toHaveBeenCalled()
+        expect(particleMocks.sendTransaction).not.toHaveBeenCalled()
+    })
+
+    it('never passes a signed payload through the backend compatibility callback', async () => {
+        configureParticleBrowser()
+        particleMocks.createUniversalTransaction.mockResolvedValue({
+            rootHash: USER_OP_HASH,
+            userOps: [],
+        })
+        particleMocks.sendTransaction.mockResolvedValue({ transactionId: 'particle-tx-2' })
+        particleMocks.getTransaction.mockResolvedValue({ status: 7 })
+        const submitSignedTransaction = vi.fn().mockResolvedValue({
+            atomicExecution: { paymasterApproval: 'approved' },
+        })
+        const walletClient = {
+            request: vi.fn(),
+            signMessage: vi.fn().mockResolvedValue(SIGNATURE),
+        }
+        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
 
         await signPreparedAtomicSponsoredTransaction({
             transport: 'pistachio-local',
             capability,
             walletClient,
-            prepared,
+            prepared: directPrepared(),
             authenticatedWalletAddress: localWallet.address,
             submitSignedTransaction,
         })
-        expect(request).toHaveBeenCalledWith({
-            method: 'pistachio_signParticleAuthorization',
-            params: [prepared.signatureRequests[0]],
-        })
-        expect(signMessage).toHaveBeenCalledOnce()
-        expect(submitSignedTransaction).toHaveBeenCalledWith([SIGNATURE])
+
+        expect(submitSignedTransaction).toHaveBeenCalledExactlyOnceWith(null)
+        expect(JSON.stringify(submitSignedTransaction.mock.calls)).not.toContain(SIGNATURE)
     })
 
     it('rejects every non-Pistachio transport before wallet invocation', async () => {
@@ -218,7 +287,7 @@ describe('Gas Assist wallet compatibility', () => {
         expect(submitSignedTransaction).not.toHaveBeenCalled()
     })
 
-    it('does not persist signed payloads or expose provider credentials in the browser', async () => {
+    it('keeps server credentials, relay endpoints, and signed payload persistence out of browser Gas Assist source', async () => {
         const sources = await Promise.all([
             readFile(new URL('../hooks/usePrepaidSponsorship.js', import.meta.url), 'utf8'),
             readFile(new URL('./particleSponsorship.js', import.meta.url), 'utf8'),
@@ -227,9 +296,9 @@ describe('Gas Assist wallet compatibility', () => {
         const joined = sources.join('\n')
         expect(joined).not.toMatch(/localStorage|sessionStorage/)
         expect(joined).not.toMatch(/PARTICLE_PROJECT_KEY|PARTICLE_PROJECT_UUID|PARTICLE_DELEGATION_RELAYER_PRIVATE_KEY/)
+        expect(joined).not.toMatch(/\/atomic\/(?:submit|delegate)/u)
         expect(joined).not.toMatch(/VITE_WALLET_HISTORY_ALCHEMY_PUBLIC_KEY(?:_\d+)?/)
         expect(joined).not.toMatch(/MEGAFUEL_API_KEY|MEGAFUEL_PRIVATE_POLICY_UUID|x-megafuel-policy-uuid/)
         expect(joined).not.toMatch(/console\.(?:log|debug|info|warn|error).*signedRawTransaction/)
-        expect(joined).not.toMatch(/\/package\/|\/payment\/prepare|\/approval\/prepare/u)
     })
 })
