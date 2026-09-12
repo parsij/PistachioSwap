@@ -2,6 +2,7 @@ import { getGasAssistBaseUrl } from './gasAssist.js'
 import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
 const sessions = new Map()
+const directResults = new Map()
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
 const HEX = /^0x(?:[0-9a-f]{2})*$/iu
 
@@ -240,12 +241,55 @@ export async function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orde
     ), orderId)
 }
 
-export function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
-    return requestJson(
+export function recordParticleBrowserResult(orderId, result) {
+    if (!orderId || !result?.transactionId) return
+    directResults.set(orderId, {
+        transactionId: String(result.transactionId),
+        particleStatus: String(result.particleStatus ?? 'submitted'),
+        recordedAt: Date.now(),
+    })
+}
+
+export async function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
+    const order = await requestJson(
         `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/orders/${encodeURIComponent(orderId)}`,
         { headers: { authorization: `Bearer ${sessionToken}` }, signal },
         'order.poll',
     )
+    const direct = directResults.get(orderId)
+    if (!direct) return order
+    if (Date.now() - direct.recordedAt > 15 * 60_000) {
+        directResults.delete(orderId)
+        return order
+    }
+    if (direct.particleStatus === 'success') {
+        return {
+            ...order,
+            status: 'completed',
+            particleTransactionId: direct.transactionId,
+            atomicExecution: {
+                ...(order.atomicExecution ?? {}),
+                provider: 'particle',
+                execution: 'particle-universal-7702-direct',
+                stage: 'confirmed',
+                paymasterApproval: 'approved',
+                providerStatus: 'confirmed-in-browser',
+            },
+        }
+    }
+    return {
+        ...order,
+        status: 'atomic-submitted',
+        particleTransactionId: direct.transactionId,
+        atomicExecution: {
+            ...(order.atomicExecution ?? {}),
+            provider: 'particle',
+            execution: 'particle-universal-7702-direct',
+            stage: 'submitted',
+            paymasterApproval: 'approved',
+            providerStatus: direct.particleStatus,
+        },
+    }
 }
 
 export async function waitForParticlePaymasterApproval(
@@ -288,7 +332,29 @@ export async function waitForParticlePaymasterApproval(
     )
 }
 
+// Compatibility boundary for the existing hook. Despite the historical name,
+// this function NEVER submits a signature or transaction to Pistachio's backend.
+// It only waits for the RSA-authenticated Particle paymaster callback to approve
+// the exact prepared intent. The fourth argument is intentionally ignored.
+export function submitAtomicSponsorship(
+    quoteEndpoint,
+    sessionToken,
+    orderId,
+    _unusedSignedPayload,
+    signal,
+) {
+    return fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal)
+        .then((order) => waitForParticlePaymasterApproval(
+            quoteEndpoint,
+            sessionToken,
+            orderId,
+            order?.expiresAt,
+            signal,
+        ))
+}
+
 export const prepaidSponsorshipInternals = {
+    clearDirectResults: () => directResults.clear(),
     clearSessions: () => sessions.clear(),
     deleteExpiredSessions,
     requestJson,
