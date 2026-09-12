@@ -1,4 +1,7 @@
-import { UniversalAccount } from '@particle-network/universal-account-sdk'
+import {
+    UA_TRANSACTION_STATUS,
+    UniversalAccount,
+} from '@particle-network/universal-account-sdk'
 import { getAddress } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
@@ -6,6 +9,7 @@ import {
     normalizePreparedSponsoredTransaction,
     validateSignedPreparedTransaction,
 } from './metamaskMultichain.js'
+import { recordParticleBrowserResult } from './particleSponsorship.js'
 import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
 const SUPPORTED_CONNECTOR_IDS = new Set(['pistachio-local'])
@@ -86,7 +90,7 @@ function assertParticlePackage(prepared, authenticatedWalletAddress) {
     return prepared
 }
 
-async function signParticleAuthorization({ walletClient, authorization, authenticatedWalletAddress }) {
+async function signParticleAuthorization({ walletClient, authorization }) {
     if (!authorization || typeof authorization !== 'object') {
         throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned an invalid EIP-7702 authorization.')
     }
@@ -155,21 +159,21 @@ function createParticleStatusWatcher(address) {
         })
     })
     return {
-        async wait(transactionId, timeoutMs = 120_000) {
+        async wait(transactionId, timeoutMs = 20_000) {
             await open
             if (closed || !opened) throw new Error('Particle status channel is unavailable.')
             return await new Promise((resolve, reject) => {
-                const timer = window.setTimeout(() => {
+                const timer = globalThis.setTimeout(() => {
                     pending.delete(transactionId)
-                    reject(new Error('Particle transaction confirmation timed out.'))
+                    reject(new Error('Particle status channel timed out.'))
                 }, timeoutMs)
                 pending.set(transactionId, {
                     resolve: (status) => {
-                        window.clearTimeout(timer)
+                        globalThis.clearTimeout(timer)
                         resolve(status)
                     },
                     reject: (error) => {
-                        window.clearTimeout(timer)
+                        globalThis.clearTimeout(timer)
                         reject(error)
                     },
                 })
@@ -183,6 +187,33 @@ function createParticleStatusWatcher(address) {
             }
         },
     }
+}
+
+async function waitForParticleCompletion(universalAccount, watcher, transactionId) {
+    if (watcher) {
+        try {
+            const pushedStatus = await watcher.wait(transactionId)
+            if (pushedStatus === 7) return 'success'
+            if (pushedStatus === 11) return 'failed'
+        } catch (error) {
+            gasAssistTraceError('signing.particle.status-push-unavailable', error, { transactionId })
+        }
+    }
+
+    // Official UA examples use getTransaction(...).status === FINISHED as the
+    // confirmation fallback. Polling happens entirely from the browser to Particle.
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+        try {
+            const detail = await universalAccount.getTransaction(transactionId)
+            if (detail?.status === UA_TRANSACTION_STATUS.FINISHED) return 'success'
+        } catch (error) {
+            if (attempt === 59) {
+                gasAssistTraceError('signing.particle.status-poll-unavailable', error, { transactionId })
+            }
+        }
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 1_000))
+    }
+    return 'submitted'
 }
 
 export function detectRawTransactionSigning({ connector, walletClient }) {
@@ -262,13 +293,18 @@ export async function signPreparedAtomicSponsoredTransaction({
     prepared,
     authenticatedWalletAddress,
     waitForPaymasterApproval,
+    // Existing hook name retained for compatibility. In the Particle direct path
+    // this callback is invoked BEFORE any owner/7702 signature exists and is used
+    // only to wait for backend policy approval. No signed payload is sent to it.
+    submitSignedTransaction,
 }) {
+    const approvalGate = waitForPaymasterApproval ?? submitSignedTransaction
     if (
         transport !== 'pistachio-local' ||
         capability?.atomicMethod !== PARTICLE_AUTH_SIGN_METHOD ||
         typeof walletClient?.request !== 'function' ||
         typeof walletClient?.signMessage !== 'function' ||
-        typeof waitForPaymasterApproval !== 'function'
+        typeof approvalGate !== 'function'
     ) {
         throw signingError(
             'PISTACHIO_WALLET_REQUIRED',
@@ -288,8 +324,6 @@ export async function signPreparedAtomicSponsoredTransaction({
     })
 
     try {
-        // `expectTokens: []` prevents Particle from inventing a funding route.
-        // The five backend-reviewed calls are the only requested BNB execution.
         const transaction = await universalAccount.createUniversalTransaction({
             chainId: 56,
             expectTokens: [],
@@ -303,23 +337,24 @@ export async function signPreparedAtomicSponsoredTransaction({
             throw signingError('PARTICLE_TRANSACTION_INVALID', 'Particle returned an invalid Universal Account transaction.')
         }
 
-        // Fail closed: if creating this UA transaction did not cause Particle's
-        // project paymaster to call and pass our before_paymaster_sign policy,
-        // do not sign or send it. This prevents fallback to user-paid Universal Gas.
-        await waitForPaymasterApproval()
+        // Critical fail-closed boundary. Particle must have invoked the project's
+        // RSA-signed before_paymaster_sign webhook while creating this exact UA
+        // operation. If the callback was not observed, we stop BEFORE signing and
+        // BEFORE sendTransaction, preventing fallback to user-funded Universal Gas.
+        await approvalGate(null)
 
         const authorizations = []
         for (const userOp of transaction.userOps) {
             if (userOp?.eip7702Auth && !userOp?.eip7702Delegated) {
+                const userOpHash = String(userOp.userOpHash ?? '')
+                if (!HASH.test(userOpHash)) {
+                    throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle omitted the EIP-7702 UserOperation hash.')
+                }
                 const signature = await signParticleAuthorization({
                     walletClient,
                     authorization: userOp.eip7702Auth,
-                    authenticatedWalletAddress,
                 })
-                authorizations.push({
-                    userOpHash: String(userOp.userOpHash ?? ''),
-                    signature,
-                })
+                authorizations.push({ userOpHash, signature })
             }
         }
 
@@ -332,36 +367,25 @@ export async function signPreparedAtomicSponsoredTransaction({
         }
 
         const watcher = createParticleStatusWatcher(authenticatedWalletAddress)
-        let result
         try {
-            result = await universalAccount.sendTransaction(transaction, rootSignature, authorizations)
+            const result = await universalAccount.sendTransaction(transaction, rootSignature, authorizations)
             const transactionId = String(result?.transactionId ?? '')
             if (!transactionId) {
                 throw signingError('PARTICLE_SUBMISSION_INVALID', 'Particle did not return a transaction identifier.')
             }
-            let particleStatus = 'submitted'
-            if (watcher) {
-                try {
-                    const status = await watcher.wait(transactionId)
-                    particleStatus = status === 7 ? 'success' : 'failed'
-                } catch (error) {
-                    gasAssistTraceError('signing.particle.status-unavailable', error, { orderId: current.orderId })
-                }
-            }
+            const particleStatus = await waitForParticleCompletion(universalAccount, watcher, transactionId)
             if (particleStatus === 'failed') {
                 throw signingError('PARTICLE_TRANSACTION_FAILED', 'Particle reported that the sponsored transaction failed.')
             }
-            gasAssistTrace('signing.particle.success', {
-                orderId: current.orderId,
-                transactionId,
-                particleStatus,
-            })
-            return {
+            const directResult = {
                 orderId: current.orderId,
                 provider: 'particle',
                 transactionId,
                 particleStatus,
             }
+            recordParticleBrowserResult(current.orderId, directResult)
+            gasAssistTrace('signing.particle.success', directResult)
+            return directResult
         } finally {
             watcher?.close()
         }
@@ -378,4 +402,5 @@ export const rawSigningInternals = {
     signParticleAuthorization,
     supportedConnectorIds: SUPPORTED_CONNECTOR_IDS,
     transactionSummary,
+    waitForParticleCompletion,
 }
