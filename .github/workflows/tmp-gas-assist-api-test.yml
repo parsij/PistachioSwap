@@ -1,0 +1,26 @@
+name: Temporary Gas Assist API test isolation
+
+on:
+  push:
+    branches:
+      - refactor/particle-browser-policy
+
+permissions:
+  contents: read
+
+jobs:
+  gas-assist-proxy-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run Gas Assist proxy boundary test
+        run: pnpm --filter @pistachio/api exec vitest run test/gas-assist-proxy-boundary.test.ts
