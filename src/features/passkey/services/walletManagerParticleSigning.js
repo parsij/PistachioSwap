@@ -3,13 +3,13 @@ import { getAddress, isAddress, parseTransaction, toHex } from 'viem'
 import { hashAuthorization, recoverAuthorizationAddress } from 'viem/utils'
 
 const HASH = /^0x[0-9a-f]{64}$/iu
-const configuredDelegate = String(
-    import.meta.env?.VITE_PARTICLE_EIP7702_IMPLEMENTATION_ADDRESS ?? '',
-).trim()
-const PARTICLE_EIP7702_IMPLEMENTATION = isAddress(configuredDelegate) &&
-    !/^0x0{40}$/iu.test(configuredDelegate)
-    ? getAddress(configuredDelegate)
-    : null
+const PARTICLE_EIP7702_DELEGATES = new Set(
+    String(import.meta.env?.VITE_PARTICLE_ALLOWED_EIP7702_DELEGATES ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => isAddress(value) && !/^0x0{40}$/iu.test(value))
+        .map((value) => getAddress(value)),
+)
 
 function particleSigningError(code, message) {
     const error = new Error(message)
@@ -18,10 +18,10 @@ function particleSigningError(code, message) {
 }
 
 function authorizationRequest(value) {
-    if (!PARTICLE_EIP7702_IMPLEMENTATION) {
+    if (!PARTICLE_EIP7702_DELEGATES.size) {
         throw particleSigningError(
             'PARTICLE_DELEGATE_NOT_CONFIGURED',
-            'Particle Gas Assist is not configured with a trusted EIP-7702 implementation.',
+            'Particle Gas Assist is not configured with a trusted EIP-7702 delegate allowlist.',
         )
     }
     if (!value || typeof value !== 'object' || Array.isArray(value) || value.type !== 'eip7702Auth') {
@@ -37,7 +37,7 @@ function authorizationRequest(value) {
     } catch {
         throw particleSigningError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned an invalid delegation address.')
     }
-    if (address !== PARTICLE_EIP7702_IMPLEMENTATION) {
+    if (!PARTICLE_EIP7702_DELEGATES.has(address)) {
         throw particleSigningError('PARTICLE_DELEGATE_NOT_ALLOWED', 'Particle requested an untrusted EIP-7702 delegate.')
     }
     const chainId = Number(data.chainId)
@@ -70,7 +70,7 @@ export const methods = {
             chainId: 56,
             action: 'Enable Particle Gas Assist',
             payload: {
-                purpose: 'Authorize PistachioSwap’s reviewed BNB Chain Gas Assist account implementation. The authorization changes only this wallet’s delegated execution code and does not transfer tokens by itself.',
+                purpose: 'Authorize Particle’s allowlisted BNB Chain EIP-7702 account code for this wallet. This does not transfer tokens by itself.',
                 delegate: authorization.address,
                 authorizationNonce: authorization.nonce,
             },
@@ -78,7 +78,8 @@ export const methods = {
         this.assertSigningContext(context)
 
         // The worker owns the EOA key. This throwaway Type-4 envelope exists only
-        // to obtain the EIP-7702 authorization signature. It is never broadcast.
+        // to obtain the EIP-7702 authorization signature. It is never broadcast
+        // by PistachioSwap; the signature is returned to Particle's browser SDK.
         let signedEnvelope = null
         try {
             signedEnvelope = (
@@ -136,6 +137,6 @@ export const methods = {
 }
 
 export const particleSigningInternals = {
-    PARTICLE_EIP7702_IMPLEMENTATION,
+    PARTICLE_EIP7702_DELEGATES,
     authorizationRequest,
 }
