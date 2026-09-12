@@ -27,7 +27,7 @@ afterEach(() => {
 })
 
 describe('Gas Assist public proxy boundary', () => {
-    it('exposes only explicitly reviewed route shapes', () => {
+    it('exposes policy/order routes but no backend Particle relay or submit route', () => {
         expect(isPublicGasAssistProxyRoute('GET', '/v1/sponsorship/config')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/preview')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/auth/challenge')).toBe(true)
@@ -35,11 +35,11 @@ describe('Gas Assist public proxy boundary', () => {
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders')).toBe(true)
         expect(isPublicGasAssistProxyRoute('GET', '/v1/sponsorship/orders/order_123')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/prepare')).toBe(true)
-        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/delegate')).toBe(true)
-        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/submit')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/api/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
 
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/delegate')).toBe(false)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/submit')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/paymaster-webhook')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/alchemy/sponsorship-webhook')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/package/prepare')).toBe(false)
@@ -65,8 +65,9 @@ describe('Gas Assist public proxy boundary', () => {
 
         try {
             const response = await app.inject({
-                method: 'GET',
-                url: '/v1/sponsorship/admin/tokens',
+                method: 'POST',
+                url: '/v1/sponsorship/orders/order_123/atomic/submit',
+                payload: { signatures: ['0xdead'] },
             })
             expect(response.statusCode).toBe(404)
             expect(response.json()).toEqual({
