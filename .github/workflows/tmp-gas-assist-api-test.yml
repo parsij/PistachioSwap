@@ -9,8 +9,17 @@ permissions:
   contents: read
 
 jobs:
-  gas-assist-proxy-boundary:
+  proxy-test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        file:
+          - test/gas-assist-proxy-boundary.test.ts
+          - test/gas-assist-proxy.test.ts
+          - test/gas-assist-proxy-path.test.ts
+          - test/gas-assist-proxy-geo.test.ts
+    name: ${{ matrix.file }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -22,5 +31,5 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run Gas Assist proxy boundary test
-        run: pnpm --filter @pistachio/api exec vitest run test/gas-assist-proxy-boundary.test.ts
+      - name: Run isolated API test
+        run: pnpm --filter @pistachio/api exec vitest run "${{ matrix.file }}"
