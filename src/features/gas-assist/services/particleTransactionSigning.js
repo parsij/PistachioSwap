@@ -1,3 +1,7 @@
+import { UniversalAccount } from '@particle-network/universal-account-sdk'
+import { getAddress } from 'viem'
+import { hashAuthorization } from 'viem/utils'
+
 import {
     normalizePreparedSponsoredTransaction,
     validateSignedPreparedTransaction,
@@ -6,9 +10,10 @@ import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
 const SUPPORTED_CONNECTOR_IDS = new Set(['pistachio-local'])
 const PARTICLE_AUTH_SIGN_METHOD = 'pistachio_signParticleAuthorization'
-const PARTICLE_CONTINUE_DELEGATION = Symbol.for('pistachioswap.particle.continue-delegation')
 const SIGNATURE = /^0x[0-9a-f]{130}$/iu
 const HASH = /^0x[0-9a-f]{64}$/iu
+const ADDRESS = /^0x[0-9a-f]{40}$/iu
+const PARTICLE_WSS_URL = 'wss://universal-app-ws-proxy.particle.network'
 
 function signingError(code, message, details = {}) {
     const error = new Error(message)
@@ -29,89 +34,155 @@ function transactionSummary(transaction) {
     }
 }
 
+function particleBrowserConfig() {
+    const projectId = String(import.meta.env?.VITE_PARTICLE_PROJECT_ID ?? '').trim()
+    const projectClientKey = String(import.meta.env?.VITE_PARTICLE_CLIENT_KEY ?? '').trim()
+    const projectAppUuid = String(import.meta.env?.VITE_PARTICLE_APP_ID ?? '').trim()
+    if (!projectId || !projectClientKey || !projectAppUuid) {
+        throw signingError(
+            'PARTICLE_BROWSER_CONFIG_MISSING',
+            'Particle browser credentials are not configured for Gas Assist.',
+            { stage: 'particle.configure' },
+        )
+    }
+    return { projectId, projectClientKey, projectAppUuid }
+}
+
 function assertParticlePackage(prepared, authenticatedWalletAddress) {
     if (
         !prepared ||
         prepared.provider !== 'particle' ||
-        prepared.execution !== 'particle-paymaster-v06' ||
+        prepared.execution !== 'particle-universal-7702-direct' ||
         Number(prepared.chainId) !== 56 ||
-        !['delegation-required', 'sign'].includes(prepared.stage) ||
+        prepared.stage !== 'direct' ||
         prepared.paymentMode !== 'sponsored' ||
         !Number.isFinite(Date.parse(prepared.expiresAt)) ||
         Date.parse(prepared.expiresAt) <= Date.now() ||
         typeof prepared.orderId !== 'string' ||
         !prepared.orderId ||
-        !Array.isArray(prepared.signatureRequests) ||
-        prepared.signatureRequests.length !== 1 ||
-        !/^0x[0-9a-f]{40}$/iu.test(String(authenticatedWalletAddress ?? ''))
+        !Array.isArray(prepared.transactions) ||
+        prepared.transactions.length !== 5 ||
+        !ADDRESS.test(String(authenticatedWalletAddress ?? ''))
     ) {
         throw signingError(
-            'PARTICLE_USEROP_INVALID',
-            'Gas Assist did not return a valid Particle signing package.',
+            'PARTICLE_DIRECT_INTENT_INVALID',
+            'Gas Assist did not return a valid direct Particle sponsorship intent.',
             { stage: 'particle.validate' },
         )
     }
-
-    const request = prepared.signatureRequests[0]
-    if (prepared.stage === 'delegation-required') {
-        if (String(request?.type ?? '') !== 'eip7702Auth') {
-            throw signingError(
-                'PARTICLE_SIGNATURE_REQUEST_INVALID',
-                'Particle returned an invalid EIP-7702 authorization package.',
-                { stage: 'particle.delegate' },
-            )
+    for (const call of prepared.transactions) {
+        if (!ADDRESS.test(String(call?.to ?? '')) || !/^0x(?:[0-9a-f]{2})*$/iu.test(String(call?.data ?? ''))) {
+            throw signingError('PARTICLE_DIRECT_INTENT_INVALID', 'The reviewed Particle call is invalid.')
         }
-    } else if (String(request?.type ?? '') !== 'personal_sign' ||
-        !HASH.test(String(request?.data?.raw ?? ''))) {
-        throw signingError(
-            'PARTICLE_SIGNATURE_REQUEST_INVALID',
-            'Particle returned an invalid UserOperation signing package.',
-            { stage: 'particle.sign' },
-        )
+        try {
+            if (BigInt(String(call?.value ?? '0')) !== 0n) {
+                throw signingError('PARTICLE_NATIVE_VALUE_NOT_ALLOWED', 'Gas Assist does not permit native-value calls.')
+            }
+        } catch (error) {
+            if (error?.code) throw error
+            throw signingError('PARTICLE_DIRECT_INTENT_INVALID', 'The reviewed Particle call value is invalid.')
+        }
     }
     return prepared
 }
 
-async function signParticleSignatureRequest({ walletClient, request, authenticatedWalletAddress }) {
-    if (!request || typeof request !== 'object' || Array.isArray(request)) {
-        throw signingError('PARTICLE_SIGNATURE_REQUEST_INVALID', 'Particle returned an invalid signature request.')
+async function signParticleAuthorization({ walletClient, authorization, authenticatedWalletAddress }) {
+    if (!authorization || typeof authorization !== 'object') {
+        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned an invalid EIP-7702 authorization.')
     }
-    const type = String(request.type ?? '')
+    const address = getAddress(String(authorization.address ?? ''))
+    const chainId = Number(authorization.chainId)
+    const nonce = Number(authorization.nonce)
+    if (chainId !== 56 || !Number.isSafeInteger(nonce) || nonce < 0) {
+        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned invalid BNB Chain authorization parameters.')
+    }
+    const request = {
+        type: 'eip7702Auth',
+        rawPayload: hashAuthorization({ contractAddress: address, chainId, nonce }),
+        data: { address, chainId, nonce },
+    }
+    const signature = await walletClient.request({
+        method: PARTICLE_AUTH_SIGN_METHOD,
+        params: [request],
+    })
+    if (!SIGNATURE.test(String(signature ?? ''))) {
+        throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid EIP-7702 authorization signature.')
+    }
+    return signature
+}
 
-    if (type === 'personal_sign') {
-        const raw = String(request.data?.raw ?? '')
-        if (!HASH.test(raw) || typeof walletClient?.signMessage !== 'function') {
-            throw signingError('PARTICLE_SIGNATURE_REQUEST_INVALID', 'Particle returned an invalid UserOperation hash.')
+function createParticleStatusWatcher(address) {
+    if (typeof WebSocket !== 'function') return null
+    let socket
+    let opened = false
+    let closed = false
+    const pending = new Map()
+    const open = new Promise((resolve, reject) => {
+        try {
+            socket = new WebSocket(PARTICLE_WSS_URL)
+        } catch (error) {
+            reject(error)
+            return
         }
-        const signature = await walletClient.signMessage({
-            account: authenticatedWalletAddress,
-            message: { raw },
+        socket.addEventListener('open', () => {
+            opened = true
+            socket.send(JSON.stringify({
+                type: 'subscribe',
+                channel: 'address-update',
+                params: { addresses: [address] },
+            }))
+            resolve()
+        }, { once: true })
+        socket.addEventListener('error', () => reject(new Error('Particle status channel failed.')), { once: true })
+        socket.addEventListener('message', (event) => {
+            try {
+                const message = JSON.parse(String(event.data ?? ''))
+                const transactionId = String(message?.data?.transactionId ?? '')
+                const status = Number(message?.data?.status)
+                const waiter = pending.get(transactionId)
+                if (waiter && (status === 7 || status === 11)) {
+                    pending.delete(transactionId)
+                    waiter.resolve(status)
+                }
+            } catch {
+                // Ignore unrelated/malformed provider push messages.
+            }
         })
-        if (!SIGNATURE.test(String(signature ?? ''))) {
-            throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid UserOperation signature.')
-        }
-        return signature
-    }
-
-    if (type === 'eip7702Auth') {
-        if (typeof walletClient?.request !== 'function') {
-            throw signingError('PISTACHIO_WALLET_REQUIRED', 'Pistachio Wallet cannot sign the Particle authorization.')
-        }
-        const signature = await walletClient.request({
-            method: PARTICLE_AUTH_SIGN_METHOD,
-            params: [request],
+        socket.addEventListener('close', () => {
+            closed = true
+            for (const waiter of pending.values()) waiter.reject(new Error('Particle status channel closed.'))
+            pending.clear()
         })
-        if (!SIGNATURE.test(String(signature ?? ''))) {
-            throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid EIP-7702 authorization signature.')
-        }
-        return signature
+    })
+    return {
+        async wait(transactionId, timeoutMs = 120_000) {
+            await open
+            if (closed || !opened) throw new Error('Particle status channel is unavailable.')
+            return await new Promise((resolve, reject) => {
+                const timer = window.setTimeout(() => {
+                    pending.delete(transactionId)
+                    reject(new Error('Particle transaction confirmation timed out.'))
+                }, timeoutMs)
+                pending.set(transactionId, {
+                    resolve: (status) => {
+                        window.clearTimeout(timer)
+                        resolve(status)
+                    },
+                    reject: (error) => {
+                        window.clearTimeout(timer)
+                        reject(error)
+                    },
+                })
+            })
+        },
+        close() {
+            try {
+                socket?.close()
+            } catch {
+                // Closing a best-effort status socket must never affect execution.
+            }
+        },
     }
-
-    throw signingError(
-        'PARTICLE_SIGNATURE_TYPE_UNSUPPORTED',
-        'Particle requested an unsupported signature type.',
-        { signatureType: type },
-    )
 }
 
 export function detectRawTransactionSigning({ connector, walletClient }) {
@@ -190,13 +261,14 @@ export async function signPreparedAtomicSponsoredTransaction({
     walletClient,
     prepared,
     authenticatedWalletAddress,
-    submitSignedTransaction,
+    waitForPaymasterApproval,
 }) {
     if (
         transport !== 'pistachio-local' ||
         capability?.atomicMethod !== PARTICLE_AUTH_SIGN_METHOD ||
         typeof walletClient?.request !== 'function' ||
-        typeof submitSignedTransaction !== 'function'
+        typeof walletClient?.signMessage !== 'function' ||
+        typeof waitForPaymasterApproval !== 'function'
     ) {
         throw signingError(
             'PISTACHIO_WALLET_REQUIRED',
@@ -205,47 +277,94 @@ export async function signPreparedAtomicSponsoredTransaction({
         )
     }
 
-    let current = assertParticlePackage(prepared, authenticatedWalletAddress)
+    const current = assertParticlePackage(prepared, authenticatedWalletAddress)
     gasAssistTrace('signing.particle.start', { orderId: current.orderId, stage: current.stage })
+    const universalAccount = new UniversalAccount({
+        ...particleBrowserConfig(),
+        smartAccountOptions: {
+            useEIP7702: true,
+            ownerAddress: authenticatedWalletAddress,
+        },
+    })
+
     try {
-        if (current.stage === 'delegation-required') {
-            const continueDelegation = current[PARTICLE_CONTINUE_DELEGATION]
-            if (typeof continueDelegation !== 'function') {
-                throw signingError(
-                    'PARTICLE_DELEGATION_CONTINUATION_MISSING',
-                    'The Particle delegation can no longer be continued.',
-                    { stage: 'particle.delegate' },
-                )
-            }
-            const authorizationSignature = await signParticleSignatureRequest({
-                walletClient,
-                request: current.signatureRequests[0],
-                authenticatedWalletAddress,
-            })
-            current = assertParticlePackage(
-                await continueDelegation(authorizationSignature),
-                authenticatedWalletAddress,
-            )
-            if (current.stage !== 'sign') {
-                throw signingError(
-                    'PARTICLE_USEROP_INVALID',
-                    'Particle did not return the UserOperation after delegation.',
-                    { stage: 'particle.delegate' },
-                )
+        // `expectTokens: []` prevents Particle from inventing a funding route.
+        // The five backend-reviewed calls are the only requested BNB execution.
+        const transaction = await universalAccount.createUniversalTransaction({
+            chainId: 56,
+            expectTokens: [],
+            transactions: current.transactions.map((call) => ({
+                to: getAddress(call.to),
+                data: call.data,
+                value: BigInt(call.value ?? '0').toString(),
+            })),
+        })
+        if (!transaction || !HASH.test(String(transaction.rootHash ?? '')) || !Array.isArray(transaction.userOps)) {
+            throw signingError('PARTICLE_TRANSACTION_INVALID', 'Particle returned an invalid Universal Account transaction.')
+        }
+
+        // Fail closed: if creating this UA transaction did not cause Particle's
+        // project paymaster to call and pass our before_paymaster_sign policy,
+        // do not sign or send it. This prevents fallback to user-paid Universal Gas.
+        await waitForPaymasterApproval()
+
+        const authorizations = []
+        for (const userOp of transaction.userOps) {
+            if (userOp?.eip7702Auth && !userOp?.eip7702Delegated) {
+                const signature = await signParticleAuthorization({
+                    walletClient,
+                    authorization: userOp.eip7702Auth,
+                    authenticatedWalletAddress,
+                })
+                authorizations.push({
+                    userOpHash: String(userOp.userOpHash ?? ''),
+                    signature,
+                })
             }
         }
 
-        const signature = await signParticleSignatureRequest({
-            walletClient,
-            request: current.signatureRequests[0],
-            authenticatedWalletAddress,
+        const rootSignature = await walletClient.signMessage({
+            account: authenticatedWalletAddress,
+            message: { raw: transaction.rootHash },
         })
-        const result = await submitSignedTransaction([signature])
-        gasAssistTrace('signing.particle.success', {
-            orderId: current.orderId,
-            signatureCount: 1,
-        })
-        return result
+        if (!SIGNATURE.test(String(rootSignature ?? ''))) {
+            throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid Particle root signature.')
+        }
+
+        const watcher = createParticleStatusWatcher(authenticatedWalletAddress)
+        let result
+        try {
+            result = await universalAccount.sendTransaction(transaction, rootSignature, authorizations)
+            const transactionId = String(result?.transactionId ?? '')
+            if (!transactionId) {
+                throw signingError('PARTICLE_SUBMISSION_INVALID', 'Particle did not return a transaction identifier.')
+            }
+            let particleStatus = 'submitted'
+            if (watcher) {
+                try {
+                    const status = await watcher.wait(transactionId)
+                    particleStatus = status === 7 ? 'success' : 'failed'
+                } catch (error) {
+                    gasAssistTraceError('signing.particle.status-unavailable', error, { orderId: current.orderId })
+                }
+            }
+            if (particleStatus === 'failed') {
+                throw signingError('PARTICLE_TRANSACTION_FAILED', 'Particle reported that the sponsored transaction failed.')
+            }
+            gasAssistTrace('signing.particle.success', {
+                orderId: current.orderId,
+                transactionId,
+                particleStatus,
+            })
+            return {
+                orderId: current.orderId,
+                provider: 'particle',
+                transactionId,
+                particleStatus,
+            }
+        } finally {
+            watcher?.close()
+        }
     } catch (error) {
         gasAssistTraceError('signing.particle.error', error, { orderId: current?.orderId })
         throw error
@@ -254,9 +373,9 @@ export async function signPreparedAtomicSponsoredTransaction({
 
 export const rawSigningInternals = {
     PARTICLE_AUTH_SIGN_METHOD,
-    PARTICLE_CONTINUE_DELEGATION,
     assertParticlePackage,
-    signParticleSignatureRequest,
+    particleBrowserConfig,
+    signParticleAuthorization,
     supportedConnectorIds: SUPPORTED_CONNECTOR_IDS,
     transactionSummary,
 }
