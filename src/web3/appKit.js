@@ -2,6 +2,7 @@ import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 
 import { createAppMetadata } from './appKitMetadata.js'
+import { APPKIT_CONNECTOR_TYPE_ORDER } from './appKitOptions.js'
 import {
     CURATED_EVM_CHAINS,
     getCuratedEvmChain,
@@ -76,6 +77,7 @@ function initializeAppKit() {
             analytics: false,
             email: false,
             socials: [],
+            connectorTypeOrder: APPKIT_CONNECTOR_TYPE_ORDER,
         },
         themeMode: 'dark',
         themeVariables: {
