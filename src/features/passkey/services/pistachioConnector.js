@@ -67,7 +67,7 @@ function createConnectorConfig(config, manager, {
     let activeConnection = null
     return {
             id: PISTACHIO_CONNECTOR_ID,
-            name: 'Create or Import Pistachio Wallet',
+            name: 'Create or use Pistachio Wallet',
             type: 'pistachio-local',
             icon: '/PistachioLogoConnectorV2.svg',
             async setup() {
