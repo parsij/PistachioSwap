@@ -101,7 +101,7 @@ describe('Pistachio Wallet connector entry', () => {
         const pending = new Promise((resolve) => { resolveConnection = resolve })
         const { connector, manager } = harness(vi.fn(() => pending))
 
-        expect(connector.name).toBe('Create or Import Pistachio Wallet')
+        expect(connector.name).toBe('Create or use Pistachio Wallet')
         expect(connector.icon).toBe('/PistachioLogoConnectorV2.svg')
         const connecting = connector.connect({ chainId: 56 })
         await vi.waitFor(() => expect(manager.requestConnection).toHaveBeenCalledOnce())
