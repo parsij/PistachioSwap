@@ -1,7 +1,3 @@
-import {
-    UA_TRANSACTION_STATUS,
-    UniversalAccount,
-} from '@particle-network/universal-account-sdk'
 import { getAddress } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
@@ -11,6 +7,7 @@ import {
 } from './metamaskMultichain.js'
 import { recordParticleBrowserResult } from './particleSponsorship.js'
 import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
+import { loadParticleUniversalAccountSdk } from './particleBrowserRuntime.js'
 
 const SUPPORTED_CONNECTOR_IDS = new Set(['pistachio-local'])
 const PARTICLE_AUTH_SIGN_METHOD = 'pistachio_signParticleAuthorization'
@@ -189,7 +186,7 @@ function createParticleStatusWatcher(address) {
     }
 }
 
-async function waitForParticleCompletion(universalAccount, watcher, transactionId) {
+async function waitForParticleCompletion(universalAccount, watcher, transactionId, finishedStatus = 7) {
     if (watcher) {
         try {
             const pushedStatus = await watcher.wait(transactionId)
@@ -205,7 +202,7 @@ async function waitForParticleCompletion(universalAccount, watcher, transactionI
     for (let attempt = 0; attempt < 60; attempt += 1) {
         try {
             const detail = await universalAccount.getTransaction(transactionId)
-            if (detail?.status === UA_TRANSACTION_STATUS.FINISHED) return 'success'
+            if (detail?.status === finishedStatus) return 'success'
         } catch (error) {
             if (attempt === 59) {
                 gasAssistTraceError('signing.particle.status-poll-unavailable', error, { transactionId })
@@ -315,6 +312,26 @@ export async function signPreparedAtomicSponsoredTransaction({
 
     const current = assertParticlePackage(prepared, authenticatedWalletAddress)
     gasAssistTrace('signing.particle.start', { orderId: current.orderId, stage: current.stage })
+
+    let particleSdk
+    try {
+        particleSdk = await loadParticleUniversalAccountSdk()
+    } catch {
+        throw signingError(
+            'PARTICLE_BROWSER_RUNTIME_UNAVAILABLE',
+            'Particle Gas Assist could not initialize in this browser.',
+            { stage: 'particle.initialize' },
+        )
+    }
+    const { UniversalAccount, UA_TRANSACTION_STATUS } = particleSdk
+    if (typeof UniversalAccount !== 'function') {
+        throw signingError(
+            'PARTICLE_BROWSER_RUNTIME_UNAVAILABLE',
+            'Particle Gas Assist could not initialize in this browser.',
+            { stage: 'particle.initialize' },
+        )
+    }
+
     const universalAccount = new UniversalAccount({
         ...particleBrowserConfig(),
         smartAccountOptions: {
@@ -373,7 +390,12 @@ export async function signPreparedAtomicSponsoredTransaction({
             if (!transactionId) {
                 throw signingError('PARTICLE_SUBMISSION_INVALID', 'Particle did not return a transaction identifier.')
             }
-            const particleStatus = await waitForParticleCompletion(universalAccount, watcher, transactionId)
+            const particleStatus = await waitForParticleCompletion(
+                universalAccount,
+                watcher,
+                transactionId,
+                UA_TRANSACTION_STATUS?.FINISHED ?? 7,
+            )
             if (particleStatus === 'failed') {
                 throw signingError('PARTICLE_TRANSACTION_FAILED', 'Particle reported that the sponsored transaction failed.')
             }

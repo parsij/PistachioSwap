@@ -49,6 +49,7 @@ const messages = {
     ORDER_STATE_CONFLICT: 'This Gas Assist swap changed state. Refresh its status.',
     PAYMENT_TOKEN_DISABLED: 'Gas Assist is no longer available for this token.',
     PAYMENT_TOKEN_EVIDENCE_STALE: 'This token cannot be safely priced right now.',
+    INSUFFICIENT_TOKEN_BALANCE: 'Your current sell-token balance is lower than the amount entered. Refresh the balance or use Max and try again.',
     INSUFFICIENT_PAYMENT_TOKEN_BALANCE: 'Your token balance is too low for this swap.',
     PAYMASTER_REJECTED: 'The sponsor declined this transaction.',
     PAYMASTER_TIMEOUT: 'The sponsor service timed out. Try again.',
@@ -56,6 +57,15 @@ const messages = {
     PAYMASTER_POLICY_TIMEOUT: 'The sponsor policy service timed out. Try again.',
     PAYMASTER_POLICY_UNAVAILABLE: 'The sponsor policy service is temporarily unavailable.',
     PAYMASTER_POLICY_UPDATE_FAILED: 'The sponsor could not authorize this exact transaction.',
+    PARTICLE_BROWSER_RUNTIME_UNAVAILABLE: 'Particle Gas Assist could not start in this browser. Refresh and try again.',
+    PARTICLE_BROWSER_CONFIG_MISSING: 'Gas Assist is temporarily unavailable.',
+    PARTICLE_DIRECT_INTENT_INVALID: 'The Gas Assist request changed before signing. Refresh and try again.',
+    PARTICLE_TRANSACTION_INVALID: 'Particle returned an invalid sponsored transaction. Refresh and try again.',
+    PARTICLE_AUTHORIZATION_INVALID: 'Particle returned an invalid Gas Assist authorization. Refresh and try again.',
+    PARTICLE_PAYMASTER_WEBHOOK_NOT_OBSERVED: 'Gas Assist sponsorship was not approved in time. Nothing was submitted. Try again.',
+    PARTICLE_SPONSORSHIP_REJECTED: 'The Gas Assist sponsorship policy rejected this transaction.',
+    PARTICLE_SUBMISSION_INVALID: 'Particle did not accept the sponsored transaction. Try again.',
+    PARTICLE_TRANSACTION_FAILED: 'The sponsored transaction failed at Particle. Try again.',
     SPONSORSHIP_NETWORK_ERROR: 'Could not reach Gas Assist. Check your connection and try again.',
     SPONSORSHIP_REQUEST_ABORTED: 'The Gas Assist request was cancelled.',
     SPONSORSHIP_INVALID_RESPONSE: 'Gas Assist returned an invalid response.',
@@ -96,7 +106,7 @@ function diagnosticLines(error) {
     return [...new Set(lines)]
 }
 
-/** Shows the friendly Gas Assist copy plus the live backend/wallet code for on-device debugging. */
+/** Shows friendly Gas Assist copy; detailed diagnostics stay in development builds. */
 export default function GasAssistError({ error }) {
     const code = typeof error === 'string' ? error : error?.code
     const message = messages[code] ?? 'Gas Assist could not complete this swap. Try again.'
@@ -104,7 +114,7 @@ export default function GasAssistError({ error }) {
     return (
         <div className="gas-assist-error" role="alert">
             <p>{message}</p>
-            {diagnostics.length > 0 && (
+            {import.meta.env.DEV && diagnostics.length > 0 && (
                 <pre className="gas-assist-error-diagnostics">{diagnostics.join('\n')}</pre>
             )}
         </div>
