@@ -1,0 +1,69 @@
+/* Final typography normalization layer. Every rendered app text size resolves to
+   this compact product scale unless a future rule opts into one of these same
+   tokens explicitly. */
+body :where(*) {
+    font-size: var(--ux-type-md) !important;
+}
+
+:where(h1) {
+    font-size: var(--ux-type-xl) !important;
+}
+
+:where(h2, [class*='dialog-title'], [class*='modal-title'], [class*='sheet-title']) {
+    font-size: var(--ux-type-lg) !important;
+}
+
+:where(h3, [class*='section-title']) {
+    font-size: var(--ux-type-md) !important;
+}
+
+:where(
+    button,
+    input,
+    textarea,
+    select,
+    label,
+    [class*='button'],
+    [class*='trigger'],
+    [class*='control'],
+    [class*='toggle']
+) {
+    font-size: var(--ux-type-sm) !important;
+    line-height: 20px;
+}
+
+:where(
+    small,
+    [class*='hint'],
+    [class*='note'],
+    [class*='caption'],
+    [class*='badge'],
+    [class*='chip'],
+    [class*='meta'],
+    [class*='status'],
+    [class*='warning'],
+    [class*='error'],
+    [class*='secondary'],
+    [class*='subtext']
+) {
+    font-size: var(--ux-type-xs) !important;
+}
+
+:where(
+    .sell-amount-input,
+    .buy-amount-input,
+    .amount-input-prefix,
+    .wallet-native-balance,
+    .send-amount-line > input
+) {
+    font-size: var(--ux-type-xl) !important;
+    line-height: 28px;
+}
+
+:where(
+    button:not(.header-icon-button):not(.wallet-icon-button),
+    [role='button']
+) > svg {
+    width: 20px !important;
+    height: 20px !important;
+}
