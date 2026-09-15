@@ -1,5 +1,8 @@
 .appkit-account-control,
-.wallet-dialog {
+.wallet-dialog,
+.pistachio-wallet-dialog,
+.pistachio-session-lock-dialog,
+.pistachio-session-disconnect-confirmation {
     --wallet-font-family: Ubuntu, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-family: var(--wallet-font-family);
 }
@@ -11,6 +14,16 @@
 .wallet-dialog select,
 .wallet-dialog code,
 .wallet-dialog pre,
-.wallet-dialog .send-review-recipient dd {
+.wallet-dialog .send-review-recipient dd,
+.pistachio-wallet-dialog button,
+.pistachio-wallet-dialog input,
+.pistachio-wallet-dialog textarea,
+.pistachio-wallet-dialog select,
+.pistachio-wallet-dialog code,
+.pistachio-wallet-dialog pre,
+.pistachio-wallet-dialog .pistachio-recovery-words li strong,
+.pistachio-session-lock-dialog button,
+.pistachio-session-disconnect-confirmation button,
+.pistachio-security-account code {
     font-family: inherit;
 }
