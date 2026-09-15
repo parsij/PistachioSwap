@@ -1,9 +1,3 @@
-import '@fontsource/ubuntu/latin-400.css'
-import '@fontsource/ubuntu/latin-500.css'
-import '@fontsource/ubuntu/latin-700.css'
-import './designFramework.css'
-import './designTypeScale.css'
-import './designResponsiveFixes.css'
 import { publicRouteRedirect } from '../src/web3/publicRoutes.js'
 
 // Fallback for static hosts/old nginx during rollout. The origin should send
