@@ -1,6 +1,9 @@
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 
+import '@fontsource/ubuntu/latin-400.css'
+import '@fontsource/ubuntu/latin-500.css'
+import '@fontsource/ubuntu/latin-700.css'
 import { createAppMetadata } from './appKitMetadata.js'
 import { APPKIT_CONNECTOR_TYPE_ORDER } from './appKitOptions.js'
 import {
@@ -84,7 +87,7 @@ function initializeAppKit() {
             '--apkt-accent': '#8ac27c',
             '--apkt-color-mix': '#191919',
             '--apkt-color-mix-strength': 0,
-            '--apkt-font-family': 'Basel, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            '--apkt-font-family': 'Ubuntu, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
             '--apkt-border-radius-master': '16px',
         },
     })
