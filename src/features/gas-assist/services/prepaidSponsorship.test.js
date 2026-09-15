@@ -131,6 +131,11 @@ describe('Gas Assist frontend trust boundary', () => {
         )).rejects.toMatchObject({ code: 'PARTICLE_DIRECT_INTENT_INVALID' })
     })
 
+    it('backs off paymaster approval polling below the API rate limit', () => {
+        expect(prepaidSponsorshipInternals.PARTICLE_PAYMASTER_POLL_MS).toBe(2_000)
+        expect(prepaidSponsorshipInternals.PARTICLE_RATE_LIMIT_BACKOFF_MS).toBe(5_000)
+    })
+
     it('never posts an owner signature or signed transaction to the backend', async () => {
         const calls = []
         const expiresAt = new Date(Date.now() + 60_000).toISOString()
