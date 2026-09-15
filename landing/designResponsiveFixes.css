@@ -1,0 +1,14 @@
+@media (max-width: 760px) {
+    /* Keep the primary marketing message visually dominant on mobile. */
+    :where(h1, .hero-signature) {
+        font-size: var(--ux-type-display) !important;
+    }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+    /* Repeating cards occupy half of the eight-column tablet grid instead of
+       collapsing into one narrow column each. */
+    :where(.stats > *, .guide-grid > *, .feature-grid > *, .network-grid > *) {
+        grid-column: span 4;
+    }
+}
