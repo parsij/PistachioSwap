@@ -1,6 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import '@fontsource/ubuntu/latin-400.css'
+import '@fontsource/ubuntu/latin-500.css'
+import '@fontsource/ubuntu/latin-700.css'
 import AppErrorBoundary from './app/AppErrorBoundary.jsx'
 import AppFatalError from './app/AppFatalError.jsx'
 import {
@@ -12,6 +15,7 @@ import { hasPersistedWalletSession } from './web3/walletSession.js'
 import './index.css'
 import './mobileHardening.css'
 import './features/wallet/components/wallet/walletAccountMotion.css'
+import './designFramework.css'
 
 const root = createRoot(document.getElementById('root'))
 const kitHost = document.getElementById('wallet-kit-root')
