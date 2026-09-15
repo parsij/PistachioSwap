@@ -36,7 +36,12 @@ export function rewritePublicGuideHtml(html) {
         .replaceAll('href="../landing.css"', 'href="/landing/landing.css"')
         .replaceAll('href="../guides.css"', 'href="/landing/guides.css"')
 
-    if (!result.includes('/landing/design-entry.js') && result.includes('</head>')) {
+    const usesPublicMarketingStyles = result.includes('href="/landing/landing.css"')
+    if (
+        usesPublicMarketingStyles &&
+        !result.includes('/landing/design-entry.js') &&
+        result.includes('</head>')
+    ) {
         result = result.replace('</head>', `    ${PUBLIC_DESIGN_ENTRY}\n  </head>`)
     }
 
