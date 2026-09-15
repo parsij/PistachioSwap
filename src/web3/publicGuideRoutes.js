@@ -25,14 +25,22 @@ export const PUBLIC_GUIDE_MIGRATIONS = Object.freeze([
     }),
 ])
 
+const PUBLIC_DESIGN_ENTRY = '<script type="module" src="/landing/design-entry.js"></script>'
+
 export function rewritePublicGuideHtml(html) {
     let result = String(html)
     for (const { legacy, canonical } of PUBLIC_GUIDE_MIGRATIONS) {
         result = result.replaceAll(legacy, canonical)
     }
-    return result
+    result = result
         .replaceAll('href="../landing.css"', 'href="/landing/landing.css"')
         .replaceAll('href="../guides.css"', 'href="/landing/guides.css"')
+
+    if (!result.includes('/landing/design-entry.js') && result.includes('</head>')) {
+        result = result.replace('</head>', `    ${PUBLIC_DESIGN_ENTRY}\n  </head>`)
+    }
+
+    return result
 }
 
 export function legacyGuideRedirectPath(pathname) {
