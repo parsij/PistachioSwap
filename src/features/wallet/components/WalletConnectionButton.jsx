@@ -5,6 +5,7 @@ import WalletAccountDialog from './wallet/WalletAccountDialog.jsx'
 import './wallet/wallet.css'
 import './wallet/sendAssetDialog.css'
 import './wallet/walletAccount.mobile.css'
+import './wallet/walletTypography.css'
 import './wallet/walletSheetDrag.js'
 
 /**
