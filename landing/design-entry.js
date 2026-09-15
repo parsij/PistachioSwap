@@ -1,0 +1,6 @@
+import '@fontsource/ubuntu/latin-400.css'
+import '@fontsource/ubuntu/latin-500.css'
+import '@fontsource/ubuntu/latin-700.css'
+import './designFramework.css'
+import './designTypeScale.css'
+import './designResponsiveFixes.css'
