@@ -1,0 +1,59 @@
+/* Marketing typography is normalized to exactly six sizes: 12, 14, 16, 20,
+   24 and 48px. */
+body :where(*) {
+    font-size: var(--ux-type-md) !important;
+}
+
+:where(h1, .hero-signature) {
+    font-size: var(--ux-type-display) !important;
+}
+
+:where(h2, .stat dd, .metric__value) {
+    font-size: var(--ux-type-xl) !important;
+}
+
+:where(h3, .card-title, .guide-card h3) {
+    font-size: var(--ux-type-lg) !important;
+}
+
+:where(
+    .button,
+    button,
+    input,
+    textarea,
+    select,
+    label,
+    .brand,
+    .header-nav,
+    .guide-nav
+) {
+    font-size: var(--ux-type-sm) !important;
+    line-height: 20px;
+}
+
+:where(
+    small,
+    .eyebrow,
+    .hero-note,
+    .network-ticker,
+    .stat dt,
+    .kicker,
+    .eyebrow-label,
+    [class*='badge'],
+    [class*='chip'],
+    [class*='meta'],
+    [class*='note']
+) {
+    font-size: var(--ux-type-xs) !important;
+}
+
+:where(.button, button) > svg {
+    width: 20px !important;
+    height: 20px !important;
+}
+
+@media (max-width: 760px) {
+    :where(h1, .hero-signature) {
+        font-size: var(--ux-type-xl) !important;
+    }
+}
