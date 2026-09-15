@@ -24,14 +24,14 @@ Status key: **PASS** already satisfied, **APPLIED** corrected by this change, **
 ## 3. Grid systems and whitespace
 
 - **Do not force a universal 12-column grid — PASS.** Existing marketing and application layouts remain purpose-built and content-driven.
-- **8-column tablet / 4-column mobile for repeating content — APPLIED.** Marketing stats/guide/feature/network grids receive 8-column tablet and 4-column mobile tracks, while each content card can span the full mobile row.
+- **8-column tablet / 4-column mobile for repeating content — APPLIED.** Marketing stats/guide/feature/network grids receive 8-column tablet and 4-column mobile tracks. Tablet cards span four columns and mobile cards span the full row.
 - **Whitespace over excessive grid rigidity — PASS.** Existing section shells and card spacing remain fluid; the new layer does not impose a desktop column grid.
 - **Distinct items separated, related items grouped more tightly — PASS.** Existing sections use larger outer spacing with tighter internal gaps. New control sizing uses 4-point increments.
 - **4-point grid for layout spacing/sizing — PARTIAL.** New control heights, padding, radii, icon dimensions, gaps introduced by this layer are multiples of 4. Legacy CSS still contains 1px borders, optical offsets, and historical dimensions such as 14/18/22px radii. Those are not blindly rounded because doing so globally would alter component geometry and accessibility. New framework values are constrained to the 4-point layout grid.
 
 ## 4. Typography
 
-- **One font family — APPLIED.** Ubuntu is loaded at both application and marketing entrypoints and enforced across rendered UI, including controls and code/address text.
+- **One font family — APPLIED.** Ubuntu is loaded at both application and public marketing/guide entrypoints and enforced across rendered UI, including controls and code/address text.
 - **Header tracking -2% to -3%, line-height 110% to 120% — APPLIED.** Headings/titles use `letter-spacing: -0.025em` and `line-height: 1.15`.
 - **No more than six website font sizes — APPLIED.** Marketing uses exactly 12/14/16/20/24/48px.
 - **Dashboard text normally <=24px — APPLIED.** The swap application uses the compact 12/14/16/20/24px subset; swap/send amount inputs cap at 24px.
@@ -88,7 +88,11 @@ Status key: **PASS** already satisfied, **APPLIED** corrected by this change, **
 - `src/designTypeScale.css`: strict compact application type scale.
 - `landing/designFramework.css`: marketing states, grid behavior, colors, shadows, controls, overlay treatment.
 - `landing/designTypeScale.css`: strict six-size marketing type scale.
-- `src/main.jsx` and `landing/legacy-app-entry.js`: Ubuntu and framework entrypoint loading.
+- `landing/designResponsiveFixes.css`: responsive hierarchy and 8/4-column card spans.
+- `landing/design-entry.js`: Ubuntu plus all static design layers for public pages.
+- `src/web3/publicGuideRoutes.js`: injects the static design entry only into pages using the marketing stylesheet.
+- `src/main.jsx`: Ubuntu plus the application framework layers.
+- `src/app/designFramework.test.js`: regression coverage for design-entry scope, font, type, state, and semantic-color rules.
 
 ## Deliberate boundaries
 
