@@ -5,6 +5,8 @@ const sessions = new Map()
 const directResults = new Map()
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
 const HEX = /^0x(?:[0-9a-f]{2})*$/iu
+const PARTICLE_PAYMASTER_POLL_MS = 2_000
+const PARTICLE_RATE_LIMIT_BACKOFF_MS = 5_000
 
 function requestPath(url) {
     try {
@@ -292,6 +294,10 @@ export async function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId
     }
 }
 
+function wait(ms) {
+    return new Promise((resolve) => globalThis.setTimeout(resolve, ms))
+}
+
 export async function waitForParticlePaymasterApproval(
     quoteEndpoint,
     sessionToken,
@@ -311,7 +317,20 @@ export async function waitForParticlePaymasterApproval(
                 stage: 'particle.paymaster-approval',
             })
         }
-        const order = await fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal)
+        let order
+        try {
+            order = await fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal)
+        } catch (error) {
+            if (error?.code === 'RATE_LIMITED' || error?.status === 429) {
+                gasAssistTrace('particle.paymaster-approval.rate-limited', {
+                    orderId,
+                    backoffMs: PARTICLE_RATE_LIMIT_BACKOFF_MS,
+                })
+                await wait(PARTICLE_RATE_LIMIT_BACKOFF_MS)
+                continue
+            }
+            throw error
+        }
         if (order?.atomicExecution?.paymasterApproval === 'approved' ||
             order?.atomicExecution?.stage === 'prepared') {
             return order
@@ -323,7 +342,7 @@ export async function waitForParticlePaymasterApproval(
                 { stage: 'particle.paymaster-approval' },
             )
         }
-        await new Promise((resolve) => setTimeout(resolve, 250))
+        await wait(PARTICLE_PAYMASTER_POLL_MS)
     }
     throw sponsorshipError(
         'PARTICLE_PAYMASTER_WEBHOOK_NOT_OBSERVED',
@@ -354,6 +373,8 @@ export function submitAtomicSponsorship(
 }
 
 export const prepaidSponsorshipInternals = {
+    PARTICLE_PAYMASTER_POLL_MS,
+    PARTICLE_RATE_LIMIT_BACKOFF_MS,
     clearDirectResults: () => directResults.clear(),
     clearSessions: () => sessions.clear(),
     deleteExpiredSessions,
