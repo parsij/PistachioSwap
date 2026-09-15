@@ -16,6 +16,7 @@ import './index.css'
 import './mobileHardening.css'
 import './features/wallet/components/wallet/walletAccountMotion.css'
 import './designFramework.css'
+import './designTypeScale.css'
 
 const root = createRoot(document.getElementById('root'))
 const kitHost = document.getElementById('wallet-kit-root')
