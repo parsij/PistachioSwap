@@ -9,6 +9,7 @@ import '@fontsource/ubuntu/latin-500.css'
 import '@fontsource/ubuntu/latin-700.css'
 import './pistachioWallet.css'
 import './wallet/walletSecurity.css'
+import '../../wallet/components/wallet/walletTypography.css'
 
 const manager = getPistachioWalletManager()
 const PISTACHIO_LOGO_URL = '/icons/PistachioLogo.svg'
