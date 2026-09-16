@@ -2,6 +2,7 @@
 import {
     signPreparedAtomicSponsoredTransaction as signParticleDirectTransaction,
 } from './particleTransactionSigning.js'
+import { recordParticleBrowserFailure } from './particleSponsorship.js'
 
 const PARTICLE_PAYMASTER_PREFLIGHT_GRACE_MS = 100
 
@@ -9,12 +10,21 @@ function wait(ms) {
     return new Promise((resolve) => globalThis.setTimeout(resolve, ms))
 }
 
+async function executeParticleDirect(options) {
+    try {
+        return await signParticleDirectTransaction(options)
+    } catch (error) {
+        recordParticleBrowserFailure(options?.prepared?.orderId, error)
+        throw error
+    }
+}
+
 export * from './particleTransactionSigning.js'
 
 export async function signPreparedAtomicSponsoredTransaction(options) {
     const approvalGate = options?.waitForPaymasterApproval ?? options?.submitSignedTransaction
     if (typeof approvalGate !== 'function') {
-        return signParticleDirectTransaction(options)
+        return executeParticleDirect(options)
     }
 
     let approvalSettled = false
@@ -44,7 +54,7 @@ export async function signPreparedAtomicSponsoredTransaction(options) {
         wait(PARTICLE_PAYMASTER_PREFLIGHT_GRACE_MS),
     ])
 
-    const executionPromise = signParticleDirectTransaction({
+    const executionPromise = executeParticleDirect({
         ...options,
         // The real approval promise stays active in parallel and is still required
         // for this wrapper to resolve. This inner gate only prevents the older

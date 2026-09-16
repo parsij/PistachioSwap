@@ -11,6 +11,7 @@ import { loadParticleUniversalAccountSdk } from './particleBrowserRuntime.js'
 
 const SUPPORTED_CONNECTOR_IDS = new Set(['pistachio-local'])
 const PARTICLE_AUTH_SIGN_METHOD = 'pistachio_signParticleAuthorization'
+const PARTICLE_CHAIN_ID = 56
 const SIGNATURE = /^0x[0-9a-f]{130}$/iu
 const HASH = /^0x[0-9a-f]{64}$/iu
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
@@ -54,7 +55,7 @@ function assertParticlePackage(prepared, authenticatedWalletAddress) {
         !prepared ||
         prepared.provider !== 'particle' ||
         prepared.execution !== 'particle-universal-7702-direct' ||
-        Number(prepared.chainId) !== 56 ||
+        Number(prepared.chainId) !== PARTICLE_CHAIN_ID ||
         prepared.stage !== 'direct' ||
         prepared.paymentMode !== 'sponsored' ||
         !Number.isFinite(Date.parse(prepared.expiresAt)) ||
@@ -87,20 +88,90 @@ function assertParticlePackage(prepared, authenticatedWalletAddress) {
     return prepared
 }
 
-async function signParticleAuthorization({ walletClient, authorization }) {
-    if (!authorization || typeof authorization !== 'object') {
-        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned an invalid EIP-7702 authorization.')
+function normalizeParticleAuthorization(authorization) {
+    if (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)) {
+        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned an invalid EIP-7702 authorization.', {
+            stage: 'particle.authorization',
+            reason: 'invalid-object',
+        })
     }
-    const address = getAddress(String(authorization.address ?? ''))
-    const chainId = Number(authorization.chainId)
+
+    let address
+    try {
+        address = getAddress(String(authorization.address ?? ''))
+    } catch {
+        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned an invalid EIP-7702 delegate address.', {
+            stage: 'particle.authorization',
+            reason: 'invalid-delegate',
+        })
+    }
+
+    const sourceChainId = Number(authorization.chainId)
     const nonce = Number(authorization.nonce)
-    if (chainId !== 56 || !Number.isSafeInteger(nonce) || nonce < 0) {
-        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned invalid BNB Chain authorization parameters.')
+    if (![0, PARTICLE_CHAIN_ID].includes(sourceChainId) || !Number.isSafeInteger(nonce) || nonce < 0) {
+        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned invalid BNB Chain authorization parameters.', {
+            stage: 'particle.authorization',
+            reason: 'invalid-chain-or-nonce',
+            sourceChainId: Number.isFinite(sourceChainId) ? sourceChainId : null,
+        })
     }
+
+    // EIP-7702 permits chainId 0 as a chain-agnostic authorization. Gas Assist is
+    // intentionally BNB-only, so never ask the wallet to sign authority reusable on
+    // other EVM chains. Narrow Particle's tuple to BNB Chain before hashing/signing
+    // and pass that same narrowed tuple back through sendTransaction.
+    return {
+        authorization: {
+            address,
+            chainId: PARTICLE_CHAIN_ID,
+            nonce,
+        },
+        sourceChainId,
+    }
+}
+
+function normalizeParticleTransactionAuthorizations(transaction) {
+    if (!transaction || !Array.isArray(transaction.userOps)) return transaction
+
+    let changed = false
+    const userOps = transaction.userOps.map((userOp) => {
+        if (!userOp?.eip7702Auth || userOp?.eip7702Delegated) return userOp
+        const { authorization, sourceChainId } = normalizeParticleAuthorization(userOp.eip7702Auth)
+        const currentAddress = String(userOp.eip7702Auth.address ?? '').toLowerCase()
+        if (
+            sourceChainId !== PARTICLE_CHAIN_ID ||
+            currentAddress !== authorization.address.toLowerCase() ||
+            Number(userOp.eip7702Auth.nonce) !== authorization.nonce
+        ) {
+            changed = true
+        }
+        if (sourceChainId === 0) {
+            gasAssistTrace('signing.particle.authorization-narrowed', {
+                sourceChainId,
+                chainId: PARTICLE_CHAIN_ID,
+                delegate: authorization.address,
+                nonce: authorization.nonce,
+            })
+        }
+        return {
+            ...userOp,
+            eip7702Auth: authorization,
+        }
+    })
+
+    return changed ? { ...transaction, userOps } : { ...transaction, userOps }
+}
+
+async function signParticleAuthorization({ walletClient, authorization }) {
+    const { authorization: normalized } = normalizeParticleAuthorization(authorization)
     const request = {
         type: 'eip7702Auth',
-        rawPayload: hashAuthorization({ contractAddress: address, chainId, nonce }),
-        data: { address, chainId, nonce },
+        rawPayload: hashAuthorization({
+            contractAddress: normalized.address,
+            chainId: normalized.chainId,
+            nonce: normalized.nonce,
+        }),
+        data: normalized,
     }
     const signature = await walletClient.request({
         method: PARTICLE_AUTH_SIGN_METHOD,
@@ -342,7 +413,7 @@ export async function signPreparedAtomicSponsoredTransaction({
 
     try {
         const transaction = await universalAccount.createUniversalTransaction({
-            chainId: 56,
+            chainId: PARTICLE_CHAIN_ID,
             expectTokens: [],
             transactions: current.transactions.map((call) => ({
                 to: getAddress(call.to),
@@ -353,19 +424,22 @@ export async function signPreparedAtomicSponsoredTransaction({
         if (!transaction || !HASH.test(String(transaction.rootHash ?? '')) || !Array.isArray(transaction.userOps)) {
             throw signingError('PARTICLE_TRANSACTION_INVALID', 'Particle returned an invalid Universal Account transaction.')
         }
+        const particleTransaction = normalizeParticleTransactionAuthorizations(transaction)
 
-        // Critical fail-closed boundary. Particle must have invoked the project's
-        // RSA-signed before_paymaster_sign webhook while creating this exact UA
-        // operation. If the callback was not observed, we stop BEFORE signing and
-        // BEFORE sendTransaction, preventing fallback to user-funded Universal Gas.
+        // Critical fail-closed boundary. The outer handshake wrapper keeps the real
+        // backend approval wait active while this inner gate allows sendTransaction
+        // to advance far enough for Particle to invoke before_paymaster_sign.
         await approvalGate(null)
 
         const authorizations = []
-        for (const userOp of transaction.userOps) {
+        for (const userOp of particleTransaction.userOps) {
             if (userOp?.eip7702Auth && !userOp?.eip7702Delegated) {
                 const userOpHash = String(userOp.userOpHash ?? '')
                 if (!HASH.test(userOpHash)) {
-                    throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle omitted the EIP-7702 UserOperation hash.')
+                    throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle omitted the EIP-7702 UserOperation hash.', {
+                        stage: 'particle.authorization',
+                        reason: 'invalid-user-op-hash',
+                    })
                 }
                 const signature = await signParticleAuthorization({
                     walletClient,
@@ -377,7 +451,7 @@ export async function signPreparedAtomicSponsoredTransaction({
 
         const rootSignature = await walletClient.signMessage({
             account: authenticatedWalletAddress,
-            message: { raw: transaction.rootHash },
+            message: { raw: particleTransaction.rootHash },
         })
         if (!SIGNATURE.test(String(rootSignature ?? ''))) {
             throw signingError('INVALID_SIGNATURE', 'Pistachio Wallet returned an invalid Particle root signature.')
@@ -385,7 +459,7 @@ export async function signPreparedAtomicSponsoredTransaction({
 
         const watcher = createParticleStatusWatcher(authenticatedWalletAddress)
         try {
-            const result = await universalAccount.sendTransaction(transaction, rootSignature, authorizations)
+            const result = await universalAccount.sendTransaction(particleTransaction, rootSignature, authorizations)
             const transactionId = String(result?.transactionId ?? '')
             if (!transactionId) {
                 throw signingError('PARTICLE_SUBMISSION_INVALID', 'Particle did not return a transaction identifier.')
@@ -419,7 +493,10 @@ export async function signPreparedAtomicSponsoredTransaction({
 
 export const rawSigningInternals = {
     PARTICLE_AUTH_SIGN_METHOD,
+    PARTICLE_CHAIN_ID,
     assertParticlePackage,
+    normalizeParticleAuthorization,
+    normalizeParticleTransactionAuthorizations,
     particleBrowserConfig,
     signParticleAuthorization,
     supportedConnectorIds: SUPPORTED_CONNECTOR_IDS,
