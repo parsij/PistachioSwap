@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { fetchSponsorshipPreview } from '../services/sponsorshipPreview.js'
 
@@ -24,6 +24,7 @@ export function useSponsorshipPreview({
     const [preview, setPreview] = useState(null)
     const [status, setStatus] = useState('idle')
     const [error, setError] = useState(null)
+    const [refreshRevision, setRefreshRevision] = useState(0)
 
     const request = useMemo(() => {
         if (!required || !enabled || !quoteEndpoint || !walletAddress) return null
@@ -53,6 +54,17 @@ export function useSponsorshipPreview({
         () => request ? JSON.stringify(request) : null,
         [request],
     )
+
+    const refresh = useCallback(() => {
+        if (!requestKey) return false
+        // Clear the stale review immediately so callers cannot accidentally keep
+        // displaying or signing against a route that the backend already rejected.
+        setPreview(null)
+        setError(null)
+        setStatus('loading')
+        setRefreshRevision((value) => value + 1)
+        return true
+    }, [requestKey])
 
     useEffect(() => {
         if (!request || !requestKey) {
@@ -89,7 +101,7 @@ export function useSponsorshipPreview({
             window.clearTimeout(timeout)
             controller.abort()
         }
-    }, [debounceMs, quoteEndpoint, request, requestKey])
+    }, [debounceMs, quoteEndpoint, refreshRevision, request, requestKey])
 
-    return { preview, status, error }
+    return { preview, status, error, refresh }
 }
