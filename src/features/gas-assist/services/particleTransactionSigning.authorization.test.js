@@ -39,17 +39,25 @@ describe('Particle EIP-7702 authorization scope', () => {
     })
 
     it('rejects an authorization scoped to a different chain', () => {
-        expect(() => rawSigningInternals.normalizeParticleAuthorization({
-            address: DELEGATE,
-            chainId: 1,
-            nonce: 9,
-        })).toThrow(expect.objectContaining({
+        let error
+        try {
+            rawSigningInternals.normalizeParticleAuthorization({
+                address: DELEGATE,
+                chainId: 1,
+                nonce: 9,
+            })
+        } catch (caught) {
+            error = caught
+        }
+
+        expect(error).toMatchObject({
             code: 'PARTICLE_AUTHORIZATION_INVALID',
-            details: expect.objectContaining({
+            details: {
+                stage: 'particle.authorization',
                 reason: 'invalid-chain-or-nonce',
                 sourceChainId: 1,
-            }),
-        }))
+            },
+        })
     })
 
     it('passes the same narrowed tuple forward with the Particle transaction', () => {
