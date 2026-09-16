@@ -3,6 +3,7 @@ import { getAddress, isAddress, parseTransaction, toHex } from 'viem'
 import { hashAuthorization, recoverAuthorizationAddress } from 'viem/utils'
 
 const HASH = /^0x[0-9a-f]{64}$/iu
+const PARTICLE_CHAIN_ID = 56
 const PARTICLE_EIP7702_DELEGATES = new Set(
     String(import.meta.env?.VITE_PARTICLE_ALLOWED_EIP7702_DELEGATES ?? '')
         .split(',')
@@ -42,8 +43,8 @@ function authorizationRequest(value) {
     }
     const chainId = Number(data.chainId)
     const nonce = Number(data.nonce)
-    if (chainId !== 56 || !Number.isSafeInteger(nonce) || nonce < 0) {
-        throw particleSigningError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned invalid BNB Chain authorization parameters.')
+    if (![0, PARTICLE_CHAIN_ID].includes(chainId) || !Number.isSafeInteger(nonce) || nonce < 0) {
+        throw particleSigningError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned invalid EIP-7702 authorization parameters.')
     }
     const rawPayload = String(value.rawPayload ?? '').toLowerCase()
     if (!HASH.test(rawPayload)) {
@@ -64,29 +65,33 @@ export const methods = {
     async signParticleAuthorization(request) {
         const authorization = authorizationRequest(request)
         await this.ensureUnlockedForSigning()
-        const context = this.captureSigningContext(56)
+        const context = this.captureSigningContext(PARTICLE_CHAIN_ID)
+        const chainAgnostic = authorization.chainId === 0
         await this.reviewQueue.request({
             walletAddress: context.address,
-            chainId: 56,
+            chainId: PARTICLE_CHAIN_ID,
             action: 'Enable Particle Gas Assist',
             payload: {
-                purpose: 'Authorize Particle’s allowlisted BNB Chain EIP-7702 account code for this wallet. This does not transfer tokens by itself.',
+                purpose: chainAgnostic
+                    ? 'Authorize Particle’s allowlisted EIP-7702 account code using the exact chain-agnostic authorization returned by Particle. This does not transfer tokens by itself.'
+                    : 'Authorize Particle’s allowlisted BNB Chain EIP-7702 account code for this wallet. This does not transfer tokens by itself.',
                 delegate: authorization.address,
+                authorizationScope: chainAgnostic ? 'Particle chain-agnostic authorization (chainId 0)' : 'BNB Chain (56)',
                 authorizationNonce: authorization.nonce,
             },
         })
         this.assertSigningContext(context)
 
-        // The worker owns the EOA key. This throwaway Type-4 envelope exists only
-        // to obtain the EIP-7702 authorization signature. It is never broadcast
-        // by PistachioSwap; the signature is returned to Particle's browser SDK.
+        // Particle's UserOperation hashes commit to the exact eip7702Auth tuple it
+        // returned. The worker therefore signs that tuple byte-for-byte. The outer
+        // throwaway Type-4 envelope stays on BNB Chain and is never broadcast.
         let signedEnvelope = null
         try {
             signedEnvelope = (
                 await this.client.request('signTransaction', {
                     mode: 'megafuel',
                     transaction: {
-                        chainId: 56,
+                        chainId: PARTICLE_CHAIN_ID,
                         type: 4,
                         from: context.address,
                         to: context.address,
@@ -97,7 +102,7 @@ export const methods = {
                         value: 0n,
                         data: '0x',
                         authorizationList: [{
-                            chainId: 56,
+                            chainId: authorization.chainId,
                             address: authorization.address,
                             nonce: authorization.nonce,
                         }],
@@ -110,7 +115,7 @@ export const methods = {
             const signed = parsed.authorizationList?.[0]
             if (!signed ||
                 getAddress(signed.address) !== authorization.address ||
-                Number(signed.chainId) !== 56 ||
+                Number(signed.chainId) !== authorization.chainId ||
                 Number(signed.nonce) !== authorization.nonce ||
                 BigInt(signed.r ?? 0) === 0n ||
                 BigInt(signed.s ?? 0) === 0n) {
@@ -137,6 +142,7 @@ export const methods = {
 }
 
 export const particleSigningInternals = {
+    PARTICLE_CHAIN_ID,
     PARTICLE_EIP7702_DELEGATES,
     authorizationRequest,
 }
