@@ -3,10 +3,12 @@ import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
 const sessions = new Map()
 const directResults = new Map()
+const directFailures = new Map()
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
 const HEX = /^0x(?:[0-9a-f]{2})*$/iu
 const PARTICLE_PAYMASTER_POLL_MS = 2_000
 const PARTICLE_RATE_LIMIT_BACKOFF_MS = 5_000
+const PARTICLE_BROWSER_STATE_TTL_MS = 15 * 60_000
 
 function requestPath(url) {
     try {
@@ -156,6 +158,16 @@ function validateParticlePrepared(prepared, orderId) {
     return prepared
 }
 
+function activeParticleBrowserFailure(orderId, now = Date.now()) {
+    const failure = directFailures.get(orderId)
+    if (!failure) return null
+    if (now - failure.recordedAt > PARTICLE_BROWSER_STATE_TTL_MS) {
+        directFailures.delete(orderId)
+        return null
+    }
+    return failure
+}
+
 export async function fetchSponsorshipConfig(quoteEndpoint, signal) {
     const payload = await requestJson(
         `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/config`,
@@ -235,6 +247,7 @@ export function createSponsorshipOrder(quoteEndpoint, sessionToken, request, ide
 }
 
 export async function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signal) {
+    directFailures.delete(orderId)
     return validateParticlePrepared(await post(
         quoteEndpoint,
         `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`,
@@ -245,10 +258,24 @@ export async function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orde
 
 export function recordParticleBrowserResult(orderId, result) {
     if (!orderId || !result?.transactionId) return
+    directFailures.delete(orderId)
     directResults.set(orderId, {
         transactionId: String(result.transactionId),
         particleStatus: String(result.particleStatus ?? 'submitted'),
         recordedAt: Date.now(),
+    })
+}
+
+export function recordParticleBrowserFailure(orderId, error) {
+    if (!orderId) return
+    directResults.delete(orderId)
+    directFailures.set(orderId, {
+        safeErrorCode: String(error?.code ?? 'PARTICLE_BROWSER_EXECUTION_FAILED'),
+        recordedAt: Date.now(),
+    })
+    gasAssistTrace('signing.particle.browser-failure-recorded', {
+        orderId,
+        code: String(error?.code ?? 'PARTICLE_BROWSER_EXECUTION_FAILED'),
     })
 }
 
@@ -258,9 +285,25 @@ export async function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId
         { headers: { authorization: `Bearer ${sessionToken}` }, signal },
         'order.poll',
     )
+    const failure = activeParticleBrowserFailure(orderId)
+    if (failure) {
+        return {
+            ...order,
+            status: 'failed',
+            safeErrorCode: failure.safeErrorCode,
+            atomicExecution: {
+                ...(order.atomicExecution ?? {}),
+                provider: 'particle',
+                execution: 'particle-universal-7702-direct',
+                stage: 'failed',
+                providerStatus: 'browser-execution-failed',
+            },
+        }
+    }
+
     const direct = directResults.get(orderId)
     if (!direct) return order
-    if (Date.now() - direct.recordedAt > 15 * 60_000) {
+    if (Date.now() - direct.recordedAt > PARTICLE_BROWSER_STATE_TTL_MS) {
         directResults.delete(orderId)
         return order
     }
@@ -316,6 +359,14 @@ export async function waitForParticlePaymasterApproval(
             throw sponsorshipError('SPONSORSHIP_REQUEST_ABORTED', 'The Gas Assist request was cancelled.', {
                 stage: 'particle.paymaster-approval',
             })
+        }
+        const browserFailure = activeParticleBrowserFailure(orderId)
+        if (browserFailure) {
+            throw sponsorshipError(
+                browserFailure.safeErrorCode,
+                'Particle browser execution stopped before paymaster approval completed.',
+                { stage: 'particle.paymaster-approval' },
+            )
         }
         let order
         try {
@@ -373,9 +424,14 @@ export function submitAtomicSponsorship(
 }
 
 export const prepaidSponsorshipInternals = {
+    PARTICLE_BROWSER_STATE_TTL_MS,
     PARTICLE_PAYMASTER_POLL_MS,
     PARTICLE_RATE_LIMIT_BACKOFF_MS,
-    clearDirectResults: () => directResults.clear(),
+    activeParticleBrowserFailure,
+    clearDirectResults: () => {
+        directResults.clear()
+        directFailures.clear()
+    },
     clearSessions: () => sessions.clear(),
     deleteExpiredSessions,
     requestJson,
