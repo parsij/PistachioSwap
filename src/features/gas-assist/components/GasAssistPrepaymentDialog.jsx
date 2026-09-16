@@ -282,6 +282,7 @@ export default function GasAssistPrepaymentDialog({
     const status = statusContent({ phase: sponsorship.phase, order, orderExpired })
     const visibleError = orderExpired ? null : sponsorship.error
     const terminalFailure = ['failed', 'cancelled', 'unsupported'].includes(sponsorship.phase)
+    const requoteRequired = sponsorship.error?.code === 'ORDER_REQUOTE_REQUIRED'
 
     let primaryAction = null
     let primaryLabel = null
@@ -302,11 +303,12 @@ export default function GasAssistPrepaymentDialog({
         primaryLabel = 'Confirm swap'
     }
 
-    const canRetry = terminalFailure || orderExpired
-    const retryAction = orderExpired
+    const canRetry = requoteRequired || terminalFailure || orderExpired
+    const refreshable = requoteRequired || orderExpired
+    const retryAction = refreshable
         ? sponsorship.refreshQuote ?? sponsorship.retryStart
         : sponsorship.retryStart
-    const retryLabel = orderExpired
+    const retryLabel = refreshable
         ? (sponsorship.refreshing ? 'Refreshing quote…' : 'Refresh quote')
         : 'Try again'
 

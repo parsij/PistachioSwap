@@ -337,12 +337,46 @@ export function useGasAssistController({
         () => previewReviewOrder(previewState.preview, account),
         [account, previewState.preview],
     )
+
+    const refreshPrepaidQuote = useCallback(() => {
+        if (typeof previewState.refresh !== 'function' || !previewState.refresh()) return false
+        prepaidSponsorship.openPreviewLoading()
+        return true
+    }, [prepaidSponsorship.openPreviewLoading, previewState.refresh])
+
+    useEffect(() => {
+        if (prepaidSponsorship.phase !== 'preview-loading') return
+        if (previewState.status === 'success' && reviewPreview) {
+            prepaidSponsorship.reviewOrder(reviewPreview)
+            return
+        }
+        if (previewState.status === 'error') {
+            prepaidSponsorship.failPreview(
+                previewState.error ?? new Error('Gas Assist could not refresh this quote.'),
+            )
+        }
+    }, [
+        prepaidSponsorship.failPreview,
+        prepaidSponsorship.phase,
+        prepaidSponsorship.reviewOrder,
+        previewState.error,
+        previewState.status,
+        reviewPreview,
+    ])
+
     const prepaidSponsorshipView = useMemo(() => ({
         ...prepaidSponsorship,
         start: reviewPreview
             ? () => prepaidSponsorship.reviewOrder(reviewPreview)
             : prepaidSponsorship.start,
-    }), [prepaidSponsorship, reviewPreview])
+        refreshQuote: refreshPrepaidQuote,
+        refreshing: prepaidSponsorship.phase === 'preview-loading' && previewState.status === 'loading',
+    }), [
+        prepaidSponsorship,
+        previewState.status,
+        refreshPrepaidQuote,
+        reviewPreview,
+    ])
 
     useEffect(() => {
         if (!gasAssistRequested || activeAmountSide !== 'sell' || buyInputDenomination !== 'TOKEN') return
