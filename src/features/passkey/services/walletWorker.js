@@ -176,13 +176,13 @@ function normalizeTransaction(transaction, mode) {
                     ? BigInt(authorization.chainId)
                     : authorization.chainId,
             )
-            if (authorizationChainId !== PISTACHIO_CHAIN_ID) {
-                throw new TypeError('MegaFuel EIP-7702 authorization must use BNB Chain.')
+            if (![0, PISTACHIO_CHAIN_ID].includes(authorizationChainId)) {
+                throw new TypeError('MegaFuel EIP-7702 authorization must use BNB Chain or Particle chain-agnostic scope.')
             }
             normalized.maxFeePerGas = 0n
             normalized.maxPriorityFeePerGas = 0n
             normalized.authorizationList = [{
-                chainId: PISTACHIO_CHAIN_ID,
+                chainId: authorizationChainId,
                 address: getAddress(authorization.address),
                 nonce: Number(parseQuantity(authorization.nonce, 'authorization nonce')),
             }]
