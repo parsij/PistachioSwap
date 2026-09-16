@@ -4,10 +4,13 @@ import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 const sessions = new Map()
 const directResults = new Map()
 const directFailures = new Map()
+const orderPolls = new Map()
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
 const HEX = /^0x(?:[0-9a-f]{2})*$/iu
 const PARTICLE_PAYMASTER_POLL_MS = 2_000
 const PARTICLE_RATE_LIMIT_BACKOFF_MS = 5_000
+const SPONSORSHIP_ORDER_MIN_POLL_MS = 5_000
+const SPONSORSHIP_ORDER_RATE_LIMIT_BACKOFF_MS = 15_000
 const PARTICLE_BROWSER_STATE_TTL_MS = 15 * 60_000
 
 function requestPath(url) {
@@ -25,7 +28,18 @@ function sponsorshipError(code, message, details = {}) {
     if (details.status !== undefined) error.status = details.status
     if (details.requestId) error.requestId = details.requestId
     if (details.stage) error.stage = details.stage
+    if (details.retryAfterMs !== undefined) error.retryAfterMs = details.retryAfterMs
     return error
+}
+
+function responseRetryAfterMs(response) {
+    const raw = response?.headers?.get?.('retry-after')
+    if (!raw) return undefined
+    const seconds = Number(raw)
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000)
+    const at = Date.parse(raw)
+    if (!Number.isFinite(at)) return undefined
+    return Math.max(0, at - Date.now())
 }
 
 async function requestJson(url, options = {}, stage = 'sponsorship.request') {
@@ -79,6 +93,7 @@ async function requestJson(url, options = {}, stage = 'sponsorship.request') {
                 path,
                 status: response.status,
                 requestId,
+                retryAfterMs: responseRetryAfterMs(response),
                 backendDetails: payload?.error?.details,
             },
         )
@@ -168,6 +183,108 @@ function activeParticleBrowserFailure(orderId, now = Date.now()) {
     return failure
 }
 
+function orderPollKey(quoteEndpoint, sessionToken, orderId) {
+    return `${getGasAssistBaseUrl(quoteEndpoint)}:${orderId}:${sessionToken}`
+}
+
+function invalidateOrderPoll(quoteEndpoint, sessionToken, orderId) {
+    orderPolls.delete(orderPollKey(quoteEndpoint, sessionToken, orderId))
+}
+
+function pruneOrderPolls(now = Date.now()) {
+    for (const [key, state] of orderPolls) {
+        if (now - Number(state?.lastTouchedAt ?? 0) > PARTICLE_BROWSER_STATE_TTL_MS) {
+            orderPolls.delete(key)
+        }
+    }
+}
+
+function awaitSharedRequest(promise, signal) {
+    if (!signal) return promise
+    if (signal.aborted) {
+        return Promise.reject(sponsorshipError(
+            'SPONSORSHIP_REQUEST_ABORTED',
+            'The Gas Assist request was cancelled.',
+            { stage: 'order.poll' },
+        ))
+    }
+    return new Promise((resolve, reject) => {
+        const onAbort = () => {
+            cleanup()
+            reject(sponsorshipError(
+                'SPONSORSHIP_REQUEST_ABORTED',
+                'The Gas Assist request was cancelled.',
+                { stage: 'order.poll' },
+            ))
+        }
+        const cleanup = () => signal.removeEventListener('abort', onAbort)
+        signal.addEventListener('abort', onAbort, { once: true })
+        promise.then(
+            (value) => {
+                cleanup()
+                resolve(value)
+            },
+            (error) => {
+                cleanup()
+                reject(error)
+            },
+        )
+    })
+}
+
+function applyParticleBrowserState(order, orderId) {
+    const failure = activeParticleBrowserFailure(orderId)
+    if (failure) {
+        return {
+            ...order,
+            status: 'failed',
+            safeErrorCode: failure.safeErrorCode,
+            atomicExecution: {
+                ...(order.atomicExecution ?? {}),
+                provider: 'particle',
+                execution: 'particle-universal-7702-direct',
+                stage: 'failed',
+                providerStatus: 'browser-execution-failed',
+            },
+        }
+    }
+
+    const direct = directResults.get(orderId)
+    if (!direct) return order
+    if (Date.now() - direct.recordedAt > PARTICLE_BROWSER_STATE_TTL_MS) {
+        directResults.delete(orderId)
+        return order
+    }
+    if (direct.particleStatus === 'success') {
+        return {
+            ...order,
+            status: 'completed',
+            particleTransactionId: direct.transactionId,
+            atomicExecution: {
+                ...(order.atomicExecution ?? {}),
+                provider: 'particle',
+                execution: 'particle-universal-7702-direct',
+                stage: 'confirmed',
+                paymasterApproval: 'approved',
+                providerStatus: 'confirmed-in-browser',
+            },
+        }
+    }
+    return {
+        ...order,
+        status: 'atomic-submitted',
+        particleTransactionId: direct.transactionId,
+        atomicExecution: {
+            ...(order.atomicExecution ?? {}),
+            provider: 'particle',
+            execution: 'particle-universal-7702-direct',
+            stage: 'submitted',
+            paymasterApproval: 'approved',
+            providerStatus: direct.particleStatus,
+        },
+    }
+}
+
 export async function fetchSponsorshipConfig(quoteEndpoint, signal) {
     const payload = await requestJson(
         `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/config`,
@@ -248,12 +365,19 @@ export function createSponsorshipOrder(quoteEndpoint, sessionToken, request, ide
 
 export async function prepareAtomicSponsorship(quoteEndpoint, sessionToken, orderId, signal) {
     directFailures.delete(orderId)
-    return validateParticlePrepared(await post(
-        quoteEndpoint,
-        `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`,
-        {},
-        { sessionToken, signal, stage: 'atomic.prepare' },
-    ), orderId)
+    invalidateOrderPoll(quoteEndpoint, sessionToken, orderId)
+    try {
+        return validateParticlePrepared(await post(
+            quoteEndpoint,
+            `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`,
+            {},
+            { sessionToken, signal, stage: 'atomic.prepare' },
+        ), orderId)
+    } finally {
+        // Preparing mutates the order's sponsorship state. Never retain a cached
+        // pre-prepare status across this boundary.
+        invalidateOrderPoll(quoteEndpoint, sessionToken, orderId)
+    }
 }
 
 export function recordParticleBrowserResult(orderId, result) {
@@ -280,61 +404,68 @@ export function recordParticleBrowserFailure(orderId, error) {
 }
 
 export async function fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
-    const order = await requestJson(
-        `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/orders/${encodeURIComponent(orderId)}`,
-        { headers: { authorization: `Bearer ${sessionToken}` }, signal },
-        'order.poll',
-    )
-    const failure = activeParticleBrowserFailure(orderId)
-    if (failure) {
-        return {
-            ...order,
-            status: 'failed',
-            safeErrorCode: failure.safeErrorCode,
-            atomicExecution: {
-                ...(order.atomicExecution ?? {}),
-                provider: 'particle',
-                execution: 'particle-universal-7702-direct',
-                stage: 'failed',
-                providerStatus: 'browser-execution-failed',
-            },
+    pruneOrderPolls()
+    const key = orderPollKey(quoteEndpoint, sessionToken, orderId)
+    const now = Date.now()
+    let state = orderPolls.get(key)
+    if (!state) {
+        state = {
+            inFlight: null,
+            lastOrder: null,
+            lastFetchedAt: 0,
+            backoffUntil: 0,
+            lastTouchedAt: now,
         }
+        orderPolls.set(key, state)
+    }
+    state.lastTouchedAt = now
+
+    const cacheFreshUntil = state.lastFetchedAt + SPONSORSHIP_ORDER_MIN_POLL_MS
+    const reuseUntil = Math.max(cacheFreshUntil, state.backoffUntil)
+    if (state.lastOrder && now < reuseUntil) {
+        gasAssistTrace('order.poll.cached', {
+            orderId,
+            remainingMs: Math.max(0, reuseUntil - now),
+            rateLimited: now < state.backoffUntil,
+        })
+        return applyParticleBrowserState(state.lastOrder, orderId)
     }
 
-    const direct = directResults.get(orderId)
-    if (!direct) return order
-    if (Date.now() - direct.recordedAt > PARTICLE_BROWSER_STATE_TTL_MS) {
-        directResults.delete(orderId)
-        return order
+    if (!state.inFlight) {
+        const request = requestJson(
+            `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/orders/${encodeURIComponent(orderId)}`,
+            { headers: { authorization: `Bearer ${sessionToken}` } },
+            'order.poll',
+        )
+            .then((order) => {
+                state.lastOrder = order
+                state.lastFetchedAt = Date.now()
+                state.backoffUntil = 0
+                return order
+            })
+            .catch((error) => {
+                if (error?.code === 'RATE_LIMITED' || error?.status === 429) {
+                    const backoffMs = Math.max(
+                        SPONSORSHIP_ORDER_RATE_LIMIT_BACKOFF_MS,
+                        Number(error?.retryAfterMs ?? 0),
+                    )
+                    state.backoffUntil = Date.now() + backoffMs
+                    gasAssistTrace('order.poll.rate-limited', { orderId, backoffMs })
+                    if (state.lastOrder) return state.lastOrder
+                }
+                throw error
+            })
+            .finally(() => {
+                state.inFlight = null
+                state.lastTouchedAt = Date.now()
+            })
+        state.inFlight = request
+    } else {
+        gasAssistTrace('order.poll.joined', { orderId })
     }
-    if (direct.particleStatus === 'success') {
-        return {
-            ...order,
-            status: 'completed',
-            particleTransactionId: direct.transactionId,
-            atomicExecution: {
-                ...(order.atomicExecution ?? {}),
-                provider: 'particle',
-                execution: 'particle-universal-7702-direct',
-                stage: 'confirmed',
-                paymasterApproval: 'approved',
-                providerStatus: 'confirmed-in-browser',
-            },
-        }
-    }
-    return {
-        ...order,
-        status: 'atomic-submitted',
-        particleTransactionId: direct.transactionId,
-        atomicExecution: {
-            ...(order.atomicExecution ?? {}),
-            provider: 'particle',
-            execution: 'particle-universal-7702-direct',
-            stage: 'submitted',
-            paymasterApproval: 'approved',
-            providerStatus: direct.particleStatus,
-        },
-    }
+
+    const order = await awaitSharedRequest(state.inFlight, signal)
+    return applyParticleBrowserState(order, orderId)
 }
 
 function wait(ms) {
@@ -373,11 +504,15 @@ export async function waitForParticlePaymasterApproval(
             order = await fetchSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal)
         } catch (error) {
             if (error?.code === 'RATE_LIMITED' || error?.status === 429) {
+                const backoffMs = Math.max(
+                    PARTICLE_RATE_LIMIT_BACKOFF_MS,
+                    Number(error?.retryAfterMs ?? 0),
+                )
                 gasAssistTrace('particle.paymaster-approval.rate-limited', {
                     orderId,
-                    backoffMs: PARTICLE_RATE_LIMIT_BACKOFF_MS,
+                    backoffMs,
                 })
-                await wait(PARTICLE_RATE_LIMIT_BACKOFF_MS)
+                await wait(backoffMs)
                 continue
             }
             throw error
@@ -427,11 +562,15 @@ export const prepaidSponsorshipInternals = {
     PARTICLE_BROWSER_STATE_TTL_MS,
     PARTICLE_PAYMASTER_POLL_MS,
     PARTICLE_RATE_LIMIT_BACKOFF_MS,
+    SPONSORSHIP_ORDER_MIN_POLL_MS,
+    SPONSORSHIP_ORDER_RATE_LIMIT_BACKOFF_MS,
     activeParticleBrowserFailure,
     clearDirectResults: () => {
         directResults.clear()
         directFailures.clear()
+        orderPolls.clear()
     },
+    clearOrderPolls: () => orderPolls.clear(),
     clearSessions: () => sessions.clear(),
     deleteExpiredSessions,
     requestJson,
