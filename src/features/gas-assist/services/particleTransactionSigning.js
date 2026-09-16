@@ -109,21 +109,20 @@ function normalizeParticleAuthorization(authorization) {
     const sourceChainId = Number(authorization.chainId)
     const nonce = Number(authorization.nonce)
     if (![0, PARTICLE_CHAIN_ID].includes(sourceChainId) || !Number.isSafeInteger(nonce) || nonce < 0) {
-        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned invalid BNB Chain authorization parameters.', {
+        throw signingError('PARTICLE_AUTHORIZATION_INVALID', 'Particle returned invalid EIP-7702 authorization parameters.', {
             stage: 'particle.authorization',
             reason: 'invalid-chain-or-nonce',
             sourceChainId: Number.isFinite(sourceChainId) ? sourceChainId : null,
         })
     }
 
-    // EIP-7702 permits chainId 0 as a chain-agnostic authorization. Gas Assist is
-    // intentionally BNB-only, so never ask the wallet to sign authority reusable on
-    // other EVM chains. Narrow Particle's tuple to BNB Chain before hashing/signing
-    // and pass that same narrowed tuple back through sendTransaction.
+    // Particle's userOpHash/rootHash commit to this exact tuple. EIP-7702 permits
+    // chainId 0, and Particle's official examples sign eip7702Auth as returned.
+    // Rewriting it after createUniversalTransaction invalidates the UserOperation.
     return {
         authorization: {
             address,
-            chainId: PARTICLE_CHAIN_ID,
+            chainId: sourceChainId,
             nonce,
         },
         sourceChainId,
@@ -133,33 +132,20 @@ function normalizeParticleAuthorization(authorization) {
 function normalizeParticleTransactionAuthorizations(transaction) {
     if (!transaction || !Array.isArray(transaction.userOps)) return transaction
 
-    let changed = false
-    const userOps = transaction.userOps.map((userOp) => {
-        if (!userOp?.eip7702Auth || userOp?.eip7702Delegated) return userOp
+    for (const userOp of transaction.userOps) {
+        if (!userOp?.eip7702Auth || userOp?.eip7702Delegated) continue
         const { authorization, sourceChainId } = normalizeParticleAuthorization(userOp.eip7702Auth)
-        const currentAddress = String(userOp.eip7702Auth.address ?? '').toLowerCase()
-        if (
-            sourceChainId !== PARTICLE_CHAIN_ID ||
-            currentAddress !== authorization.address.toLowerCase() ||
-            Number(userOp.eip7702Auth.nonce) !== authorization.nonce
-        ) {
-            changed = true
-        }
         if (sourceChainId === 0) {
-            gasAssistTrace('signing.particle.authorization-narrowed', {
-                sourceChainId,
-                chainId: PARTICLE_CHAIN_ID,
+            gasAssistTrace('signing.particle.authorization-chain-agnostic', {
+                chainId: sourceChainId,
                 delegate: authorization.address,
                 nonce: authorization.nonce,
             })
         }
-        return {
-            ...userOp,
-            eip7702Auth: authorization,
-        }
-    })
+    }
 
-    return changed ? { ...transaction, userOps } : { ...transaction, userOps }
+    // Validation only. Never mutate Particle's transaction after its hashes exist.
+    return transaction
 }
 
 async function signParticleAuthorization({ walletClient, authorization }) {

@@ -1,12 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { hashAuthorization } from 'viem/utils'
 
 import { rawSigningInternals } from './particleTransactionSigning.js'
 
 const DELEGATE = '0x13E00E089F81aD9F36B655C9E9A07C6BF1489A5A'
 const USER_OP_HASH = `0x${'22'.repeat(32)}`
+const SIGNATURE = `0x${'11'.repeat(65)}`
 
 describe('Particle EIP-7702 authorization scope', () => {
-    it('narrows a chain-agnostic Particle authorization to BNB Chain before signing', () => {
+    it('preserves a chain-agnostic Particle authorization exactly', () => {
         const result = rawSigningInternals.normalizeParticleAuthorization({
             address: DELEGATE,
             chainId: 0,
@@ -17,7 +19,7 @@ describe('Particle EIP-7702 authorization scope', () => {
             sourceChainId: 0,
             authorization: {
                 address: DELEGATE,
-                chainId: 56,
+                chainId: 0,
                 nonce: 7,
             },
         })
@@ -38,7 +40,7 @@ describe('Particle EIP-7702 authorization scope', () => {
         })
     })
 
-    it('rejects an authorization scoped to a different chain', () => {
+    it('rejects an authorization scoped to a different explicit chain', () => {
         let error
         try {
             rawSigningInternals.normalizeParticleAuthorization({
@@ -60,7 +62,7 @@ describe('Particle EIP-7702 authorization scope', () => {
         })
     })
 
-    it('passes the same narrowed tuple forward with the Particle transaction', () => {
+    it('does not mutate Particle userOps after rootHash and userOpHash exist', () => {
         const transaction = {
             rootHash: USER_OP_HASH,
             userOps: [{
@@ -74,16 +76,45 @@ describe('Particle EIP-7702 authorization scope', () => {
             }],
         }
 
-        const normalized = rawSigningInternals.normalizeParticleTransactionAuthorizations(transaction)
+        const validated = rawSigningInternals.normalizeParticleTransactionAuthorizations(transaction)
 
-        expect(normalized).not.toBe(transaction)
-        expect(transaction.userOps[0].eip7702Auth.chainId).toBe(0)
-        expect(normalized.userOps[0].eip7702Auth).toEqual({
+        expect(validated).toBe(transaction)
+        expect(validated.userOps[0].eip7702Auth).toEqual({
             address: DELEGATE,
-            chainId: 56,
+            chainId: 0,
             nonce: 10,
         })
-        expect(normalized.userOps[0].userOpHash).toBe(USER_OP_HASH)
-        expect(normalized.rootHash).toBe(USER_OP_HASH)
+        expect(validated.userOps[0].userOpHash).toBe(USER_OP_HASH)
+        expect(validated.rootHash).toBe(USER_OP_HASH)
+    })
+
+    it('asks Pistachio Wallet to sign the exact Particle chain-0 digest', async () => {
+        const request = vi.fn().mockResolvedValue(SIGNATURE)
+
+        await expect(rawSigningInternals.signParticleAuthorization({
+            walletClient: { request },
+            authorization: {
+                address: DELEGATE,
+                chainId: 0,
+                nonce: 11,
+            },
+        })).resolves.toBe(SIGNATURE)
+
+        expect(request).toHaveBeenCalledExactlyOnceWith({
+            method: 'pistachio_signParticleAuthorization',
+            params: [{
+                type: 'eip7702Auth',
+                rawPayload: hashAuthorization({
+                    contractAddress: DELEGATE,
+                    chainId: 0,
+                    nonce: 11,
+                }),
+                data: {
+                    address: DELEGATE,
+                    chainId: 0,
+                    nonce: 11,
+                },
+            }],
+        })
     })
 })
