@@ -36,6 +36,8 @@ const localWallet = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e8
 const SIGNATURE = `0x${'11'.repeat(65)}`
 const USER_OP_HASH = `0x${'22'.repeat(32)}`
 const PARTICLE_DELEGATE = '0x1111111111111111111111111111111111111111'
+const SELL_TOKEN = '0x0000000000000000000000000000000000000010'
+const SWAP_TARGET = '0x0000000000000000000000000000000000000013'
 const preparedTransaction = {
     type: '0x0',
     chainId: '0x38',
@@ -48,7 +50,7 @@ const preparedTransaction = {
     data: '0x',
 }
 
-function directPrepared() {
+function directPrepared(overrides = {}) {
     return {
         provider: 'particle',
         execution: 'particle-universal-7702-direct',
@@ -57,11 +59,13 @@ function directPrepared() {
         orderId: 'order-1',
         chainId: 56,
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expectTokens: [{ tokenAddress: SELL_TOKEN, amount: '0.215703' }],
         transactions: Array.from({ length: 5 }, (_, index) => ({
-            to: `0x${String(index + 10).padStart(40, '0')}`,
+            to: index === 3 ? SWAP_TARGET : SELL_TOKEN,
             data: index === 3 ? '0x12345678' : '0x',
             value: '0x0',
         })),
+        ...overrides,
     }
 }
 
@@ -151,6 +155,35 @@ describe('Gas Assist wallet compatibility', () => {
         expect(submitSignedTransaction).toHaveBeenCalledWith(raw)
     })
 
+    it('passes the exact backend-reviewed token requirement to Particle', async () => {
+        configureParticleBrowser()
+        const request = vi.fn().mockResolvedValue(SIGNATURE)
+        const signMessage = vi.fn().mockResolvedValue(SIGNATURE)
+        const approvalGate = vi.fn().mockResolvedValue({ atomicExecution: { paymasterApproval: 'approved' } })
+        const walletClient = { request, signMessage }
+        const capability = detectRawTransactionSigning({ connector: { id: 'pistachio-local' }, walletClient })
+        particleMocks.createUniversalTransaction.mockResolvedValue({
+            rootHash: USER_OP_HASH,
+            userOps: [{ userOpHash: USER_OP_HASH, eip7702Delegated: true }],
+        })
+        particleMocks.sendTransaction.mockResolvedValue({ transactionId: 'particle-token-funded' })
+        particleMocks.getTransaction.mockResolvedValue({ status: 7 })
+
+        await signPreparedAtomicSponsoredTransaction({
+            transport: 'pistachio-local',
+            capability,
+            walletClient,
+            prepared: directPrepared(),
+            authenticatedWalletAddress: localWallet.address,
+            waitForPaymasterApproval: approvalGate,
+        })
+
+        expect(particleMocks.createUniversalTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            chainId: 56,
+            expectTokens: [{ tokenAddress: SELL_TOKEN, amount: '0.215703' }],
+        }))
+    })
+
     it('runs backend paymaster approval before any Particle owner or EIP-7702 signature', async () => {
         configureParticleBrowser()
         const request = vi.fn().mockResolvedValue(SIGNATURE)
@@ -208,6 +241,38 @@ describe('Gas Assist wallet compatibility', () => {
         )
     })
 
+    it('rejects Particle expansion into additional UserOperations before approval or signing', async () => {
+        configureParticleBrowser()
+        const request = vi.fn()
+        const signMessage = vi.fn()
+        const approvalGate = vi.fn()
+        particleMocks.createUniversalTransaction.mockResolvedValue({
+            rootHash: USER_OP_HASH,
+            userOps: [
+                { userOpHash: USER_OP_HASH, eip7702Delegated: true },
+                { userOpHash: `0x${'33'.repeat(32)}`, eip7702Delegated: true },
+            ],
+        })
+        const capability = detectRawTransactionSigning({
+            connector: { id: 'pistachio-local' },
+            walletClient: { request, signMessage },
+        })
+
+        await expect(signPreparedAtomicSponsoredTransaction({
+            transport: 'pistachio-local',
+            capability,
+            walletClient: { request, signMessage },
+            prepared: directPrepared(),
+            authenticatedWalletAddress: localWallet.address,
+            waitForPaymasterApproval: approvalGate,
+        })).rejects.toMatchObject({ code: 'PARTICLE_UNEXPECTED_USEROPS' })
+
+        expect(approvalGate).not.toHaveBeenCalled()
+        expect(request).not.toHaveBeenCalled()
+        expect(signMessage).not.toHaveBeenCalled()
+        expect(particleMocks.sendTransaction).not.toHaveBeenCalled()
+    })
+
     it('stops before signing or Particle submission if the paymaster webhook was not approved', async () => {
         configureParticleBrowser()
         const request = vi.fn()
@@ -246,7 +311,7 @@ describe('Gas Assist wallet compatibility', () => {
         configureParticleBrowser()
         particleMocks.createUniversalTransaction.mockResolvedValue({
             rootHash: USER_OP_HASH,
-            userOps: [],
+            userOps: [{ userOpHash: USER_OP_HASH, eip7702Delegated: true }],
         })
         particleMocks.sendTransaction.mockResolvedValue({ transactionId: 'particle-tx-2' })
         particleMocks.getTransaction.mockResolvedValue({ status: 7 })
