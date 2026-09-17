@@ -15,6 +15,7 @@ const PARTICLE_CHAIN_ID = 56
 const SIGNATURE = /^0x[0-9a-f]{130}$/iu
 const HASH = /^0x[0-9a-f]{64}$/iu
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
+const DECIMAL_AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d+)?$/u
 const PARTICLE_WSS_URL = 'wss://universal-app-ws-proxy.particle.network'
 
 function signingError(code, message, details = {}) {
@@ -48,6 +49,37 @@ function particleBrowserConfig() {
         )
     }
     return { projectId, projectClientKey, projectAppUuid }
+}
+
+function assertParticleExpectedTokens(prepared) {
+    if (!Array.isArray(prepared?.expectTokens) || prepared.expectTokens.length !== 1) {
+        throw signingError(
+            'PARTICLE_EXPECTED_TOKEN_INVALID',
+            'Gas Assist did not return the exact Particle token requirement.',
+            { stage: 'particle.validate' },
+        )
+    }
+    const token = prepared.expectTokens[0]
+    const tokenAddress = String(token?.tokenAddress ?? '')
+    const amount = String(token?.amount ?? '')
+    if (!ADDRESS.test(tokenAddress) || !DECIMAL_AMOUNT.test(amount) || !/[1-9]/u.test(amount)) {
+        throw signingError(
+            'PARTICLE_EXPECTED_TOKEN_INVALID',
+            'Gas Assist returned an invalid Particle token requirement.',
+            { stage: 'particle.validate' },
+        )
+    }
+    const normalizedToken = tokenAddress.toLowerCase()
+    for (const index of [0, 1, 2, 4]) {
+        if (String(prepared.transactions?.[index]?.to ?? '').toLowerCase() !== normalizedToken) {
+            throw signingError(
+                'PARTICLE_EXPECTED_TOKEN_INVALID',
+                'The Particle token requirement does not match the reviewed Gas Assist calls.',
+                { stage: 'particle.validate' },
+            )
+        }
+    }
+    return [{ tokenAddress: getAddress(tokenAddress), amount }]
 }
 
 function assertParticlePackage(prepared, authenticatedWalletAddress) {
@@ -85,6 +117,7 @@ function assertParticlePackage(prepared, authenticatedWalletAddress) {
             throw signingError('PARTICLE_DIRECT_INTENT_INVALID', 'The reviewed Particle call value is invalid.')
         }
     }
+    assertParticleExpectedTokens(prepared)
     return prepared
 }
 
@@ -368,6 +401,7 @@ export async function signPreparedAtomicSponsoredTransaction({
     }
 
     const current = assertParticlePackage(prepared, authenticatedWalletAddress)
+    const expectedTokens = assertParticleExpectedTokens(current)
     gasAssistTrace('signing.particle.start', { orderId: current.orderId, stage: current.stage })
 
     let particleSdk
@@ -400,7 +434,7 @@ export async function signPreparedAtomicSponsoredTransaction({
     try {
         const transaction = await universalAccount.createUniversalTransaction({
             chainId: PARTICLE_CHAIN_ID,
-            expectTokens: [],
+            expectTokens: expectedTokens,
             transactions: current.transactions.map((call) => ({
                 to: getAddress(call.to),
                 data: call.data,
@@ -409,6 +443,13 @@ export async function signPreparedAtomicSponsoredTransaction({
         })
         if (!transaction || !HASH.test(String(transaction.rootHash ?? '')) || !Array.isArray(transaction.userOps)) {
             throw signingError('PARTICLE_TRANSACTION_INVALID', 'Particle returned an invalid Universal Account transaction.')
+        }
+        if (transaction.userOps.length !== 1) {
+            throw signingError(
+                'PARTICLE_UNEXPECTED_USEROPS',
+                'Particle expanded this BNB-only Gas Assist swap into unexpected additional operations.',
+                { stage: 'particle.validate', userOpCount: transaction.userOps.length },
+            )
         }
         const particleTransaction = normalizeParticleTransactionAuthorizations(transaction)
 
@@ -480,6 +521,7 @@ export async function signPreparedAtomicSponsoredTransaction({
 export const rawSigningInternals = {
     PARTICLE_AUTH_SIGN_METHOD,
     PARTICLE_CHAIN_ID,
+    assertParticleExpectedTokens,
     assertParticlePackage,
     normalizeParticleAuthorization,
     normalizeParticleTransactionAuthorizations,
