@@ -69,10 +69,16 @@ describe('Particle browser runtime compatibility', () => {
     })
 
     it('fails closed instead of passing an arbitrary ERC-20 address to Particle', () => {
-        expect(() => normalizeParticleExpectedTokensForSdk(
-            [{ tokenAddress: '0x0000000000000000000000000000000000000010', amount: '1' }],
-            56,
-            SUPPORTED_TOKEN_TYPE,
-        )).toThrowError(expect.objectContaining({ code: 'PARTICLE_EXPECTED_TOKEN_UNSUPPORTED' }))
+        let thrown
+        try {
+            normalizeParticleExpectedTokensForSdk(
+                [{ tokenAddress: '0x0000000000000000000000000000000000000010', amount: '1' }],
+                56,
+                SUPPORTED_TOKEN_TYPE,
+            )
+        } catch (error) {
+            thrown = error
+        }
+        expect(thrown).toMatchObject({ code: 'PARTICLE_EXPECTED_TOKEN_UNSUPPORTED' })
     })
 })
