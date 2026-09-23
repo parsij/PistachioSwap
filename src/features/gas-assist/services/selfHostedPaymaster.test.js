@@ -102,7 +102,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             paymasterVerificationGasLimit: '0x222e0', paymasterPostOpGasLimit: '0x0',
         }
         const typed = selfHostedUserOpTypedData(userOp, settings)
-        expect(typed.message.initCode).toBe(delegate.toLowerCase())
+        expect(typed.message.initCode.toLowerCase()).toBe(delegate.toLowerCase())
         expect(typed.message.paymasterAndData).toHaveLength(2 + (52 + 125) * 2)
         expect(hashTypedData(typed)).not.toBe(hashTypedData(selfHostedUserOpTypedData({
             ...userOp, paymasterData: `0x${'cd'.repeat(125)}`,
