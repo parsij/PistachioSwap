@@ -218,6 +218,29 @@ async function backendPost(quoteEndpoint, sessionToken, path, userOperation, sig
     }
     return payload
 }
+/**
+ * Advisory identifier reporting only: no signed transaction, authorization,
+ * UserOperation signature or calldata is uploaded. Gas-Assist verifies the
+ * expected hash against its own signed intent and the final receipt on BSC.
+ */
+async function reportPaymasterHash(quoteEndpoint, sessionToken, path, body, signal) {
+    try {
+        const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}${path}`, {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                authorization: `Bearer ${sessionToken}`,
+            },
+            body: JSON.stringify(body),
+            signal,
+        })
+        return response.ok
+    } catch {
+        // The UserOperation may already have been broadcast. Reporting must
+        // never trigger a replacement transaction or label it as reverted.
+        return false
+    }
+}
 export async function prepareSelfHostedSponsorship(quoteEndpoint, sessionToken, orderId, signal) {
     const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/orders/${encodeURIComponent(orderId)}/atomic/prepare`, {
         method: 'POST',
@@ -415,6 +438,10 @@ export async function submitSelfHostedPaymasterUserOperation({
     if (!HASH.test(String(userOpHash ?? '')) || userOpHash.toLowerCase() !== expectedHash.toLowerCase()) {
         deny('PAYMASTER_USEROP_HASH_MISMATCH', 'The Bundler returned a UserOperation hash different from the locally signed hash.')
     }
+    // Inform the backend that its one permitted authorization was submitted.
+    // It receives only a public hash and cannot relay or modify the operation.
+    await reportPaymasterHash(quoteEndpoint, sessionToken,
+        `${endpoint}/submitted`, { userOpHash }, signal)
     for (let attempt = 0; attempt < 60; attempt += 1) {
         const receipt = await rpc(settings.bundlerRpc, 'eth_getUserOperationReceipt', [userOpHash], signal)
         if (receipt) {
@@ -422,13 +449,24 @@ export async function submitSelfHostedPaymasterUserOperation({
             if (transactionHash && !HASH.test(transactionHash)) {
                 deny('PAYMASTER_RECEIPT_INVALID', 'Bundler receipt contained an invalid transaction hash.')
             }
-            if (transactionHash) await onSubmitted?.({ orderId: prepared.orderId, userOpHash, transactionHash })
+            // Gas-Assist verifies the actual BNB Chain EntryPoint event and
+            // distinguishes a confirmed source operation from Polygon delivery.
+            const sourceReport = transactionHash
+                ? await reportPaymasterHash(quoteEndpoint, sessionToken,
+                    `${endpoint}/receipt`, { userOpHash, transactionHash }, signal)
+                : false
+            if (transactionHash) await onSubmitted?.({
+                orderId: prepared.orderId, userOpHash, transactionHash, sourceReport,
+            })
             const success = receipt.success === true || receipt.success === '0x1'
             const transactionSuccess = receipt.receipt?.status === '0x1' || receipt.receipt?.status === 1
             if (!success || !transactionSuccess) {
                 deny('PAYMASTER_EXECUTION_REVERTED', 'The sponsored UserOperation or swap reverted; Paymaster gas may still have been charged.')
             }
-            return { orderId: prepared.orderId, userOpHash, transactionHash, status: 'completed' }
+            return {
+                orderId: prepared.orderId, userOpHash, transactionHash,
+                status: 'completed', backendSourceReceiptVerified: sourceReport,
+            }
         }
         await new Promise((resolve) => globalThis.setTimeout(resolve, 2_000))
     }
