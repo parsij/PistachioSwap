@@ -26,64 +26,8 @@ const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['POST', /^\/v1\/sponsorship\/orders$/u],
     ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/prepare$`, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/stubimport type {
-    FastifyPluginAsync,
-    FastifyReply,
-    FastifyRequest,
-} from 'fastify'
-
-const INTERNAL_TOKEN_HEADER = 'x-pistachio-internal-token'
-const DEFAULT_SERVICE_URL = 'http://127.0.0.1:3002'
-const DEFAULT_TIMEOUT_MS = 30_000
-const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
-const FORWARDED_RESPONSE_HEADERS = [
-    'content-type',
-    'retry-after',
-    'x-ratelimit-limit',
-    'x-ratelimit-remaining',
-    'x-ratelimit-reset',
-    'x-request-id',
-    'x-correlation-id',
-] as const
-const SAFE_PATH_SEGMENT = '[A-Za-z0-9_-]{1,160}'
-const PUBLIC_PROXY_ROUTES = Object.freeze([
-    ['GET', /^\/v1\/sponsorship\/config$/u],
-    ['POST', /^\/v1\/sponsorship\/preview$/u],
-    ['POST', /^\/v1\/sponsorship\/auth\/(?:challenge|verify)$/u],
-    ['POST', /^\/v1\/sponsorship\/orders$/u],
-    ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/prepare$`, 'u')],
-, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/sponsorimport type {
-    FastifyPluginAsync,
-    FastifyReply,
-    FastifyRequest,
-} from 'fastify'
-
-const INTERNAL_TOKEN_HEADER = 'x-pistachio-internal-token'
-const DEFAULT_SERVICE_URL = 'http://127.0.0.1:3002'
-const DEFAULT_TIMEOUT_MS = 30_000
-const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
-const FORWARDED_RESPONSE_HEADERS = [
-    'content-type',
-    'retry-after',
-    'x-ratelimit-limit',
-    'x-ratelimit-remaining',
-    'x-ratelimit-reset',
-    'x-request-id',
-    'x-correlation-id',
-] as const
-const SAFE_PATH_SEGMENT = '[A-Za-z0-9_-]{1,160}'
-const PUBLIC_PROXY_ROUTES = Object.freeze([
-    ['GET', /^\/v1\/sponsorship\/config$/u],
-    ['POST', /^\/v1\/sponsorship\/preview$/u],
-    ['POST', /^\/v1\/sponsorship\/auth\/(?:challenge|verify)$/u],
-    ['POST', /^\/v1\/sponsorship\/orders$/u],
-    ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
-    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/prepare$`, 'u')],
-, 'u')],
+    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/stub$`, 'u')],
+    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/sponsor$`, 'u')],
     ['POST', /^\/v1\/sponsorship\/particle\/before-paymaster-sign$/u],
 ] as const)
 
