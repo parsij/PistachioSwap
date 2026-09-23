@@ -35,6 +35,12 @@ describe('Gas Assist public proxy boundary', () => {
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders')).toBe(true)
         expect(isPublicGasAssistProxyRoute('GET', '/v1/sponsorship/orders/order_123')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/prepare')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/paymaster/stub')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/paymaster/sponsor')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('POST', '/api/v1/sponsorship/orders/order_123/paymaster/sponsor')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('GET', '/v1/sponsorship/orders/order_123/paymaster/sponsor')).toBe(false)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/paymaster/submit')).toBe(false)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/paymaster/internal')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/api/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
 
