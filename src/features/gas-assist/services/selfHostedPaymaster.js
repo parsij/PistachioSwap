@@ -455,14 +455,17 @@ export async function submitSelfHostedPaymasterUserOperation({
                 ? await reportPaymasterHash(quoteEndpoint, sessionToken,
                     `${endpoint}/receipt`, { userOpHash, transactionHash }, signal)
                 : false
-            if (transactionHash) await onSubmitted?.({
-                orderId: prepared.orderId, userOpHash, transactionHash, sourceReport,
-            })
             const success = receipt.success === true || receipt.success === '0x1'
             const transactionSuccess = receipt.receipt?.status === '0x1' || receipt.receipt?.status === 1
             if (!success || !transactionSuccess) {
                 deny('PAYMASTER_EXECUTION_REVERTED', 'The sponsored UserOperation or swap reverted; Paymaster gas may still have been charged.')
             }
+            // Only advance the bridge route after an actual successful source
+            // operation. A reverted sponsored operation must not receive an
+            // optimistic destination credit or "source submitted" callback.
+            if (transactionHash) await onSubmitted?.({
+                orderId: prepared.orderId, userOpHash, transactionHash, sourceReport,
+            })
             return {
                 orderId: prepared.orderId, userOpHash, transactionHash,
                 status: 'completed', backendSourceReceiptVerified: sourceReport,
