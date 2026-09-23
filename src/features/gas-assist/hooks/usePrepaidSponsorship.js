@@ -546,13 +546,19 @@ export function usePrepaidSponsorship({
                     },
                 })
                 if (!isCurrent(walletEpoch, flowEpoch)) return
-                const confirmed = submission.status === 'completed'
+                // A confirmed BSC source operation is not Polygon settlement.
+                // The cross-chain route keeps polling its own destination status.
+                const sourceConfirmed = submission.status === 'completed'
+                const isCrossChain = Number(buyToken?.chainId ?? 56) !== 56
+                const confirmed = sourceConfirmed && !isCrossChain
                 const completedOrder = {
                     ...order,
                     userOpHash: submission.userOpHash,
                     swapTransactionHash: submission.transactionHash,
                     atomicTransactionHash: submission.transactionHash,
                     atomicExecution: true,
+                    sourceStatus: sourceConfirmed ? 'confirmed' : 'pending',
+                    destinationStatus: isCrossChain ? 'pending' : null,
                     status: confirmed ? 'completed' : 'atomic-submitted',
                 }
                 setState((current) => ({
