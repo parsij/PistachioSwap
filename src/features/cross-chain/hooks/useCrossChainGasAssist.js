@@ -128,13 +128,8 @@ export function useCrossChainGasAssist({
                 deltaRaw: -sellRaw,
             })
         }
-        if (buyRaw && buyToken && destinationChainId > 0) {
-            changes.push({
-                chainId: destinationChainId,
-                token: buyToken,
-                deltaRaw: buyRaw,
-            })
-        }
+        // The destination POL is not available until the bridge/solver fills
+        // the Polygon leg. Never add it optimistically on BSC source inclusion.
         if (changes.length > 0) {
             beginOptimisticWalletTransaction({
                 walletAddress: account,
