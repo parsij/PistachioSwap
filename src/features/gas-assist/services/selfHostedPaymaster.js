@@ -7,11 +7,9 @@ import {
     getAddress,
     hashTypedData,
     isAddress,
-    keccak256,
     numberToHex,
     parseSignature,
     recoverTypedDataAddress,
-    stringToHex,
 } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
@@ -26,7 +24,7 @@ const HEX = /^0x(?:[0-9a-f]{2})*$/iu
 const HASH = /^0x[0-9a-f]{64}$/iu
 const QUANTITY = /^0x(?:0|[1-9a-f][0-9a-f]*)$/iu
 const UINT128_MAX = (1n << 128n) - 1n
-const DUMMY_SIGNATURE = `0x${'00'.repeat(64)}1b`
+const DUMMY_SIGNATURE = '0xfffffffffffffffffffffffffffffff0000000000000000000000000000000007aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1c'
 const SIMPLE_ACCOUNT_ABI = [{
     type: 'function',
     name: 'executeBatch',
