@@ -1,6 +1,7 @@
 import {
     concatHex,
     decodeFunctionData,
+    decodeFunctionResult,
     encodeFunctionData,
     erc20Abi,
     getAddress,
@@ -325,12 +326,15 @@ export async function submitSelfHostedPaymasterUserOperation({
     const eip7702Auth = delegation === 'requires-authorization'
         ? await authorizationForFirstUse(walletClient, settings.publicRpc, sender, settings.delegate, signal)
         : null
-    const nonce = quantity(await rpc(settings.publicRpc, 'eth_call', [{
+    const encodedNonce = await rpc(settings.publicRpc, 'eth_call', [{
         to: settings.entryPoint,
         data: encodeFunctionData({
             abi: ENTRY_POINT_ABI, functionName: 'getNonce', args: [sender, 0n],
         }),
-    }, 'latest'], signal), 'EntryPoint nonce', (1n << 256n) - 1n)
+    }, 'latest'], signal)
+    const nonce = decodeFunctionResult({
+        abi: ENTRY_POINT_ABI, functionName: 'getNonce', data: hex(encodedNonce, 'EntryPoint nonce result'),
+    })
     const gasPrice = quantity(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), 'gas price')
     if (gasPrice === 0n) deny('PAYMASTER_FEE_INVALID', 'The BNB gas price is invalid.')
     const priorityFee = gasPrice / 10n
