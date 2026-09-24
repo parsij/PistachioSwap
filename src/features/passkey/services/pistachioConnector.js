@@ -4,8 +4,10 @@ import { getCuratedEvmChain, isCuratedEvmChainId } from '../../../web3/curatedEv
 import { PISTACHIO_CHAIN_ID, PISTACHIO_CONNECTOR_ID } from './constants.js'
 import { getPistachioWalletManager } from './walletManager.js'
 import { methods as particleSigningMethods } from './walletManagerParticleSigning.js'
+import { selfHostedAuthorizationMethods } from './walletManagerSelfHostedPaymasterSigning.js'
 
 const PARTICLE_AUTH_SIGN_METHOD = 'pistachio_signParticleAuthorization'
+const SELF_HOSTED_AUTH_SIGN_METHOD = 'pistachio_signSelfHostedAuthorization'
 
 function snapshotAccount(snapshot) {
     if (snapshot.phase === 'unlocked' && snapshot.address) return snapshot.address
@@ -42,6 +44,14 @@ function createProvider(manager) {
                     throw error
                 }
                 return particleSigningMethods.signParticleAuthorization.call(manager, request.params[0])
+            }
+            if (request?.method === SELF_HOSTED_AUTH_SIGN_METHOD) {
+                if (!Array.isArray(request.params) || request.params.length !== 1) {
+                    const error = new Error('A single self-hosted EIP-7702 authorization is required.')
+                    error.code = 'PAYMASTER_AUTHORIZATION_INVALID'
+                    throw error
+                }
+                return selfHostedAuthorizationMethods.signSelfHostedAuthorization.call(manager, request.params[0])
             }
             return manager.providerRequest(request)
         },
@@ -163,6 +173,7 @@ export function pistachioWalletConnector(appKitModal = {}) {
 
 export const pistachioConnectorInternals = {
     PARTICLE_AUTH_SIGN_METHOD,
+    SELF_HOSTED_AUTH_SIGN_METHOD,
     createConnectorConfig,
     createProvider,
     snapshotAccount,

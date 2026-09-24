@@ -291,6 +291,11 @@ export async function fetchSponsorshipConfig(quoteEndpoint, signal) {
         { signal },
         'config.fetch',
     )
+    // Preserve the explicit self-hosted provider contract. Legacy Particle
+    // normalization must not silently overwrite an ERC-4337 v0.8 response.
+    if (payload?.enabled === true && payload.provider === 'pistachio-paymaster-v08') {
+        return payload
+    }
     return payload?.enabled === true
         ? { ...payload, provider: 'particle', atomicExecution: true, execution: 'browser-direct' }
         : payload

@@ -18,6 +18,11 @@ import {
     gasAssistTraceError,
     gasAssistTraceStep,
 } from '../services/gasAssistTrace.js'
+import {
+    prepareSelfHostedSponsorship,
+    selfHostedFrontendEnabled,
+    submitSelfHostedPaymasterUserOperation,
+} from '../services/selfHostedPaymaster.js'
 import { isUserRejectedError } from '../../../services/swapTransaction.js'
 
 const initial = {
@@ -362,7 +367,7 @@ export function usePrepaidSponsorship({
                     { stage: 'flow.start' },
                 )
             }
-            if (config?.atomicExecution !== true) {
+            if (config?.atomicExecution !== true && !selfHostedFrontendEnabled(config)) {
                 throw flowError(
                     'ATOMIC_PATH_UNAVAILABLE',
                     'Atomic Gas Assist is unavailable. Sequential transactions are not used.',
@@ -498,7 +503,7 @@ export function usePrepaidSponsorship({
                 if (!isCurrent(walletEpoch, flowEpoch)) return
                 setState((current) => ({ ...current, order }))
             }
-            if (config?.atomicExecution !== true) {
+            if (config?.atomicExecution !== true && !selfHostedFrontendEnabled(config)) {
                 throw flowError(
                     'ATOMIC_PATH_UNAVAILABLE',
                     'Direct atomic Gas Assist is unavailable. No legacy fallback is permitted.',
@@ -509,11 +514,9 @@ export function usePrepaidSponsorship({
             const prepared = await gasAssistTraceStep(
                 'flow.atomic-prepare',
                 { orderId: order.id },
-                () => prepareAtomicSponsorship(
-                    quoteEndpoint,
-                    sessionToken,
-                    order.id,
-                ),
+                () => selfHostedFrontendEnabled(config)
+                    ? prepareSelfHostedSponsorship(quoteEndpoint, sessionToken, order.id)
+                    : prepareAtomicSponsorship(quoteEndpoint, sessionToken, order.id),
             )
             if (!isCurrent(walletEpoch, flowEpoch)) return
             setState((current) => ({
@@ -527,6 +530,49 @@ export function usePrepaidSponsorship({
                     }
                     : current.order,
             }))
+            if (selfHostedFrontendEnabled(config)) {
+                const submission = await submitSelfHostedPaymasterUserOperation({
+                    prepared,
+                    order,
+                    backendConfig: config,
+                    quoteEndpoint,
+                    sessionToken,
+                    walletClient,
+                    authenticatedWalletAddress: walletAddress,
+                    onSubmitted: async ({ transactionHash, userOpHash }) => {
+                        if (isCurrent(walletEpoch, flowEpoch)) {
+                            await notifySubmitted({ ...order, userOpHash }, transactionHash)
+                        }
+                    },
+                })
+                if (!isCurrent(walletEpoch, flowEpoch)) return
+                // A confirmed BSC source operation is not Polygon settlement.
+                // The cross-chain route keeps polling its own destination status.
+                const sourceConfirmed = submission.status === 'completed'
+                const isCrossChain = Number(buyToken?.chainId ?? 56) !== 56
+                const confirmed = sourceConfirmed && !isCrossChain
+                const completedOrder = {
+                    ...order,
+                    userOpHash: submission.userOpHash,
+                    swapTransactionHash: submission.transactionHash,
+                    atomicTransactionHash: submission.transactionHash,
+                    atomicExecution: true,
+                    sourceStatus: sourceConfirmed ? 'confirmed' : 'pending',
+                    destinationStatus: isCrossChain ? 'pending' : null,
+                    status: confirmed ? 'completed' : 'atomic-submitted',
+                }
+                setState((current) => ({
+                    ...current,
+                    phase: confirmed ? 'completed' : 'swap-confirming',
+                    intentExpiresAt: null,
+                    order: { ...current.order, ...completedOrder },
+                }))
+                if (confirmed && !confirmedOrderIdsRef.current.has(order.id)) {
+                    await onConfirmedRef.current?.(completedOrder)
+                    confirmedOrderIdsRef.current.add(order.id)
+                }
+                return
+            }
             const submission = await signPreparedAtomicSponsoredTransaction({
                 transport: capability.transport,
                 capability,
