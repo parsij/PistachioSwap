@@ -477,7 +477,7 @@ export async function submitSelfHostedPaymasterUserOperation({
             })
             return {
                 orderId: prepared.orderId, userOpHash, transactionHash,
-                status: 'completed', backendSourceReceiptVerified: sourceReport,
+                status: 'source-confirmed', backendSourceReceiptVerified: sourceReport,
             }
         }
         await new Promise((resolve) => globalThis.setTimeout(resolve, 2_000))
