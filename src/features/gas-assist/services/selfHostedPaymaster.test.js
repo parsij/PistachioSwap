@@ -7,6 +7,7 @@ import {
     encodeSelfHostedBatch,
     selfHostedFrontendEnabled,
     selfHostedUserOpTypedData,
+    sponsoredBscGasFees,
     submitSelfHostedPaymasterUserOperation,
     validateSelfHostedPrepared,
 } from './selfHostedPaymaster.js'
@@ -72,6 +73,14 @@ afterEach(() => {
 })
 
 describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
+    it('quotes a full BSC priority fee, with separate capped max-fee headroom', () => {
+        expect(sponsoredBscGasFees('0x3b9aca00')).toEqual({
+            maxPriorityFeePerGas: '0x3b9aca00',
+            maxFeePerGas: '0x77359400',
+        })
+        expect(() => sponsoredBscGasFees('0x0')).toThrow(/gas price is invalid/iu)
+    })
+
     it('rejects disabled frontend and tampered or non-five-call intents', () => {
         expect(selfHostedFrontendEnabled(backendConfig)).toBe(true)
         vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'false')
@@ -177,6 +186,8 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(requests[sponsorIndex].body.userOperation.signature).toBe('0x')
             expect(requests[sponsorIndex].body.userOperation.eip7702Auth).toBeUndefined()
             expect(requests[sendIndex].body.params[0].signature).toHaveLength(132)
+            expect(requests[sendIndex].body.params[0].maxPriorityFeePerGas).toBe('0x3b9aca00')
+            expect(requests[sendIndex].body.params[0].maxFeePerGas).toBe('0x77359400')
             expect(requests[sendIndex].url).toBe('https://bundler.example/')
             expect(requests.filter((r) => r.url.startsWith('http://localhost:3001')).every(
                 (r) => !JSON.stringify(r.body).includes(locallySignedHash),

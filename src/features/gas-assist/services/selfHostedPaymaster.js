@@ -293,6 +293,18 @@ export function selfHostedUserOpTypedData(operation, settings) {
         },
     }
 }
+/** BSC has a zero base fee, so EntryPoint reimburses the priority fee.
+ * The Bundler must receive at least the RPC's quoted effective gas price,
+ * not one tenth of it. The larger maxFee bounds replacement/headroom.
+ */
+export function sponsoredBscGasFees(gasPriceHex) {
+    const gasPrice = quantity(gasPriceHex, 'gas price', UINT128_MAX / 2n)
+    if (gasPrice === 0n) deny('PAYMASTER_FEE_INVALID', 'The BNB gas price is invalid.')
+    return {
+        maxPriorityFeePerGas: numberToHex(gasPrice),
+        maxFeePerGas: numberToHex(gasPrice * 2n),
+    }
+}
 async function delegationState(publicRpc, sender, delegate, signal) {
     const code = String(await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)).toLowerCase()
     if (code === '0x') return 'requires-authorization'
@@ -356,9 +368,7 @@ export async function submitSelfHostedPaymasterUserOperation({
     const nonce = decodeFunctionResult({
         abi: ENTRY_POINT_ABI, functionName: 'getNonce', data: hex(encodedNonce, 'EntryPoint nonce result'),
     })
-    const gasPrice = quantity(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), 'gas price')
-    if (gasPrice === 0n) deny('PAYMASTER_FEE_INVALID', 'The BNB gas price is invalid.')
-    const priorityFee = gasPrice / 10n
+    const feeQuote = sponsoredBscGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal))
     const operation = {
         sender,
         nonce: numberToHex(nonce),
@@ -368,8 +378,7 @@ export async function submitSelfHostedPaymasterUserOperation({
         callGasLimit: '0x0',
         verificationGasLimit: '0x0',
         preVerificationGas: '0x0',
-        maxPriorityFeePerGas: numberToHex(priorityFee),
-        maxFeePerGas: numberToHex(gasPrice * 2n + priorityFee),
+        ...feeQuote,
         signature: '0x',
     }
     const endpoint = `/v1/sponsorship/orders/${encodeURIComponent(prepared.orderId)}/paymaster`
