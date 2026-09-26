@@ -548,7 +548,7 @@ export function usePrepaidSponsorship({
                 if (!isCurrent(walletEpoch, flowEpoch)) return
                 // A confirmed BSC source operation is not Polygon settlement.
                 // The cross-chain route keeps polling its own destination status.
-                const sourceConfirmed = submission.status === 'completed'
+                const sourceConfirmed = submission.status === 'source-confirmed'
                 const isCrossChain = Number(buyToken?.chainId ?? 56) !== 56
                 const confirmed = sourceConfirmed && !isCrossChain
                 const completedOrder = {
