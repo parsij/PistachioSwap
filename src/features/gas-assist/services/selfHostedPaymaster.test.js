@@ -175,7 +175,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 sessionToken: 'session',
                 walletClient, authenticatedWalletAddress: sender,
             })
-            expect(result).toMatchObject({ status: 'completed', userOpHash: locallySignedHash })
+            expect(result).toMatchObject({ status: 'source-confirmed', userOpHash: locallySignedHash })
             const stubIndex = requests.findIndex((r) => r.url.endsWith('/paymaster/stub'))
             const estimateIndex = requests.findIndex((r) => r.body.method === 'eth_estimateUserOperationGas')
             const sponsorIndex = requests.findIndex((r) => r.url.endsWith('/paymaster/sponsor'))
