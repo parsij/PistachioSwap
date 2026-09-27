@@ -305,23 +305,55 @@ export function sponsoredBscGasFees(gasPriceHex) {
         maxFeePerGas: numberToHex(gasPrice * 2n),
     }
 }
-async function delegationState(publicRpc, sender, delegate, signal) {
-    const code = String(await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)).toLowerCase()
-    if (code === '0x') return 'requires-authorization'
-    if (code === `0xef0100${delegate.slice(2).toLowerCase()}`) return 'already-delegated'
-    deny('PAYMASTER_UNTRUSTED_DELEGATE', 'This EOA is delegated to a different contract or has unrecognized code.')
+export function classifyDelegationCode(rawCode, trustedDelegate) {
+    const code = String(rawCode ?? '').toLowerCase()
+    const trusted = getAddress(trustedDelegate)
+    if (code === '0x') {
+        return { status: 'requires-authorization', previousDelegate: null, initialCode: code }
+    }
+    const match = /^0xef0100([0-9a-f]{40})$/u.exec(code)
+    // Arbitrary contract code is not an EOA and must not be treated as EIP-7702.
+    if (!match) {
+        deny('PAYMASTER_UNTRUSTED_DELEGATE', 'This wallet has unrecognized contract code and cannot use this EIP-7702 signing flow.')
+    }
+    const current = getAddress(`0x${match[1]}`)
+    if (current === trusted) {
+        return { status: 'already-delegated', previousDelegate: null, initialCode: code }
+    }
+    // Changing an existing EIP-7702 delegation requires a separate, explicit
+    // wallet security review. Never silently replace third-party wallet code.
+    return { status: 'requires-authorization', previousDelegate: current, initialCode: code }
 }
-async function authorizationForFirstUse(walletClient, publicRpc, sender, delegate, signal) {
+async function delegationState(publicRpc, sender, delegate, signal) {
+    const code = await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)
+    return classifyDelegationCode(code, delegate)
+}
+async function authorizationForFirstUse(walletClient, publicRpc, sender, delegate, state, signal) {
     const nonce = quantity(await rpc(publicRpc, 'eth_getTransactionCount', [sender, 'latest'], signal), 'EOA authorization nonce', (1n << 64n) - 1n)
     if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EOA authorization nonce exceeds supported precision.')
     const authRequest = {
         type: 'eip7702Auth',
-        data: { chainId: CHAIN_ID, address: delegate, nonce: Number(nonce) },
+        data: {
+            chainId: CHAIN_ID,
+            address: delegate,
+            nonce: Number(nonce),
+            ...(state.previousDelegate ? { previousDelegate: state.previousDelegate } : {}),
+        },
         rawPayload: hashAuthorization({ contractAddress: delegate, chainId: CHAIN_ID, nonce: Number(nonce) }),
     }
     const signature = await walletClient.request({ method: AUTH_METHOD, params: [authRequest] })
     if (!/^0x[0-9a-f]{130}$/iu.test(String(signature ?? ''))) {
         deny('PAYMASTER_AUTHORIZATION_INVALID', 'The wallet returned an invalid EIP-7702 authorization signature.')
+    }
+    // The signed authorization is valid for exactly one EOA nonce. Refuse a
+    // stale signature if another tab or app changed this account in the meantime.
+    const [freshCode, freshNonce] = await Promise.all([
+        rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal),
+        rpc(publicRpc, 'eth_getTransactionCount', [sender, 'latest'], signal),
+    ])
+    if (String(freshCode).toLowerCase() !== state.initialCode ||
+        quantity(freshNonce, 'EOA authorization nonce', (1n << 64n) - 1n) !== nonce) {
+        deny('PAYMASTER_AUTHORIZATION_STALE', 'The wallet delegation or nonce changed during signing. Request a fresh quote.')
     }
     const parsed = parseSignature(signature)
     return {
@@ -356,8 +388,8 @@ export async function submitSelfHostedPaymasterUserOperation({
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
     const delegation = await delegationState(settings.publicRpc, sender, settings.delegate, signal)
-    const eip7702Auth = delegation === 'requires-authorization'
-        ? await authorizationForFirstUse(walletClient, settings.publicRpc, sender, settings.delegate, signal)
+    const eip7702Auth = delegation.status === 'requires-authorization'
+        ? await authorizationForFirstUse(walletClient, settings.publicRpc, sender, settings.delegate, delegation, signal)
         : null
     const encodedNonce = await rpc(settings.publicRpc, 'eth_call', [{
         to: settings.entryPoint,
