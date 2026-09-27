@@ -41,6 +41,16 @@ export const selfHostedAuthorizationMethods = {
             !Number.isSafeInteger(nonce) || nonce < 0) {
             deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EIP-7702 authorization differs from the BNB Chain trusted delegation.')
         }
+        let previousDelegate = null
+        if (data.previousDelegate !== undefined) {
+            if (typeof data.previousDelegate !== 'string' || !ADDRESS.test(data.previousDelegate)) {
+                deny('PAYMASTER_AUTHORIZATION_INVALID', 'The previous EIP-7702 delegation is invalid.')
+            }
+            previousDelegate = getAddress(data.previousDelegate)
+            if (previousDelegate === trusted || /^0x0{40}$/iu.test(previousDelegate)) {
+                deny('PAYMASTER_AUTHORIZATION_INVALID', 'The previous EIP-7702 delegate is not a distinct nonzero address.')
+            }
+        }
         const digest = hashAuthorization({ contractAddress: trusted, chainId: CHAIN_ID, nonce })
         if (!HASH.test(String(request.rawPayload ?? '')) ||
             request.rawPayload.toLowerCase() !== digest.toLowerCase()) {
@@ -52,9 +62,14 @@ export const selfHostedAuthorizationMethods = {
         await this.reviewQueue.request({
             walletAddress: context.address,
             chainId: CHAIN_ID,
-            action: 'Enable self-hosted Gas Assist',
+            action: previousDelegate
+                ? 'Replace existing EIP-7702 wallet delegation'
+                : 'Enable self-hosted Gas Assist',
             payload: {
-                purpose: 'Delegate this existing EOA to the trusted ERC-4337 Simple7702Account for BNB Chain. This does not transfer tokens.',
+                purpose: previousDelegate
+                    ? 'Your wallet already delegates execution to another contract. Switching to Pistachio changes the code controlling future wallet operations. This authorization does not itself transfer tokens. Review the previous and new contract addresses carefully.'
+                    : 'Delegate this existing EOA to the trusted ERC-4337 Simple7702Account for BNB Chain. This authorization does not itself transfer tokens.',
+                ...(previousDelegate ? { previousDelegate } : {}),
                 delegate: trusted,
                 authorizationScope: 'BNB Chain (56)',
                 authorizationNonce: nonce,
