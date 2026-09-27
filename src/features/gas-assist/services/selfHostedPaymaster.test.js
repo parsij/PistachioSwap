@@ -4,6 +4,7 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
+    classifyDelegationCode,
     encodeSelfHostedBatch,
     selfHostedFrontendEnabled,
     selfHostedUserOpTypedData,
@@ -118,14 +119,37 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
         }, settings)))
     })
 
-    it.each(['0x', `0xef0100${delegate.slice(2)}`])(
+    it('classifies a foreign 7702 delegation but rejects arbitrary contract code', () => {
+        expect(classifyDelegationCode('0x', delegate)).toMatchObject({
+            status: 'requires-authorization', previousDelegate: null,
+        })
+        expect(classifyDelegationCode(`0xef0100${delegate.slice(2)}`, delegate)).toMatchObject({
+            status: 'already-delegated', previousDelegate: null,
+        })
+        expect(classifyDelegationCode(`0xef0100${treasury.slice(2)}`, delegate)).toMatchObject({
+            status: 'requires-authorization', previousDelegate: treasury,
+        })
+        expect(() => classifyDelegationCode('0x6001600055', delegate))
+            .toThrow(/unrecognized contract code/iu)
+        expect(() => classifyDelegationCode('0xef0100', delegate))
+            .toThrow(/unrecognized contract code/iu)
+    })
+
+    it.each(['0x', `0xef0100${delegate.slice(2)}`, `0xef0100${treasury.slice(2)}`])(
         'performs stub, estimate, sponsor, final local signing and direct submission for code %s',
         async (onChainCode) => {
             const requests = []
             let locallySignedHash
             const walletClient = {
-                request: vi.fn(async ({ method }) => {
+                request: vi.fn(async ({ method, params }) => {
                     expect(method).toBe('pistachio_signSelfHostedAuthorization')
+                    expect(params[0].data.address).toBe(delegate)
+                    const previous = params[0].data.previousDelegate
+                    if (onChainCode.toLowerCase() === `0xef0100${treasury.slice(2).toLowerCase()}`) {
+                        expect(previous).toBe(treasury)
+                    } else {
+                        expect(previous).toBeUndefined()
+                    }
                     return `0x${'12'.repeat(64)}1b`
                 }),
                 signTypedData: vi.fn(async ({ account, ...typed }) => {
@@ -192,7 +216,9 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(requests.filter((r) => r.url.startsWith('http://localhost:3001')).every(
                 (r) => !JSON.stringify(r.body).includes(locallySignedHash),
             )).toBe(true)
-            expect(walletClient.request).toHaveBeenCalledTimes(onChainCode === '0x' ? 1 : 0)
+            expect(walletClient.request).toHaveBeenCalledTimes(
+                onChainCode.toLowerCase() === `0xef0100${delegate.slice(2).toLowerCase()}` ? 0 : 1,
+            )
         },
     )
 })
