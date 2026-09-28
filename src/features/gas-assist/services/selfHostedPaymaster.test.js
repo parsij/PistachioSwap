@@ -183,7 +183,11 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                     if (body.method === 'eth_estimateUserOperationGas') {
                         estimateAttempts += 1
                         if (estimateAttempts === 1) {
-                            return new Response('temporary upstream failure', { status: 502 })
+                            return new Response(JSON.stringify({
+                                jsonrpc: '2.0',
+                                id: 1,
+                                error: { code: -32098, message: 'Bundler upstream unavailable' },
+                            }), { status: 200, headers: { 'content-type': 'application/json' } })
                         }
                     }
                     return new Response(JSON.stringify({
