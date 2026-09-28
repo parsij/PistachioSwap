@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatUnits } from 'viem'
 
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
+import { selfHostedFrontendEnabled } from '../../gas-assist/services/selfHostedPaymaster.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
 import {
@@ -210,8 +211,10 @@ export function useCrossChainGasAssist({
         onSubmitted: handleSubmitted,
         onConfirmed: handleConfirmed,
     })
+    const directExecutionAvailable = sponsorshipConfig?.atomicExecution === true ||
+        selfHostedFrontendEnabled(sponsorshipConfig)
     const available = eligible && sponsorshipConfig?.enabled === true &&
-        sponsorshipConfig?.atomicExecution === true &&
+        directExecutionAvailable &&
         typeof previewSponsorship === 'function' &&
         typeof authenticateSponsorship === 'function' &&
         typeof prepareSponsorship === 'function' &&

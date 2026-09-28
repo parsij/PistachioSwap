@@ -18,6 +18,7 @@ import { getGasAssistBaseUrl } from './gasAssist.js'
 const CHAIN_ID = 56
 const ENTRY_POINT = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
 const FACTORY_MARKER = '0x7702000000000000000000000000000000000000'
+const BUNDLER_FACTORY_FLAG = '0x7702'
 const TRUSTED_DELEGATE = '0xe6Cae83BdE06E4c305530e199D7217f42808555B'
 const AUTH_METHOD = 'pistachio_signSelfHostedAuthorization'
 const HEX = /^0x(?:[0-9a-f]{2})*$/iu
@@ -189,6 +190,18 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
 export function encodeSelfHostedBatch(calls) {
     if (!Array.isArray(calls) || calls.length !== 5) deny('PAYMASTER_INTENT_INVALID', 'Exactly five reviewed calls are required.')
     return encodeFunctionData({ abi: SIMPLE_ACCOUNT_ABI, functionName: 'executeBatch', args: [calls] })
+}
+
+export function bundlerUserOperation(operation) {
+    if (address(operation?.factory, 'EIP-7702 factory marker') !== getAddress(FACTORY_MARKER) ||
+        operation?.factoryData !== '0x') {
+        deny('PAYMASTER_7702_MARKER_REQUIRED', 'The internal EIP-7702 marker is invalid.')
+    }
+    // ERC-7769 represents EIP-7702 at the JSON-RPC boundary with the literal
+    // 0x7702 flag. The 20-byte right-padded marker remains the internal
+    // PackedUserOperation/initCode representation used by EntryPoint/paymaster
+    // hashing and must not be sent as the RPC factory field.
+    return { ...operation, factory: BUNDLER_FACTORY_FLAG }
 }
 async function rpc(url, method, params, signal) {
     // Estimation is read-only and can occasionally outlive a proxy/upstream
@@ -469,7 +482,7 @@ export async function submitSelfHostedPaymasterUserOperation({
         ...(eip7702Auth ? { eip7702Auth } : {}),
     }
     const estimate = await rpc(settings.bundlerRpc, 'eth_estimateUserOperationGas',
-        [estimation, settings.entryPoint], signal)
+        [bundlerUserOperation(estimation), settings.entryPoint], signal)
     const estimated = {
         ...operation,
         callGasLimit: numberToHex(quantity(estimate?.callGasLimit, 'estimated call gas')),
@@ -514,7 +527,7 @@ export async function submitSelfHostedPaymasterUserOperation({
         ...(eip7702Auth ? { eip7702Auth } : {}),
     }
     const userOpHash = await rpc(settings.bundlerRpc, 'eth_sendUserOperation',
-        [finalOperation, settings.entryPoint], signal)
+        [bundlerUserOperation(finalOperation), settings.entryPoint], signal)
     if (!HASH.test(String(userOpHash ?? '')) || userOpHash.toLowerCase() !== expectedHash.toLowerCase()) {
         deny('PAYMASTER_USEROP_HASH_MISMATCH', 'The Bundler returned a UserOperation hash different from the locally signed hash.')
     }

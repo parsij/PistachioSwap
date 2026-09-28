@@ -4,6 +4,7 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
+    bundlerUserOperation,
     classifyDelegationCode,
     encodeSelfHostedBatch,
     selfHostedFrontendEnabled,
@@ -97,6 +98,21 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             .toThrow(/payment changed/iu)
         expect(() => validateSelfHostedPrepared(prepared({ delegate: treasury }), order, settings))
             .toThrow(/does not match/iu)
+    })
+
+    it('converts the internal 20-byte EIP-7702 marker to the ERC-7769 RPC factory flag', () => {
+        const rpcOp = bundlerUserOperation({
+            sender,
+            factory: marker,
+            factoryData: '0x',
+        })
+        expect(rpcOp.factory).toBe('0x7702')
+        expect(rpcOp.factoryData).toBe('0x')
+        expect(() => bundlerUserOperation({
+            sender,
+            factory: treasury,
+            factoryData: '0x',
+        })).toThrow(/marker/iu)
     })
 
     it('encodes the exact reviewed executeBatch and binds final Paymaster data into the account hash', () => {
@@ -221,7 +237,10 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(estimateIndex).toBeLessThan(sponsorIndex)
             expect(sponsorIndex).toBeLessThan(sendIndex)
             expect(requests[sponsorIndex].body.userOperation.signature).toBe('0x')
+            expect(requests[sponsorIndex].body.userOperation.factory).toBe(marker)
             expect(requests[sponsorIndex].body.userOperation.eip7702Auth).toBeUndefined()
+            expect(requests[estimateIndex].body.params[0].factory).toBe('0x7702')
+            expect(requests[sendIndex].body.params[0].factory).toBe('0x7702')
             expect(requests[sendIndex].body.params[0].signature).toHaveLength(132)
             expect(requests[sendIndex].body.params[0].maxPriorityFeePerGas).toBe('0x3b9aca00')
             expect(requests[sendIndex].body.params[0].maxFeePerGas).toBe('0x77359400')
