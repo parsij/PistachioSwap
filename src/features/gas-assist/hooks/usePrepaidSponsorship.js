@@ -70,6 +70,50 @@ function validTransactionHash(value) {
     return /^0x[a-f0-9]{64}$/.test(hash) ? hash : null
 }
 
+function normalizedReviewValue(value, { address = false } = {}) {
+    if (value === null || value === undefined) return ''
+    const normalized = String(value).trim()
+    return address ? normalized.toLowerCase() : normalized
+}
+
+export function reviewedSponsorshipOrderChanged(reviewed, created) {
+    if (!reviewed || !created) return true
+    const fields = [
+        ['walletAddress', true],
+        ['chainId', false],
+        ['sellToken', true],
+        ['buyToken', true],
+        ['grossInputAmountRaw', false],
+        ['netSwapAmountRaw', false],
+        ['paymentToken', true],
+        ['paymentAmountRaw', false],
+        ['paymentTokenDecimals', false],
+        ['tradeNotionalUsdMicros', false],
+        ['fixedServiceFeeUsdMicros', false],
+        ['platformFeeUsdMicros', false],
+        ['commercialFeeUsdMicros', false],
+        ['gasReserveUsdMicros', false],
+        ['conversionCostUsdMicros', false],
+        ['totalPrepaymentUsdMicros', false],
+        ['estimatedPaymentGasUsdMicros', false],
+        ['estimatedApprovalGasUsdMicros', false],
+        ['estimatedSwapGasUsdMicros', false],
+        ['gasMultiplierBps', false],
+        ['quoteProvider', false],
+        ['expectedOutputRaw', false],
+        ['minimumOutputRaw', false],
+        ['requiresApproval', false],
+        ['approvalSpender', true],
+        ['approvalAmountRaw', false],
+        ['sponsoredFlow', false],
+        ['billingMode', false],
+        ['crossChainRouteId', false],
+    ]
+    return fields.some(([field, isAddress]) =>
+        normalizedReviewValue(reviewed[field], { address: isAddress }) !==
+        normalizedReviewValue(created[field], { address: isAddress }))
+}
+
 function createIdempotencyKey() {
     if (typeof globalThis.crypto?.randomUUID === 'function') {
         return globalThis.crypto.randomUUID()
@@ -471,6 +515,7 @@ export function usePrepaidSponsorship({
                 sessionTokenRef.current = sessionToken
             }
             if (order.isPreview === true) {
+                const reviewedOrder = order
                 order = await gasAssistTraceStep(
                     'flow.order-create',
                     {
@@ -501,6 +546,19 @@ export function usePrepaidSponsorship({
                     },
                 )
                 if (!isCurrent(walletEpoch, flowEpoch)) return
+                if (reviewedSponsorshipOrderChanged(reviewedOrder, order)) {
+                    gasAssistTrace('flow.order.requote-review-required', {
+                        previewId: reviewedOrder.id,
+                        orderId: order.id,
+                    })
+                    setState((current) => ({
+                        ...current,
+                        phase: 'review',
+                        order,
+                        error: null,
+                    }))
+                    return
+                }
                 setState((current) => ({ ...current, order }))
             }
             if (config?.atomicExecution !== true && !selfHostedFrontendEnabled(config)) {

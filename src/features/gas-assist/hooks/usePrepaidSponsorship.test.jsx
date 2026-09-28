@@ -49,7 +49,7 @@ vi.mock('../services/rawTransactionSigning.js', () => ({
     signPreparedAtomicSponsoredTransaction: mocks.signAtomic,
 }))
 
-import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
+import { reviewedSponsorshipOrderChanged, usePrepaidSponsorship } from './usePrepaidSponsorship.js'
 
 const walletA = '0x0000000000000000000000000000000000000001'
 const walletB = '0x0000000000000000000000000000000000000002'
@@ -81,6 +81,54 @@ async function waitForConfig(result) {
         atomicExecution: true,
     }))
 }
+
+describe('reviewed sponsorship order binding', () => {
+    const reviewed = {
+        id: 'preview-1',
+        isPreview: true,
+        walletAddress: walletA,
+        chainId: 56,
+        sellToken: tokenA.address,
+        buyToken: tokenB.address,
+        grossInputAmountRaw: '1000',
+        netSwapAmountRaw: '900',
+        paymentToken: tokenA.address,
+        paymentAmountRaw: '100',
+        paymentTokenDecimals: 18,
+        totalPrepaymentUsdMicros: '100000',
+        expectedOutputRaw: '850',
+        minimumOutputRaw: '800',
+        approvalSpender: '0x0000000000000000000000000000000000000020',
+        approvalAmountRaw: '900',
+        quoteProvider: 'uniswap',
+        sponsoredFlow: 'normal-sponsored-swap',
+        billingMode: 'prepaid-megafuel',
+    }
+
+    it('ignores lifecycle-only fields but detects reviewed economic or route changes', () => {
+        expect(reviewedSponsorshipOrderChanged(reviewed, {
+            ...reviewed,
+            id: 'order-1',
+            isPreview: false,
+            status: 'quoted',
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        })).toBe(false)
+
+        expect(reviewedSponsorshipOrderChanged(reviewed, {
+            ...reviewed,
+            id: 'order-1',
+            isPreview: false,
+            paymentAmountRaw: '101',
+        })).toBe(true)
+
+        expect(reviewedSponsorshipOrderChanged(reviewed, {
+            ...reviewed,
+            id: 'order-1',
+            isPreview: false,
+            minimumOutputRaw: '799',
+        })).toBe(true)
+    })
+})
 
 describe('prepaid sponsorship async ownership', () => {
     beforeEach(() => {
@@ -233,6 +281,54 @@ describe('prepaid sponsorship async ownership', () => {
         await waitForConfig(result)
         expect(result.current.capability.transport).toBe('pistachio-local')
         expect(result.current.metaMaskSigner).toBeNull()
+    })
+
+    it('requires a second review when the final order differs from the preview', async () => {
+        const previewOrder = {
+            id: 'preview-1',
+            isPreview: true,
+            walletAddress: walletA,
+            chainId: 56,
+            sellToken: tokenA.address,
+            buyToken: tokenB.address,
+            grossInputAmountRaw: '1000',
+            netSwapAmountRaw: '900',
+            paymentToken: tokenA.address,
+            paymentAmountRaw: '100',
+            paymentTokenDecimals: 18,
+            totalPrepaymentUsdMicros: '100000',
+            expectedOutputRaw: '850',
+            minimumOutputRaw: '800',
+            approvalSpender: '0x0000000000000000000000000000000000000020',
+            approvalAmountRaw: '900',
+            quoteProvider: 'uniswap',
+            sponsoredFlow: 'normal-sponsored-swap',
+            billingMode: 'prepaid-megafuel',
+        }
+        mocks.createOrder.mockResolvedValue({
+            ...previewOrder,
+            id: 'order-1',
+            isPreview: false,
+            paymentAmountRaw: '101',
+        })
+        const { result } = setup(walletA, vi.fn(), { previewOrder })
+        await waitForConfig(result)
+
+        await act(async () => {
+            await result.current.start()
+        })
+        expect(result.current.phase).toBe('review')
+        expect(result.current.order.id).toBe('preview-1')
+
+        await act(async () => {
+            await result.current.signPackage()
+        })
+
+        expect(result.current.phase).toBe('review')
+        expect(result.current.order.id).toBe('order-1')
+        expect(result.current.order.paymentAmountRaw).toBe('101')
+        expect(mocks.prepareAtomic).not.toHaveBeenCalled()
+        expect(mocks.signAtomic).not.toHaveBeenCalled()
     })
 
     it('fails closed when the atomic path is unavailable instead of using sequential transactions', async () => {

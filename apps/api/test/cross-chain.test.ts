@@ -294,6 +294,141 @@ describe('cross-chain backend', () => {
         expect(urls.some((url) => url.includes('originTxHash='))).toBe(true)
     })
 
+    it('pins the 0x BSC AllowanceHolder instead of trusting a quoted execution target', async () => {
+        process.env.ZEROX_CROSS_CHAIN_ENABLED = 'true'
+        process.env.ZEROX_API_KEY = 'test-key'
+        process.env.PLATFORM_FEE_BPS = '0'
+        const allowanceHolder = '0x0000000000001ff3684f28c67538d4d072c22734'
+        const bscRequest = {
+            ...request,
+            sourceAsset: { ...request.sourceAsset, chainId: 56 },
+        }
+        const makeAdapter = (to) => createZeroXCrossChainAdapter(async (url) => {
+            if (url.pathname === '/cross-chain/sources') {
+                return { sources: [{ chainId: 56 }, { chainId: 8453 }] }
+            }
+            return {
+                quotes: [{
+                    quoteId: 'bsc-quote',
+                    originChain: 56,
+                    destinationChain: 8453,
+                    sellToken: sourceToken,
+                    buyToken: destinationToken,
+                    sellAmount: '1000',
+                    buyAmount: '950',
+                    minimumBuyAmount: '940',
+                    allowanceTarget: allowanceHolder,
+                    transaction: {
+                        details: { to, data: '0x1234', value: '0' },
+                    },
+                }],
+            }
+        })
+
+        const good = makeAdapter(allowanceHolder)
+        await expect(good.getQuote(bscRequest, await good.getCapabilities()))
+            .resolves.toMatchObject({
+                transaction: {
+                    to: allowanceHolder,
+                    allowanceTarget: allowanceHolder,
+                },
+            })
+
+        const bad = makeAdapter(relaySpender)
+        await expect(bad.getQuote(bscRequest, await bad.getCapabilities()))
+            .rejects.toThrow(/unverified BSC AllowanceHolder/iu)
+    })
+
+    it('pins verified Across BSC source contracts and rejects quote-selected replacements', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const spokePool = '0x4e8e101924ede233c13e2d8622dc8aed2872d505'
+        const bscRequest = {
+            ...request,
+            sourceAsset: { ...request.sourceAsset, chainId: 56 },
+        }
+        const makeAdapter = (swapTarget) => createAcrossAdapter(async (url) =>
+            url.pathname.endsWith('/swap/tokens')
+                ? [
+                      { chainId: 56, address: sourceToken },
+                      { chainId: 8453, address: destinationToken },
+                  ]
+                : {
+                      expectedOutputAmount: '900',
+                      minOutputAmount: '890',
+                      checks: {
+                          allowance: {
+                              token: sourceToken,
+                              spender: spokePool,
+                              actual: '0',
+                              expected: '1000',
+                          },
+                      },
+                      approvalTxns: [{
+                          chainId: 56,
+                          to: sourceToken,
+                          data: approvalData(spokePool, 1000n),
+                          value: '0',
+                      }],
+                      swapTx: {
+                          chainId: 56,
+                          to: swapTarget,
+                          data: '0x1234',
+                          value: '0',
+                      },
+                  })
+
+        const good = makeAdapter(spokePool)
+        await expect(good.getQuote(bscRequest, await good.getCapabilities()))
+            .resolves.toMatchObject({ transaction: { to: spokePool } })
+
+        const bad = makeAdapter(relaySpender)
+        await expect(bad.getQuote(bscRequest, await bad.getCapabilities()))
+            .rejects.toThrow(/capability metadata/iu)
+    })
+
+    it('pins the deBridge DLN source on BSC even when provider metadata omits it', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const dlnSource = '0xef4fb24ad0916217251f553c0596f8edc630eb66'
+        const bscRequest = {
+            ...request,
+            sourceAsset: { ...request.sourceAsset, chainId: 56 },
+        }
+        const makeAdapter = (to) => createDebridgeAdapter(async (url) => {
+            if (url.pathname.endsWith('/supported-chains-info')) {
+                return {
+                    chains: [
+                        { chainId: 56, originalChainId: 56 },
+                        { chainId: 100000002, originalChainId: 8453 },
+                    ],
+                }
+            }
+            return {
+                orderId: 'debridge-bsc',
+                estimation: {
+                    dstChainTokenOut: { amount: '900', recommendedAmount: '890' },
+                    recommendedSlippage: 0.005,
+                    costsDetails: [],
+                },
+                tx: {
+                    chainId: 56,
+                    to,
+                    data: '0x1234',
+                    value: '0',
+                    allowanceTarget: target,
+                    allowanceValue: '1000',
+                },
+            }
+        })
+
+        const good = makeAdapter(dlnSource)
+        await expect(good.getQuote(bscRequest, await good.getCapabilities()))
+            .resolves.toMatchObject({ transaction: { to: dlnSource } })
+
+        const bad = makeAdapter(relaySpender)
+        await expect(bad.getQuote(bscRequest, await bad.getCapabilities()))
+            .rejects.toThrow(/capability metadata/iu)
+    })
+
     it('strictly normalizes the current frontend alias request', () => {
         const normalized = validateCrossChainRequest({
             sourceChainId: 1,
