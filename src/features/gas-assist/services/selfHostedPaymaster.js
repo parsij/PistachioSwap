@@ -191,18 +191,36 @@ export function encodeSelfHostedBatch(calls) {
     return encodeFunctionData({ abi: SIMPLE_ACCOUNT_ABI, functionName: 'executeBatch', args: [calls] })
 }
 async function rpc(url, method, params, signal) {
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-        signal,
-    })
-    if (!response.ok) deny('PAYMASTER_RPC_UNAVAILABLE', `${method} failed with HTTP ${response.status}.`)
-    const payload = await response.json()
-    if (payload?.jsonrpc !== '2.0' || payload?.error || !('result' in payload)) {
-        deny('PAYMASTER_RPC_REJECTED', `${method} was rejected by the RPC provider.`)
+    // Estimation is read-only and can occasionally outlive a proxy/upstream
+    // timeout while Alto is simulating EIP-7702 state. Retry only this method;
+    // never retry eth_sendUserOperation because a timed-out send may already
+    // have been accepted and duplicate submission must remain impossible.
+    const attempts = method === 'eth_estimateUserOperationGas' ? 2 : 1
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        let response
+        try {
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+                signal,
+            })
+        } catch (error) {
+            if (signal?.aborted) throw error
+            if (attempt + 1 < attempts) continue
+            deny('PAYMASTER_RPC_UNAVAILABLE', `${method} request failed.`)
+        }
+        if (!response.ok) {
+            if (attempt + 1 < attempts && [502, 503, 504].includes(response.status)) continue
+            deny('PAYMASTER_RPC_UNAVAILABLE', `${method} failed with HTTP ${response.status}.`)
+        }
+        const payload = await response.json()
+        if (payload?.jsonrpc !== '2.0' || payload?.error || !('result' in payload)) {
+            deny('PAYMASTER_RPC_REJECTED', `${method} was rejected by the RPC provider.`)
+        }
+        return payload.result
     }
-    return payload.result
+    deny('PAYMASTER_RPC_UNAVAILABLE', `${method} request failed.`)
 }
 async function backendPost(quoteEndpoint, sessionToken, path, userOperation, signal) {
     const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}${path}`, {
