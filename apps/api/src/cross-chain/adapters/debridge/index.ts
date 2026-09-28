@@ -23,6 +23,7 @@ import {
 // Explicitly verified deployments. New chains must be added deliberately.
 const DLN_SOURCE_BY_EVM_CHAIN: Readonly<Record<number, string>> = {
     1: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
+    56: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
     8453: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
 }
 
