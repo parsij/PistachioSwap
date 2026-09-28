@@ -140,6 +140,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
         async (onChainCode) => {
             const requests = []
             let locallySignedHash
+            let estimateAttempts = 0
             const walletClient = {
                 request: vi.fn(async ({ method, params }) => {
                     expect(method).toBe('pistachio_signSelfHostedAuthorization')
@@ -179,6 +180,12 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 const body = JSON.parse(options.body)
                 requests.push({ url: String(url), body })
                 if (body.method) {
+                    if (body.method === 'eth_estimateUserOperationGas') {
+                        estimateAttempts += 1
+                        if (estimateAttempts === 1) {
+                            return new Response('temporary upstream failure', { status: 502 })
+                        }
+                    }
                     return new Response(JSON.stringify({
                         jsonrpc: '2.0', id: 1, result: rpcResult(body.method),
                     }), { status: 200 })
@@ -205,6 +212,8 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             const sponsorIndex = requests.findIndex((r) => r.url.endsWith('/paymaster/sponsor'))
             const sendIndex = requests.findIndex((r) => r.body.method === 'eth_sendUserOperation')
             expect(stubIndex).toBeLessThan(estimateIndex)
+            expect(estimateAttempts).toBe(2)
+            expect(requests.filter((r) => r.body.method === 'eth_sendUserOperation')).toHaveLength(1)
             expect(estimateIndex).toBeLessThan(sponsorIndex)
             expect(sponsorIndex).toBeLessThan(sendIndex)
             expect(requests[sponsorIndex].body.userOperation.signature).toBe('0x')
