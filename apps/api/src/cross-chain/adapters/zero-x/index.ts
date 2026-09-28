@@ -22,6 +22,9 @@ import {
 } from '../../validation.js'
 
 const PROVIDER = '0x-cross-chain' as const
+const VERIFIED_ALLOWANCE_HOLDER_BY_EVM_CHAIN: Readonly<Record<number, string>> = {
+    56: '0x0000000000001ff3684f28c67538d4d072c22734',
+}
 
 export function createZeroXCrossChainAdapter(
     http: HttpJson = fetchJson,
@@ -102,12 +105,22 @@ export function createZeroXCrossChainAdapter(
             if (!target || target === NATIVE_TOKEN_ADDRESS) {
                 throw new Error('0x returned an invalid origin transaction target.')
             }
+            const verifiedAllowanceHolder =
+                VERIFIED_ALLOWANCE_HOLDER_BY_EVM_CHAIN[request.sourceAsset.chainId]
+            if (verifiedAllowanceHolder &&
+                request.sourceAsset.address !== NATIVE_TOKEN_ADDRESS &&
+                target !== verifiedAllowanceHolder) {
+                throw new Error('0x returned an unverified BSC AllowanceHolder target.')
+            }
             const authoritativeCapabilities: ProviderCapabilities = {
                 ...capabilities,
                 routes: [{
                     sourceChainId: request.sourceAsset.chainId,
                     destinationChainId: request.destinationAsset.chainId,
-                    transactionTargets: [target],
+                    transactionTargets: verifiedAllowanceHolder &&
+                        request.sourceAsset.address !== NATIVE_TOKEN_ADDRESS
+                        ? [verifiedAllowanceHolder]
+                        : [target],
                 }],
             }
             const transaction = validateProviderTransaction({
