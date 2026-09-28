@@ -26,7 +26,6 @@ const VERIFIED_ACROSS_SOURCE_TARGETS_BY_EVM_CHAIN: Readonly<Record<number, reado
     56: [
         '0x4e8e101924ede233c13e2d8622dc8aed2872d505',
         '0x97ccdbea4632140639ad5ea9b944aa034eb15fd4',
-        '0x0f7ae28de1c8532170ad4ee566b5801485c13a0e',
     ],
 }
 
