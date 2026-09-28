@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useCrossChainGasAssist } from './useCrossChainGasAssist.js'
 
@@ -66,7 +66,12 @@ function props(overrides = {}) {
     }
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubEnv('VITE_GAS_ASSIST_ENABLED', 'true')
+    vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'true')
+})
+afterEach(() => vi.unstubAllEnvs())
 
 describe('useCrossChainGasAssist', () => {
     it('prefetches and reuses the exact sponsored quote shown on the swap page', async () => {
@@ -88,6 +93,24 @@ describe('useCrossChainGasAssist', () => {
         expect(input.previewSponsorship).toHaveBeenCalledOnce()
         expect(sponsorship.openPreviewLoading).toHaveBeenCalledOnce()
         expect(sponsorship.reviewOrder).toHaveBeenCalledWith(result.current.preview)
+    })
+
+    it('treats the self-hosted paymaster as direct cross-chain execution even with retired atomic flag off', async () => {
+        const input = props({
+            sponsorshipConfig: {
+                enabled: true,
+                atomicExecution: false,
+                provider: 'pistachio-paymaster-v08',
+                execution: 'erc4337-v08-eip7702-direct',
+            },
+        })
+        const { result } = renderHook((value) => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        expect(result.current.available).toBe(true)
+        expect(input.previewSponsorship).toHaveBeenCalledOnce()
     })
 
     it('stays idle and does not preview Gas Assist before a positive amount exists', () => {
