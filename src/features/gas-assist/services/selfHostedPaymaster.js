@@ -214,9 +214,30 @@ async function rpc(url, method, params, signal) {
             if (attempt + 1 < attempts && [502, 503, 504].includes(response.status)) continue
             deny('PAYMASTER_RPC_UNAVAILABLE', `${method} failed with HTTP ${response.status}.`)
         }
-        const payload = await response.json()
-        if (payload?.jsonrpc !== '2.0' || payload?.error || !('result' in payload)) {
-            deny('PAYMASTER_RPC_REJECTED', `${method} was rejected by the RPC provider.`)
+        let payload
+        try {
+            payload = await response.json()
+        } catch {
+            if (attempt + 1 < attempts) continue
+            deny('PAYMASTER_RPC_UNAVAILABLE', `${method} returned an invalid RPC response.`)
+        }
+        if (payload?.jsonrpc !== '2.0') {
+            if (attempt + 1 < attempts) continue
+            deny('PAYMASTER_RPC_REJECTED', `${method} returned an invalid JSON-RPC envelope.`)
+        }
+        if (payload?.error) {
+            const rpcCode = Number(payload.error.code)
+            if (attempt + 1 < attempts && rpcCode === -32098) continue
+            const rpcMessage = typeof payload.error.message === 'string'
+                ? payload.error.message.trim().slice(0, 300)
+                : ''
+            deny('PAYMASTER_RPC_REJECTED', rpcMessage
+                ? `${method} was rejected: ${rpcMessage}`
+                : `${method} was rejected by the RPC provider.`)
+        }
+        if (!('result' in payload)) {
+            if (attempt + 1 < attempts) continue
+            deny('PAYMASTER_RPC_REJECTED', `${method} returned no JSON-RPC result.`)
         }
         return payload.result
     }
