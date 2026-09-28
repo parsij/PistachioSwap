@@ -22,6 +22,14 @@ import {
     validateProviderTransaction,
 } from '../../validation.js'
 
+const VERIFIED_ACROSS_SOURCE_TARGETS_BY_EVM_CHAIN: Readonly<Record<number, readonly string[]>> = {
+    56: [
+        '0x4e8e101924ede233c13e2d8622dc8aed2872d505',
+        '0x97ccdbea4632140639ad5ea9b944aa034eb15fd4',
+        '0x0f7ae28de1c8532170ad4ee566b5801485c13a0e',
+    ],
+}
+
 function records(value: unknown) {
     return Array.isArray(value) ? value.filter(isRecord) : []
 }
@@ -63,7 +71,8 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
                     destinationChainId: buy.chainId,
                     sellTokens: [sell.address],
                     buyTokens: [buy.address],
-                    transactionTargets: [],
+                    transactionTargets:
+                        VERIFIED_ACROSS_SOURCE_TARGETS_BY_EVM_CHAIN[sell.chainId] ?? [],
                 })))
             return {
                 provider: 'across',
@@ -115,13 +124,20 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
                 ...(appFee ? [appFee] : []),
             ]
             const approval = normalizeAcrossApprovals(payload, request)
+            const verifiedTargets =
+                VERIFIED_ACROSS_SOURCE_TARGETS_BY_EVM_CHAIN[request.sourceAsset.chainId]
             const transaction = {
                 ...validateProviderTransaction(tx, request, {
                     ...capabilities,
                     routes: [{
                         sourceChainId: request.sourceAsset.chainId,
                         destinationChainId: request.destinationAsset.chainId,
-                        transactionTargets: [transactionTarget],
+                        // BSC self-hosted sponsorship must use independently
+                        // verified Across deployments rather than trusting a
+                        // transaction target returned by the quote itself.
+                        transactionTargets: verifiedTargets?.length
+                            ? [...verifiedTargets]
+                            : [transactionTarget],
                     }],
                 }),
                 allowanceTarget: approval.spender,
