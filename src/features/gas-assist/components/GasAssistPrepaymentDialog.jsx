@@ -282,13 +282,18 @@ export default function GasAssistPrepaymentDialog({
     const status = statusContent({ phase: sponsorship.phase, order, orderExpired })
     const visibleError = orderExpired ? null : sponsorship.error
     const terminalFailure = ['failed', 'cancelled', 'unsupported'].includes(sponsorship.phase)
-    const requoteRequired = sponsorship.error?.code === 'ORDER_REQUOTE_REQUIRED'
+    const refreshableError = [
+        'ORDER_REQUOTE_REQUIRED',
+        'PRESIGNED_PACKAGE_QUOTE_TOO_SHORT',
+        'SPONSORED_QUOTE_EXPIRED',
+    ].includes(sponsorship.error?.code)
+    const reviewUpdated = sponsorship.phase === 'review' && sponsorship.reviewUpdated === true
 
     let primaryAction = null
     let primaryLabel = null
     if (!terminalFailure && !orderExpired && showPayment && sponsorship.signPackage) {
         primaryAction = sponsorship.signPackage
-        primaryLabel = GAS_ASSIST_SWAP_ACTION
+        primaryLabel = reviewUpdated ? 'Confirm updated quote' : GAS_ASSIST_SWAP_ACTION
     } else if (!terminalFailure && !orderExpired && showPayment && sponsorship.signPayment) {
         primaryAction = sponsorship.signPayment
         primaryLabel = GAS_ASSIST_SWAP_ACTION
@@ -303,8 +308,8 @@ export default function GasAssistPrepaymentDialog({
         primaryLabel = 'Confirm swap'
     }
 
-    const canRetry = requoteRequired || terminalFailure || orderExpired
-    const refreshable = requoteRequired || orderExpired
+    const canRetry = refreshableError || terminalFailure || orderExpired
+    const refreshable = refreshableError || orderExpired
     const retryAction = refreshable
         ? sponsorship.refreshQuote ?? sponsorship.retryStart
         : sponsorship.retryStart
@@ -365,6 +370,11 @@ export default function GasAssistPrepaymentDialog({
                         (sponsorship.phase !== 'review' || orderExpired) && (
                         <CompactStatus status={status} />
                     )}
+                    {reviewUpdated && !visibleError && (
+                        <p className="gas-assist-one-tap-note" role="status">
+                            The authenticated quote changed. Review the final amounts above, then confirm the updated quote.
+                        </p>
+                    )}
                     {visibleError && <GasAssistError error={visibleError} />}
 
                     {primaryAction && (
@@ -377,7 +387,7 @@ export default function GasAssistPrepaymentDialog({
                             {walletBusy ? 'Preparing…' : primaryLabel}
                         </button>
                     )}
-                    {primaryAction && sponsorship.signPackage && showPayment && (
+                    {primaryAction && sponsorship.signPackage && showPayment && !reviewUpdated && (
                         <p className="gas-assist-one-tap-note">
                             {purpose === 'cross-chain-gas'
                                 ? 'One tap starts the flow. Pistachio Wallet will ask you to confirm the sponsored source swap.'

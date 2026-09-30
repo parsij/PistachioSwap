@@ -32,6 +32,7 @@ const initial = {
     order: null,
     intentExpiresAt: null,
     continuation: null,
+    reviewUpdated: false,
     error: null,
     lastPollError: null,
     pollRevision: 0,
@@ -555,11 +556,12 @@ export function usePrepaidSponsorship({
                         ...current,
                         phase: 'review',
                         order,
+                        reviewUpdated: true,
                         error: null,
                     }))
                     return
                 }
-                setState((current) => ({ ...current, order }))
+                setState((current) => ({ ...current, order, reviewUpdated: false }))
             }
             if (config?.atomicExecution !== true && !selfHostedFrontendEnabled(config)) {
                 throw flowError(

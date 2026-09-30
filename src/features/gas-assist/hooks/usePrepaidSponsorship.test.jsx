@@ -327,6 +327,7 @@ describe('prepaid sponsorship async ownership', () => {
         expect(result.current.phase).toBe('review')
         expect(result.current.order.id).toBe('order-1')
         expect(result.current.order.paymentAmountRaw).toBe('101')
+        expect(result.current.reviewUpdated).toBe(true)
         expect(mocks.prepareAtomic).not.toHaveBeenCalled()
         expect(mocks.signAtomic).not.toHaveBeenCalled()
     })
