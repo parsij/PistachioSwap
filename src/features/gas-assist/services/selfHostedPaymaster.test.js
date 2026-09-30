@@ -241,6 +241,24 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(requests[sponsorIndex].body.userOperation.eip7702Auth).toBeUndefined()
             expect(requests[estimateIndex].body.params[0].factory).toBe('0x7702')
             expect(requests[sendIndex].body.params[0].factory).toBe('0x7702')
+            const estimateAuth = requests[estimateIndex].body.params[0].eip7702Auth
+            const sendAuth = requests[sendIndex].body.params[0].eip7702Auth
+            const alreadyTrusted = onChainCode.toLowerCase() ===
+                `0xef0100${delegate.slice(2).toLowerCase()}`
+            if (alreadyTrusted) {
+                expect(estimateAuth).toBeUndefined()
+                expect(sendAuth).toBeUndefined()
+            } else {
+                expect(estimateAuth).toMatchObject({
+                    chainId: '0x38',
+                    address: delegate,
+                    nonce: '0x0',
+                })
+                expect(sendAuth).toEqual(estimateAuth)
+                expect(estimateAuth.r).toHaveLength(66)
+                expect(estimateAuth.s).toHaveLength(66)
+                expect(['0x0', '0x1']).toContain(estimateAuth.yParity)
+            }
             expect(requests[sendIndex].body.params[0].signature).toHaveLength(132)
             expect(requests[sendIndex].body.params[0].maxPriorityFeePerGas).toBe('0x3b9aca00')
             expect(requests[sendIndex].body.params[0].maxFeePerGas).toBe('0x77359400')
