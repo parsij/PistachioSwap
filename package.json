@@ -87,7 +87,7 @@
     "_overridesNote": "Bare-name or range selectors so a transitive version bump cannot silently stop an override from matching and reinstall the vulnerable package.",
     "overrides": {
       "@pancakeswap/swap-sdk-core>bn.js": "^5.2.3",
-      "axios": "^1.18.0",
+      "axios": "^1.20.0",
       "bigint-buffer": "link:packages/bigint-buffer-safe",
       "esbuild@<=0.24.2": "0.25.12",
       "fast-uri@3": "^3.1.6",
