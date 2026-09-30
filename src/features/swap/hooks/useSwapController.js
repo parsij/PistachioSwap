@@ -344,11 +344,21 @@ export function useSwapController() {
                 Math.trunc(Number(walletConfig.nativeGasBufferBps)),
             )
             : DEFAULT_NATIVE_GAS_BUFFER_BPS
+    const nativePriceToken =
+        catalog.walletTokens.find((token) =>
+            isNativeEvmToken(token) &&
+            Number(token.chainId) ===
+            Number(swapChainId)) ??
+        (
+            isNativeEvmToken(inputs.sellToken)
+                ? inputs.sellToken
+                : null
+        )
     const estimatedNativeFeeWei =
         isNativeEvmToken(inputs.sellToken)
             ? getQuoteEstimatedNativeFeeWei({
                 quote: quote.quote,
-                nativeToken: inputs.sellToken,
+                nativeToken: nativePriceToken,
             })
             : null
     const effectiveFallbackNativeReserveWei =
