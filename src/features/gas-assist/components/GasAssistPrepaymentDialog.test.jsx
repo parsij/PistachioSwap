@@ -96,6 +96,17 @@ describe('Gas Assist prepayment review', () => {
         expect(value.signPayment).not.toHaveBeenCalled()
     })
 
+    it('explains a changed authenticated quote instead of looking like the flow reset', () => {
+        const value = sponsorship({ reviewUpdated: true })
+        render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
+
+        expect(screen.getByText(/authenticated quote changed/i)).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm updated quote' }))
+        expect(value.signPackage).toHaveBeenCalledOnce()
+        expect(screen.queryByText(/One tap starts the flow/)).toBeNull()
+    })
+
     it('explains that cross-chain MegaFuel sponsorship does not top up the wallet', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({
