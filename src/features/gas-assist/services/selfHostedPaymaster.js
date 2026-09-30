@@ -11,7 +11,7 @@ import {
     parseSignature,
     recoverTypedDataAddress,
 } from 'viem'
-import { hashAuthorization } from 'viem/utils'
+import { hashAuthorization, recoverAuthorizationAddress } from 'viem/utils'
 
 import { getGasAssistBaseUrl } from './gasAssist.js'
 
@@ -408,6 +408,23 @@ async function authorizationForFirstUse(walletClient, publicRpc, sender, delegat
         deny('PAYMASTER_AUTHORIZATION_STALE', 'The wallet delegation or nonce changed during signing. Request a fresh quote.')
     }
     const parsed = parseSignature(signature)
+    const signedAuthorization = {
+        chainId: CHAIN_ID,
+        address: delegate,
+        nonce: Number(nonce),
+        yParity: parsed.yParity,
+        r: parsed.r,
+        s: parsed.s,
+    }
+    let recovered
+    try {
+        recovered = await recoverAuthorizationAddress({ authorization: signedAuthorization })
+    } catch {
+        deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EIP-7702 authorization could not be verified locally.')
+    }
+    if (getAddress(recovered) !== sender) {
+        deny('PISTACHIO_ACCOUNT_MISMATCH', 'The EIP-7702 authorization signer does not match the authenticated wallet.')
+    }
     return {
         chainId: numberToHex(CHAIN_ID),
         address: delegate,
