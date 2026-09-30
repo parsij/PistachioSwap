@@ -73,7 +73,7 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
             }
         },
         async getQuote(request, capabilities, signal) {
-            const platformFee = getPlatformFeeConfiguration('relay')
+            const platformFee = getPlatformFeeConfiguration('relay', request.ownerAddress)
             const payload = await http(new URL(`${provider.baseUrl}/quote/v2`), {
                 method: 'POST',
                 headers,

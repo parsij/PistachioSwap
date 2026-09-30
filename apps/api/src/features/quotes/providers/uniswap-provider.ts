@@ -5,6 +5,7 @@ import {
     normalizeAddress,
 } from '../../../lib/address.js'
 import { ProviderError } from '../../../lib/errors.js'
+import { isNormalQuotePlatformFeeExemptWallet } from '../../../lib/platform-fee-exemptions.js'
 import { fetchJson, isRecord } from '../../../lib/http.js'
 import {
     decimalInteger,
@@ -277,7 +278,11 @@ export function createUniswapProvider({ applyPlatformFee = true }: { applyPlatfo
 
         async getQuote(request, signal) {
             const mode = request.mode ?? 'EXACT_INPUT'
-            const integratorFee = applyPlatformFee ? resolveUniswapIntegratorFee() : null
+            const integratorFee =
+                applyPlatformFee &&
+                !isNormalQuotePlatformFeeExemptWallet(request.takerAddress)
+                    ? resolveUniswapIntegratorFee()
+                    : null
 
             if (!config.quotes.uniswap.apiKey) {
                 throw new ProviderError({

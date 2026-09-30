@@ -9,6 +9,7 @@ import {
 } from '@chainflip/sdk/swap'
 
 import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../../../lib/address.js'
+import { isNormalQuotePlatformFeeExemptWallet } from '../../../lib/platform-fee-exemptions.js'
 import { bpsAsPercent, getPlatformFeeConfiguration } from '../../fees.js'
 import type {
     CrossChainRequest,
@@ -87,7 +88,7 @@ export function createChainflipSdkClient(
         },
 
         async quote(request, signal) {
-            getPlatformFeeConfiguration('chainflip')
+            getPlatformFeeConfiguration('chainflip', request.ownerAddress)
             const { chains, assets } = await getCatalog(signal)
             const source = findSdkAsset(chains, assets, request.sourceAsset)
             const destination = findSdkAsset(chains, assets, request.destinationAsset)
@@ -97,7 +98,9 @@ export function createChainflipSdkClient(
                 destChain: destination.chain,
                 destAsset: destination.symbol,
                 amount: request.amount,
-                brokerCommissionBps: config.brokerCommissionBps,
+                brokerCommissionBps: isNormalQuotePlatformFeeExemptWallet(request.ownerAddress)
+                    ? 0
+                    : config.brokerCommissionBps,
                 isVaultSwap: false,
             }, { signal })
             const quote = response.quotes[0]
@@ -144,7 +147,9 @@ export function createChainflipSdkClient(
                     retryDurationMinutes: held.quote.recommendedRetryDurationMinutes,
                     refundAddress: request.ownerAddress,
                 },
-                brokerCommissionBps: config.brokerCommissionBps,
+                brokerCommissionBps: isNormalQuotePlatformFeeExemptWallet(request.ownerAddress)
+                    ? 0
+                    : config.brokerCommissionBps,
             })
             abortIfNeeded(signal)
             quotes.delete(statusId)

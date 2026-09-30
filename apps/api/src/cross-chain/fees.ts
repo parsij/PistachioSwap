@@ -1,5 +1,6 @@
 import { getApiConfig } from '../config.js'
 import { NATIVE_TOKEN_ADDRESS } from '../lib/address.js'
+import { isNormalQuotePlatformFeeExemptWallet } from '../lib/platform-fee-exemptions.js'
 import type {
     CrossChainFee,
     CrossChainProviderName,
@@ -12,8 +13,12 @@ export type PlatformFeeConfiguration = {
 
 export function getPlatformFeeConfiguration(
     provider: CrossChainProviderName,
+    walletAddress: string | null = null,
 ): PlatformFeeConfiguration {
     const fees = getApiConfig().fees
+    if (isNormalQuotePlatformFeeExemptWallet(walletAddress)) {
+        return { bps: 0, recipient: null }
+    }
     if (fees.platformFeeBps === 0) return { bps: 0, recipient: null }
     if (
         !fees.treasuryAddress ||

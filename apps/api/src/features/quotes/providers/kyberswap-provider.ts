@@ -1,5 +1,6 @@
 import { getApiConfig } from '../../../config.js'
 import { NATIVE_TOKEN_ADDRESS, normalizeAddress } from '../../../lib/address.js'
+import { isNormalQuotePlatformFeeExemptWallet } from '../../../lib/platform-fee-exemptions.js'
 import { ProviderError } from '../../../lib/errors.js'
 import { fetchJson, isRecord } from '../../../lib/http.js'
 import {
@@ -133,6 +134,7 @@ export function createKyberSwapProvider({
 
             const feeBps =
                 applyPlatformFee &&
+                !isNormalQuotePlatformFeeExemptWallet(request.takerAddress) &&
                 config.fees.platformFeeBps > 0 &&
                 config.fees.collectionMode === 'provider-affiliate' &&
                 config.fees.treasuryAddress

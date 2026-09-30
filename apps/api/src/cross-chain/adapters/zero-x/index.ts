@@ -66,7 +66,7 @@ export function createZeroXCrossChainAdapter(
             }
         },
         async getQuote(request, capabilities, signal) {
-            const fee = getPlatformFeeConfiguration(PROVIDER)
+            const fee = getPlatformFeeConfiguration(PROVIDER, request.ownerAddress)
             const url = new URL('/cross-chain/quotes', provider.baseUrl)
             const query = {
                 originChain: request.sourceAsset.chainId,

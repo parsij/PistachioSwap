@@ -14,7 +14,7 @@ Chainflip coverage can be substantially smaller than the curated 25 EVM chains. 
 
 ## Fees and ranking
 
-SDK included fees are normalized as bridge/provider fees and marked included in the quote so ranking does not subtract them twice. Broker commission uses configured basis points. The common platform affiliate-fee mode is currently incompatible with Chainflip; a nonzero unsupported platform-fee configuration makes the adapter unavailable rather than silently dropping the fee. Ranking uses slippage-adjusted minimum egress and estimated duration.
+SDK included fees are normalized as bridge/provider fees and marked included in the quote so ranking does not subtract them twice. Broker commission uses configured basis points. The common platform affiliate-fee mode is incompatible with ordinary Chainflip quotes; a nonzero unsupported platform-fee configuration makes those quotes fail closed rather than silently dropping the fee. The explicitly hardcoded normal-quote fee-exempt wallet may use Chainflip with zero platform fee and zero broker commission. Gas Assist pricing is separate and is not exempted. Ranking uses slippage-adjusted minimum egress and estimated duration.
 
 ## Deposit safety
 

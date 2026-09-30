@@ -82,7 +82,7 @@ export function createAcrossAdapter(http: HttpJson = fetchJson): CrossChainAdapt
             }
         },
         async getQuote(request, capabilities, signal) {
-            const platformFee = getPlatformFeeConfiguration('across')
+            const platformFee = getPlatformFeeConfiguration('across', request.ownerAddress)
             const url = new URL(`${provider.baseUrl}/swap/approval`)
             for (const [key, value] of Object.entries({
                 tradeType: 'exactInput',

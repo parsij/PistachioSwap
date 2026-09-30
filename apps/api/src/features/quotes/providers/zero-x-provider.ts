@@ -1,6 +1,7 @@
 import { getApiConfig } from '../../../config.js'
 import { isCuratedEvmChainId } from '../../../chains.js'
 import { normalizeAddress } from '../../../lib/address.js'
+import { isNormalQuotePlatformFeeExemptWallet } from '../../../lib/platform-fee-exemptions.js'
 import { ProviderError } from '../../../lib/errors.js'
 import { fetchJson, isRecord } from '../../../lib/http.js'
 import { getNativeTokenPrice } from '../../../providers/alchemy/token-prices.js'
@@ -74,6 +75,7 @@ export function createZeroXProvider({
 
             const feeEnabled =
                 applyPlatformFee &&
+                !isNormalQuotePlatformFeeExemptWallet(request.takerAddress) &&
                 config.fees.platformFeeBps > 0 &&
                 config.fees.collectionMode === 'provider-affiliate' &&
                 Boolean(config.fees.treasuryAddress)

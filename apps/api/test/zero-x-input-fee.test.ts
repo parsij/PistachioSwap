@@ -8,6 +8,7 @@ import {
 const sellToken = '0x1111111111111111111111111111111111111111'
 const buyToken = '0x2222222222222222222222222222222222222222'
 const wallet = '0x3333333333333333333333333333333333333333'
+const feeExemptWallet = '0x2941909551C7ceFd9EbEB1C5200D8B614CF887Ca'
 const treasury = '0x4444444444444444444444444444444444444444'
 const settler = '0x5555555555555555555555555555555555555555'
 const allowanceHolder = ZERO_X_ALLOWANCE_HOLDER_BY_CHAIN.get(56)!
@@ -87,6 +88,36 @@ describe.sequential('0x input-token platform fee', () => {
             bps: 67,
         })
         expect(quote.billingMode).toBe('provider-integrator')
+        expect(fetchMock).toHaveBeenCalledOnce()
+    })
+
+    it('hardcodes zero platform fee for the normal-quote exempt wallet', async () => {
+        const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+            const url = new URL(String(input))
+            expect(url.searchParams.get('swapFeeRecipient')).toBeNull()
+            expect(url.searchParams.get('swapFeeBps')).toBeNull()
+            expect(url.searchParams.get('swapFeeToken')).toBeNull()
+            return new Response(JSON.stringify({
+                ...responseWithFee(),
+                fees: {},
+            }), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+            })
+        })
+        vi.stubGlobal('fetch', fetchMock)
+
+        const quote = await createZeroXProvider().getQuote({
+            ...request,
+            takerAddress: feeExemptWallet,
+        })
+
+        expect(quote.platformFee).toEqual({
+            amount: '0',
+            token: null,
+            bps: 0,
+        })
+        expect(quote.billingMode).toBe('normal-provider-fee')
         expect(fetchMock).toHaveBeenCalledOnce()
     })
 

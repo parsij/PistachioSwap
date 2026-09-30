@@ -89,7 +89,7 @@ export function createDebridgeAdapter(http: HttpJson = fetchJson): CrossChainAda
                 !route?.providerSourceChainId ||
                 !route.providerDestinationChainId
             ) throw new Error('deBridge internal chain metadata is unavailable.')
-            const platformFee = getPlatformFeeConfiguration('debridge-dln')
+            const platformFee = getPlatformFeeConfiguration('debridge-dln', request.ownerAddress)
             const url = new URL(`${provider.baseUrl}/v1.0/dln/order/create-tx`)
             const query = {
                 srcChainId: route.providerSourceChainId,

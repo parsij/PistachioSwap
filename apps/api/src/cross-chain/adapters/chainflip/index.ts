@@ -10,7 +10,6 @@ import {
     assertExactQuote,
     validateProviderTransaction,
 } from '../../validation.js'
-import { platformFeeIncompatibility } from '../../fees.js'
 import { createChainflipSdkClient } from './sdk-client.js'
 
 export interface ChainflipClient {
@@ -77,16 +76,6 @@ export function createChainflipAdapter(
                     fetchedAt: new Date().toISOString(),
                     routes: [],
                     reason: 'disabled',
-                }
-            }
-            const incompatible = platformFeeIncompatibility('chainflip')
-            if (incompatible) {
-                return {
-                    provider: 'chainflip',
-                    available: false,
-                    fetchedAt: new Date().toISOString(),
-                    routes: [],
-                    reason: incompatible,
                 }
             }
             return resolvedClient.capabilities(signal)

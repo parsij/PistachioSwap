@@ -1278,6 +1278,25 @@ describe('cross-chain backend', () => {
         ).rejects.toThrow('different destination token')
     })
 
+    it('hardcodes zero normal cross-chain platform fee for the exempt wallet', () => {
+        process.env.PLATFORM_FEE_BPS = '67'
+        process.env.TREASURY_ADDRESS = sender
+        const feeExemptWallet = '0x2941909551C7ceFd9EbEB1C5200D8B614CF887Ca'
+
+        expect(getPlatformFeeConfiguration('relay', feeExemptWallet)).toEqual({
+            bps: 0,
+            recipient: null,
+        })
+        expect(getPlatformFeeConfiguration('chainflip', feeExemptWallet)).toEqual({
+            bps: 0,
+            recipient: null,
+        })
+        expect(getPlatformFeeConfiguration('relay', sender)).toEqual({
+            bps: 67,
+            recipient: sender,
+        })
+    })
+
     it('marks fee collection incompatible without a treasury or mechanism', async () => {
         process.env.PLATFORM_FEE_BPS = '45'
         delete process.env.TREASURY_ADDRESS
