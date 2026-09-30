@@ -34,8 +34,13 @@ import { decimalToUnits } from '../model/amountMath.js'
 import { getEffectiveSlippageBps } from '../../settings/services/swapSettings.js'
 import { getSwapExecutionMessage } from '../../../services/swapExecutionMode.js'
 import {
+    DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
+    DEFAULT_NATIVE_GAS_BUFFER_BPS,
     DEFAULT_NATIVE_GAS_RESERVE_WEI,
+    getBootstrapNativeGasReserveWei,
+    getQuoteEstimatedNativeFeeWei,
     getSpendableTokenAmount,
+    isNativeEvmToken,
 } from '../../../services/balances.js'
 import { fetchSwapQuote } from '../services/quotes.js'
 import { createCssVariables, swapUiConfig } from '../../../swapConfig.js'
@@ -64,6 +69,7 @@ export function useSwapController() {
     const [swapChainId, setSwapChainId] = useState(Number(tokensConfig.initialSellToken?.chainId ?? chain.id))
     const [statusMessage, setStatusMessage] = useState(null)
     const [quoteDetailsOpen, setQuoteDetailsOpen] = useState(true)
+    const nativeMaximumRequestedRef = useRef(false)
     const { open: openAppKit } = useAppKit()
     const { switchNetwork } = useAppKitNetwork()
     const wagmiConfig = useConfig()
@@ -321,6 +327,87 @@ export function useSwapController() {
     ])
     const activeQuote = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.currentRoute : gasAssist.activeQuote
     const activeQuoteStatus = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.quoteStatus : gasAssist.activeQuoteStatus
+    const configuredNativeReserveWei =
+        parseNativeReserve(
+            walletConfig.nativeGasReserve,
+            DEFAULT_NATIVE_GAS_RESERVE_WEI,
+        )
+    const minimumNativeGasBufferWei =
+        parseNativeReserve(
+            walletConfig.minimumNativeGasBuffer,
+            DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
+        )
+    const nativeGasBufferBps =
+        Number.isFinite(Number(walletConfig.nativeGasBufferBps))
+            ? Math.max(
+                0,
+                Math.trunc(Number(walletConfig.nativeGasBufferBps)),
+            )
+            : DEFAULT_NATIVE_GAS_BUFFER_BPS
+    const estimatedNativeFeeWei =
+        isNativeEvmToken(inputs.sellToken)
+            ? getQuoteEstimatedNativeFeeWei({
+                quote: quote.quote,
+                nativeToken: inputs.sellToken,
+            })
+            : null
+    const effectiveFallbackNativeReserveWei =
+        quote.quote?.selectedQuote
+            ? configuredNativeReserveWei
+            : getBootstrapNativeGasReserveWei({
+                balanceWei:
+                    catalog.nativeBalance.value ??
+                    0n,
+                fallbackReserveWei:
+                    configuredNativeReserveWei,
+            })
+
+    useEffect(() => {
+        if (
+            !nativeMaximumRequestedRef.current ||
+            !isNativeEvmToken(inputs.sellToken) ||
+            !quote.quote?.selectedQuote ||
+            estimatedNativeFeeWei == null
+        ) {
+            return
+        }
+
+        const amount =
+            getSpendableAmount(
+                inputs.sellToken,
+                catalog.nativeBalance.value,
+                {
+                    estimatedFeeWei: estimatedNativeFeeWei,
+                    fallbackReserveWei: configuredNativeReserveWei,
+                    gasBufferBps: nativeGasBufferBps,
+                    minimumGasBufferWei: minimumNativeGasBufferWei,
+                },
+            )
+        const units =
+            decimalToUnits(
+                amount,
+                Number(inputs.sellToken?.decimals ?? 18),
+            )
+
+        nativeMaximumRequestedRef.current = false
+
+        if (
+            units !== null &&
+            units !== inputs.activeAmountIn
+        ) {
+            inputs.setTokenAmountFromUnits('sell', units)
+        }
+    }, [
+        catalog.nativeBalance.value,
+        configuredNativeReserveWei,
+        estimatedNativeFeeWei,
+        inputs.activeAmountIn,
+        inputs.sellToken,
+        inputs.setTokenAmountFromUnits,
+        minimumNativeGasBufferWei,
+        nativeGasBufferBps,
+        quote.quote,
+    ])
     const eligibility = deriveSwapEligibility({
         walletState,
         walletAddress: walletState.address,
@@ -350,6 +437,9 @@ export function useSwapController() {
         transactionStatus: receipt.transactionStatus,
         nativeBalanceValue: catalog.nativeBalance.value,
         nativeGasReserve: walletConfig.nativeGasReserve,
+        nativeEstimatedFeeWei: estimatedNativeFeeWei,
+        nativeGasBufferBps,
+        minimumNativeGasBufferWei,
         maxCostToInputBps: quoteConfig.maxCostToInputBps,
         swapChainId,
         sellChainId: routing.sellChainId,
@@ -469,26 +559,56 @@ export function useSwapController() {
     }, [execution.cancelSameChainExecution, review.handleOpenChange])
     const callbacks = {
         onSettingsChange: setSwapSettings,
-        onSellAmountChange: (event) => inputs.updateSellAmount(event.target.value),
-        onBuyAmountChange: (event) => inputs.updateBuyAmount(event.target.value),
+        onSellAmountChange: (event) => {
+            nativeMaximumRequestedRef.current = false
+            inputs.updateSellAmount(event.target.value)
+        },
+        onBuyAmountChange: (event) => {
+            nativeMaximumRequestedRef.current = false
+            inputs.updateBuyAmount(event.target.value)
+        },
         onOpenSellTokenSelector: () => catalog.selector.open('sell', inputs.sellToken),
         onOpenBuyTokenSelector: () => catalog.selector.open('buy', inputs.buyToken),
         onToggleSellDenomination: () => inputs.toggleDenomination('sell'),
         onToggleBuyDenomination: () => inputs.toggleDenomination('buy'),
-        onQuickAmountSelect: (value) => inputs.setTokenAmountFromUnits(
-            'sell', decimalToUnits(value, Number(inputs.sellToken?.decimals ?? 18)) ?? '0',
-        ),
+        onQuickAmountSelect: (value) => {
+            nativeMaximumRequestedRef.current = false
+            inputs.setTokenAmountFromUnits(
+                'sell',
+                decimalToUnits(
+                    value,
+                    Number(inputs.sellToken?.decimals ?? 18),
+                ) ?? '0',
+            )
+        },
         onUseMaximumBalance: () => {
-            inputs.setTokenAmountFromUnits('sell', decimalToUnits(
-                getSpendableAmount(inputs.sellToken, catalog.nativeBalance.value, quote.quote, walletConfig.nativeGasReserve),
-                Number(inputs.sellToken?.decimals ?? 18),
-            ) ?? '0')
+            nativeMaximumRequestedRef.current =
+                isNativeEvmToken(inputs.sellToken)
+
+            inputs.setTokenAmountFromUnits(
+                'sell',
+                decimalToUnits(
+                    getSpendableAmount(
+                        inputs.sellToken,
+                        catalog.nativeBalance.value,
+                        {
+                            estimatedFeeWei: estimatedNativeFeeWei,
+                            fallbackReserveWei: effectiveFallbackNativeReserveWei,
+                            gasBufferBps: nativeGasBufferBps,
+                            minimumGasBufferWei: minimumNativeGasBufferWei,
+                        },
+                    ),
+                    Number(inputs.sellToken?.decimals ?? 18),
+                ) ?? '0',
+            )
         },
         onSwitchTokens: () => {
+            nativeMaximumRequestedRef.current = false
             inputs.switchTokens()
             resetQuoteAndReview()
         },
         onTokenSelect: (token) => {
+            nativeMaximumRequestedRef.current = false
             inputs.selectToken({ token, side: catalog.selector.side, selectorChainId: catalog.selector.chainId })
             catalog.selector.close()
             resetQuoteAndReview()
@@ -528,29 +648,40 @@ export function useSwapController() {
     return { layoutStyle, header: viewModel.header, page: viewModel.page }
 }
 
-function getSpendableAmount(token, nativeBalanceWei, quote, nativeGasReserve) {
+function getSpendableAmount(
+    token,
+    nativeBalanceWei,
+    {
+        estimatedFeeWei = null,
+        fallbackReserveWei =
+        DEFAULT_NATIVE_GAS_RESERVE_WEI,
+        gasBufferBps =
+        DEFAULT_NATIVE_GAS_BUFFER_BPS,
+        minimumGasBufferWei =
+        DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
+    } = {},
+) {
     if (!token) return '0'
-    const transaction = quote?.selectedQuote?.transaction
-    let estimatedFeeWei = null
-    try {
-        if (transaction?.gas != null && transaction?.gasPrice != null) {
-            estimatedFeeWei = BigInt(transaction.gas) * BigInt(transaction.gasPrice)
-        }
-    } catch {
-        estimatedFeeWei = null
-    }
+
     return getSpendableTokenAmount({
         token,
-        nativeBalanceWei: nativeBalanceWei ?? 0n,
+        nativeBalanceWei:
+            nativeBalanceWei ??
+            0n,
         estimatedFeeWei,
-        fallbackReserveWei: parseNativeReserve(nativeGasReserve),
+        fallbackReserveWei,
+        gasBufferBps,
+        minimumGasBufferWei,
     })
 }
 
-function parseNativeReserve(value) {
+function parseNativeReserve(
+    value,
+    fallback = DEFAULT_NATIVE_GAS_RESERVE_WEI,
+) {
     try {
-        return parseEther(value)
+        return parseEther(String(value))
     } catch {
-        return DEFAULT_NATIVE_GAS_RESERVE_WEI
+        return fallback
     }
 }
