@@ -1,7 +1,11 @@
 import { parseEther } from 'viem'
 import {
+    DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
+    DEFAULT_NATIVE_GAS_BUFFER_BPS,
     DEFAULT_NATIVE_GAS_RESERVE_WEI,
+    getBootstrapNativeGasReserveWei,
     getNativeSpendableWei,
+    getQuoteEstimatedNativeFeeWei,
     getTokenBalanceWei,
     isNativeEvmToken,
 } from '../../../services/balances.js'
@@ -133,6 +137,7 @@ export function deriveSwapEligibility(input) {
         sellAmount, sellDisplayPrice, buyDisplayPrice, routingMode, crossChainMode, gaslessMode, executionMode,
         quote, activeQuote, activeQuoteStatus, currentCrossChainRoute, crossChainRouteExpired,
         crossChainExactOutputUnsupported, transactionStatus, nativeBalanceValue, nativeGasReserve,
+        nativeEstimatedFeeWei, nativeGasBufferBps, minimumNativeGasBufferWei,
         maxCostToInputBps, swapChainId, sellChainId, buyChainId, quoteSnapshot, quoteInputKey,
         prepaidRequired, prepaidEnabled, crossChainGasAssistExpected, crossChainGasAssistPreview,
     } = input
@@ -149,13 +154,69 @@ export function deriveSwapEligibility(input) {
         if (isNativeEvmToken(sellToken)) {
             let reserve = DEFAULT_NATIVE_GAS_RESERVE_WEI
             try {
-                reserve = parseEther(nativeGasReserve)
+                reserve = parseEther(String(nativeGasReserve))
             } catch {
                 reserve = DEFAULT_NATIVE_GAS_RESERVE_WEI
             }
-            sourceSpendableBalance = getNativeSpendableWei({ balanceWei: nativeBalanceValue ?? 0n, fallbackReserveWei: reserve })
+
+            const estimatedFeeWei =
+                nativeEstimatedFeeWei ??
+                (
+                    routingMode !== crossChainMode
+                        ? getQuoteEstimatedNativeFeeWei({
+                            quote,
+                            nativeToken: sellToken,
+                        })
+                        : null
+                )
+
+            const effectiveFallbackReserve =
+                routingMode !== crossChainMode &&
+                !quote?.selectedQuote
+                    ? getBootstrapNativeGasReserveWei({
+                        balanceWei:
+                            nativeBalanceValue ??
+                            0n,
+                        fallbackReserveWei:
+                            reserve,
+                    })
+                    : reserve
+
+            let minimumBuffer =
+                DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI
+            try {
+                if (
+                    minimumNativeGasBufferWei !== undefined &&
+                    minimumNativeGasBufferWei !== null
+                ) {
+                    minimumBuffer =
+                        BigInt(minimumNativeGasBufferWei)
+                }
+            } catch {
+                minimumBuffer =
+                    DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI
+            }
+
+            sourceSpendableBalance =
+                getNativeSpendableWei({
+                    balanceWei:
+                        nativeBalanceValue ??
+                        0n,
+                    estimatedFeeWei,
+                    fallbackReserveWei:
+                        effectiveFallbackReserve,
+                    gasBufferBps:
+                        Number.isFinite(
+                            Number(nativeGasBufferBps),
+                        )
+                            ? Number(nativeGasBufferBps)
+                            : DEFAULT_NATIVE_GAS_BUFFER_BPS,
+                    minimumGasBufferWei:
+                        minimumBuffer,
+                })
         } else {
-            sourceSpendableBalance = getTokenBalanceWei(sellToken)
+            sourceSpendableBalance =
+                getTokenBalanceWei(sellToken)
         }
     }
     const insufficientFunds = Boolean(walletState.isConnected && sellToken && hasActiveAmount &&

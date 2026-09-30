@@ -3,7 +3,8 @@ import {
     DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
     DEFAULT_NATIVE_GAS_BUFFER_BPS,
     DEFAULT_NATIVE_GAS_RESERVE_WEI,
-    convertUsdToNativeWei,
+    getBootstrapNativeGasReserveWei,
+    getQuoteEstimatedNativeFeeWei,
     getSpendableTokenAmount,
     isNativeEvmToken,
 } from '../../../services/balances.js'
@@ -44,75 +45,6 @@ function gasAssistFeeView(order, sellToken) {
         routeCostUsd: formatUsdMicros(fees.routeCostUsdMicros),
         allInCostUsd: formatUsdMicros(fees.allInCostUsdMicros),
     }
-}
-
-function positiveBigInt(value) {
-    if (
-        typeof value !== 'string' &&
-        typeof value !== 'number' &&
-        typeof value !== 'bigint'
-    ) {
-        return null
-    }
-
-    try {
-        const parsed = BigInt(value)
-
-        return parsed > 0n
-            ? parsed
-            : null
-    } catch {
-        return null
-    }
-}
-
-function trustedTokenUsdPrice(token) {
-    if (!token) return null
-
-    const confidence =
-        String(
-            token.priceConfidence ?? '',
-        )
-            .trim()
-            .toLowerCase()
-
-    /*
-     * Preserve the existing trusted-price policy. Market-only and explicitly
-     * untrusted values must not control transaction balance calculations.
-     */
-    if (
-        confidence === 'market' ||
-        confidence === 'untrusted'
-    ) {
-        return null
-    }
-
-    const candidate =
-        token.trustedPriceUSD ??
-        token.priceUSD ??
-        null
-
-    if (
-        typeof candidate !== 'string' &&
-        typeof candidate !== 'number'
-    ) {
-        return null
-    }
-
-    const normalized =
-        String(candidate).trim()
-
-    if (
-        !/^\d+(?:\.\d+)?$/u.test(
-            normalized,
-        )
-    ) {
-        return null
-    }
-
-    return Number(normalized) > 0
-        ? normalized
-        : null
 }
 
 function unavailableWalletChainNotice(chainIds = []) {
@@ -214,81 +146,22 @@ export function createSwapViewModel(context) {
     const activeQuoteStatus = routing.routingMode === routing.modes.CROSS_CHAIN
         ? crossChain.quoteStatus
         : gasAssist.activeQuoteStatus
-    const estimatedSwapFeeWei = (() => {
-        const selectedQuote =
-            activeQuote?.selectedQuote ??
-            quote.quote?.selectedQuote ??
-            null
-
-        if (!selectedQuote) {
-            return null
-        }
-
-        const transaction =
-            selectedQuote.transaction ??
-            {}
-
-        const gasUnits =
-            positiveBigInt(
-                transaction.gas ??
-                selectedQuote.estimatedGas,
-            )
-
-        const gasPriceWei =
-            positiveBigInt(
-                transaction.gasPrice ??
-                transaction.maxFeePerGas ??
-                selectedQuote.gasPrice ??
-                selectedQuote.estimatedGasPrice,
-            )
-
-        /*
-         * Prefer exact native-unit math when the provider supplies gas units and
-         * gas price.
-         */
-        if (
-            gasUnits &&
-            gasPriceWei
-        ) {
-            return (
-                gasUnits *
-                gasPriceWei
-            )
-        }
-
-        /*
-         * Current normalized Uniswap quotes usually expose estimatedGasUsd but
-         * omit gasPrice. Convert that USD fee back into BNB using the trusted
-         * native-token price.
-         */
-        const nativePriceToken =
-            nativeToken ??
-            (
-                isNativeEvmToken(
-                    sellToken,
-                )
-                    ? sellToken
-                    : null
-            )
-
-        return convertUsdToNativeWei({
-            usdAmount:
-            selectedQuote
-                .estimatedGasUsd,
-
-            nativeUsdPrice:
-                trustedTokenUsdPrice(
-                    nativePriceToken,
-                ),
-
-            nativeDecimals:
-                Number(
-                    nativePriceToken
-                        ?.decimals ??
-                    18,
-                ),
+    const selectedQuote =
+        activeQuote?.selectedQuote ??
+        quote.quote?.selectedQuote ??
+        null
+    const nativePriceToken =
+        nativeToken ??
+        (
+            isNativeEvmToken(sellToken)
+                ? sellToken
+                : null
+        )
+    const estimatedSwapFeeWei =
+        getQuoteEstimatedNativeFeeWei({
+            quote: selectedQuote,
+            nativeToken: nativePriceToken,
         })
-    })()
 
     const fallbackNativeReserveWei =
         (() => {
@@ -301,6 +174,17 @@ export function createSwapViewModel(context) {
                 return DEFAULT_NATIVE_GAS_RESERVE_WEI
             }
         })()
+
+    const effectiveFallbackNativeReserveWei =
+        selectedQuote
+            ? fallbackNativeReserveWei
+            : getBootstrapNativeGasReserveWei({
+                balanceWei:
+                    catalog.nativeBalance.value ??
+                    0n,
+                fallbackReserveWei:
+                    fallbackNativeReserveWei,
+            })
 
     const minimumNativeGasBufferWei =
         (() => {
@@ -349,7 +233,7 @@ export function createSwapViewModel(context) {
                 estimatedSwapFeeWei,
 
                 fallbackReserveWei:
-                fallbackNativeReserveWei,
+                effectiveFallbackNativeReserveWei,
 
                 gasBufferBps:
                 nativeGasBufferBps,

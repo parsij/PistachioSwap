@@ -250,3 +250,102 @@ describe('cross-chain economic safety', () => {
         expect(result.action.type).toBe('economically-invalid')
     })
 })
+
+
+describe('same-chain native gas reserve', () => {
+    const nativeEth = {
+        address: '0x0000000000000000000000000000000000000000',
+        chainId: 10,
+        isNative: true,
+        decimals: 18,
+        symbol: 'ETH',
+        trustedPriceUSD: '3000',
+        priceUSD: '3000',
+        priceConfidence: 'trusted',
+    }
+
+    function nativeEligibility(overrides = {}) {
+        const quote = {
+            selectedQuote: {
+                chainId: 10,
+                sellToken: nativeEth.address,
+                buyToken: erc20Token.address,
+                sellAmount: '70000000000000',
+                buyAmount: '200000',
+                minimumBuyAmount: '198000',
+                maximumSellAmount: '70000000000000',
+                estimatedGas: '150000',
+                estimatedGasUsd: '0.003',
+                transaction: {
+                    to: '0x2222222222222222222222222222222222222222',
+                    data: '0x1234',
+                    value: '70000000000000',
+                    gas: '150000',
+                },
+                expiresAt: '2999-01-01T00:00:00.000Z',
+            },
+        }
+
+        return deriveSwapEligibility({
+            walletState: {
+                isConnected: true,
+                isCorrectNetwork: true,
+            },
+            walletAddress: '0x0000000000000000000000000000000000000001',
+            sellToken: nativeEth,
+            buyToken: {
+                ...erc20Token,
+                chainId: 10,
+                decimals: 6,
+            },
+            activeAmountSide: 'sell',
+            activeAmountIn: '70000000000000',
+            activeBuyAmountIn: null,
+            sellAmount: '0.00007',
+            buyAmount: '0.2',
+            sellDisplayPrice: '3000',
+            buyDisplayPrice: '1',
+            routingMode: 'normal',
+            crossChainMode: 'cross-chain',
+            gaslessMode: 'gasless',
+            executionMode: 'normal',
+            quote,
+            activeQuote: quote,
+            activeQuoteStatus: 'success',
+            currentCrossChainRoute: null,
+            crossChainRouteExpired: false,
+            crossChainExactOutputUnsupported: false,
+            transactionStatus: 'idle',
+            nativeBalanceValue: 83_000_000_000_000n,
+            nativeGasReserve: '0.00005',
+            nativeGasBufferBps: 2500,
+            minimumNativeGasBufferWei: 5_000_000_000_000n,
+            maxCostToInputBps: 5_000,
+            swapChainId: 10,
+            sellChainId: 10,
+            buyChainId: 10,
+            quoteSnapshot: null,
+            quoteInputKey: null,
+            prepaidRequired: false,
+            prepaidEnabled: false,
+            crossChainGasAssistExpected: false,
+            ...overrides,
+        })
+    }
+
+    it('uses the live quote fee instead of the fixed native fallback reserve', () => {
+        const result = nativeEligibility()
+
+        expect(result.insufficientFunds).toBe(false)
+    })
+
+    it('caps the fixed reserve only while bootstrapping a quote', () => {
+        const result = nativeEligibility({
+            quote: null,
+            activeQuote: null,
+            activeQuoteStatus: 'loading',
+        })
+
+        expect(result.insufficientFunds).toBe(false)
+    })
+})

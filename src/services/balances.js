@@ -23,6 +23,14 @@ export const DEFAULT_NATIVE_GAS_BUFFER_BPS = 2_500
 export const DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI =
     parseEther('0.000005')
 
+/*
+ * Before a live quote exists, the configured absolute fallback is only a
+ * bootstrap allowance. Cap it to 10% of the wallet balance so a fixed native
+ * amount cannot consume most of a small wallet on low-fee networks. A real
+ * quote replaces this bootstrap reserve before review/execution.
+ */
+export const DEFAULT_NATIVE_GAS_BOOTSTRAP_MAX_BPS = 1_000
+
 const BPS_DENOMINATOR = 10_000n
 const USD_SCALE_DECIMALS = 18
 
@@ -173,6 +181,157 @@ export function convertUsdToNativeWei({
 
         nativePriceScaled,
     )
+}
+
+
+export function getTrustedTokenUsdPrice(token) {
+    if (!token) return null
+
+    const confidence =
+        String(token.priceConfidence ?? '')
+            .trim()
+            .toLowerCase()
+
+    if (
+        confidence === 'market' ||
+        confidence === 'untrusted'
+    ) {
+        return null
+    }
+
+    const candidate =
+        token.trustedPriceUSD ??
+        token.priceUSD ??
+        null
+
+    if (
+        typeof candidate !== 'string' &&
+        typeof candidate !== 'number'
+    ) {
+        return null
+    }
+
+    const normalized = String(candidate).trim()
+
+    if (!/^\d+(?:\.\d+)?$/u.test(normalized)) {
+        return null
+    }
+
+    return Number(normalized) > 0
+        ? normalized
+        : null
+}
+
+function positiveBigInt(value) {
+    if (
+        typeof value !== 'string' &&
+        typeof value !== 'number' &&
+        typeof value !== 'bigint'
+    ) {
+        return null
+    }
+
+    try {
+        const parsed = BigInt(value)
+        return parsed > 0n ? parsed : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * Returns the best native-unit fee estimate exposed by a normalized swap
+ * quote. Direct gas-unit math wins when available; otherwise the provider's
+ * gas USD estimate is converted using only a trusted native-token price.
+ */
+export function getQuoteEstimatedNativeFeeWei({
+                                                  quote,
+                                                  nativeToken,
+                                              } = {}) {
+    const selectedQuote =
+        quote?.selectedQuote ??
+        quote ??
+        null
+
+    if (!selectedQuote) return null
+
+    const transaction =
+        selectedQuote.transaction ??
+        {}
+
+    const gasUnits =
+        positiveBigInt(
+            transaction.gas ??
+            selectedQuote.estimatedGas,
+        )
+
+    const gasPriceWei =
+        positiveBigInt(
+            transaction.gasPrice ??
+            transaction.maxFeePerGas ??
+            selectedQuote.gasPrice ??
+            selectedQuote.estimatedGasPrice,
+        )
+
+    if (gasUnits && gasPriceWei) {
+        return gasUnits * gasPriceWei
+    }
+
+    return convertUsdToNativeWei({
+        usdAmount:
+        selectedQuote.estimatedGasUsd,
+
+        nativeUsdPrice:
+        getTrustedTokenUsdPrice(nativeToken),
+
+        nativeDecimals:
+        Number(nativeToken?.decimals ?? 18),
+    })
+}
+
+/**
+ * Caps the no-quote bootstrap reserve to a fraction of the current balance.
+ * This cap must not be used after a quote exists without a usable fee estimate;
+ * in that case callers should keep the full configured fallback reserve.
+ */
+export function getBootstrapNativeGasReserveWei({
+                                                    balanceWei,
+                                                    fallbackReserveWei =
+                                                    DEFAULT_NATIVE_GAS_RESERVE_WEI,
+                                                    maxBalanceBps =
+                                                    DEFAULT_NATIVE_GAS_BOOTSTRAP_MAX_BPS,
+                                                } = {}) {
+    const balance =
+        toNonNegativeBigInt(balanceWei)
+
+    const fallback =
+        toNonNegativeBigInt(
+            fallbackReserveWei,
+            DEFAULT_NATIVE_GAS_RESERVE_WEI,
+        )
+
+    const normalizedBps =
+        Number.isFinite(Number(maxBalanceBps))
+            ? Math.min(
+                10_000,
+                Math.max(
+                    0,
+                    Math.trunc(Number(maxBalanceBps)),
+                ),
+            )
+            : DEFAULT_NATIVE_GAS_BOOTSTRAP_MAX_BPS
+
+    const balanceCap =
+        ceilDivide(
+            balance *
+            BigInt(normalizedBps),
+
+            BPS_DENOMINATOR,
+        )
+
+    return fallback < balanceCap
+        ? fallback
+        : balanceCap
 }
 
 export function getNativeGasReserveWei({
