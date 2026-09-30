@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-    encodeFunctionData, erc20Abi, getAddress, hashTypedData, numberToHex,
+    encodeFunctionData, erc20Abi, getAddress, hashTypedData, numberToHex, serializeSignature,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
@@ -167,7 +167,12 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                     } else {
                         expect(previous).toBeUndefined()
                     }
-                    return `0x${'12'.repeat(64)}1b`
+                    const authorization = await signer.signAuthorization({
+                        contractAddress: delegate,
+                        chainId: 56,
+                        nonce: 0,
+                    })
+                    return serializeSignature(authorization)
                 }),
                 signTypedData: vi.fn(async ({ account, ...typed }) => {
                     expect(getAddress(account)).toBe(sender)
