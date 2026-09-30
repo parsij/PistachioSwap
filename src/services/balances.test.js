@@ -2,7 +2,9 @@ import { parseEther, parseUnits } from 'viem'
 import { describe, expect, it } from 'vitest'
 
 import {
+    getBootstrapNativeGasReserveWei,
     getNativeSpendableWei,
+    getQuoteEstimatedNativeFeeWei,
     getSpendableTokenAmount,
     isNativeBnbToken,
     isNativeEvmToken,
@@ -62,5 +64,54 @@ describe('exact spendable balance math', () => {
             balanceWei: parseUnits('0.001', 18),
             fallbackReserveWei: parseUnits('0.001', 18),
         })).toBe(0n)
+    })
+
+    it('converts a provider gas USD estimate into native wei on low-fee EVM chains', () => {
+        const fee = getQuoteEstimatedNativeFeeWei({
+            quote: {
+                selectedQuote: {
+                    estimatedGas: '150000',
+                    estimatedGasUsd: '0.003',
+                    transaction: {
+                        gas: '150000',
+                    },
+                },
+            },
+            nativeToken: {
+                decimals: 18,
+                trustedPriceUSD: '3000',
+                priceConfidence: 'trusted',
+            },
+        })
+
+        expect(fee).toBe(1_000_000_000_000n)
+    })
+
+    it('prefers direct EIP-1559 gas math when maxFeePerGas is available', () => {
+        const fee = getQuoteEstimatedNativeFeeWei({
+            quote: {
+                selectedQuote: {
+                    transaction: {
+                        gas: '100000',
+                        maxFeePerGas: '2000000000',
+                    },
+                    estimatedGasUsd: '999',
+                },
+            },
+            nativeToken: {
+                decimals: 18,
+                trustedPriceUSD: '3000',
+                priceConfidence: 'trusted',
+            },
+        })
+
+        expect(fee).toBe(200_000_000_000_000n)
+    })
+
+    it('caps only the pre-quote bootstrap reserve for a small native balance', () => {
+        expect(getBootstrapNativeGasReserveWei({
+            balanceWei: 83_000_000_000_000n,
+            fallbackReserveWei: 50_000_000_000_000n,
+        })).toBe(8_300_000_000_000n)
     })
 })
