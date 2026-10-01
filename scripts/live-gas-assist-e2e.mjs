@@ -1152,7 +1152,7 @@ async function main() {
         allowance:
             await allowanceOf(
                 publicClient,
-                USDT,
+                USDC,
                 sender,
                 approvalSpender,
             ),
@@ -1172,7 +1172,7 @@ async function main() {
     )
     requireCondition(
         after.allowance === 0n,
-        `USDT allowance cleanup failed; remaining allowance is ${after.allowance}.`,
+        `USDC allowance cleanup failed; remaining allowance is ${after.allowance}.`,
     )
     requireCondition(
         delegationFromCode(after.code) ===
