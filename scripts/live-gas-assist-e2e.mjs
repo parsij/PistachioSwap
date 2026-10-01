@@ -29,6 +29,9 @@ import {
 /*
  * Manual production-only Gas Assist acceptance.
  *
+ * Default live direction: 0.15 USDC -> USDT on BNB Chain, using the
+ * disposable zero-BNB test wallet.
+ *
  * This script deliberately has no default signing key and refuses to run
  * unless the operator explicitly confirms BNB mainnet. It never prints the
  * private key, session token, EIP-7702 signature, UserOperation signature, or
@@ -43,7 +46,7 @@ const EXECUTOR = '0xe8852b674174ed1250F06eD97e64fC6fDe5B20FB'
 const TEST_WALLET = '0x880c39159919700166E4612d4b7Aa344fc21CD6F'
 const USDT = '0x55d398326f99059ff775485246999027b3197955'
 const USDC = '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d'
-const GROSS_INPUT_RAW = 200_000_000_000_000_000n
+const GROSS_INPUT_RAW = 150_000_000_000_000_000n
 const SLIPPAGE_BPS = 50
 const API_BASE = 'https://pistachioswap.com/api'
 const BUNDLER_RPC = 'https://pistachioswap.com/api/v1/bundler'
@@ -396,8 +399,8 @@ async function main() {
         `Test wallet must start with exactly 0 BNB; found ${formatEther(before.bnb)} BNB.`,
     )
     requireCondition(
-        before.usdt >= GROSS_INPUT_RAW,
-        `Test wallet has only ${formatUnits(before.usdt, 18)} USDT.`,
+        before.usdc >= GROSS_INPUT_RAW,
+        `Test wallet has only ${formatUnits(before.usdc, 18)} USDC; this E2E requires 0.15 USDC.`,
     )
 
     console.log(
@@ -420,8 +423,8 @@ async function main() {
             method: 'POST',
             body: {
                 walletAddress: sender,
-                sellToken: USDT,
-                buyToken: USDC,
+                sellToken: USDC,
+                buyToken: USDT,
                 grossInputAmount:
                     GROSS_INPUT_RAW.toString(),
                 slippageBps: SLIPPAGE_BPS,
@@ -497,8 +500,8 @@ async function main() {
             token: session.sessionToken,
             idempotencyKey: randomUUID(),
             body: {
-                sellToken: USDT,
-                buyToken: USDC,
+                sellToken: USDC,
+                buyToken: USDT,
                 grossInputAmount:
                     GROSS_INPUT_RAW.toString(),
                 slippageBps:
@@ -1177,12 +1180,12 @@ async function main() {
         'Final EIP-7702 delegate is not the trusted Simple7702Account.',
     )
     requireCondition(
-        after.usdt < before.usdt,
-        'USDT balance did not decrease.',
+        after.usdc < before.usdc,
+        'USDC balance did not decrease.',
     )
     requireCondition(
-        after.usdc > before.usdc,
-        'USDC balance did not increase.',
+        after.usdt > before.usdt,
+        'USDT balance did not increase.',
     )
 
     const actualGasCost =
