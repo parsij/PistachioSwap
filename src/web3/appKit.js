@@ -5,7 +5,10 @@ import '@fontsource/ubuntu/latin-400.css'
 import '@fontsource/ubuntu/latin-500.css'
 import '@fontsource/ubuntu/latin-700.css'
 import { createAppMetadata } from './appKitMetadata.js'
-import { APPKIT_CONNECTOR_TYPE_ORDER } from './appKitOptions.js'
+import {
+    APPKIT_CONNECTOR_TYPE_ORDER,
+    APPKIT_ENABLE_MOBILE_FULL_SCREEN,
+} from './appKitOptions.js'
 import {
     CURATED_EVM_CHAINS,
     getCuratedEvmChain,
@@ -72,7 +75,7 @@ function initializeAppKit() {
         enableReconnect: true,
         enableNetworkSwitch: true,
         allowUnsupportedChain: false,
-        enableMobileFullScreen: true,
+        enableMobileFullScreen: APPKIT_ENABLE_MOBILE_FULL_SCREEN,
         allWallets: 'SHOW',
         features: {
             swaps: false,

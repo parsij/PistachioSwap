@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
 
 import {
@@ -47,7 +47,26 @@ function usesRiskPresentation(token) {
  */
 export function ChainSelector({ chainId, onChange }) {
     const [open, setOpen] = useState(false)
+    const controlRef = useRef(null)
     const selectedChain = chainId === 'all' ? null : getCuratedEvmChain(chainId)
+
+    useEffect(() => {
+        if (!open) return undefined
+
+        function handleOutsidePointerDown(event) {
+            if (controlRef.current?.contains(event.target)) return
+            setOpen(false)
+        }
+
+        document.addEventListener('pointerdown', handleOutsidePointerDown, true)
+        return () => {
+            document.removeEventListener(
+                'pointerdown',
+                handleOutsidePointerDown,
+                true,
+            )
+        }
+    }, [open])
     const options = [{ id: 'all', name: 'All Chains', active: true }, ...CURATED_EVM_CHAINS.map((chain) => ({
         id: chain.id,
         name: chain.name,
@@ -66,7 +85,7 @@ export function ChainSelector({ chainId, onChange }) {
         }
     }
     return (
-        <div className="ps-network-control">
+        <div ref={controlRef} className="ps-network-control">
             <button type="button" className="ps-network-trigger" aria-label="Token network" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)} onKeyDown={handleKeyDown}>
                 {selectedChain ? <ChainIcon chainId={selectedChain.id} name={selectedChain.name} /> : <AllChainsIcon />}
                 <span>{selectedChain?.name ?? 'All Chains'}</span><ChevronDownIcon />

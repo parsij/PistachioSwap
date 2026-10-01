@@ -24,15 +24,12 @@
         box-shadow: 0 -18px 52px rgb(0 0 0 / 38%);
         transform: translate(-50%, var(--wallet-sheet-drag-y)) !important;
         transition: transform 190ms cubic-bezier(.22, 1, .36, 1);
-        will-change: transform;
+        will-change: auto;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog.is-dragging {
         transition: none;
-    }
-
-    .wallet-dialog.wallet-account-dialog.uni-wallet-dialog.is-dismissing {
-        transition: transform 180ms cubic-bezier(.4, 0, 1, 1);
+        will-change: transform;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog .uni-wallet-shell {

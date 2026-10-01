@@ -504,11 +504,29 @@ button:disabled {
 }
 
 .brand-menu-handle {
+    display: grid;
+    width: 96px;
+    height: 34px;
+    flex: 0 0 auto;
+    place-items: start center;
+    margin: 0 auto 2px;
+    padding-top: 8px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.brand-menu-handle::before {
     width: 36px;
     height: 4px;
-    margin: 2px auto 14px;
     border-radius: 999px;
     background: #4a4a4a;
+    content: '';
+}
+
+.brand-menu-handle:active {
+    cursor: grabbing;
 }
 
 .brand-menu-app-section {

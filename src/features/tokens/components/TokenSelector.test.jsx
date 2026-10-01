@@ -842,6 +842,18 @@ describe('TokenSelector wallet rows', () => {
             .toBe(true)
     })
 
+    it('closes the chain list when pressing elsewhere inside the token selector', () => {
+        renderSelector()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Token network' }))
+        expect(screen.getByRole('listbox', { name: 'Token network' })).toBeTruthy()
+
+        fireEvent.pointerDown(screen.getByRole('heading', { name: 'Select a token' }))
+
+        expect(screen.queryByRole('listbox', { name: 'Token network' })).toBeNull()
+        expect(screen.getByRole('dialog', { name: /Select a token/ })).toBeTruthy()
+    })
+
     it('uses circular uncropped badges with canonical accessible network identity', () => {
         const css = readFileSync(resolve('src/features/tokens/components/TokenSelector.css'), 'utf8')
         expect(css).toMatch(/\.ps-token-network-badge\s*\{[\s\S]*?border-radius:\s*50%/)

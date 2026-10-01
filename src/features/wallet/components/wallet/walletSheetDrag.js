@@ -4,14 +4,15 @@ const HANDLE_SELECTOR = '.uni-wallet-mobile-close'
 let activeDrag = null
 let suppressNextClick = false
 let suppressResetTimer = 0
+let allowProgrammaticClose = false
 
 function getSheetFromHandle(handle) {
     return handle.closest(SHEET_SELECTOR)
 }
 
 function resetSheet(sheet) {
-    sheet.classList.remove('is-dragging', 'is-dismissing')
-    sheet.style.removeProperty('--wallet-sheet-drag-y')
+    sheet?.classList.remove('is-dragging')
+    sheet?.style.removeProperty('--wallet-sheet-drag-y')
 }
 
 function armClickSuppression() {
@@ -20,6 +21,13 @@ function armClickSuppression() {
     suppressResetTimer = window.setTimeout(() => {
         suppressNextClick = false
     }, 320)
+}
+
+function cancelActiveDrag() {
+    const drag = activeDrag
+    if (!drag) return
+    activeDrag = null
+    resetSheet(drag.sheet)
 }
 
 function beginDrag(event) {
@@ -85,18 +93,12 @@ function finishDrag(event, cancelled = false) {
     drag.sheet.classList.remove('is-dragging')
 
     if (shouldDismiss) {
-        drag.sheet.classList.add('is-dismissing')
-        drag.sheet.style.setProperty(
-            '--wallet-sheet-drag-y',
-            `${Math.max(window.innerHeight, drag.distance + drag.sheet.offsetHeight)}px`,
-        )
-
-        window.setTimeout(() => {
-            suppressNextClick = false
-            window.clearTimeout(suppressResetTimer)
-            drag.handle.click()
-            resetSheet(drag.sheet)
-        }, 190)
+        // Match outside-tap dismissal: clear the translated frame before
+        // closing instead of animating a duplicate-looking sheet off-screen.
+        resetSheet(drag.sheet)
+        allowProgrammaticClose = true
+        drag.handle.click()
+        allowProgrammaticClose = false
         return
     }
 
@@ -105,7 +107,14 @@ function finishDrag(event, cancelled = false) {
 }
 
 function suppressDraggedClick(event) {
-    if (!suppressNextClick || !event.target.closest?.(HANDLE_SELECTOR)) return
+    if (
+        allowProgrammaticClose ||
+        !suppressNextClick ||
+        !event.target.closest?.(HANDLE_SELECTOR)
+    ) {
+        return
+    }
+
     suppressNextClick = false
     window.clearTimeout(suppressResetTimer)
     event.preventDefault()
@@ -116,4 +125,11 @@ document.addEventListener('pointerdown', beginDrag, true)
 document.addEventListener('pointermove', moveDrag, { capture: true, passive: false })
 document.addEventListener('pointerup', (event) => finishDrag(event), true)
 document.addEventListener('pointercancel', (event) => finishDrag(event, true), true)
+document.addEventListener('lostpointercapture', (event) => {
+    if (activeDrag?.pointerId === event.pointerId) cancelActiveDrag()
+}, true)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) cancelActiveDrag()
+})
+window.addEventListener('blur', cancelActiveDrag)
 document.addEventListener('click', suppressDraggedClick, true)

@@ -148,6 +148,7 @@ describe('brand menu', () => {
         )
         expect(css).toMatch(/\.brand-menu-sheet\s*\{[^}]*border-radius:\s*24px 24px 0 0/)
         expect(css).toMatch(/\.brand-menu-backdrop\s*\{[^}]*align-items:\s*end/)
+        expect(css).toMatch(/\.brand-menu-handle\s*\{[^}]*touch-action:\s*none/)
         expect(css).toMatch(/\.brand-menu-products\s*\{[^}]*grid-template-columns:\s*repeat\(2/)
     })
 })

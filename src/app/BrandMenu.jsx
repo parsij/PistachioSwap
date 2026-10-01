@@ -6,7 +6,12 @@ import {
     Fuel,
     WalletCards,
 } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import {
+    AnimatePresence,
+    motion,
+    useDragControls,
+    useReducedMotion,
+} from 'motion/react'
 
 import { ChevronDownIcon, GitHubIcon, MenuIcon } from '../shared/components/AppIcons.jsx'
 
@@ -14,6 +19,8 @@ const LANDING_HREF = '/'
 // Keep in sync with the compact-header media query in src/index.css.
 const MOBILE_MEDIA = '(max-width: 1024px)'
 const HOVER_CLOSE_DELAY_MS = 160
+const MOBILE_SHEET_DISMISS_DISTANCE = 96
+const MOBILE_SHEET_DISMISS_VELOCITY = 650
 
 const APP_LINKS = [
     { href: '/swap/', label: 'Trade', Icon: ArrowLeftRight },
@@ -209,7 +216,14 @@ function BrandMenuFooter({ onNavigate }) {
     )
 }
 
-function BrandMenuPanel({ id, mobile, onNavigate, reducedMotion }) {
+function BrandMenuPanel({
+    id,
+    mobile,
+    onNavigate,
+    reducedMotion,
+    dragControls,
+    onMobileDragEnd,
+}) {
     const panelMotion = mobile
         ? {
             initial: { opacity: 0, y: reducedMotion ? 0 : 32 },
@@ -229,11 +243,28 @@ function BrandMenuPanel({ id, mobile, onNavigate, reducedMotion }) {
             aria-label="PistachioSwap"
             onClick={mobile ? (event) => event.stopPropagation() : undefined}
             {...panelMotion}
+            {...(mobile
+                ? {
+                    drag: 'y',
+                    dragControls,
+                    dragListener: false,
+                    dragConstraints: { top: 0, bottom: 0 },
+                    dragElastic: { top: 0, bottom: 0.24 },
+                    dragMomentum: false,
+                    onDragEnd: onMobileDragEnd,
+                }
+                : {})}
             transition={reducedMotion
                 ? { duration: 0 }
                 : { type: 'spring', stiffness: 520, damping: 40, mass: 0.72 }}
         >
-            {mobile ? <div className="brand-menu-handle" aria-hidden="true" /> : null}
+            {mobile ? (
+                <div
+                    className="brand-menu-handle"
+                    aria-hidden="true"
+                    onPointerDown={(event) => dragControls?.start(event)}
+                />
+            ) : null}
             <BrandMenuContents mobile={mobile} onNavigate={onNavigate} />
             <BrandMenuFooter onNavigate={onNavigate} />
         </motion.nav>
@@ -249,6 +280,7 @@ function BrandMenuPanel({ id, mobile, onNavigate, reducedMotion }) {
 export default function BrandMenu({ name }) {
     const mobile = useMobileViewport()
     const reducedMotion = useReducedMotion()
+    const mobileDragControls = useDragControls()
     const [open, setOpen] = useState(false)
     const menuId = useId()
     const rootRef = useRef(null)
@@ -266,6 +298,15 @@ export default function BrandMenu({ name }) {
     }, [cancelScheduledClose])
 
     useEffect(() => () => cancelScheduledClose(), [cancelScheduledClose])
+
+    const handleMobileDragEnd = useCallback((_event, info) => {
+        if (
+            info.offset.y >= MOBILE_SHEET_DISMISS_DISTANCE ||
+            info.velocity.y >= MOBILE_SHEET_DISMISS_VELOCITY
+        ) {
+            closeMenu()
+        }
+    }, [closeMenu])
 
     useEffect(() => {
         if (!open) return undefined
@@ -334,6 +375,8 @@ export default function BrandMenu({ name }) {
                             mobile
                             onNavigate={closeMenu}
                             reducedMotion={reducedMotion}
+                            dragControls={mobileDragControls}
+                            onMobileDragEnd={handleMobileDragEnd}
                         />
                     </motion.div>
                 ) : null}
