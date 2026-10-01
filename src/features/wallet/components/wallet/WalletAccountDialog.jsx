@@ -24,7 +24,6 @@ import { useDisconnect } from '#wallet-runtime'
 import ReceiveDialog from './ReceiveDialog.jsx'
 import SendAssetDialog from './SendAssetDialog.jsx'
 import WalletAssetList from './WalletAssetList.jsx'
-import PendingWalletOperation from './PendingWalletOperation.jsx'
 import { WalletAvatar } from './WalletAccountButton.jsx'
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
 import { shortenAddress } from '../../../../services/address.js'
@@ -449,7 +448,6 @@ export default function WalletAccountDialog({
                 <section className="uni-wallet-identity">
                     <div className="uni-wallet-topline">
                         <WalletAvatar address={address} size="md" />
-                        <PendingWalletOperation walletAddress={address} />
                         <div className="uni-wallet-controls">
                             <img
                                 src="/icons/PistachioLogo.svg"

@@ -7,6 +7,7 @@ import TokenSelectorOverlay from '../../tokens/components/TokenSelectorOverlay.j
 import SameChainReviewDialog from './SameChainReviewDialog.jsx'
 import GasAssistDialogs from '../../gas-assist/components/GasAssistDialogs.jsx'
 import CrossChainReviewDialog from '../../cross-chain/components/CrossChainReviewDialog.jsx'
+import PendingWalletOperation from '../../wallet/components/wallet/PendingWalletOperation.jsx'
 
 const PasskeyVaultTestPanel = import.meta.env.DEV
     ? lazy(() => import('../../passkey/components/PasskeyVaultTestPanel.jsx'))
@@ -18,7 +19,7 @@ const PasskeyVaultTestPanel = import.meta.env.DEV
  * @returns {import('react').ReactElement} Swap page, feature dialogs, and wallet/passkey overlays.
  * @sideEffects Presentation children emit callbacks; network/wallet behavior remains in feature controllers.
  */
-export default function SwapPage({ toolbar, card, tokenSelector, sameChainReview, gasAssistDialogs, crossChainReview }) {
+export default function SwapPage({ toolbar, card, tokenSelector, sameChainReview, gasAssistDialogs, crossChainReview, operationStatus }) {
     return (
         <>
             {PasskeyVaultTestPanel && (
@@ -26,6 +27,7 @@ export default function SwapPage({ toolbar, card, tokenSelector, sameChainReview
                     <PasskeyVaultTestPanel />
                 </Suspense>
             )}
+            <PendingWalletOperation walletAddress={operationStatus?.walletAddress ?? null} />
             <section className="swap-root">
                 <SwapToolbar {...toolbar} />
                 <SwapCard {...card} />

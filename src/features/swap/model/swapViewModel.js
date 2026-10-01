@@ -376,6 +376,9 @@ export function createSwapViewModel(context) {
             },
         },
         page: {
+            operationStatus: {
+                walletAddress: walletState.address ?? null,
+            },
             toolbar: {
                 tabs,
                 activeTab: inputs.activeTab,
