@@ -152,7 +152,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
     })
 
     it.each(['0x', `0xef0100${delegate.slice(2)}`, `0xef0100${treasury.slice(2)}`])(
-        'performs stub, estimate, sponsor, final local signing and direct submission for code %s',
+        'always includes a fresh EIP-7702 auth with factory 0x7702 and submits for code %s',
         async (onChainCode) => {
             const requests = []
             let locallySignedHash
@@ -248,22 +248,15 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(requests[sendIndex].body.params[0].factory).toBe('0x7702')
             const estimateAuth = requests[estimateIndex].body.params[0].eip7702Auth
             const sendAuth = requests[sendIndex].body.params[0].eip7702Auth
-            const alreadyTrusted = onChainCode.toLowerCase() ===
-                `0xef0100${delegate.slice(2).toLowerCase()}`
-            if (alreadyTrusted) {
-                expect(estimateAuth).toBeUndefined()
-                expect(sendAuth).toBeUndefined()
-            } else {
-                expect(estimateAuth).toMatchObject({
-                    chainId: '0x38',
-                    address: delegate,
-                    nonce: '0x0',
-                })
-                expect(sendAuth).toEqual(estimateAuth)
-                expect(estimateAuth.r).toHaveLength(66)
-                expect(estimateAuth.s).toHaveLength(66)
-                expect(['0x0', '0x1']).toContain(estimateAuth.yParity)
-            }
+            expect(estimateAuth).toMatchObject({
+                chainId: '0x38',
+                address: delegate,
+                nonce: '0x0',
+            })
+            expect(sendAuth).toEqual(estimateAuth)
+            expect(estimateAuth.r).toHaveLength(66)
+            expect(estimateAuth.s).toHaveLength(66)
+            expect(['0x0', '0x1']).toContain(estimateAuth.yParity)
             expect(requests[sendIndex].body.params[0].signature).toHaveLength(132)
             expect(requests[sendIndex].body.params[0].maxPriorityFeePerGas).toBe('0x3b9aca00')
             expect(requests[sendIndex].body.params[0].maxFeePerGas).toBe('0x77359400')
@@ -271,9 +264,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(requests.filter((r) => r.url.startsWith('http://localhost:3001')).every(
                 (r) => !JSON.stringify(r.body).includes(locallySignedHash),
             )).toBe(true)
-            expect(walletClient.request).toHaveBeenCalledTimes(
-                onChainCode.toLowerCase() === `0xef0100${delegate.slice(2).toLowerCase()}` ? 0 : 1,
-            )
+            expect(walletClient.request).toHaveBeenCalledTimes(1)
         },
     )
 })

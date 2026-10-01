@@ -380,7 +380,7 @@ async function delegationState(publicRpc, sender, delegate, signal) {
     const code = await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)
     return classifyDelegationCode(code, delegate)
 }
-async function authorizationForFirstUse(walletClient, publicRpc, sender, delegate, state, signal) {
+async function authorizationForBundler7702(walletClient, publicRpc, sender, delegate, state, signal) {
     const nonce = quantity(await rpc(publicRpc, 'eth_getTransactionCount', [sender, 'latest'], signal), 'EOA authorization nonce', (1n << 64n) - 1n)
     if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EOA authorization nonce exceeds supported precision.')
     const authRequest = {
@@ -457,9 +457,19 @@ export async function submitSelfHostedPaymasterUserOperation({
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
     const delegation = await delegationState(settings.publicRpc, sender, settings.delegate, signal)
-    const eip7702Auth = delegation.status === 'requires-authorization'
-        ? await authorizationForFirstUse(walletClient, settings.publicRpc, sender, settings.delegate, delegation, signal)
-        : null
+    // ERC-7769/Alto requires eip7702Auth whenever the public UserOperation
+    // carries factory=0x7702. That remains true when the sender is already
+    // delegated to the same trusted implementation, so sign a fresh
+    // same-delegate authorization at the current EOA nonce for every such
+    // UserOperation. The backend never receives this authorization.
+    const eip7702Auth = await authorizationForBundler7702(
+        walletClient,
+        settings.publicRpc,
+        sender,
+        settings.delegate,
+        delegation,
+        signal,
+    )
     const encodedNonce = await rpc(settings.publicRpc, 'eth_call', [{
         to: settings.entryPoint,
         data: encodeFunctionData({

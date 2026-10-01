@@ -582,124 +582,112 @@ async function main() {
             settings.delegate,
         )
 
-    let eip7702Auth = null
+    // Alto requires an EIP-7702 authorization whenever factory=0x7702,
+    // including when the wallet already delegates to this exact implementation.
+    const eoaNonceHex = await rpc(
+        PUBLIC_RPC,
+        'eth_getTransactionCount',
+        [sender, 'latest'],
+    )
 
-    if (
-        delegation.status ===
-        'requires-authorization'
-    ) {
-        const eoaNonceHex = await rpc(
+    const eoaNonce =
+        quantity(
+            eoaNonceHex,
+            'EOA authorization nonce',
+        )
+
+    requireCondition(
+        eoaNonce <=
+        BigInt(Number.MAX_SAFE_INTEGER),
+        'EOA nonce exceeds safe authorization precision.',
+    )
+
+    const signed =
+        await account.signAuthorization({
+            contractAddress:
+                settings.delegate,
+            chainId: CHAIN_ID,
+            nonce: Number(eoaNonce),
+        })
+
+    const signedAuthorization = {
+        chainId: CHAIN_ID,
+        address: settings.delegate,
+        nonce: Number(eoaNonce),
+        yParity: signed.yParity,
+        r: signed.r,
+        s: signed.s,
+    }
+
+    const recovered =
+        await recoverAuthorizationAddress({
+            authorization:
+                signedAuthorization,
+        })
+
+    requireCondition(
+        getAddress(recovered) === sender,
+        'Local EIP-7702 authorization recovery failed.',
+    )
+
+    const [
+        freshCode,
+        freshNonce,
+    ] = await Promise.all([
+        rpc(
+            PUBLIC_RPC,
+            'eth_getCode',
+            [sender, 'latest'],
+        ),
+        rpc(
             PUBLIC_RPC,
             'eth_getTransactionCount',
             [sender, 'latest'],
-        )
+        ),
+    ])
 
-        const eoaNonce =
-            quantity(
-                eoaNonceHex,
-                'EOA authorization nonce',
-            )
-
-        requireCondition(
-            eoaNonce <=
-            BigInt(Number.MAX_SAFE_INTEGER),
-            'EOA nonce exceeds safe authorization precision.',
-        )
-
-        const signed =
-            await account.signAuthorization({
-                contractAddress:
-                    settings.delegate,
-                chainId: CHAIN_ID,
-                nonce: Number(eoaNonce),
-            })
-
-        const signedAuthorization = {
-            chainId: CHAIN_ID,
-            address: settings.delegate,
-            nonce: Number(eoaNonce),
-            yParity: signed.yParity,
-            r: signed.r,
-            s: signed.s,
-        }
-
-        const recovered =
-            await recoverAuthorizationAddress({
-                authorization:
-                    signedAuthorization,
-            })
-
-        requireCondition(
-            getAddress(recovered) === sender,
-            'Local EIP-7702 authorization recovery failed.',
-        )
-
-        const [
-            freshCode,
+    requireCondition(
+        String(freshCode).toLowerCase() ===
+        String(before.code).toLowerCase(),
+        'Delegation changed while signing authorization.',
+    )
+    requireCondition(
+        quantity(
             freshNonce,
-        ] = await Promise.all([
-            rpc(
-                PUBLIC_RPC,
-                'eth_getCode',
-                [sender, 'latest'],
+            'fresh EOA nonce',
+        ) === eoaNonce,
+        'EOA nonce changed while signing authorization.',
+    )
+
+    const eip7702Auth = {
+        chainId:
+            numberToHex(CHAIN_ID),
+        address:
+            settings.delegate,
+        nonce:
+            numberToHex(eoaNonce),
+        yParity:
+            numberToHex(
+                signed.yParity,
             ),
-            rpc(
-                PUBLIC_RPC,
-                'eth_getTransactionCount',
-                [sender, 'latest'],
-            ),
-        ])
-
-        requireCondition(
-            String(freshCode).toLowerCase() ===
-            String(before.code).toLowerCase(),
-            'Delegation changed while signing authorization.',
-        )
-        requireCondition(
-            quantity(
-                freshNonce,
-                'fresh EOA nonce',
-            ) === eoaNonce,
-            'EOA nonce changed while signing authorization.',
-        )
-
-        eip7702Auth = {
-            chainId:
-                numberToHex(CHAIN_ID),
-            address:
-                settings.delegate,
-            nonce:
-                numberToHex(eoaNonce),
-            yParity:
-                numberToHex(
-                    signed.yParity,
-                ),
-            r: signed.r,
-            s: signed.s,
-        }
-
-        console.log(
-            'EIP7702_AUTH',
-            JSON.stringify({
-                required: true,
-                previousDelegate:
-                    delegation.previousDelegate,
-                nonce:
-                    eoaNonce.toString(),
-                recoveredSigner:
-                    sender,
-            }),
-        )
-    } else {
-        console.log(
-            'EIP7702_AUTH',
-            JSON.stringify({
-                required: false,
-                currentDelegate:
-                    settings.delegate,
-            }),
-        )
+        r: signed.r,
+        s: signed.s,
     }
+
+    console.log(
+        'EIP7702_AUTH',
+        JSON.stringify({
+            requiredByBundlerFactoryFlag: true,
+            delegationStatus:
+                delegation.status,
+            previousDelegate:
+                delegation.previousDelegate,
+            nonce:
+                eoaNonce.toString(),
+            recoveredSigner:
+                sender,
+        }),
+    )
 
     const encodedNonce = await rpc(
         PUBLIC_RPC,
