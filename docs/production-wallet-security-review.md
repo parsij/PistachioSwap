@@ -45,7 +45,7 @@ Additional wallet secrets, backups, credentials, passwords, and recovery materia
 
 ### Proxy trust
 
-Forwarded client IP headers are not trusted by default. Production may set `TRUST_PROXY_HOPS` to the exact number of reverse-proxy hops, from 1 through 4. Do not use an unrestricted `trustProxy=true` configuration.
+Forwarded client IP headers are not trusted by default. Production may set `TRUST_PROXY_HOPS=1` only for the current nginx-to-API loopback topology. The API validates that the immediate proxy address is loopback before trusting forwarded client metadata. Multi-hop numeric proxy trust is rejected; add explicit trusted proxy addresses before introducing another proxy hop. Do not use an unrestricted `trustProxy=true` configuration.
 
 ## Production configuration
 

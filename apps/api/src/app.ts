@@ -65,22 +65,45 @@ function registerApiRoutes(app: FastifyInstance, prefix = '') {
     app.register(complianceRoutes, { prefix })
 }
 
-function readTrustProxy() {
+type TrustProxySetting =
+    | false
+    | ((address: string, hop: number) => boolean)
+
+function isLoopbackProxyAddress(address: string) {
+    const normalized = address.trim().toLowerCase()
+    return normalized === '127.0.0.1' ||
+        normalized === '::1' ||
+        normalized === '::ffff:127.0.0.1'
+}
+
+export function readTrustProxy(): TrustProxySetting {
     const raw = process.env.TRUST_PROXY_HOPS?.trim()
+    const host = process.env.HOST?.trim().toLowerCase()
+
     if (!raw) {
-        const host = process.env.HOST?.trim().toLowerCase()
         if (
             process.env.NODE_ENV === 'production' &&
             ['127.0.0.1', '::1', 'localhost'].includes(host ?? '')
-        ) return 1
+        ) {
+            return (address, hop) =>
+                hop === 0 &&
+                isLoopbackProxyAddress(address)
+        }
         return false
     }
+
     if (raw === '0') return false
+
     const hops = Number(raw)
-    if (!Number.isSafeInteger(hops) || hops < 1 || hops > 4) {
-        throw new Error('TRUST_PROXY_HOPS must be an integer from 0 through 4.')
+    if (!Number.isSafeInteger(hops) || hops !== 1) {
+        throw new Error(
+            'TRUST_PROXY_HOPS must be 0 or 1. Multi-hop numeric proxy trust is not supported securely.',
+        )
     }
-    return hops
+
+    return (address, hop) =>
+        hop === 0 &&
+        isLoopbackProxyAddress(address)
 }
 
 function readApiRateLimitMax() {
