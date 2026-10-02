@@ -23,7 +23,6 @@ import { useDisconnect } from '#wallet-runtime'
 
 import ReceiveDialog from './ReceiveDialog.jsx'
 import SendAssetDialog from './SendAssetDialog.jsx'
-import WalletAssetList from './WalletAssetList.jsx'
 import { WalletAvatar } from './WalletAccountButton.jsx'
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
 import { shortenAddress } from '../../../../services/address.js'
@@ -410,10 +409,28 @@ export default function WalletAccountDialog({
             setReceiveOpen(true)
             return
         }
-        if (['overview', 'portfolio', 'activity'].includes(action)) {
+        if (action === 'portfolio') {
+            navigateToPortfolio()
+            return
+        }
+        if (['overview', 'activity'].includes(action)) {
             setView(action)
         }
     }, [open, requestedAction?.action, requestedAction?.requestId])
+
+    function navigateToPortfolio() {
+        const url = new URL(window.location.href)
+        url.pathname = '/swap/'
+        url.searchParams.set('view', 'portfolio')
+        url.searchParams.delete('address')
+        url.searchParams.delete('tab')
+        url.searchParams.delete('network')
+        window.history.pushState(window.history.state, '', url)
+        window.dispatchEvent(new CustomEvent('pistachio:navigate-app', {
+            detail: { view: 'portfolio' },
+        }))
+        onOpenChange(false)
+    }
 
     async function copyAddress() {
         try {
@@ -538,7 +555,7 @@ export default function WalletAccountDialog({
                 <button
                     type="button"
                     className="uni-wallet-outline-action"
-                    onClick={() => setView('portfolio')}
+                    onClick={navigateToPortfolio}
                 >
                     View portfolio
                     <ArrowRight aria-hidden="true" />
@@ -590,50 +607,6 @@ export default function WalletAccountDialog({
                     )}
                 </section>
             </>
-        )
-    }
-
-    function renderPortfolio() {
-        return (
-            <section className="uni-wallet-inner-view">
-                <header>
-                    <button
-                        type="button"
-                        aria-label="Back to wallet overview"
-                        onClick={() => setView('overview')}
-                    >
-                        <ArrowLeft aria-hidden="true" />
-                    </button>
-                    <div>
-                        <h2>Portfolio</h2>
-                        <span>{pluralize(visiblePortfolioAssets.length, 'asset')}</span>
-                    </div>
-                    <button
-                        type="button"
-                        aria-label="Refresh portfolio"
-                        onClick={refreshAssets}
-                        disabled={refreshing}
-                    >
-                        <RefreshCw
-                            className={refreshing ? 'spinning' : ''}
-                            aria-hidden="true"
-                        />
-                    </button>
-                </header>
-
-                <div className="uni-wallet-portfolio-total">
-                    <span>Total balance</span>
-                    <strong>{totalValue}</strong>
-                </div>
-
-                <div className="uni-wallet-assets-scroll">
-                    <WalletAssetList
-                        tokens={heldAssets}
-                        settings={settings}
-                        selectedTokens={selectedTokens}
-                    />
-                </div>
-            </section>
         )
     }
 
@@ -723,7 +696,6 @@ export default function WalletAccountDialog({
                             }}
                         >
                             {view === 'overview' && renderOverview()}
-                            {view === 'portfolio' && renderPortfolio()}
                             {view === 'activity' && renderActivity()}
                         </motion.div>
                     </Dialog.Content>
