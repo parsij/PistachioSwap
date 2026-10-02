@@ -3,7 +3,6 @@ import { createConnector } from 'wagmi'
 import { getCuratedEvmChain, isCuratedEvmChainId } from '../../../web3/curatedEvmChains.js'
 import { PISTACHIO_CHAIN_ID, PISTACHIO_CONNECTOR_ID } from './constants.js'
 import { getPistachioWalletManager } from './walletManager.js'
-import { selfHostedAuthorizationMethods } from './walletManagerSelfHostedPaymasterSigning.js'
 
 const SELF_HOSTED_AUTH_SIGN_METHOD = 'pistachio_signSelfHostedAuthorization'
 
@@ -41,7 +40,7 @@ function createProvider(manager) {
                     error.code = 'PAYMASTER_AUTHORIZATION_INVALID'
                     throw error
                 }
-                return selfHostedAuthorizationMethods.signSelfHostedAuthorization.call(manager, request.params[0])
+                return manager.signSelfHostedAuthorization(request.params[0])
             }
             return manager.providerRequest(request)
         },

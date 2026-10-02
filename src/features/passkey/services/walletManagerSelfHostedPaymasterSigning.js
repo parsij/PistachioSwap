@@ -82,7 +82,7 @@ export const selfHostedAuthorizationMethods = {
         let envelope = null
         try {
             envelope = (await this.client.request('signTransaction', {
-                mode: 'megafuel',
+                mode: 'gas-assist-authorization',
                 transaction: {
                     chainId: CHAIN_ID,
                     type: 4,

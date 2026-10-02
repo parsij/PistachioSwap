@@ -34,10 +34,6 @@ import {
 } from './vaultStorage.js'
 import { WalletConnectionBridge, connectionError } from './walletConnectionBridge.js'
 import { PistachioWalletWorkerClient } from './walletWorkerClient.js'
-import {
-    normalizePreparedSponsoredTransaction,
-    validateSignedPreparedTransaction,
-} from '../../gas-assist/services/metamaskMultichain.js'
 
 const MANAGER_KEY = Symbol.for('pistachioswap.pistachio-wallet.manager')
 const ACTIVE_SESSION_VAULT_PREFERENCE = 'activeSessionVaultId'
@@ -442,33 +438,6 @@ export const methods = {
         this.assertSigningContext(context)
         return result.signature
     },
-    async signMegaFuelTransaction(transaction) {
-        await this.ensureUnlockedForSigning()
-        const context = this.captureSigningContext(56)
-        const normalized = normalizePreparedSponsoredTransaction(transaction, this.address)
-        await this.reviewQueue.request({
-            walletAddress: context.address,
-            chainId: 56,
-            action: 'Sign MegaFuel transaction',
-            payload: describeTransactionReview(normalized, 'megafuel'),
-        })
-        this.assertSigningContext(context)
-        let signedTransaction = null
-        try {
-            signedTransaction = (await this.client.request('signTransaction', { transaction: normalized, mode: 'megafuel' })).signedTransaction
-            this.assertSigningContext(context)
-            await validateLocallySignedTransaction({ signedTransaction, request: normalized, walletAddress: this.address, mode: 'megafuel' })
-            await validateSignedPreparedTransaction({
-                signedRawTransaction: signedTransaction,
-                normalizedTransaction: normalized,
-                authenticatedWalletAddress: this.address,
-                multichainAccount: this.address,
-            })
-            return signedTransaction
-        } finally {
-            signedTransaction = null
-        }
-    },
     async sendTransaction(transaction) {
         await this.ensureUnlockedForSigning()
         const requestedChainId = transaction?.chainId === undefined
@@ -534,10 +503,6 @@ export const methods = {
             const [account, typedData] = params
             if (getAddress(account) !== this.address) throw managerError('PISTACHIO_ACCOUNT_MISMATCH', 'Signing account mismatch.')
             return this.signTypedData(typedData)
-        }
-        if (method === 'eth_signTransaction') {
-            if (this.activeChainId !== 56) throw managerError('PISTACHIO_CHAIN_INVARIANT_FAILED', 'Raw transaction signing is available on BNB Chain only.')
-            return this.signMegaFuelTransaction(params[0])
         }
         if (method === 'eth_sendTransaction') return this.sendTransaction(params[0])
         throw managerError(4200, `Pistachio Wallet does not support ${method}.`)

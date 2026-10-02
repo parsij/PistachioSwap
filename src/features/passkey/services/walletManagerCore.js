@@ -36,10 +36,7 @@ import {
 import { WalletConnectionBridge, connectionError } from './walletConnectionBridge.js'
 import { PistachioWalletWorkerClient } from './walletWorkerClient.js'
 import { hardenPistachioWalletManager } from './walletManagerProduction.js'
-import {
-    normalizePreparedSponsoredTransaction,
-    validateSignedPreparedTransaction,
-} from '../../gas-assist/services/metamaskMultichain.js'
+import { selfHostedAuthorizationMethods } from './walletManagerSelfHostedPaymasterSigning.js'
 
 const MANAGER_KEY = Symbol.for('pistachioswap.pistachio-wallet.manager')
 const ACTIVE_SESSION_VAULT_PREFERENCE = 'activeSessionVaultId'
@@ -214,6 +211,7 @@ Object.assign(
     setupMethods,
     sessionMethods,
     signingMethods,
+    selfHostedAuthorizationMethods,
 )
 
 /** @returns {PistachioWalletManager} Process-wide browser manager instance used by connector and UI. */
