@@ -23,10 +23,10 @@ vi.mock('../../wallet/services/walletActivity.js', () => ({
 import { useGasAssistController } from './useGasAssistController.js'
 
 const props = {
-    routingMode: 'SAME_CHAIN_GASLESS_OR_ASSISTED',
-    gasAssistRoutingMode: 'SAME_CHAIN_GASLESS_OR_ASSISTED',
+    routingMode: 'SAME_CHAIN_GAS_ASSIST',
+    gasAssistRoutingMode: 'SAME_CHAIN_GAS_ASSIST',
     normalMode: 'normal',
-    gaslessMode: 'prepaid-sponsorship',
+    gasAssistExecutionMode: 'prepaid-sponsorship',
     quoteEndpoint: 'https://example.test/v1/sponsorship',
     account: '0x0000000000000000000000000000000000000001',
     sellToken: {
