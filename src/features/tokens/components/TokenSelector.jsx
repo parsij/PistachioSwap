@@ -11,6 +11,7 @@ import { useTokenSelectorState } from '../hooks/useTokenSelectorState.js'
 import { requestMoreTokenCatalog } from '../hooks/useTokenCatalog.js'
 import { swapUiConfig } from '../../../swapConfig.js'
 import SendTokenPicker from '../../wallet/components/wallet/SendTokenPicker.jsx'
+import GlobalSearchModal from './GlobalSearchModal.jsx'
 import './TokenSelector.css'
 import './TokenSelectorPolish.css'
 import './TokenIconLoading.css'
@@ -30,6 +31,9 @@ function isCompactSelectorViewport() {
 export default function TokenSelector(props) {
     if (props.side === 'send') {
         return <SendTokenSelectorPortal {...props} />
+    }
+    if (props.mode === 'global-search') {
+        return <GlobalSearchModal {...props} />
     }
     return <GlobalTokenSelector {...props} />
 }
@@ -63,7 +67,6 @@ function SendTokenSelectorPortal({
 
 function GlobalTokenSelector({
     side,
-    mode = 'picker',
     chainId,
     tokens = [],
     commonTokens = [],
@@ -94,14 +97,6 @@ function GlobalTokenSelector({
         if (initialScopeApplied.current || !onChainChange) return
         initialScopeApplied.current = true
 
-        if (mode === 'global-search') {
-            if (String(chainId) !== 'all') {
-                onSearchChange('')
-                onChainChange('all')
-            }
-            return
-        }
-
         const emptyOutputSide = side === 'buy' && !currentToken
         const oppositeChainId = Number(oppositeToken?.chainId)
         const oppositeWasExplicitlySelected = oppositeToken?.uiSelectionOrigin === 'user'
@@ -115,7 +110,7 @@ function GlobalTokenSelector({
         if (String(chainId) === String(preferredChainId)) return
         onSearchChange('')
         onChainChange(preferredChainId)
-    }, [chainId, currentToken, mode, onChainChange, onSearchChange, oppositeToken?.chainId, oppositeToken?.uiSelectionOrigin, side])
+    }, [chainId, currentToken, onChainChange, onSearchChange, oppositeToken?.chainId, oppositeToken?.uiSelectionOrigin, side])
 
     const handleChainChange = (value) => {
         if (!onChainChange) return
@@ -132,14 +127,11 @@ function GlobalTokenSelector({
     const dialogScale = reducedMotion || compact ? 1 : motionConfig.scale
     const dialogOffset = reducedMotion ? 0 : compact ? 72 : motionConfig.offsetY
 
-    const globalSearch = mode === 'global-search'
-    const dialogTitle = globalSearch ? 'Search tokens' : 'Select a token'
-
-    return <motion.div className="ps-token-selector-backdrop" data-side={side} data-mode={mode} data-compact={compact ? 'true' : 'false'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onPointerDown={onClose}>
-        <motion.section role="dialog" aria-modal="true" aria-label={globalSearch ? 'Search tokens' : `Select a token for ${side}`} className="ps-token-selector-dialog" initial={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} transition={{ type: 'spring', stiffness: compact ? 360 : motionConfig.stiffness, damping: compact ? 34 : motionConfig.damping }} onPointerDown={(event) => event.stopPropagation()}>
+    return <motion.div className="ps-token-selector-backdrop" data-side={side} data-compact={compact ? 'true' : 'false'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onPointerDown={onClose}>
+        <motion.section role="dialog" aria-modal="true" aria-label={`Select a token for ${side}`} className="ps-token-selector-dialog" initial={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} transition={{ type: 'spring', stiffness: compact ? 360 : motionConfig.stiffness, damping: compact ? 34 : motionConfig.damping }} onPointerDown={(event) => event.stopPropagation()}>
             <div className="ps-token-selector-handle" aria-hidden="true" />
-            <header className="ps-token-selector-header"><h2>{dialogTitle}</h2><button type="button" className="ps-token-selector-close" aria-label="Close" onClick={onClose}><CloseIcon /></button></header>
-            <div className="ps-token-search-wrapper"><div className="ps-token-search"><SearchIcon /><input autoFocus={!compact} aria-label="Search tokens" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder={globalSearch ? 'Search tokens across networks' : 'Search tokens'} autoComplete="off" spellCheck="false" /><ChainSelector chainId={state.chainScope} onChange={handleChainChange} /></div></div>
+            <header className="ps-token-selector-header"><h2>Select a token</h2><button type="button" className="ps-token-selector-close" aria-label="Close" onClick={onClose}><CloseIcon /></button></header>
+            <div className="ps-token-search-wrapper"><div className="ps-token-search"><SearchIcon /><input autoFocus={!compact} aria-label="Search tokens" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search tokens" autoComplete="off" spellCheck="false" /><ChainSelector chainId={state.chainScope} onChange={handleChainChange} /></div></div>
             <div className="ps-token-selector-scroll" onScroll={handleCatalogScroll}>{state.normalizedSearch ? <TokenSearchResults loading={loading} error={error} tokens={state.searchResultTokens} hiddenTokens={state.selectedHiddenTokens} onSelect={state.handleSelect} onContextMenu={state.openContextMenu} currentToken={currentToken} oppositeToken={oppositeToken} /> : <Sections state={state} loading={loading} currentToken={currentToken} oppositeToken={oppositeToken} hideUnknownTokens={hideUnknownTokens} walletOnly={walletOnly} />}</div>
         </motion.section>
         {state.contextMenu && <motion.div role="menu" className="ps-token-context-menu" style={{ left: state.contextMenu.x, top: state.contextMenu.y }} initial={{ opacity: 0, scale: 0.96, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} onPointerDown={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}><button type="button" role="menuitem" onClick={state.handleCopyAddress}><CopyIcon /><span>Copy address</span></button><button type="button" role="menuitem" disabled={state.detailsLoading} onClick={state.handleTokenDetails}><InfoIcon /><span>{state.detailsLoading ? 'Opening...' : 'Token details'}</span></button></motion.div>}
