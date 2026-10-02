@@ -579,6 +579,11 @@ export function useSwapController() {
         },
         onOpenSellTokenSelector: () => catalog.selector.open('sell', inputs.sellToken),
         onOpenBuyTokenSelector: () => catalog.selector.open('buy', inputs.buyToken),
+        onOpenGlobalSearch: () => catalog.selector.open(
+            'buy',
+            inputs.buyToken,
+            'global-search',
+        ),
         onToggleSellDenomination: () => inputs.toggleDenomination('sell'),
         onToggleBuyDenomination: () => inputs.toggleDenomination('buy'),
         onQuickAmountSelect: (value) => {
@@ -619,6 +624,15 @@ export function useSwapController() {
         },
         onTokenSelect: (token) => {
             nativeMaximumRequestedRef.current = false
+
+            if (catalog.selector.mode === 'global-search') {
+                const url = new URL('/swap/', window.location.origin)
+                url.searchParams.set('buyChainId', String(token.chainId))
+                url.searchParams.set('buyToken', String(token.address))
+                window.location.assign(url)
+                return
+            }
+
             inputs.selectToken({ token, side: catalog.selector.side, selectorChainId: catalog.selector.chainId })
             catalog.selector.close()
             resetQuoteAndReview()
