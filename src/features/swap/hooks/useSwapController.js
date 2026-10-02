@@ -126,7 +126,7 @@ export function useSwapController() {
         configuredSlippageBps,
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
-        gasAssistMode: routing.modes.SAME_CHAIN_GASLESS_OR_ASSISTED,
+        gasAssistMode: routing.modes.SAME_CHAIN_GAS_ASSIST,
         setSellAmount: inputs.setSellAmount,
         setBuyAmount: inputs.setBuyAmount,
         setVisibleStatus: setStatusMessage,
@@ -185,9 +185,9 @@ export function useSwapController() {
     })
     const gasAssist = useGasAssistController({
         routingMode: routing.routingMode,
-        gasAssistRoutingMode: routing.modes.SAME_CHAIN_GASLESS_OR_ASSISTED,
+        gasAssistRoutingMode: routing.modes.SAME_CHAIN_GAS_ASSIST,
         normalMode: routing.modes.NORMAL_SWAP_MODE,
-        gaslessMode: routing.modes.ZERO_X_GASLESS_MODE,
+        gasAssistExecutionMode: routing.modes.GAS_ASSIST_EXECUTION_MODE,
         quoteEndpoint: quoteConfig.endpoint,
         account: walletState.address,
         sellToken: inputs.sellToken,
@@ -432,7 +432,7 @@ export function useSwapController() {
         buyDisplayPrice: inputs.buyDisplayPrice,
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
-        gaslessMode: routing.modes.ZERO_X_GASLESS_MODE,
+        gasAssistExecutionMode: routing.modes.GAS_ASSIST_EXECUTION_MODE,
         executionMode: gasAssist.executionMode,
         quote: quote.quote,
         activeQuote,
@@ -498,7 +498,7 @@ export function useSwapController() {
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
         executionMode: gasAssist.executionMode,
-        gaslessMode: routing.modes.ZERO_X_GASLESS_MODE,
+        gasAssistExecutionMode: routing.modes.GAS_ASSIST_EXECUTION_MODE,
         reviewEligibility: eligibility.reviewEligibility,
         insufficientFunds: eligibility.insufficientFunds,
         economicallyInvalid: eligibility.economicallyInvalid,
@@ -512,7 +512,6 @@ export function useSwapController() {
         crossChain,
         crossChainGasAssist,
         crossChainGasAssistDirect,
-        gasAssist: gasAssist.gasAssist,
         prepaid: {
             required: gasAssist.prepaidRequired,
             enabled: gasAssist.prepaidSponsorship.config?.enabled,
@@ -533,11 +532,11 @@ export function useSwapController() {
     useEffect(() => {
         if (!import.meta.env.DEV) return
         const crossChainRequested = routing.routingMode === routing.modes.CROSS_CHAIN
-        const gasAssistRequested = routing.routingMode === routing.modes.SAME_CHAIN_GASLESS_OR_ASSISTED
+        const gasAssistRequested = routing.routingMode === routing.modes.SAME_CHAIN_GAS_ASSIST
         const completed = crossChainRequested
             ? ['review', 'quoted', 'error'].includes(crossChain.routes.phase)
             : gasAssistRequested
-                ? ['success', 'error'].includes(gasAssist.gasAssist.quoteStatus)
+                ? ['success', 'error'].includes(gasAssist.activeQuoteStatus)
                 : ['success', 'error'].includes(quote.quoteStatus)
         if (!completed) return
         const diagnostic = {
@@ -555,7 +554,7 @@ export function useSwapController() {
         if (quoteModeDiagnosticRef.current === signature) return
         quoteModeDiagnosticRef.current = signature
         logSwapDiagnostic('quote.mode.selected', diagnostic)
-    }, [crossChain.requestKey, crossChain.routes.phase, gasAssist.gasAssist.quoteStatus, quote.quoteStatus,
+    }, [crossChain.requestKey, crossChain.routes.phase, gasAssist.activeQuoteStatus, quote.quoteStatus,
         quote.snapshot?.requestKey, routing.buyChainId, routing.modes, routing.routingMode, routing.sellChainId])
 
     const resetQuoteAndReview = useCallback(() => {
@@ -653,7 +652,7 @@ export function useSwapController() {
         onConfirmSameChainSwap: primaryAction.confirmSameChainSwap,
         onSameChainReviewOpenChange: handleSameChainReviewOpenChange,
     }
-    const executionMessage = routing.routingMode === routing.modes.SAME_CHAIN_GASLESS_OR_ASSISTED
+    const executionMessage = routing.routingMode === routing.modes.SAME_CHAIN_GAS_ASSIST
         ? getSwapExecutionMessage(routing.preferredExecution.reason)
         : null
     const viewModel = createSwapViewModel({

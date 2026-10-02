@@ -17,16 +17,16 @@ import {
 export function useSwapPrimaryAction(config) {
     const actionDiagnosticRef = useRef(null)
     const {
-        action, activeQuoteStatus, transactionStatus, routingMode, crossChainMode, executionMode, gaslessMode,
+        action, activeQuoteStatus, transactionStatus, routingMode, crossChainMode, executionMode, gasAssistExecutionMode,
         reviewEligibility, insufficientFunds, economicallyInvalid, quoteSnapshot, quoteInputKey, quote,
         activeChain, activeChainName, openAppKit, switchNetwork, crossChain, crossChainGasAssist,
-        crossChainGasAssistDirect, gasAssist, prepaid,
+        crossChainGasAssistDirect, prepaid,
         refreshSameChainQuote, clearSameChainQuoteForRefresh, openSameChainReview, setReviewError,
         setReviewOperation, setVisibleStatus, confirmExecution, diagnostic, compliance,
     } = config
 
     useEffect(() => {
-        if (routingMode === crossChainMode || executionMode === gaslessMode) return
+        if (routingMode === crossChainMode || executionMode === gasAssistExecutionMode) return
         const payload = {
             actionType: action.type,
             label: action.label,
@@ -52,7 +52,7 @@ export function useSwapPrimaryAction(config) {
         diagnostic,
         economicallyInvalid,
         executionMode,
-        gaslessMode,
+        gasAssistExecutionMode,
         insufficientFunds,
         quoteInputKey,
         quoteSnapshot?.requestKey,
@@ -70,7 +70,7 @@ export function useSwapPrimaryAction(config) {
             reviewConfirmed: false,
             quoteStatus: activeQuoteStatus,
             transactionStatus,
-            reviewEligibility: routingMode !== crossChainMode && executionMode !== gaslessMode ? reviewEligibility : null,
+            reviewEligibility: routingMode !== crossChainMode && executionMode !== gasAssistExecutionMode ? reviewEligibility : null,
             requestKeySuffix: requestKeySuffix(quoteSnapshot?.requestKey),
         })
         if (action.type === 'connect') {
@@ -106,7 +106,7 @@ export function useSwapPrimaryAction(config) {
         // Opening the ordinary same-chain review is non-transactional. Keep the
         // fresh fail-closed check on paths that may start sponsored/cross-chain
         // work here; same-chain execution is screened again on Confirm below.
-        if (routingMode === crossChainMode || executionMode === gaslessMode) {
+        if (routingMode === crossChainMode || executionMode === gasAssistExecutionMode) {
             try {
                 await compliance?.ensureAllowed?.()
             } catch (error) {
@@ -143,9 +143,10 @@ export function useSwapPrimaryAction(config) {
             await crossChain.openReview()
             return
         }
-        if (executionMode === gaslessMode) {
+        if (executionMode === gasAssistExecutionMode) {
             diagnostic('primary-action.route', {
-                route: 'gas-assist', prepaidRequired: prepaid.required, gasAssistQuoteStatus: gasAssist.quoteStatus,
+                route: 'gas-assist',
+                prepaidRequired: prepaid.required,
             })
             if (prepaid.required) {
                 if (prepaid.enabled) {
@@ -156,12 +157,8 @@ export function useSwapPrimaryAction(config) {
                 }
                 return
             }
-            if (!gasAssist.quote || Date.parse(gasAssist.quote.expiresAt) <= Date.now()) {
-                setVisibleStatus('The Gas Assist quote expired. Refreshing the price.')
-                refreshSameChainQuote()
-                return
-            }
-            gasAssist.open()
+            setVisibleStatus('Gas Assist could not prepare this swap. Refresh the quote and try again.')
+            refreshSameChainQuote()
             return
         }
         diagnostic('review.eligibility.checked', {
@@ -200,7 +197,7 @@ export function useSwapPrimaryAction(config) {
 
     async function confirmSameChainSwap() {
         setVisibleStatus(null)
-        if (executionMode === gaslessMode) {
+        if (executionMode === gasAssistExecutionMode) {
             const message = 'Normal approval and swap execution are blocked while Gas Assist is required.'
             setVisibleStatus(message)
             setReviewError(message)

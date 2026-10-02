@@ -72,34 +72,18 @@ function logGasAssistDiagnostic(scope, error, fallbackCode, fallbackMessage) {
     console.error('[pistachio-swap] Gas Assist diagnostic', diagnostic)
 }
 
-function removedLegacyGaslessState(quoteStatus) {
-    const removed = () => {
-        throw new Error('Legacy 0x Gasless execution has been removed. Use atomic Gas Assist.')
-    }
-    return Object.freeze({
-        quote: null,
-        quoteStatus,
-        quoteError: null,
-        available: false,
-        dialog: Object.freeze({ open: false, state: 'removed' }),
-        open: removed,
-        close: () => undefined,
-        confirm: removed,
-    })
-}
-
 /**
  * Owns atomic/prepaid Gas Assist orchestration while keeping normal swap approval separate.
  * @param {object} config Gas Assist intent, feature configuration, and semantic callbacks.
  * @returns {object} Atomic Gas Assist state, active execution mode, quote/status, and dialog view models.
  * @sideEffects Calls sponsorship feature hooks; explicit confirmation may request sponsorship operations.
- * @security Low-BNB execution is fail-closed into the exact atomic prepaid flow and never falls back to retired 0x Gasless execution.
+ * @security Low-BNB execution is fail-closed into the exact self-hosted prepaid Gas Assist flow.
  */
 export function useGasAssistController({
     routingMode,
     gasAssistRoutingMode,
     normalMode,
-    gaslessMode,
+    gasAssistExecutionMode,
     quoteEndpoint,
     account,
     sellToken,
@@ -318,7 +302,7 @@ export function useGasAssistController({
         }
     }, [buyToken, prepaidEnabled, previewState.preview, sellToken?.address])
 
-    const executionMode = gasAssistRequested ? gaslessMode : normalMode
+    const executionMode = gasAssistRequested ? gasAssistExecutionMode : normalMode
     const activeQuote = gasAssistRequested ? previewQuote : normalQuote
     const activeQuoteStatus = gasAssistRequested
         ? prepaidSponsorship.configStatus === 'idle' || prepaidSponsorship.configStatus === 'loading'
@@ -329,10 +313,6 @@ export function useGasAssistController({
                     ? 'error'
                     : previewState.status
         : normalQuoteStatus
-    const compatibilityGasAssist = useMemo(
-        () => removedLegacyGaslessState(gasAssistRequested ? activeQuoteStatus : 'idle'),
-        [activeQuoteStatus, gasAssistRequested],
-    )
     const reviewPreview = useMemo(
         () => previewReviewOrder(previewState.preview, account),
         [account, previewState.preview],
@@ -437,9 +417,6 @@ export function useGasAssistController({
     ])
 
     return {
-        // Retained only as a fail-closed shape for older view-model callers. No
-        // 0x Gasless network, signing, submission, or polling logic remains.
-        gasAssist: compatibilityGasAssist,
         prepaidSponsorship: prepaidSponsorshipView,
         prepaidRequired,
         preview: prepaidEnabled ? previewState.preview : null,
@@ -448,7 +425,6 @@ export function useGasAssistController({
         executionMode,
         activeQuote,
         activeQuoteStatus,
-        isGasless: executionMode === gaslessMode,
     }
 }
 
