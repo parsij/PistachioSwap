@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, useReducedMotion } from 'motion/react'
-import { ArrowRight, Clock3, Search, Wallet } from 'lucide-react'
+import { ArrowRight, Clock3, Search, TrendingUp, Wallet } from 'lucide-react'
 
 import TokenIcon from './TokenIcon.jsx'
 import { ChainSelector } from './TokenSelectorPrimitives.jsx'
 import { useTokenSelectorState } from '../hooks/useTokenSelectorState.js'
-import {
-    formatWalletTokenAmount,
-    formatWalletUsdValue,
-} from '../services/walletTokens.js'
 import {
     getTokenDisplayName,
     getTokenDisplaySymbol,
@@ -23,7 +19,6 @@ const SEARCH_TABS = [
     { id: 'all', label: 'All' },
     { id: 'tokens', label: 'Tokens' },
     { id: 'pools', label: 'Pools', desktopOnly: true },
-    { id: 'auctions', label: 'Auctions', desktopOnly: true },
     { id: 'wallets', label: 'Wallets' },
 ]
 
@@ -31,15 +26,68 @@ function isWalletAddress(value) {
     return /^0x[a-fA-F0-9]{40}$/.test(String(value ?? '').trim())
 }
 
-function tokenSecondaryText(token) {
-    const chainName = getCuratedEvmChain(token?.chainId)?.name
+function shortenedContract(token) {
+    const address = String(token?.address ?? '')
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return null
+    return address.slice(0, 6) + '...' + address.slice(-4)
+}
+
+function searchTokenGroupKey(token) {
+    const symbol = getTokenDisplaySymbol(token).trim().toLowerCase()
+    const name = getTokenDisplayName(token).trim().toLowerCase()
+    return symbol ? symbol + ':' + name : Number(token?.chainId) + ':' + String(token?.address ?? '').toLowerCase()
+}
+
+function groupAcrossNetworks(tokens) {
+    const groups = new Map()
+    for (const token of tokens) {
+        const key = searchTokenGroupKey(token)
+        const group = groups.get(key)
+        if (!group) {
+            groups.set(key, {
+                token,
+                networkIds: new Set([Number(token?.chainId)]),
+                volume24hUsd: Number(token?.volume24hUsd) || 0,
+            })
+            continue
+        }
+
+        group.networkIds.add(Number(token?.chainId))
+        const volume = Number(token?.volume24hUsd) || 0
+        if (volume > group.volume24hUsd) {
+            group.token = token
+            group.volume24hUsd = volume
+        }
+    }
+
+    return [...groups.values()]
+        .sort((left, right) => right.volume24hUsd - left.volume24hUsd)
+        .map((group) => ({
+            ...group,
+            networkCount: [...group.networkIds].filter(Number.isFinite).length,
+        }))
+}
+
+function tokenSecondaryText(token, variant, networkCount = 1) {
     const symbol = getTokenDisplaySymbol(token)
+    if (variant === 'recent') {
+        return [symbol, shortenedContract(token)].filter(Boolean).join('  ')
+    }
+
+    if (variant === 'trending' && networkCount > 1) {
+        return symbol + '  ' + networkCount + ' networks'
+    }
+
+    const chainName = getCuratedEvmChain(token?.chainId)?.name
     return [symbol, chainName].filter(Boolean).join(' · ')
 }
 
-function SearchTokenRow({ token, onSelect }) {
-    const hasBalance = Number(token?.balance ?? 0) > 0 ||
-        /[1-9]/.test(String(token?.rawBalance ?? ''))
+function SearchTokenRow({
+    token,
+    onSelect,
+    variant = 'query',
+    networkCount = 1,
+}) {
     return (
         <button
             type="button"
@@ -49,27 +97,20 @@ function SearchTokenRow({ token, onSelect }) {
             <TokenIcon token={token} size="list" />
             <span className="global-search-result-copy">
                 <strong>{getTokenDisplayName(token)}</strong>
-                <span>{tokenSecondaryText(token)}</span>
-            </span>
-            <span className="global-search-result-value">
-                {hasBalance ? (
-                    <>
-                        <strong>{formatWalletUsdValue(token)}</strong>
-                        <span>{formatWalletTokenAmount(token.balance)}</span>
-                    </>
-                ) : (
-                    <ArrowRight aria-hidden="true" />
-                )}
+                <span>{tokenSecondaryText(token, variant, networkCount)}</span>
             </span>
         </button>
     )
 }
 
-function Section({ title, action, children }) {
+function Section({ title, action, icon: Icon, children }) {
     return (
         <section className="global-search-section">
             <div className="global-search-section-heading">
-                <span>{title}</span>
+                <span className="global-search-section-label">
+                    {Icon && <Icon aria-hidden="true" />}
+                    {title}
+                </span>
                 {action}
             </div>
             {children}
@@ -152,26 +193,12 @@ export default function GlobalSearchModal({
         return () => window.clearTimeout(timeout)
     }, [])
 
-    const noQueryTokens = useMemo(() => {
-        const byKey = new Map()
-        for (const token of [
-            ...state.primaryWalletTokens,
-            ...state.visibleRecentTokens,
-            ...state.sortedGlobalMarketTokens,
-            ...state.commonMarketTokens,
-        ]) {
-            const key = Number(token?.chainId) + ':' + String(token?.address ?? '').toLowerCase()
-            if (!byKey.has(key)) byKey.set(key, token)
-        }
-        return [...byKey.values()].slice(0, 12)
-    }, [
-        state.commonMarketTokens,
-        state.primaryWalletTokens,
-        state.sortedGlobalMarketTokens,
-        state.visibleRecentTokens,
-    ])
+    const trendingTokenGroups = useMemo(
+        () => groupAcrossNetworks(state.sortedGlobalMarketTokens),
+        [state.sortedGlobalMarketTokens],
+    )
 
-    const resultTokens = query ? state.searchResultTokens : noQueryTokens
+    const resultTokens = query ? state.searchResultTokens : []
     const showTokens = activeTab === 'all' || activeTab === 'tokens'
     const showWallets = activeTab === 'all' || activeTab === 'wallets'
     const walletResult = showWallets && isWalletAddress(query)
@@ -228,7 +255,7 @@ export default function GlobalSearchModal({
                             aria-label="Search tokens and wallets"
                             value={search}
                             onChange={(event) => onSearchChange(event.target.value)}
-                            placeholder="Search tokens, contract addresses, or wallets"
+                            placeholder="Search by name, symbol, or address"
                             autoComplete="off"
                             spellCheck="false"
                         />
@@ -259,9 +286,10 @@ export default function GlobalSearchModal({
                 <div className="global-search-scroll">
                     {!query ? (
                         <>
-                            {showTokens && state.visibleRecentTokens.length > 0 && (
+                            {(activeTab === 'all' || activeTab === 'tokens') && state.visibleRecentTokens.length > 0 && (
                                 <Section
                                     title="Recent searches"
+                                    icon={Clock3}
                                     action={(
                                         <button
                                             type="button"
@@ -276,57 +304,61 @@ export default function GlobalSearchModal({
                                         <SearchTokenRow
                                             key={Number(token.chainId) + ':' + token.address}
                                             token={token}
+                                            variant="recent"
                                             onSelect={state.handleSelect}
                                         />
                                     ))}
                                 </Section>
                             )}
 
-                            {showTokens && state.primaryWalletTokens.length > 0 && (
-                                <Section title="Your tokens">
-                                    {state.primaryWalletTokens.slice(0, 4).map((token) => (
-                                        <SearchTokenRow
-                                            key={Number(token.chainId) + ':' + token.address}
-                                            token={token}
-                                            onSelect={state.handleSelect}
-                                        />
-                                    ))}
-                                </Section>
-                            )}
-
-                            {showTokens && (
-                                <Section title="Tokens">
-                                    {loading && resultTokens.length === 0 ? (
+                            {(activeTab === 'all' || activeTab === 'tokens') && (
+                                <Section
+                                    title="Tokens by 24H volume"
+                                    icon={TrendingUp}
+                                >
+                                    {loading && trendingTokenGroups.length === 0 ? (
                                         <div className="global-search-loading">
                                             {Array.from({ length: 5 }).map((_, index) => (
                                                 <span key={index} />
                                             ))}
                                         </div>
                                     ) : (
-                                        resultTokens.slice(0, 8).map((token) => (
-                                            <SearchTokenRow
-                                                key={Number(token.chainId) + ':' + token.address}
-                                                token={token}
-                                                onSelect={state.handleSelect}
-                                            />
-                                        ))
+                                        trendingTokenGroups
+                                            .slice(0, activeTab === 'all' ? 5 : 14)
+                                            .map(({ token, networkCount }) => (
+                                                <SearchTokenRow
+                                                    key={searchTokenGroupKey(token)}
+                                                    token={token}
+                                                    variant="trending"
+                                                    networkCount={networkCount}
+                                                    onSelect={state.handleSelect}
+                                                />
+                                            ))
                                     )}
                                 </Section>
                             )}
 
+                            {activeTab === 'pools' && (
+                                <div className="global-search-empty compact">
+                                    <Search aria-hidden="true" />
+                                    <strong>Pool search is not indexed yet</strong>
+                                    <span>This tab stays separate instead of mixing LP receipt tokens into normal token results.</span>
+                                </div>
+                            )}
+
                             {activeTab === 'wallets' && (
-                                <div className="global-search-empty">
+                                <div className="global-search-empty compact">
                                     <Wallet aria-hidden="true" />
                                     <strong>Search wallets</strong>
                                     <span>Paste an EVM address to open its portfolio.</span>
                                 </div>
                             )}
                         </>
-                    ) : activeTab === 'pools' || activeTab === 'auctions' ? (
-                        <div className="global-search-empty">
+                    ) : activeTab === 'pools' ? (
+                        <div className="global-search-empty compact">
                             <Search aria-hidden="true" />
-                            <strong>{activeTab === 'pools' ? 'Pool search is unavailable' : 'Auction search is unavailable'}</strong>
-                            <span>PistachioSwap does not currently index this Uniswap search category.</span>
+                            <strong>Pool search is not indexed yet</strong>
+                            <span>Pool results are kept out until PistachioSwap has a real pool index instead of guessed pairs.</span>
                         </div>
                     ) : (
                         <>
@@ -379,10 +411,6 @@ export default function GlobalSearchModal({
                     )}
                 </div>
 
-                <footer className="global-search-footer">
-                    <span><kbd>/</kbd> Search</span>
-                    <span><kbd>Esc</kbd> Close</span>
-                </footer>
             </motion.section>
         </motion.div>
     )
