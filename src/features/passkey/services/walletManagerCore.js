@@ -208,14 +208,12 @@ import { methods as lifecycleMethods } from './walletManagerLifecycle.js'
 import { methods as setupMethods } from './walletManagerSetup.js'
 import { methods as sessionMethods } from './walletManagerSession.js'
 import { methods as signingMethods } from './walletManagerSigning.js'
-import { methods as megaFuelPackageMethods } from './walletManagerMegaFuelPackage.js'
 Object.assign(
     PistachioWalletManager.prototype,
     lifecycleMethods,
     setupMethods,
     sessionMethods,
     signingMethods,
-    megaFuelPackageMethods,
 )
 
 /** @returns {PistachioWalletManager} Process-wide browser manager instance used by connector and UI. */
