@@ -1,5 +1,5 @@
 import { encodeFunctionData } from 'viem'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
     buildReceiptHistoryRow,
@@ -14,6 +14,7 @@ const other = '0x0000000000000000000000000000000000000011'
 const tokenA = '0x00000000000000000000000000000000000000a1'
 const tokenB = '0x00000000000000000000000000000000000000b1'
 const hash = `0x${'12'.repeat(32)}`
+const paymaster = '0xbf7d14999219fae39faf7a80574ddba39839f5c1'
 
 function transfer({ token, from, to, value, symbol = 'TKN', decimals = 6 }) {
     return {
@@ -86,6 +87,14 @@ const gasAssistCrossChainAbi = [{
 }]
 
 describe('browser wallet-history classifier', () => {
+    beforeEach(() => {
+        vi.stubEnv('VITE_PISTACHIO_PAYMASTER_ADDRESS', paymaster)
+    })
+
+    afterEach(() => {
+        vi.unstubAllEnvs()
+    })
+
     it('classifies a receipt-backed normal swap', () => {
         const activity = classifyReceiptHistoryRow(56, wallet, row({
             swap_evidence: true,
@@ -217,6 +226,7 @@ describe('browser wallet-history classifier', () => {
             to_address: ENTRY_POINT_V08_ADDRESS,
             swap_evidence: true,
             user_operation_senders: [wallet],
+            user_operation_paymasters: [paymaster],
             erc20_transfers: [
                 transfer({ token: tokenA, from: wallet, to: other, value: 2_000_000, symbol: 'USDC' }),
                 transfer({ token: tokenB, from: other, to: wallet, value: 3_000_000, symbol: 'ETH' }),
@@ -263,6 +273,76 @@ describe('browser wallet-history classifier', () => {
         })
 
         expect(rowValue.user_operation_senders).toEqual([wallet])
+        expect(rowValue.user_operation_paymasters).toEqual([other])
+    })
+
+    it('builds wallet-scoped native flow from indexed internal BNB transfers', () => {
+        const rowValue = buildReceiptHistoryRow({
+            chainId: 56,
+            walletAddress: wallet,
+            transaction: {
+                hash,
+                from: other,
+                to: ENTRY_POINT_V08_ADDRESS,
+                input: '0x1234',
+                value: '0x0',
+                blockNumber: '0x7b',
+                authorizationList: [],
+            },
+            receipt: {
+                status: '0x1',
+                logs: [],
+            },
+            indexedTransfers: [{
+                category: 'internal',
+                from: wallet,
+                to: other,
+                value: '0.25',
+                rawContract: {
+                    address: null,
+                    value: '0x3635c9adc5dea000',
+                    decimal: '0x12',
+                },
+                metadata: {
+                    blockTimestamp: '2026-09-06T12:00:00.000Z',
+                },
+            }],
+        })
+
+        expect(rowValue.native_transfers).toEqual([{
+            from_address: wallet,
+            to_address: other,
+            value: '250000000000000000',
+            value_formatted: '0.25',
+        }])
+    })
+
+    it('classifies a sponsored BNB-to-token UserOperation as one swap without relying on pool event signatures', () => {
+        const bundler = '0x00000000000000000000000000000000000000f1'
+        const activity = classifyReceiptHistoryRow(56, wallet, row({
+            from_address: bundler,
+            to_address: ENTRY_POINT_V08_ADDRESS,
+            swap_evidence: false,
+            user_operation_senders: [wallet],
+            user_operation_paymasters: [paymaster],
+            native_transfers: [{
+                from_address: wallet,
+                to_address: other,
+                value: '250000000000000000',
+                value_formatted: '0.25',
+            }],
+            erc20_transfers: [
+                transfer({ token: tokenB, from: other, to: wallet, value: 3_000_000, symbol: 'BUY' }),
+            ],
+        }))
+
+        expect(activity).toMatchObject({
+            type: 'swapped',
+            sellAmount: '0.25',
+            buyAmount: '3',
+            provider: 'pistachio-self-hosted-gas-assist',
+        })
+        expect(activity.sellToken).toMatchObject({ isNative: true, symbol: 'BNB' })
     })
 
     it('keeps a plain wallet-initiated token transfer as sent', () => {
