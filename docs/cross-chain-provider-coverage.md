@@ -35,7 +35,7 @@ The product registry contains exactly these 25 EVM networks:
 All 25 are enabled for wallet Send, same-chain quote requests, and as candidate
 cross-chain source/destination networks. Same-chain 0x and Uniswap support is
 still determined by an exact current quote; PancakeSwap remains BNB-specific.
-Gasless and MegaFuel remain BNB Smart Chain-only. Candidate means the request
+Gas Assist sponsors only the BNB Smart Chain source operation. Candidate means the request
 validator and wallet can represent the chain; it does not mean every provider
 has a route or token pair.
 
