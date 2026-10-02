@@ -8,13 +8,34 @@ function css(path) {
 }
 
 describe('adaptive exchange surfaces', () => {
-    it('uses a wider desktop global-search modal and mobile sheet height', () => {
-        const source = css('src/features/tokens/components/TokenSelectorPolish.css')
+    it('uses the dedicated Uniswap-size global search modal and mobile sheet', () => {
+        const source = css('src/features/tokens/components/GlobalSearchModal.css')
+
         expect(source).toMatch(
-            /data-mode='global-search'[\s\S]*width:\s*min\(640px/,
+            /\.global-search-modal\s*\{[\s\S]*width:\s*640px[\s\S]*max-height:\s*520px/,
         )
         expect(source).toMatch(
-            /data-mode='global-search'[\s\S]*height:\s*min\(85dvh/,
+            /@media \(max-width:\s*1400px\)[\s\S]*\.global-search-modal\s*\{[\s\S]*width:\s*540px/,
+        )
+        expect(source).toMatch(
+            /\.global-search-modal\s*\{[\s\S]*height:\s*85dvh[\s\S]*border-radius:\s*24px 24px 0 0/,
+        )
+    })
+
+    it('keeps the portfolio at the same 1200/360 geometry as the reference layout', () => {
+        const source = css('src/features/portfolio/components/PortfolioPage.css')
+
+        expect(source).toMatch(
+            /\.uni-portfolio-page\s*\{[\s\S]*width:\s*min\(1200px/,
+        )
+        expect(source).toMatch(
+            /\.uni-portfolio-right-rail\s*\{[\s\S]*width:\s*360px[\s\S]*padding-top:\s*92px/,
+        )
+        expect(source).toMatch(
+            /\.uni-portfolio-hero\s*\{[\s\S]*gap:\s*40px/,
+        )
+        expect(source).toMatch(
+            /\.uni-portfolio-action-grid\s*\{[\s\S]*width:\s*360px[\s\S]*gap:\s*12px/,
         )
     })
 
