@@ -327,7 +327,7 @@ export default function GlobalSearchModal({
                                         </div>
                                     ) : (
                                         trendingTokenGroups
-                                            .slice(0, activeTab === 'all' ? 5 : 14)
+                                            .slice(0, activeTab === 'all' ? 3 : 15)
                                             .map(({ token, networkCount }) => (
                                                 <SearchTokenRow
                                                     key={searchTokenGroupKey(token)}
