@@ -418,7 +418,7 @@ function exactSponsoredRoute(
         transaction.value !== '0' || !transaction.allowanceTarget) {
         throw routeError(
             'CROSS_CHAIN_TRANSACTION_NOT_SPONSORABLE',
-            'The prepared source transaction cannot use exact MegaFuel sponsorship.',
+            'The prepared source transaction cannot use exact Gas Assist sponsorship.',
         )
     }
     if (quote.request.ownerAddress !== ownerAddress ||

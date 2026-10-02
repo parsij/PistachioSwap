@@ -3,7 +3,7 @@ import { isAddress } from 'viem'
 export const NORMAL_SWAP_MODE = 'normal'
 export const PREPAID_SPONSORSHIP_MODE = 'prepaid-sponsorship'
 export const SAME_CHAIN_STANDARD = 'SAME_CHAIN_STANDARD'
-export const SAME_CHAIN_GASLESS_OR_ASSISTED = 'SAME_CHAIN_GASLESS_OR_ASSISTED'
+export const SAME_CHAIN_GAS_ASSIST = 'SAME_CHAIN_GAS_ASSIST'
 export const CROSS_CHAIN = 'CROSS_CHAIN'
 export const GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE =
     'Gas Assist will be used because the wallet does not have enough BNB for normal gas.'
@@ -15,7 +15,7 @@ export function deriveRoutingMode({
 }) {
     if (Number(sellChainId) !== Number(buyChainId)) return CROSS_CHAIN
     return gasAssistPreferred
-        ? SAME_CHAIN_GASLESS_OR_ASSISTED
+        ? SAME_CHAIN_GAS_ASSIST
         : SAME_CHAIN_STANDARD
 }
 

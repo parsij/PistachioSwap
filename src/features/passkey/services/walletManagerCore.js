@@ -36,10 +36,7 @@ import {
 import { WalletConnectionBridge, connectionError } from './walletConnectionBridge.js'
 import { PistachioWalletWorkerClient } from './walletWorkerClient.js'
 import { hardenPistachioWalletManager } from './walletManagerProduction.js'
-import {
-    normalizePreparedSponsoredTransaction,
-    validateSignedPreparedTransaction,
-} from '../../gas-assist/services/metamaskMultichain.js'
+import { selfHostedAuthorizationMethods } from './walletManagerSelfHostedPaymasterSigning.js'
 
 const MANAGER_KEY = Symbol.for('pistachioswap.pistachio-wallet.manager')
 const ACTIVE_SESSION_VAULT_PREFERENCE = 'activeSessionVaultId'
@@ -94,8 +91,8 @@ function normalizePublicRpcUrl(chainId = DEFAULT_CHAIN_ID, value = configuredPub
     if (url.protocol !== 'https:' && !(import.meta.env.DEV && local && url.protocol === 'http:')) {
         throw managerError('PISTACHIO_PUBLIC_RPC_INVALID', 'The public RPC URL must use HTTPS.')
     }
-    if (url.username || url.password || url.hostname.toLowerCase().includes('nodereal')) {
-        throw managerError('PISTACHIO_PUBLIC_RPC_INVALID', 'Credential-bearing and NodeReal browser RPC URLs are forbidden.')
+    if (url.username || url.password) {
+        throw managerError('PISTACHIO_PUBLIC_RPC_INVALID', 'Credential-bearing browser RPC URLs are forbidden.')
     }
     return url.toString()
 }
@@ -208,14 +205,13 @@ import { methods as lifecycleMethods } from './walletManagerLifecycle.js'
 import { methods as setupMethods } from './walletManagerSetup.js'
 import { methods as sessionMethods } from './walletManagerSession.js'
 import { methods as signingMethods } from './walletManagerSigning.js'
-import { methods as megaFuelPackageMethods } from './walletManagerMegaFuelPackage.js'
 Object.assign(
     PistachioWalletManager.prototype,
     lifecycleMethods,
     setupMethods,
     sessionMethods,
     signingMethods,
-    megaFuelPackageMethods,
+    selfHostedAuthorizationMethods,
 )
 
 /** @returns {PistachioWalletManager} Process-wide browser manager instance used by connector and UI. */

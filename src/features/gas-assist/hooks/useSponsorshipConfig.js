@@ -24,7 +24,6 @@ function loadConfig(quoteEndpoint) {
 
 /**
  * Loads the backend-authoritative prepaid sponsorship configuration for low-BNB routing.
- * This is intentionally independent from the legacy 0x Gasless configuration endpoint.
  */
 export function useSponsorshipConfig({ quoteEndpoint, enabled }) {
     const [refreshIndex, setRefreshIndex] = useState(0)

@@ -117,7 +117,7 @@ export function getCrossChainGasAssistTier({
 
 export function getSwapReviewLabel(input) {
     const isGasAssistedReview = input.prepaidRequired && input.prepaidEnabled ||
-        input.executionMode === input.gaslessMode ||
+        input.executionMode === input.gasAssistExecutionMode ||
         requiresDirectCrossChainGasAssist(input)
 
     return isGasAssistedReview
@@ -134,7 +134,7 @@ export function getSwapReviewLabel(input) {
 export function deriveSwapEligibility(input) {
     const {
         walletState, walletAddress, sellToken, buyToken, activeAmountSide, activeAmountIn, activeBuyAmountIn,
-        sellAmount, sellDisplayPrice, buyDisplayPrice, routingMode, crossChainMode, gaslessMode, executionMode,
+        sellAmount, sellDisplayPrice, buyDisplayPrice, routingMode, crossChainMode, gasAssistExecutionMode, executionMode,
         quote, activeQuote, activeQuoteStatus, currentCrossChainRoute, crossChainRouteExpired,
         crossChainExactOutputUnsupported, transactionStatus, nativeBalanceValue, nativeGasReserve,
         nativeEstimatedFeeWei, nativeGasBufferBps, minimumNativeGasBufferWei,
@@ -276,7 +276,7 @@ export function deriveSwapEligibility(input) {
         warnings,
     }
     const economicallyInvalid = Boolean(hasActiveAmount && activeQuoteStatus === 'success' && !economicViability.viable)
-    const reviewEligibility = routingMode !== crossChainMode && executionMode !== gaslessMode
+    const reviewEligibility = routingMode !== crossChainMode && executionMode !== gasAssistExecutionMode
         ? deriveSameChainReviewEligibility({
             activeAmountIn,
             activeBuyAmountIn,
@@ -320,7 +320,7 @@ export function deriveSwapEligibility(input) {
                 prepaidRequired,
                 prepaidEnabled,
                 executionMode,
-                gaslessMode,
+                gasAssistExecutionMode,
                 routingMode,
                 crossChainMode,
                 nativeBalanceValue,
@@ -329,7 +329,7 @@ export function deriveSwapEligibility(input) {
             }),
         }
     }
-    if (baseAction.type === 'swap' && routingMode !== crossChainMode && executionMode !== gaslessMode && !reviewEligibility.canReview) {
+    if (baseAction.type === 'swap' && routingMode !== crossChainMode && executionMode !== gasAssistExecutionMode && !reviewEligibility.canReview) {
         action = { type: `review-blocked:${reviewEligibility.blockingReason}`, label: reviewEligibility.blockingMessage, enabled: true }
     }
     if (routingMode === crossChainMode && activeQuoteStatus === 'loading') {

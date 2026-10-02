@@ -137,17 +137,6 @@ vi.mock('./features/tokens/hooks/useWalletTokens.js', () => ({
         mocks.useWalletTokens(options),
 }))
 
-vi.mock('./features/gas-assist/hooks/useGasAssistConfig.js', () => ({
-    useGasAssistConfig: () => mocks.gasAssistConfig,
-}))
-
-vi.mock('./features/gas-assist/hooks/useZeroXGaslessSwap.js', () => ({
-    useZeroXGaslessSwap: (options) => {
-        mocks.gasAssistOptions.push(options)
-        return mocks.gasAssistState
-    },
-}))
-
 vi.mock('./features/cross-chain/hooks/useCrossChainGasAssist.js', () => ({
     useCrossChainGasAssist: () => mocks.crossChainGasAssistState,
 }))
@@ -946,73 +935,6 @@ describe('App wallet integration', () => {
         fireEvent.click(getByRole('button', { name: 'Confirm swap' }))
         await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalled())
         expect(mocks.sendTransaction.mock.calls.at(-1)[0].chainId).toBe(8453)
-    })
-
-    it('preserves a standard BSC route when Gas Assist is unavailable', async () => {
-        mocks.account.address = ADDRESS
-        mocks.account.isConnected = true
-        mocks.network.chainId = 56
-        mocks.nativeBalance = 2_000_000_000_000_000_000n
-        mocks.gasAssistConfig = {
-            status: 'success',
-            config: { enabled: true, mode: 'zero-x-gasless' },
-            error: null,
-            refetch: vi.fn(),
-        }
-        mocks.gasAssistState = {
-            quote: null,
-            quoteStatus: 'error',
-            quoteError: {
-                code: 'GAS_ASSIST_PROVIDER_UNAVAILABLE',
-                message: 'Gas-assisted execution is unavailable.',
-                status: 503,
-                fallbackAllowed: true,
-            },
-            dialog: { open: false, state: 'idle' },
-            open: vi.fn(),
-            close: vi.fn(),
-            confirm: vi.fn(),
-        }
-        mocks.marketTokens = [{
-            chainId: 56,
-            address: '0x0000000000000000000000000000000000000056',
-            name: 'BSC token',
-            symbol: 'BSCX',
-            decimals: 18,
-            volume24hUsd: 1_000,
-            verificationStatus: 'established',
-            visibility: 'primary',
-        }]
-        mocks.fetchSwapQuote.mockResolvedValue({
-            selectedQuote: {
-                chainId: 56,
-                sellToken: BNB_ADDRESS,
-                buyToken: QTKN_ADDRESS,
-                sellAmount: '1000000000000000000',
-                buyAmount: '2000000000000000000',
-                expiresAt: '2999-01-01T00:00:00.000Z',
-                transaction: {
-                    to: '0x0000000000000000000000000000000000000002',
-                    data: '0x1234',
-                    value: '0',
-                },
-            },
-        })
-
-        const { container, getAllByText, getByRole } = render(<App />)
-        fireEvent.click(container.querySelector('.buy-token-position button'))
-        fireEvent.click(getAllByText('BSCX')
-            .map((node) => node.closest('.ps-token-row'))
-            .find(Boolean))
-        fireEvent.change(getByRole('textbox', { name: 'Sell amount' }), {
-            target: { value: '1' },
-        })
-
-        await waitFor(() => expect(mocks.fetchSwapQuote).toHaveBeenCalled())
-        await waitFor(() => expect(container.querySelector('.primary-action').textContent)
-            .toBe('Review swap'))
-        expect(container.textContent).not.toContain('No available routes')
-        expect(container.textContent).not.toContain('GAS_ASSIST_PROVIDER_UNAVAILABLE')
     })
 
     it('keeps the app enabled when Wagmi restores a wallet before AppKit account state catches up', () => {

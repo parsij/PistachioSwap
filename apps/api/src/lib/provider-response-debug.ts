@@ -10,7 +10,6 @@ function sanitizeProviderString(value: string) {
         .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
         .replace(/([?&](?:api[_-]?key|key|token|secret|access_token)=)[^&\s]+/gi, '$1[REDACTED]')
         .replace(/(\/prices\/v1\/)[^/\s]+/gi, '$1[REDACTED]')
-        .replace(/(open-platform[^/\s]*\/)[^/\s]+(\/megafuel\/)/gi, '$1[REDACTED]$2')
 
     return redacted.length > MAX_STRING_LENGTH
         ? `${redacted.slice(0, MAX_STRING_LENGTH)}...[TRUNCATED]`

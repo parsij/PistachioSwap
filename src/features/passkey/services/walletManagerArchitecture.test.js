@@ -14,7 +14,7 @@ const publicMethods = [
     'restoreEncryptedBackup', 'persistPendingWallet', 'finishOnboarding', 'unlock', 'lock', 'disconnect',
     'renameSavedVault', 'deleteLocalVault', 'reauthenticate', 'addBackupPasskey', 'renamePasskey',
     'removePasskey', 'exportEncryptedBackup', 'exportKeystore', 'revealRecoveryPhrase', 'revealPrivateKey',
-    'review', 'signMessage', 'signTypedData', 'signMegaFuelTransaction', 'sendTransaction', 'providerRequest',
+    'review', 'signMessage', 'signTypedData', 'sendTransaction', 'providerRequest', 'signSelfHostedAuthorization',
 ]
 
 describe('wallet-manager method cluster architecture', () => {

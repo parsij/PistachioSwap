@@ -89,12 +89,28 @@ try {
             types: { Test: [{ name: 'value', type: 'uint256' }] },
             value: { value: 1 },
         })
+        const delegate = '0x000000000000000000000000000000000000dEaD'
         const transaction = {
-            type: '0x0', chainId: '0x38', from: imported.address,
-            to: '0x000000000000000000000000000000000000dEaD', nonce: '0x1',
-            gas: '0x5208', gasPrice: '0x0', value: '0x0', data: '0x',
+            type: '0x4',
+            chainId: '0x38',
+            from: imported.address,
+            to: imported.address,
+            nonce: '0x1',
+            gas: '0x5208',
+            maxFeePerGas: '0x0',
+            maxPriorityFeePerGas: '0x0',
+            value: '0x0',
+            data: '0x',
+            authorizationList: [{
+                chainId: '0x38',
+                address: delegate,
+                nonce: '0x2',
+            }],
         }
-        const signed = await first.request('signTransaction', { transaction, mode: 'megafuel' })
+        const signed = await first.request('signTransaction', {
+            transaction,
+            mode: 'gas-assist-authorization',
+        })
         await first.request('destroy')
 
         const second = createClient()
@@ -134,11 +150,26 @@ try {
     if (result.messageSignatureLength !== 132 || result.typedSignatureLength !== 132 || !result.unknownRejected) throw new Error('Worker signing or protocol rejection failed.')
     const parsed = parseTransaction(result.signedTransaction)
     const signer = await recoverTransactionAddress({ serializedTransaction: result.signedTransaction })
-    if (signer !== result.address || parsed.chainId !== 56 || parsed.type !== 'legacy' || (parsed.gasPrice ?? 0n) !== 0n || parsed.nonce !== 1 || parsed.gas !== 21_000n) {
-        throw new Error('Exact worker MegaFuel transaction validation failed.')
+    const authorization = parsed.authorizationList?.[0]
+    if (
+        signer !== result.address ||
+        parsed.chainId !== 56 ||
+        parsed.type !== 'eip7702' ||
+        (parsed.maxFeePerGas ?? 0n) !== 0n ||
+        (parsed.maxPriorityFeePerGas ?? 0n) !== 0n ||
+        parsed.nonce !== 1 ||
+        parsed.gas !== 21_000n ||
+        !authorization ||
+        parsed.authorizationList.length !== 1 ||
+        Number(authorization.chainId) !== 56 ||
+        Number(authorization.nonce) !== 2 ||
+        BigInt(authorization.r ?? 0n) === 0n ||
+        BigInt(authorization.s ?? 0n) === 0n
+    ) {
+        throw new Error('Exact worker Gas Assist authorization validation failed.')
     }
     if (unexpectedNetworkRequests !== 0) throw new Error('Wallet worker integration attempted an unexpected network request.')
-    console.log('AUTOMATED-VERIFIED: bundled wallet worker mnemonic/private-key/V3 import, vault round trip, local signing, protocol rejection, and exact BSC zero-gas transaction passed.')
+    console.log('AUTOMATED-VERIFIED: bundled wallet worker mnemonic/private-key/V3 import, vault round trip, local signing, protocol rejection, and exact BNB Chain EIP-7702 authorization signing passed.')
 } finally {
     privateKey.fill?.(0)
     await browser?.close()

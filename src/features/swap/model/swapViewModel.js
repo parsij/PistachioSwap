@@ -490,8 +490,12 @@ export function createSwapViewModel(context) {
                         ? maximumSold
                         : null,
                 },
-                gasAssistBanner: gasAssist.isGasless
-                    ? { quote: gasAssist.gasAssist.quote, sellToken, buyToken }
+                gasAssistBanner: gasAssist.prepaidRequired
+                    ? {
+                        quote: gasAssist.activeQuote?.selectedQuote ?? null,
+                        sellToken,
+                        buyToken,
+                    }
                     : null,
                 status: {
                     nativeBalanceError: catalog.nativeBalance.status === 'error' && walletState.isConnected && walletState.isCorrectNetwork,

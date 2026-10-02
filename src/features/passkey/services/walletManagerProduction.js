@@ -182,7 +182,7 @@ function isGasAssistAuthenticationMessage(
  * A passkey authorizes the wallet-management view once per page lifetime. The
  * decrypted key normally remains loaded only while one operation needs it.
  * Gas Assist may reuse one passkey for its exact authentication messages and
- * one validated atomic MegaFuel transaction inside a short, wallet-bound scope.
+ * one reviewed self-hosted EIP-7702 authorization inside a short, wallet-bound scope.
  */
 export function hardenPistachioWalletManager(manager) {
     if (!manager || manager[HARDENED_MANAGER]) return manager
@@ -202,8 +202,8 @@ export function hardenPistachioWalletManager(manager) {
     const originalLock = manager.lock.bind(manager)
     const originalSignMessage = manager.signMessage.bind(manager)
     const originalSignTypedData = manager.signTypedData.bind(manager)
-    const originalSignMegaFuelTransaction =
-        manager.signMegaFuelTransaction.bind(manager)
+    const originalSignSelfHostedAuthorization =
+        manager.signSelfHostedAuthorization.bind(manager)
     const originalSendTransaction = manager.sendTransaction.bind(manager)
     const originalRenamePasskey = typeof manager.renamePasskey === 'function'
         ? manager.renamePasskey.bind(manager)
@@ -216,7 +216,6 @@ export function hardenPistachioWalletManager(manager) {
             'removePasskey',
             'revealPrivateKey',
             'revealRecoveryPhrase',
-            'signAtomicMegaFuel',
         ].flatMap((name) => typeof manager[name] === 'function'
             ? [[name, manager[name].bind(manager)]]
             : []),
@@ -396,7 +395,7 @@ export function hardenPistachioWalletManager(manager) {
         }
         const scopedGasAssistAction = (
             currentSensitiveActionKind === 'gas-assist-auth' ||
-            currentSensitiveActionKind === 'gas-assist-package'
+            currentSensitiveActionKind === 'gas-assist-authorization'
         )
         if (
             scopedGasAssistAction &&
@@ -421,7 +420,7 @@ export function hardenPistachioWalletManager(manager) {
     // authentication-to-package handoff is still active. Malformed
     // packages are rejected before this is consulted.
     manager.hasActiveGasAssistAuthorization = () => (
-        currentSensitiveActionKind === 'gas-assist-package' ||
+        currentSensitiveActionKind === 'gas-assist-authorization' ||
         gasAssistFlowMatches()
     )
 
@@ -531,17 +530,13 @@ export function hardenPistachioWalletManager(manager) {
         classifyMessage,
     )
     manager.signTypedData = wrapSensitiveAction(originalSignTypedData)
-    manager.signMegaFuelTransaction = wrapSensitiveAction(
-        originalSignMegaFuelTransaction,
+    manager.signSelfHostedAuthorization = wrapSensitiveAction(
+        originalSignSelfHostedAuthorization,
+        () => 'gas-assist-authorization',
     )
     manager.sendTransaction = wrapSensitiveAction(originalSendTransaction)
     for (const [name, operation] of originalSensitiveMethods) {
-        manager[name] = wrapSensitiveAction(
-            operation,
-            () => name === 'signAtomicMegaFuel'
-                ? 'gas-assist-package'
-                : 'default',
-        )
+        manager[name] = wrapSensitiveAction(operation)
     }
     if (originalRenamePasskey) {
         manager.renamePasskey = wrapSensitiveAction(async (...args) => {
@@ -610,20 +605,6 @@ export function hardenPistachioWalletManager(manager) {
             assertAccount(account, readOnlyAccount(this))
             assertPayloadLimit(typedData, MAX_TYPED_DATA_CHARS, 'Typed data')
             return this.signTypedData(typedData)
-        }
-        if (method === 'eth_signTransaction') {
-            if (this.activeChainId !== 56) {
-                throw walletError(
-                    'PISTACHIO_CHAIN_INVARIANT_FAILED',
-                    'Raw transaction signing is available on BNB Chain only.',
-                )
-            }
-            assertPayloadLimit(
-                params[0],
-                MAX_TRANSACTION_CHARS,
-                'Transaction request',
-            )
-            return this.signMegaFuelTransaction(params[0])
         }
         if (method === 'eth_sendTransaction') {
             assertPayloadLimit(
@@ -735,7 +716,7 @@ export function hardenPistachioWalletManager(manager) {
             // under the still-open review dialog.
             if (
                 currentSensitiveActionKind === 'gas-assist-auth' ||
-                currentSensitiveActionKind === 'gas-assist-package' ||
+                currentSensitiveActionKind === 'gas-assist-authorization' ||
                 gasAssistFlowMatches()
             ) return
             void manager.lock('tab-hidden', { broadcast: false })

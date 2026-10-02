@@ -7,7 +7,7 @@ import {
     deriveSwapExecution,
     getSwapExecutionMessage,
     PREPAID_SPONSORSHIP_MODE,
-    SAME_CHAIN_GASLESS_OR_ASSISTED,
+    SAME_CHAIN_GAS_ASSIST,
     SAME_CHAIN_STANDARD,
 } from './swapExecutionMode.js'
 
@@ -32,7 +32,7 @@ describe('swap execution mode', () => {
         expect(deriveRoutingMode({ sellChainId: 1, buyChainId: 1 }))
             .toBe(SAME_CHAIN_STANDARD)
         expect(deriveRoutingMode({ sellChainId: 56, buyChainId: 56, gasAssistPreferred: true }))
-            .toBe(SAME_CHAIN_GASLESS_OR_ASSISTED)
+            .toBe(SAME_CHAIN_GAS_ASSIST)
         expect(deriveRoutingMode({ sellChainId: 56, buyChainId: 8453, gasAssistPreferred: true }))
             .toBe(CROSS_CHAIN)
     })

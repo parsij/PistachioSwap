@@ -11,7 +11,7 @@
 
 ## Trust boundaries
 
-The authenticator owns the WebAuthn credential private key and evaluates PRF. Browser WebAuthn returns PRF output only after user verification. The wallet worker owns PRF processing, KEK derivation, DEK unwrap, payload decryption, the ethers wallet, and signing. IndexedDB owns only ciphertext and public metadata. AppKit owns connected-account state. The backend remains authoritative for MegaFuel preparation, validation, billing, and submission.
+The authenticator owns the WebAuthn credential private key and evaluates PRF. Browser WebAuthn returns PRF output only after user verification. The wallet worker owns PRF processing, KEK derivation, DEK unwrap, payload decryption, the ethers wallet, and signing. IndexedDB owns only ciphertext and public metadata. AppKit owns connected-account state. The backend remains authoritative for Gas Assist order preparation, policy validation, billing, and Paymaster sponsorship.
 
 ## Primary controls
 
@@ -22,7 +22,7 @@ The authenticator owns the WebAuthn credential private key and evaluates PRF. Br
 - Strict schema validation and future-version rejection before decrypt.
 - Bundled worker isolation, narrow message operations, request IDs, and termination on lock.
 - One expiring signing review at a time, duplicate rejection, signer recovery, and exact transaction comparison.
-- BNB Chain-only chain invariants and exact zero-gas legacy MegaFuel validation.
+- BNB Chain-only Gas Assist chain invariants and exact EIP-7702 authorization validation.
 - No secret persistence in Web Storage, cookies, URLs, app state persistence, service-worker caches, or backend requests.
 
 ## In-scope attacks and residual risk
@@ -45,9 +45,9 @@ The authenticator owns the WebAuthn credential private key and evaluates PRF. Br
 
 **Memory extraction:** worker isolation is not a secure enclave. JavaScript strings, ethers objects, garbage-collected copies, crash dumps, and compromised browser internals cannot be reliably zeroized.
 
-**Phishing and approval confusion:** explicit origin, full message/typed data, destination, calldata, fees, and MegaFuel submission disclosure reduce risk. Users can still approve a malicious request.
+**Phishing and approval confusion:** explicit origin, full message/typed data, destination, calldata, fees, and Gas Assist sponsorship disclosure reduce risk. Users can still approve a malicious request.
 
-**RPC or backend compromise:** normal RPC can censor or reject transactions but cannot change a transaction after exact local signing. A malicious backend could prepare a harmful transaction; explicit review and exact comparison preserve what was approved but do not establish business intent. MegaFuel backend validation remains mandatory.
+**RPC or backend compromise:** normal RPC can censor or reject transactions but cannot change a transaction after exact local signing. A malicious backend could prepare a harmful transaction; explicit review and exact comparison preserve what was approved but do not establish business intent. Gas Assist backend policy validation remains mandatory.
 
 ## Explicitly not provided
 
@@ -59,4 +59,4 @@ The authenticator owns the WebAuthn credential private key and evaluates PRF. Br
 
 ## Required audit scope
 
-An independent review must cover WebAuthn option construction and RP-ID deployment, PRF capability behavior across real authenticators, HKDF/AES-GCM use and AAD coverage, IndexedDB transactions, worker bundling and message validation, recovery disclosure, connector/AppKit lifecycle, 0x typed-data behavior, MegaFuel exact signing and duplicate submission, normal RPC broadcast, CSP/header deployment, dependency provenance, and UI redressing/phishing resistance.
+An independent review must cover WebAuthn option construction and RP-ID deployment, PRF capability behavior across real authenticators, HKDF/AES-GCM use and AAD coverage, IndexedDB transactions, worker bundling and message validation, recovery disclosure, connector/AppKit lifecycle, self-hosted EIP-7702 authorization behavior, Paymaster policy binding, and duplicate submission, normal RPC broadcast, CSP/header deployment, dependency provenance, and UI redressing/phishing resistance.

@@ -93,14 +93,13 @@ function createManager({ withVault = true, window = null } = {}) {
         selectVault: vi.fn(async function selectVault() {}),
         sendTransaction: vi.fn(async () => '0xtransaction'),
         sessionActive: false,
-        signAtomicMegaFuel: vi.fn(async function signAtomicMegaFuel(input) {
+        signSelfHostedAuthorization: vi.fn(async function signSelfHostedAuthorization() {
             if (this.hasActiveGasAssistAuthorization?.() !== true) {
                 await this.reviewQueue.request()
             }
             await this.ensureUnlockedForSigning()
-            return { orderId: input.orderId, signedTransactions: [] }
+            return '0xauthorization'
         }),
-        signMegaFuelTransaction: vi.fn(async () => '0xmegafuel'),
         signMessage: vi.fn(async function signMessage(_value, { skipReview = false } = {}) {
             await this.ensureUnlockedForSigning()
             if (!skipReview) await this.reviewQueue.request()
@@ -230,17 +229,17 @@ describe('production Pistachio Wallet hardening', () => {
         })
     })
 
-    it('treats one-shot atomic Gas Assist signing as a sensitive action and wipes the worker afterward', async () => {
+    it('treats self-hosted Gas Assist authorization signing as a sensitive action and wipes the worker afterward', async () => {
         const manager = createManager()
-        const originalAtomicSigner = manager.signAtomicMegaFuel
+        const originalAuthorizationSigner = manager.signSelfHostedAuthorization
         const originalLock = manager.lock
         const originalUnlock = manager.unlock
         manager.sessionActive = true
         hardenPistachioWalletManager(manager)
 
-        await expect(manager.signAtomicMegaFuel({ orderId: 'order-1' }))
-            .resolves.toEqual({ orderId: 'order-1', signedTransactions: [] })
-        expect(originalAtomicSigner).toHaveBeenCalledOnce()
+        await expect(manager.signSelfHostedAuthorization({ type: 'eip7702Auth' }))
+            .resolves.toBe('0xauthorization')
+        expect(originalAuthorizationSigner).toHaveBeenCalledOnce()
         expect(originalUnlock).toHaveBeenCalledOnce()
         expect(originalLock).toHaveBeenCalledOnce()
         expect(manager).toMatchObject({
@@ -266,8 +265,8 @@ describe('production Pistachio Wallet hardening', () => {
                 address,
             ],
         })
-        await expect(manager.signAtomicMegaFuel({ orderId: 'order-1' }))
-            .resolves.toEqual({ orderId: 'order-1', signedTransactions: [] })
+        await expect(manager.signSelfHostedAuthorization({ type: 'eip7702Auth' }))
+            .resolves.toBe('0xauthorization')
 
         expect(manager.reviewQueue.request).not.toHaveBeenCalled()
         expect(originalUnlock).toHaveBeenCalledOnce()
@@ -291,13 +290,13 @@ describe('production Pistachio Wallet hardening', () => {
         expect(manager.phase).toBe('unlocked')
         expect(manager.hasActiveGasAssistAuthorization()).toBe(true)
 
-        await expect(manager.signAtomicMegaFuel({ orderId: 'order-1' }))
-            .resolves.toEqual({ orderId: 'order-1', signedTransactions: [] })
+        await expect(manager.signSelfHostedAuthorization({ type: 'eip7702Auth' }))
+            .resolves.toBe('0xauthorization')
         expect(manager.reviewQueue.request).not.toHaveBeenCalled()
         expect(originalLock).toHaveBeenCalledOnce()
     })
 
-    it('uses one passkey for the bounded Gas Assist authentication and atomic flow', async () => {
+    it('uses one passkey for the bounded Gas Assist authentication and authorization flow', async () => {
         const manager = createManager()
         const originalLock = manager.lock
         const originalUnlock = manager.unlock
@@ -322,8 +321,8 @@ describe('production Pistachio Wallet hardening', () => {
         expect(originalLock).not.toHaveBeenCalled()
         expect(manager.phase).toBe('unlocked')
 
-        await expect(manager.signAtomicMegaFuel({ orderId: 'order-1' }))
-            .resolves.toEqual({ orderId: 'order-1', signedTransactions: [] })
+        await expect(manager.signSelfHostedAuthorization({ type: 'eip7702Auth' }))
+            .resolves.toBe('0xauthorization')
         expect(originalUnlock).toHaveBeenCalledOnce()
         expect(originalReauthenticate).not.toHaveBeenCalled()
         expect(originalLock).toHaveBeenCalledOnce()
@@ -352,7 +351,7 @@ describe('production Pistachio Wallet hardening', () => {
         expect(originalLock).toHaveBeenCalledOnce()
         expect(manager.phase).toBe('locked')
 
-        await manager.signAtomicMegaFuel({ orderId: 'order-1' })
+        await manager.signSelfHostedAuthorization({ type: 'eip7702Auth' })
         expect(originalUnlock).toHaveBeenCalledTimes(2)
         expect(originalLock).toHaveBeenCalledTimes(2)
     })

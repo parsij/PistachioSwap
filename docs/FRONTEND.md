@@ -10,9 +10,10 @@ state. AppKit and Wagmi load only after Connect wallet, through
 download the wallet bundle.
 
 The same-chain quote client is `src/features/swap/services/quotes.js`; paid
-authorization is `src/features/approvals/hooks/useSwapApproval.js`. Gasless
-behavior is owned by `src/features/gas-assist/hooks/useZeroXGaslessSwap.js` and
-must not be imported by the normal approval feature. Cross-chain route state is
+authorization is `src/features/approvals/hooks/useSwapApproval.js`. Gas Assist
+behavior is owned by `src/features/gas-assist/hooks/usePrepaidSponsorship.js`
+and `src/features/gas-assist/services/selfHostedPaymaster.js`; normal approval
+must not implement or duplicate the sponsorship flow. Cross-chain route state is
 owned by `src/features/cross-chain/hooks/useCrossChainRoutes.js`.
 
 Feature tests mock `#wallet-runtime`, Viem, fetch, storage, and timers where applicable.

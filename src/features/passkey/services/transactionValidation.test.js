@@ -8,7 +8,9 @@ import {
     validateLocallySignedTransaction,
 } from './transactionValidation.js'
 
-const wallet = new Wallet(keccak256(toUtf8Bytes('pistachio-wallet-test-key-not-for-funds')))
+const wallet = new Wallet(
+    keccak256(toUtf8Bytes('pistachio-wallet-test-key-not-for-funds')),
+)
 const request = {
     type: 0,
     chainId: 56,
@@ -16,103 +18,68 @@ const request = {
     to: '0x000000000000000000000000000000000000dEaD',
     nonce: 7,
     gas: 55_000,
-    gasPrice: 0,
+    gasPrice: 1,
     value: 123,
     data: '0x1234',
 }
 
 describe('Pistachio local transaction validation', () => {
-    it('recovers the signer and preserves exact EIP-7702 MegaFuel fields', async () => {
-        const executor = '0x2222222222222222222222222222222222222222'
-        const eip7702Request = {
-            type: 4,
-            chainId: 56,
-            from: wallet.address,
-            to: wallet.address,
-            nonce: 7,
-            gas: 400_000,
-            maxFeePerGas: 0,
-            maxPriorityFeePerGas: 0,
-            value: 0,
-            data: '0x1234',
-            authorizationList: [{
-                chainId: 56,
-                address: executor,
-                nonce: 8,
-            }],
-        }
-        const authorization = await wallet.authorize({
-            address: executor,
-            nonce: 8,
-            chainId: 56,
-        })
+    it('recovers the signer and preserves exact normal transaction fields', async () => {
         const signedTransaction = await wallet.signTransaction({
-            ...eip7702Request,
-            gasLimit: eip7702Request.gas,
-            authorizationList: [authorization],
+            ...request,
+            gasLimit: request.gas,
         })
         const result = await validateLocallySignedTransaction({
             signedTransaction,
-            request: eip7702Request,
+            request,
             walletAddress: wallet.address,
-            mode: 'megafuel',
+            mode: 'normal',
         })
         expect(result.signer).toBe(wallet.address)
-        expect(result.parsed.type).toBe('eip7702')
-        expect(result.parsed.maxFeePerGas ?? 0n).toBe(0n)
-        expect(result.parsed.authorizationList).toHaveLength(1)
-        expect(result.parsed.authorizationList[0].address.toLowerCase()).toBe(executor)
-        expect(Number(result.parsed.authorizationList[0].nonce)).toBe(8)
-        expect(BigInt(result.parsed.authorizationList[0].r)).not.toBe(0n)
-        expect(BigInt(result.parsed.authorizationList[0].s)).not.toBe(0n)
-    })
-
-    it('rejects an EIP-7702 MegaFuel transaction whose authorization was not signed', async () => {
-        const executor = '0x2222222222222222222222222222222222222222'
-        const eip7702Request = {
-            type: 4,
-            chainId: 56,
-            from: wallet.address,
-            to: wallet.address,
-            nonce: 7,
-            gas: 400_000,
-            maxFeePerGas: 0,
-            maxPriorityFeePerGas: 0,
-            value: 0,
-            data: '0x1234',
-            authorizationList: [{
-                chainId: 56,
-                address: executor,
-                nonce: 8,
-            }],
-        }
-        const signedTransaction = await wallet.signTransaction({
-            ...eip7702Request,
-            gasLimit: eip7702Request.gas,
-        })
-        await expect(validateLocallySignedTransaction({
-            signedTransaction,
-            request: eip7702Request,
-            walletAddress: wallet.address,
-            mode: 'megafuel',
-        })).rejects.toMatchObject({ code: 'UNSIGNED_EIP7702_AUTHORIZATION' })
-    })
-
-    it('recovers the signer and preserves exact legacy zero-gas fields', async () => {
-        const signedTransaction = await wallet.signTransaction({ ...request, gasLimit: request.gas })
-        const result = await validateLocallySignedTransaction({ signedTransaction, request, walletAddress: wallet.address, mode: 'megafuel' })
-        expect(result.signer).toBe(wallet.address)
-        expect(result.parsed.gasPrice ?? 0n).toBe(0n)
+        expect(result.parsed.gasPrice).toBe(1n)
         expect(result.parsed.type).toBe('legacy')
     })
 
     it.each([
-        ['wrong signer', { walletAddress: '0x0000000000000000000000000000000000000001' }, 'WALLET_SIGNER_MISMATCH'],
-        ['rewritten destination', { request: { ...request, to: '0x0000000000000000000000000000000000000001' } }, 'WALLET_REWROTE_DESTINATION'],
-        ['rewritten value', { request: { ...request, value: 124 } }, 'WALLET_REWROTE_VALUE'],
+        ['wrong signer', {
+            walletAddress: '0x0000000000000000000000000000000000000001',
+        }, 'WALLET_SIGNER_MISMATCH'],
+        ['rewritten destination', {
+            request: {
+                ...request,
+                to: '0x0000000000000000000000000000000000000001',
+            },
+        }, 'WALLET_REWROTE_DESTINATION'],
+        ['rewritten value', {
+            request: { ...request, value: 124 },
+        }, 'WALLET_REWROTE_VALUE'],
     ])('rejects %s', async (_label, overrides, code) => {
-        const signedTransaction = await wallet.signTransaction({ ...request, gasLimit: request.gas })
-        await expect(validateLocallySignedTransaction({ signedTransaction, request, walletAddress: wallet.address, mode: 'megafuel', ...overrides })).rejects.toMatchObject({ code })
+        const signedTransaction = await wallet.signTransaction({
+            ...request,
+            gasLimit: request.gas,
+        })
+        await expect(validateLocallySignedTransaction({
+            signedTransaction,
+            request,
+            walletAddress: wallet.address,
+            mode: 'normal',
+            ...overrides,
+        })).rejects.toMatchObject({ code })
+    })
+
+    it('rejects retired raw sponsored-signing modes', async () => {
+        const signedTransaction = await wallet.signTransaction({
+            ...request,
+            gasLimit: request.gas,
+        })
+        await expect(validateLocallySignedTransaction({
+            signedTransaction,
+            request,
+            walletAddress: wallet.address,
+            mode: 'sponsored',
+        })).rejects.toMatchObject({
+            code: 'WALLET_SIGNING_MODE_UNSUPPORTED',
+        })
     })
 
     it('describes standard token approvals without hiding exact calldata', () => {
@@ -122,24 +89,25 @@ describe('Pistachio local transaction validation', () => {
             functionName: 'approve',
             args: [spender, 123n],
         })
-        expect(describeTransactionReview({ ...request, data }, 'normal')).toMatchObject({
-            actionType: 'Token approval',
-            amount: '123',
-            approval: true,
-            calldata: data,
-            calldataKnown: true,
-            spender,
-            token: request.to,
-            unlimitedWarning: false,
-        })
+        expect(describeTransactionReview({ ...request, data }, 'normal'))
+            .toMatchObject({
+                actionType: 'Token approval',
+                amount: '123',
+                approval: true,
+                calldata: data,
+                calldataKnown: true,
+                spender,
+                token: request.to,
+                unlimitedWarning: false,
+            })
     })
 
     it('keeps unknown contract data marked for an explicit warning', () => {
-        expect(describeTransactionReview(request, 'megafuel')).toMatchObject({
-            actionType: 'MegaFuel sponsored transaction',
+        expect(describeTransactionReview(request, 'normal')).toMatchObject({
+            actionType: 'BNB Smart Chain transaction',
             calldata: request.data,
             calldataKnown: false,
-            gasPrice: '0',
+            gasPrice: '1',
         })
     })
 
@@ -149,7 +117,10 @@ describe('Pistachio local transaction validation', () => {
             chainId: 8453,
             gasPrice: 1,
         }
-        const signedTransaction = await wallet.signTransaction({ ...baseRequest, gasLimit: baseRequest.gas })
+        const signedTransaction = await wallet.signTransaction({
+            ...baseRequest,
+            gasLimit: baseRequest.gas,
+        })
         await expect(validateLocallySignedTransaction({
             signedTransaction,
             request: baseRequest,
@@ -169,12 +140,20 @@ describe('Pistachio local transaction validation', () => {
     })
 
     it('requires the RPC transaction hash to match the signed bytes', async () => {
-        const signedTransaction = await wallet.signTransaction({ ...request, gasLimit: request.gas })
+        const signedTransaction = await wallet.signTransaction({
+            ...request,
+            gasLimit: request.gas,
+        })
         const transactionHash = viemKeccak256(signedTransaction)
-        expect(validateBroadcastTransactionHash({ signedTransaction, transactionHash })).toBe(transactionHash)
+        expect(validateBroadcastTransactionHash({
+            signedTransaction,
+            transactionHash,
+        })).toBe(transactionHash)
         expect(() => validateBroadcastTransactionHash({
             signedTransaction,
             transactionHash: `0x${'00'.repeat(32)}`,
-        })).toThrowError(expect.objectContaining({ code: 'WALLET_BROADCAST_HASH_MISMATCH' }))
+        })).toThrowError(expect.objectContaining({
+            code: 'WALLET_BROADCAST_HASH_MISMATCH',
+        }))
     })
 })

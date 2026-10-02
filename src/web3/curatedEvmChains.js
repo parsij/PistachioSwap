@@ -27,7 +27,7 @@ import {
 } from 'viem/chains'
 
 export const DEFAULT_CHAIN_ID = 56
-export const MEGAFUEL_CHAIN_ID = 56
+export const GAS_ASSIST_CHAIN_ID = 56
 export const BNB_CHAIN_LOGO_URI = '/assets/bnb-logo-Ujb8xjX_.png'
 export const CANONICAL_NATIVE_TOKEN_ADDRESS =
     '0x0000000000000000000000000000000000000000'
@@ -208,7 +208,6 @@ export function getChainCapabilities(chainId) {
         sameChainSwap: true,
         crossChainSource: true,
         crossChainDestination: true,
-        gasless: Number(chainId) === 56,
-        megaFuel: Number(chainId) === MEGAFUEL_CHAIN_ID,
+        gasAssist: Number(chainId) === GAS_ASSIST_CHAIN_ID,
     })
 }

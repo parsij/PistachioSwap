@@ -27,7 +27,7 @@ afterEach(() => {
 })
 
 describe('Gas Assist public proxy boundary', () => {
-    it('exposes policy/order routes but no backend Particle relay or submit route', () => {
+    it('exposes only current policy/order routes and no retired provider callback', () => {
         expect(isPublicGasAssistProxyRoute('GET', '/v1/sponsorship/config')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/preview')).toBe(true)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/auth/challenge')).toBe(true)
@@ -41,12 +41,11 @@ describe('Gas Assist public proxy boundary', () => {
         expect(isPublicGasAssistProxyRoute('GET', '/v1/sponsorship/orders/order_123/paymaster/sponsor')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/paymaster/submit')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/paymaster/internal')).toBe(false)
-        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
-        expect(isPublicGasAssistProxyRoute('POST', '/api/v1/sponsorship/particle/before-paymaster-sign')).toBe(true)
+        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/before-paymaster-sign')).toBe(false)
+        expect(isPublicGasAssistProxyRoute('POST', '/api/v1/sponsorship/particle/before-paymaster-sign')).toBe(false)
 
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/delegate')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/submit')).toBe(false)
-        expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/particle/paymaster-webhook')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/alchemy/sponsorship-webhook')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/package/prepare')).toBe(false)
         expect(isPublicGasAssistProxyRoute('POST', '/v1/sponsorship/orders/order_123/atomic/permit')).toBe(false)

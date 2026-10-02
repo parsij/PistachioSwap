@@ -30,10 +30,10 @@ vi.mock('../../wallet/services/walletActivity.js', () => ({
 import { useGasAssistController } from './useGasAssistController.js'
 
 const baseProps = {
-    routingMode: 'SAME_CHAIN_GASLESS_OR_ASSISTED',
-    gasAssistRoutingMode: 'SAME_CHAIN_GASLESS_OR_ASSISTED',
+    routingMode: 'SAME_CHAIN_GAS_ASSIST',
+    gasAssistRoutingMode: 'SAME_CHAIN_GAS_ASSIST',
     normalMode: 'normal',
-    gaslessMode: 'zero-x-gasless',
+    gasAssistExecutionMode: 'prepaid-sponsorship',
     quoteEndpoint: 'http://localhost:3001/v1/quote',
     account: '0x0000000000000000000000000000000000000001',
     sellToken: { address: '0x0000000000000000000000000000000000000002', decimals: 6 },
@@ -43,7 +43,7 @@ const baseProps = {
     activeAmountIn: '51000000',
     activeAmountSide: 'sell',
     configuredSlippageBps: 50,
-    gasAssistConfig: { config: { enabled: true, mode: 'zero-x-gasless' } },
+    gasAssistConfig: { config: { enabled: true } },
     refreshIndex: 0,
     normalQuote: { selectedQuote: { transaction: { to: '0x0000000000000000000000000000000000000004' } } },
     normalQuoteStatus: 'success',
@@ -96,7 +96,7 @@ describe('exact prepaid Gas Assist route ownership', () => {
         vi.restoreAllMocks()
     })
 
-    it('uses the exact prepaid preview and keeps retired Gasless execution fail-closed', async () => {
+    it('uses the exact prepaid preview for the current Gas Assist execution path', async () => {
         const { result } = renderHook(() => useGasAssistController(baseProps))
         expect(mocks.prepaidArgs.required).toBe(true)
         expect(mocks.previewArgs).toMatchObject({
@@ -104,17 +104,8 @@ describe('exact prepaid Gas Assist route ownership', () => {
             enabled: true,
             grossInputAmount: '51000000',
         })
-        expect(result.current.executionMode).toBe('zero-x-gasless')
+        expect(result.current.executionMode).toBe('prepaid-sponsorship')
         expect(result.current.prepaidRequired).toBe(true)
-        expect(result.current.gasAssist).toMatchObject({
-            quote: null,
-            quoteStatus: 'success',
-            available: false,
-            dialog: { open: false, state: 'removed' },
-        })
-        expect(() => result.current.gasAssist.open()).toThrow(
-            'Legacy 0x Gasless execution has been removed. Use atomic Gas Assist.',
-        )
         expect(result.current.activeQuote).toMatchObject({
             prepaidSponsorshipRequired: true,
             selectedQuote: {
@@ -196,11 +187,9 @@ describe('exact prepaid Gas Assist route ownership', () => {
         mocks.prepaid = { config: { enabled: false }, configStatus: 'success', configError: null }
 
         const { result } = renderHook(() => useGasAssistController(baseProps))
-        expect(result.current.executionMode).toBe('zero-x-gasless')
+        expect(result.current.executionMode).toBe('prepaid-sponsorship')
         expect(result.current.activeQuote).toBeNull()
         expect(result.current.activeQuoteStatus).toBe('error')
-        expect(result.current.gasAssist.available).toBe(false)
-        expect(result.current.gasAssist.dialog.state).toBe('removed')
 
         await waitFor(() => {
             expect(consoleError).toHaveBeenCalledWith(

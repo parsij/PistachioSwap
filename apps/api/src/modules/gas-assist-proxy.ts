@@ -30,7 +30,6 @@ const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/sponsor$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/submitted$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/receipt$`, 'u')],
-    ['POST', /^\/v1\/sponsorship\/particle\/before-paymaster-sign$/u],
 ] as const)
 
 type ProxyConfig = {
@@ -200,20 +199,6 @@ function proxyHeaders(request: FastifyRequest, config: ProxyConfig) {
     const idempotencyKey = request.headers['idempotency-key']
     if (typeof idempotencyKey === 'string') {
         headers.set('idempotency-key', idempotencyKey)
-    }
-
-    // Particle signs this callback body with the project RSA key. Forward the
-    // provider signature only on the one exact callback route; browser requests
-    // can never smuggle it onto another private-service endpoint.
-    const normalizedPath = publicPathname(new URL(
-        request.raw.url || request.url,
-        'http://pistachio.local',
-    ).pathname)
-    if (normalizedPath === '/v1/sponsorship/particle/before-paymaster-sign') {
-        const particleSignature = request.headers['x-particle-signature']
-        if (typeof particleSignature === 'string' && particleSignature.length <= 2048) {
-            headers.set('x-particle-signature', particleSignature)
-        }
     }
 
     return headers

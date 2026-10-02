@@ -95,10 +95,10 @@ export function validatePublicBscRpcUrl(value = import.meta.env.VITE_BSC_PUBLIC_
     if (url.protocol !== 'https:' && !(import.meta.env.DEV && isLocalhost && url.protocol === 'http:')) {
         throw makeError('METAMASK_MULTICHAIN_PUBLIC_RPC_INVALID', 'The public BNB Chain RPC URL must use HTTPS.')
     }
-    if (url.username || url.password || url.hostname.toLowerCase().includes('nodereal')) {
+    if (url.username || url.password) {
         throw makeError(
             'METAMASK_MULTICHAIN_PRIVATE_RPC_FORBIDDEN',
-            'NodeReal and credential-bearing RPC URLs are not allowed in browser configuration.',
+            'Credential-bearing RPC URLs are not allowed in browser configuration.',
         )
     }
     return url.toString()
@@ -442,7 +442,7 @@ function requireAddress(value, field) {
     return value
 }
 
-/** Normalizes one backend-prepared direct EIP-7702 MegaFuel transaction. */
+/** Normalizes one backend-prepared direct EIP-7702 Gas Assist transaction. */
 export function normalizePreparedAtomicTransaction(preparedTransaction, authenticatedWalletAddress) {
     if (!preparedTransaction || typeof preparedTransaction !== 'object' || Array.isArray(preparedTransaction)) {
         throw makeError('WALLET_SIGNED_TRANSACTION_MISMATCH', 'The backend prepared atomic transaction is invalid.')

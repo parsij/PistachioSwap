@@ -80,8 +80,7 @@ export const CURATED_EVM_CHAINS = Object.freeze(
             sameChainSwap: true,
             crossChainSource: true,
             crossChainDestination: true,
-            gasless: chain.id === 56,
-            megaFuel: chain.id === 56,
+            gasAssist: chain.id === 56,
         }),
     })),
 )

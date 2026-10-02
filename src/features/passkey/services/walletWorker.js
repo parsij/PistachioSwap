@@ -127,18 +127,35 @@ function parseQuantity(value, name, defaultValue) {
 }
 
 function normalizeTransaction(transaction, mode) {
-    if (!transaction || typeof transaction !== 'object' || Array.isArray(transaction)) throw new TypeError('Invalid transaction.')
+    if (!transaction || typeof transaction !== 'object' || Array.isArray(transaction)) {
+        throw new TypeError('Invalid transaction.')
+    }
     const chainId = Number(transaction.chainId)
-    if (!isCuratedEvmChainId(chainId)) throw new TypeError('Pistachio Wallet does not sign transactions for this network.')
-    if (mode !== 'normal' && mode !== 'megafuel') throw new TypeError('Invalid transaction signing mode.')
-    if (mode === 'megafuel' && chainId !== PISTACHIO_CHAIN_ID) throw new TypeError('Pistachio Wallet signs MegaFuel transactions on BNB Chain only.')
-    const from = transaction.from ? getAddress(transaction.from) : getAddress(requireWallet().address)
-    if (from !== getAddress(requireWallet().address)) throw new TypeError('Transaction account mismatch.')
+    if (!isCuratedEvmChainId(chainId)) {
+        throw new TypeError('Pistachio Wallet does not sign transactions for this network.')
+    }
+    if (mode !== 'normal' && mode !== 'gas-assist-authorization') {
+        throw new TypeError('Invalid transaction signing mode.')
+    }
+
+    const gasAssistAuthorization = mode === 'gas-assist-authorization'
+    if (gasAssistAuthorization && chainId !== PISTACHIO_CHAIN_ID) {
+        throw new TypeError('Gas Assist EIP-7702 authorization is BNB Chain-only.')
+    }
+
+    const from = transaction.from
+        ? getAddress(transaction.from)
+        : getAddress(requireWallet().address)
+    if (from !== getAddress(requireWallet().address)) {
+        throw new TypeError('Transaction account mismatch.')
+    }
+
     const type = transaction.type === undefined
         ? 0
         : Number(typeof transaction.type === 'string' && transaction.type.startsWith('0x')
             ? BigInt(transaction.type)
             : transaction.type)
+
     const normalized = {
         chainId,
         type,
@@ -148,59 +165,57 @@ function normalizeTransaction(transaction, mode) {
         value: parseQuantity(transaction.value, 'value', 0n),
         data: transaction.data ?? '0x',
     }
-    if (!Number.isSafeInteger(normalized.nonce)) throw new TypeError('Invalid transaction nonce.')
-    if (mode === 'megafuel') {
-        if (type === 4) {
-            if (
-                parseQuantity(transaction.maxFeePerGas, 'maximum fee') !== 0n ||
-                parseQuantity(transaction.maxPriorityFeePerGas, 'priority fee') !== 0n
-            ) {
-                throw new TypeError('MegaFuel EIP-7702 transactions must use zero max fees.')
-            }
-            if (transaction.gasPrice !== undefined && parseQuantity(transaction.gasPrice, 'gas price') !== 0n) {
-                throw new TypeError('MegaFuel EIP-7702 transactions cannot include a nonzero gas price.')
-            }
-            if (transaction.accessList !== undefined && transaction.accessList?.length) {
-                throw new TypeError('MegaFuel transaction contains an access list.')
-            }
-            const authorizations = transaction.authorizationList
-            if (!Array.isArray(authorizations) || authorizations.length !== 1) {
-                throw new TypeError('MegaFuel EIP-7702 transactions require exactly one authorization.')
-            }
-            const authorization = authorizations[0]
-            if (!authorization || typeof authorization !== 'object') {
-                throw new TypeError('MegaFuel EIP-7702 authorization is invalid.')
-            }
-            const authorizationChainId = Number(
-                typeof authorization.chainId === 'string' && authorization.chainId.startsWith('0x')
-                    ? BigInt(authorization.chainId)
-                    : authorization.chainId,
-            )
-            if (![0, PISTACHIO_CHAIN_ID].includes(authorizationChainId)) {
-                throw new TypeError('MegaFuel EIP-7702 authorization must use BNB Chain or Particle chain-agnostic scope.')
-            }
-            normalized.maxFeePerGas = 0n
-            normalized.maxPriorityFeePerGas = 0n
-            normalized.authorizationList = [{
-                chainId: authorizationChainId,
-                address: getAddress(authorization.address),
-                nonce: Number(parseQuantity(authorization.nonce, 'authorization nonce')),
-            }]
-            if (!Number.isSafeInteger(normalized.authorizationList[0].nonce)) {
-                throw new TypeError('Invalid EIP-7702 authorization nonce.')
-            }
-        } else if (type === 0) {
-            if (parseQuantity(transaction.gasPrice, 'gas price') !== 0n) {
-                throw new TypeError('MegaFuel requires a legacy zero-gas transaction.')
-            }
-            if (transaction.maxFeePerGas !== undefined || transaction.maxPriorityFeePerGas !== undefined || transaction.accessList !== undefined) {
-                throw new TypeError('MegaFuel transaction contains unsupported fee fields.')
-            }
-            normalized.gasPrice = 0n
-        } else {
-            throw new TypeError('MegaFuel requires a legacy zero-gas or EIP-7702 sponsored transaction.')
+    if (!Number.isSafeInteger(normalized.nonce)) {
+        throw new TypeError('Invalid transaction nonce.')
+    }
+
+    if (gasAssistAuthorization) {
+        if (type !== 4) {
+            throw new TypeError('Gas Assist authorization requires an EIP-7702 transaction envelope.')
         }
-    } else if (type === 0) {
+        if (
+            parseQuantity(transaction.maxFeePerGas, 'maximum fee') !== 0n ||
+            parseQuantity(transaction.maxPriorityFeePerGas, 'priority fee') !== 0n
+        ) {
+            throw new TypeError('Gas Assist authorization envelope must use zero max fees.')
+        }
+        if (transaction.gasPrice !== undefined &&
+            parseQuantity(transaction.gasPrice, 'gas price') !== 0n) {
+            throw new TypeError('Gas Assist authorization envelope cannot include a nonzero gas price.')
+        }
+        if (transaction.accessList !== undefined && transaction.accessList?.length) {
+            throw new TypeError('Gas Assist authorization envelope cannot include an access list.')
+        }
+        const authorizations = transaction.authorizationList
+        if (!Array.isArray(authorizations) || authorizations.length !== 1) {
+            throw new TypeError('Gas Assist requires exactly one EIP-7702 authorization.')
+        }
+        const authorization = authorizations[0]
+        if (!authorization || typeof authorization !== 'object') {
+            throw new TypeError('Gas Assist EIP-7702 authorization is invalid.')
+        }
+        const authorizationChainId = Number(
+            typeof authorization.chainId === 'string' && authorization.chainId.startsWith('0x')
+                ? BigInt(authorization.chainId)
+                : authorization.chainId,
+        )
+        if (authorizationChainId !== PISTACHIO_CHAIN_ID) {
+            throw new TypeError('Gas Assist authorization must be scoped to BNB Chain.')
+        }
+        normalized.maxFeePerGas = 0n
+        normalized.maxPriorityFeePerGas = 0n
+        normalized.authorizationList = [{
+            chainId: authorizationChainId,
+            address: getAddress(authorization.address),
+            nonce: Number(parseQuantity(authorization.nonce, 'authorization nonce')),
+        }]
+        if (!Number.isSafeInteger(normalized.authorizationList[0].nonce)) {
+            throw new TypeError('Invalid EIP-7702 authorization nonce.')
+        }
+        return normalized
+    }
+
+    if (type === 0) {
         normalized.gasPrice = parseQuantity(transaction.gasPrice, 'gas price')
     } else if (type === 2) {
         normalized.maxFeePerGas = parseQuantity(transaction.maxFeePerGas, 'maximum fee')
@@ -213,9 +228,11 @@ function normalizeTransaction(transaction, mode) {
 
 async function signNormalizedTransaction(activeWallet, transaction, mode) {
     const normalized = normalizeTransaction(transaction, mode)
-    if (normalized.type === 4) {
+    if (mode === 'gas-assist-authorization') {
         const unsigned = normalized.authorizationList?.[0]
-        if (!unsigned) throw new TypeError('MegaFuel EIP-7702 transactions require exactly one authorization.')
+        if (!unsigned) {
+            throw new TypeError('Gas Assist requires exactly one EIP-7702 authorization.')
+        }
         if (typeof activeWallet.authorize !== 'function') {
             throw new TypeError('This wallet cannot sign an EIP-7702 authorization.')
         }
