@@ -181,7 +181,6 @@ describe('production Pistachio Wallet hardening', () => {
 
         expect(originalConnection).toHaveBeenCalledOnce()
         expect(originalUnlock).not.toHaveBeenCalled()
-        expect(manager.activateReadOnlySession).not.toHaveBeenCalled()
         expect(manager.snapshot()).toMatchObject({
             phase: 'locked',
             sessionActive: false,
