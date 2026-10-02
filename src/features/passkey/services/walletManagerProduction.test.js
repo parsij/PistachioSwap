@@ -146,8 +146,10 @@ function createManager({ withVault = true, window = null } = {}) {
 }
 
 describe('production Pistachio Wallet hardening', () => {
-    it('connects a saved wallet in read-only mode without requesting a passkey', async () => {
+    it('restores an active saved wallet in read-only mode without requesting a passkey', async () => {
         const manager = createManager()
+        manager.sessionActive = true
+        manager.activeSessionVaultId = manager.vault.vaultId
         const originalConnection = manager.requestConnection
         const originalUnlock = manager.unlock
         hardenPistachioWalletManager(manager)
@@ -165,6 +167,29 @@ describe('production Pistachio Wallet hardening', () => {
         })
         expect(manager.connectionBridge.resolve).toHaveBeenCalledWith(address)
         expect(manager.snapshot().signingPasskeyOnly).toBe(true)
+    })
+
+    it('opens the wallet chooser after explicit sign-out instead of forcing the previous saved vault', async () => {
+        const manager = createManager()
+        const originalConnection = manager.requestConnection
+        const originalUnlock = manager.unlock
+        manager.sessionActive = false
+        manager.activeSessionVaultId = null
+        hardenPistachioWalletManager(manager)
+
+        await expect(manager.requestConnection()).resolves.toBe('original-connection')
+
+        expect(originalConnection).toHaveBeenCalledOnce()
+        expect(originalUnlock).not.toHaveBeenCalled()
+        expect(manager.activateReadOnlySession).not.toHaveBeenCalled()
+        expect(manager.snapshot()).toMatchObject({
+            phase: 'locked',
+            sessionActive: false,
+            vault: {
+                address,
+                vaultId: 'vault-1',
+            },
+        })
     })
 
     it('opens the wallet page with one passkey check and reuses that view authorization until the page reloads', async () => {
