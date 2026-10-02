@@ -317,6 +317,7 @@ export default function WalletAccountDialog({
     selectedTokens,
     explorerUrl,
     onRefetch,
+    requestedAction = null,
 }) {
     const { mutateAsync: disconnect } = useDisconnect()
     const [receiveOpen, setReceiveOpen] = useState(false)
@@ -397,6 +398,22 @@ export default function WalletAccountDialog({
     useEffect(() => {
         setView('overview')
     }, [address])
+
+    useEffect(() => {
+        if (!open || !requestedAction?.action) return
+        const action = requestedAction.action
+        if (action === 'send') {
+            setSendOpen(true)
+            return
+        }
+        if (action === 'receive') {
+            setReceiveOpen(true)
+            return
+        }
+        if (['overview', 'portfolio', 'activity'].includes(action)) {
+            setView(action)
+        }
+    }, [open, requestedAction?.action, requestedAction?.requestId])
 
     async function copyAddress() {
         try {
