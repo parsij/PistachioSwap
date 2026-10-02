@@ -1,8 +1,8 @@
 /* Modern Send surface. Scoped to the wallet Send dialog and its token picker. */
 .wallet-dialog-overlay.nested {
-    background: rgb(0 0 0 / 64%);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgb(0 0 0 / 52%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .wallet-dialog.wallet-send-dialog {
