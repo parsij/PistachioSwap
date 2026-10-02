@@ -87,7 +87,7 @@
     inset: 0;
     z-index: 10000;
     background: var(--color-backdrop, rgb(0 0 0 / 72%));
-    backdrop-filter: blur(4px);
+    backdrop-filter: none;
     animation: cross-chain-review-fade-in 140ms ease-out;
 }
 
