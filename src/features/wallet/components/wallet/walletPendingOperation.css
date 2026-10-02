@@ -24,8 +24,8 @@
     pointer-events: none;
     white-space: nowrap;
     isolation: isolate;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .uni-wallet-pending-operation::before {
