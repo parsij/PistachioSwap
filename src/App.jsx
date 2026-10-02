@@ -1,6 +1,8 @@
 import AppHeader from './app/AppHeader.jsx'
 import AppLayout from './app/AppLayout.jsx'
 import SwapPage from './features/swap/components/SwapPage.jsx'
+import TokenSelectorOverlay from './features/tokens/components/TokenSelectorOverlay.jsx'
+import PortfolioPage from './features/portfolio/components/PortfolioPage.jsx'
 import { useSwapController } from './features/swap/hooks/useSwapController.js'
 
 /**
@@ -12,13 +14,22 @@ import { useSwapController } from './features/swap/hooks/useSwapController.js'
  */
 export default function App() {
     const { layoutStyle, header, page } = useSwapController()
+    const portfolioView = typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('view') === 'portfolio'
 
     return (
         <AppLayout
             style={layoutStyle}
             header={<AppHeader {...header} />}
         >
-            <SwapPage {...page} />
+            {portfolioView ? (
+                <>
+                    <PortfolioPage wallet={header.wallet} />
+                    <TokenSelectorOverlay {...page.tokenSelector} />
+                </>
+            ) : (
+                <SwapPage {...page} />
+            )}
         </AppLayout>
     )
 }
