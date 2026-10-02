@@ -65,13 +65,13 @@ describe('PortfolioPage', () => {
 
         expect(screen.getByText('$12.50')).toBeTruthy()
         expect(screen.getByText('USD Coin')).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Tokens' })).toBeTruthy()
+        expect(screen.getAllByRole('button', { name: 'Tokens' }).length).toBeGreaterThan(0)
     })
 
     it('filters the full token view locally', () => {
         render(<PortfolioPage wallet={wallet()} />)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Tokens' }))
+        fireEvent.click(screen.getAllByRole('button', { name: 'Tokens' })[0])
         fireEvent.change(screen.getByRole('textbox', { name: 'Search portfolio tokens' }), {
             target: { value: 'nope' },
         })
