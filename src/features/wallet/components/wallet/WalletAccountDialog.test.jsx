@@ -197,6 +197,22 @@ describe('WalletAccountDialog trust filtering', () => {
         expect(screen.queryByText('RETURN TO MEMES')).toBeNull()
     })
 
+    it('routes View portfolio to the full app portfolio and closes the drawer', () => {
+        window.history.replaceState({}, '', '/swap/')
+        const navigation = vi.fn()
+        window.addEventListener('pistachio:navigate-app', navigation, { once: true })
+        const { onOpenChange } = renderDialog()
+
+        fireEvent.click(screen.getByRole('button', { name: /View portfolio/ }))
+
+        const url = new URL(window.location.href)
+        expect(url.pathname).toBe('/swap/')
+        expect(url.searchParams.get('view')).toBe('portfolio')
+        expect(screen.queryByRole('heading', { name: 'Portfolio' })).toBeNull()
+        expect(onOpenChange).toHaveBeenCalledWith(false)
+        expect(navigation).toHaveBeenCalledOnce()
+    })
+
     it('renders swap activity as a half-sell half-buy token icon', () => {
         mocks.activity = [{
             ...activity('swapped', null, '105'),
