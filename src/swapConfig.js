@@ -90,8 +90,11 @@ export const swapUiConfig = {
     navigation: [
         {
             label: 'Trade',
-            active: true,
             href: '/swap/',
+        },
+        {
+            label: 'Portfolio',
+            href: '/swap/?view=portfolio',
         },
     ],
 
