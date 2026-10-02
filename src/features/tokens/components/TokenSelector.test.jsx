@@ -13,7 +13,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import TokenSelector from './TokenSelector.jsx'
+import TokenSelector, { shouldDismissTokenSelectorDrag } from './TokenSelector.jsx'
 import { TokenRow } from './TokenSelectorPrimitives.jsx'
 import { clearTokenLogoCacheForTest } from './tokenLogoCache.js'
 
@@ -201,6 +201,20 @@ function renderSelector(overrides = {}) {
         />,
     )
 }
+
+describe('TokenSelector mobile sheet drag', () => {
+    it('dismisses only after a meaningful downward drag or fling', () => {
+        expect(shouldDismissTokenSelectorDrag({ offset: { y: 95 }, velocity: { y: 699 } })).toBe(false)
+        expect(shouldDismissTokenSelectorDrag({ offset: { y: 96 }, velocity: { y: 0 } })).toBe(true)
+        expect(shouldDismissTokenSelectorDrag({ offset: { y: 10 }, velocity: { y: 700 } })).toBe(true)
+        expect(shouldDismissTokenSelectorDrag({ offset: { y: -120 }, velocity: { y: -900 } })).toBe(false)
+    })
+
+    it('renders a real drag control instead of a decorative handle', () => {
+        renderSelector()
+        expect(screen.getByRole('button', { name: 'Drag token selector' })).toBeTruthy()
+    })
+})
 
 describe('TokenSelector wallet rows', () => {
     beforeEach(() => {
