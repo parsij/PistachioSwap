@@ -2392,3 +2392,99 @@ button:disabled {
         max-width: 54vw;
     }
 }
+
+/*
+ * Small interaction and responsive refinements inspired by mature swap UIs.
+ * These rules stay presentation-only: no quote, wallet, routing, or Gas Assist
+ * behavior depends on them.
+ */
+.swap-card-stack {
+    width: 100%;
+}
+
+.swap-panel {
+    transition:
+            background-color 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease;
+}
+
+.swap-panel:focus-within {
+    box-shadow:
+            inset 0 0 0 1px
+            color-mix(in srgb, var(--color-subtle-muted) 48%, transparent);
+}
+
+.swap-panel.panel-insufficient:focus-within {
+    box-shadow:
+            inset 0 0 0 1px
+            color-mix(in srgb, var(--color-insufficient) 48%, transparent);
+}
+
+.settings-button {
+    border-radius: 12px;
+    transition:
+            background-color 140ms ease,
+            color 140ms ease;
+}
+
+.token-button {
+    transition:
+            background-color 140ms ease,
+            border-color 140ms ease,
+            color 140ms ease,
+            filter 140ms ease;
+}
+
+.switch-button {
+    transition:
+            background-color 140ms ease,
+            border-color 140ms ease,
+            box-shadow 140ms ease;
+}
+
+.primary-action {
+    transition:
+            background-color 180ms ease,
+            color 180ms ease,
+            filter 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .settings-button:hover {
+        background: var(--color-hover);
+        color: var(--color-text);
+    }
+
+    .selected-token-button:hover {
+        border-color: var(--color-subtle-muted);
+        background: var(--color-hover);
+    }
+
+    .select-token-button:hover,
+    .primary-action-ready:hover {
+        filter: brightness(1.06);
+    }
+
+    .switch-button:hover {
+        background: var(--color-hover);
+        box-shadow:
+                var(--shadow-switch),
+                0 0 0 1px color-mix(in srgb, var(--color-subtle-muted) 38%, transparent);
+    }
+}
+
+/* Match the swap surface's vertical rhythm to the viewport instead of one desktop offset. */
+@media (max-width: 768px) {
+    .swap-root {
+        margin-top: 48px;
+    }
+}
+
+@media (max-width: 640px) {
+    .swap-root {
+        width: calc(100vw - 16px);
+        margin-top: 20px;
+    }
+}
+
