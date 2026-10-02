@@ -79,6 +79,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     const [tokenSearch, setTokenSearch] = useState('')
     const [selectorChainId, setSelectorChainId] = useState(swapChainId)
     const [tokenSelectorSide, setTokenSelectorSide] = useState(null)
+    const [tokenSelectorMode, setTokenSelectorMode] = useState('picker')
     const discoveryChainId = tokenSelectorSide ? selectorChainId : swapChainId
     const walletAddress = walletState.address
     const normalizedTokenSearch = tokenSearch.trim().toLowerCase()
@@ -404,15 +405,21 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         await Promise.all([refetchWalletTokens(), nativeBalance.refetch()])
     }, [nativeBalance, refetchWalletTokens])
 
-    function openTokenSelector(side, currentToken) {
+    function openTokenSelector(side, currentToken, mode = 'picker') {
         setTokenSearch('')
-        setSelectorChainId(Number(currentToken?.chainId ?? swapChainId))
+        setTokenSelectorMode(mode)
+        setSelectorChainId(
+            mode === 'global-search'
+                ? 'all'
+                : Number(currentToken?.chainId ?? swapChainId),
+        )
         setTokenSelectorSide(side)
     }
 
     function closeTokenSelector() {
         setTokenSearch('')
         setTokenSelectorSide(null)
+        setTokenSelectorMode('picker')
     }
 
     return {
@@ -431,6 +438,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         refreshWalletBalances,
         selector: {
             side: tokenSelectorSide,
+            mode: tokenSelectorMode,
             chainId: selectorChainId,
             discoveryChainId,
             search: tokenSearch,
