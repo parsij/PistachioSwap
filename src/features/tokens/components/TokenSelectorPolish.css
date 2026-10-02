@@ -17,6 +17,13 @@
     display: none;
 }
 
+.ps-token-selector-handle {
+    padding: 0;
+    border: 0;
+    appearance: none;
+    background: transparent;
+}
+
 .ps-token-selector-header {
     padding: 18px 18px 14px;
 }
@@ -248,12 +255,25 @@
 
     .ps-token-selector-handle {
         display: block;
-        width: 42px;
-        height: 4px;
+        width: 52px;
+        height: 20px;
         flex: 0 0 auto;
-        margin: 10px auto 2px;
+        margin: 2px auto 0;
         border-radius: 999px;
-        background: #6f6f6f;
+        background:
+            linear-gradient(
+                #6f6f6f,
+                #6f6f6f
+            )
+            center / 42px 4px no-repeat;
+        cursor: grab;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+    }
+
+    .ps-token-selector-handle:active {
+        cursor: grabbing;
     }
 
     .ps-token-selector-header {
