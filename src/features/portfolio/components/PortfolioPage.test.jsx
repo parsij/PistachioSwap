@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import PortfolioPage from './PortfolioPage.jsx'
 
@@ -61,11 +61,9 @@ function wallet(overrides = {}) {
     }
 }
 
-afterEach(() => {
-    cleanup()
+beforeEach(() => {
     window.history.replaceState({}, '', '/swap/?view=portfolio')
     window.localStorage.clear()
-    vi.restoreAllMocks()
     externalWalletTokens.mockReset()
     externalWalletTokens.mockReturnValue({
         tokens: [],
@@ -73,6 +71,11 @@ afterEach(() => {
         error: null,
         refetch: vi.fn(),
     })
+})
+
+afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
 })
 
 describe('PortfolioPage', () => {
