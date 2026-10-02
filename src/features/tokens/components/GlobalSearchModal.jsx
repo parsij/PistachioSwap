@@ -22,6 +22,8 @@ import './GlobalSearchModal.css'
 const SEARCH_TABS = [
     { id: 'all', label: 'All' },
     { id: 'tokens', label: 'Tokens' },
+    { id: 'pools', label: 'Pools', desktopOnly: true },
+    { id: 'auctions', label: 'Auctions', desktopOnly: true },
     { id: 'wallets', label: 'Wallets' },
 ]
 
@@ -242,7 +244,10 @@ export default function GlobalSearchModal({
                         <button
                             key={tab.id}
                             type="button"
-                            className={activeTab === tab.id ? 'active' : ''}
+                            className={[
+                                activeTab === tab.id ? 'active' : '',
+                                tab.desktopOnly ? 'desktop-only' : '',
+                            ].filter(Boolean).join(' ')}
                             aria-current={activeTab === tab.id ? 'page' : undefined}
                             onClick={() => setActiveTab(tab.id)}
                         >
@@ -317,6 +322,12 @@ export default function GlobalSearchModal({
                                 </div>
                             )}
                         </>
+                    ) : activeTab === 'pools' || activeTab === 'auctions' ? (
+                        <div className="global-search-empty">
+                            <Search aria-hidden="true" />
+                            <strong>{activeTab === 'pools' ? 'Pool search is unavailable' : 'Auction search is unavailable'}</strong>
+                            <span>PistachioSwap does not currently index this Uniswap search category.</span>
+                        </div>
                     ) : (
                         <>
                             {walletResult && (
