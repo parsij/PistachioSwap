@@ -24,6 +24,7 @@ const MOBILE_SHEET_DISMISS_VELOCITY = 650
 
 const APP_LINKS = [
     { href: '/swap/', label: 'Trade', Icon: ArrowLeftRight },
+    { href: '/swap/?view=portfolio', label: 'Portfolio', Icon: WalletCards },
 ]
 
 const PRODUCT_LINKS = [

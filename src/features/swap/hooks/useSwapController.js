@@ -579,6 +579,11 @@ export function useSwapController() {
         },
         onOpenSellTokenSelector: () => catalog.selector.open('sell', inputs.sellToken),
         onOpenBuyTokenSelector: () => catalog.selector.open('buy', inputs.buyToken),
+        onOpenGlobalSearch: () => catalog.selector.open(
+            'buy',
+            inputs.buyToken,
+            'global-search',
+        ),
         onToggleSellDenomination: () => inputs.toggleDenomination('sell'),
         onToggleBuyDenomination: () => inputs.toggleDenomination('buy'),
         onQuickAmountSelect: (value) => {
@@ -619,6 +624,27 @@ export function useSwapController() {
         },
         onTokenSelect: (token) => {
             nativeMaximumRequestedRef.current = false
+
+            if (catalog.selector.mode === 'global-search') {
+                inputs.selectToken({
+                    token,
+                    side: 'buy',
+                    selectorChainId: Number(token.chainId),
+                })
+                catalog.selector.close()
+                resetQuoteAndReview()
+
+                const url = new URL(window.location.href)
+                url.pathname = '/swap/'
+                url.searchParams.delete('view')
+                url.searchParams.delete('tab')
+                window.history.pushState(window.history.state, '', url)
+                window.dispatchEvent(new CustomEvent('pistachio:navigate-app', {
+                    detail: { view: 'trade' },
+                }))
+                return
+            }
+
             inputs.selectToken({ token, side: catalog.selector.side, selectorChainId: catalog.selector.chainId })
             catalog.selector.close()
             resetQuoteAndReview()

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import WalletAccountButton from './wallet/WalletAccountButton.jsx'
 import WalletAccountDialog from './wallet/WalletAccountDialog.jsx'
@@ -25,6 +25,35 @@ export default function WalletConnectionButton({
     onRefetch,
 }) {
     const [accountOpen, setAccountOpen] = useState(false)
+    const [requestedAction, setRequestedAction] = useState(null)
+    const requestSequence = useRef(0)
+
+    useEffect(() => {
+        function handleWalletAction(event) {
+            if (!walletState.isConnected) return
+            const action = String(event.detail?.action ?? '')
+            if (!['overview', 'portfolio', 'activity', 'send', 'receive'].includes(action)) {
+                return
+            }
+            requestSequence.current += 1
+            setRequestedAction({
+                action,
+                requestId: requestSequence.current,
+            })
+            setAccountOpen(true)
+        }
+
+        window.addEventListener('pistachio:open-wallet-action', handleWalletAction)
+        return () => window.removeEventListener(
+            'pistachio:open-wallet-action',
+            handleWalletAction,
+        )
+    }, [walletState.isConnected])
+
+    function handleAccountOpenChange(open) {
+        setAccountOpen(open)
+        if (!open) setRequestedAction(null)
+    }
 
     return (
         <div className="appkit-account-control">
@@ -36,7 +65,8 @@ export default function WalletConnectionButton({
             {walletState.isConnected && (
                 <WalletAccountDialog
                     open={accountOpen}
-                    onOpenChange={setAccountOpen}
+                    onOpenChange={handleAccountOpenChange}
+                    requestedAction={requestedAction}
                     address={walletState.address}
                     chainId={walletState.chainId}
                     nativeBalance={nativeBalance}
