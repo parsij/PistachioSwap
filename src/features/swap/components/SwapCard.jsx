@@ -1,4 +1,4 @@
-import { LayoutGroup } from 'motion/react'
+import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import SwapTokenPanel from './SwapTokenPanel.jsx'
 import SwapBalanceNotice from './SwapBalanceNotice.jsx'
 import SwapDirectionButton from './SwapDirectionButton.jsx'
@@ -14,8 +14,19 @@ import TransactionStatus from './TransactionStatus.jsx'
  * @sideEffects Delegates all interactions to semantic callbacks supplied by the controller.
  */
 export default function SwapCard({ sellPanel, buyPanel, direction, primaryAction, details, status }) {
+    const reducedMotion = useReducedMotion()
+
     return (
-        <>
+        <motion.div
+            className="swap-card-stack"
+            layout
+            transition={reducedMotion ? { duration: 0 } : {
+                layout: {
+                    duration: 0.22,
+                    ease: [0.22, 1, 0.36, 1],
+                },
+            }}
+        >
             <LayoutGroup id="swap-layout">
                 <div className="swap-panels">
                     <SwapTokenPanel {...sellPanel} />
@@ -30,6 +41,6 @@ export default function SwapCard({ sellPanel, buyPanel, direction, primaryAction
             <SwapPrimaryAction {...primaryAction} />
             <SwapDetails {...details} />
             <TransactionStatus {...status} />
-        </>
+        </motion.div>
     )
 }
