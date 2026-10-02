@@ -154,10 +154,11 @@ function GlobalTokenSelector({
             drag={compact ? 'y' : false}
             dragControls={dragControls}
             dragListener={false}
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.72 }}
+            dragConstraints={{ top: 0, bottom: compact ? 1200 : 0 }}
+            dragElastic={0}
             dragMomentum={false}
             dragSnapToOrigin
+            dragTransition={{ bounceStiffness: 520, bounceDamping: 42 }}
             onDragEnd={finishSheetDrag}
             onPointerDown={(event) => event.stopPropagation()}
         >
@@ -166,7 +167,9 @@ function GlobalTokenSelector({
                 className="ps-token-selector-handle"
                 aria-label="Drag token selector"
                 onPointerDown={startSheetDrag}
-            />
+            >
+                <span aria-hidden="true" />
+            </button>
             <header className="ps-token-selector-header"><h2>Select a token</h2><button type="button" className="ps-token-selector-close" aria-label="Close" onClick={onClose}><CloseIcon /></button></header>
             <div className="ps-token-search-wrapper"><div className="ps-token-search"><SearchIcon /><input autoFocus={!compact} aria-label="Search tokens" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search tokens" autoComplete="off" spellCheck="false" /><ChainSelector chainId={state.chainScope} onChange={handleChainChange} /></div></div>
             <div className="ps-token-selector-scroll" onScroll={handleCatalogScroll}>{state.normalizedSearch ? <TokenSearchResults loading={loading} error={error} tokens={state.searchResultTokens} hiddenTokens={state.selectedHiddenTokens} onSelect={state.handleSelect} onContextMenu={state.openContextMenu} currentToken={currentToken} oppositeToken={oppositeToken} /> : <Sections state={state} loading={loading} currentToken={currentToken} oppositeToken={oppositeToken} hideUnknownTokens={hideUnknownTokens} walletOnly={walletOnly} />}</div>
