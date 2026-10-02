@@ -884,6 +884,18 @@ export default function PortfolioPage({ wallet }) {
         selectedTokens = [],
         onRefetch,
     } = wallet
+    const [, setRouteRevision] = useState(0)
+
+    useEffect(() => {
+        const syncRoute = () => setRouteRevision((revision) => revision + 1)
+        window.addEventListener('popstate', syncRoute)
+        window.addEventListener('pistachio:navigate-app', syncRoute)
+        return () => {
+            window.removeEventListener('popstate', syncRoute)
+            window.removeEventListener('pistachio:navigate-app', syncRoute)
+        }
+    }, [])
+
     const params = new URLSearchParams(window.location.search)
     const requestedAddress = normalizeAddress(params.get('address'))
     const connectedAddress = normalizeAddress(walletState.address)
