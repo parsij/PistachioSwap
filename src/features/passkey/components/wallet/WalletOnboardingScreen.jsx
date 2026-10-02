@@ -123,7 +123,38 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
     }
     function chooseImport(mode) {
         setImportMode(mode)
-        goTo('import-risk')
+        goTo(snapshot.phase === 'passkey-ready' ? 'import-entry' : 'import-risk')
+    }
+
+    function resetImportFields() {
+        setSecretInput('')
+        setKeystorePassword('')
+        setKeystoreFileName('')
+        setBackupAcknowledged(false)
+        setDerivedAddress(null)
+        setAddressConfirmed(false)
+    }
+
+    async function returnToImportMethods() {
+        if (busyRef.current) return
+        if (snapshot.phase === 'confirm-import') {
+            const reset = await run(() => manager.resetPendingImport())
+            if (!reset) return
+        }
+        resetImportFields()
+        setImportMode(null)
+        setError(null)
+        manager.clearError()
+        onEntryScreenChange('import')
+    }
+
+    function cancelImportMethodSelection() {
+        manager.cancelSetup()
+        resetImportFields()
+        setImportMode(null)
+        setError(null)
+        manager.clearError()
+        onEntryScreenChange('menu')
     }
     async function beginSetup() {
         await run(() => manager.beginPasskeySetup())
@@ -215,6 +246,15 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
         return <LoadingState title="Creating and verifying your passkey">Complete the browser prompt. Pistachio Wallet will not generate a recovery phrase until verification succeeds.</LoadingState>
     }
     if (snapshot.phase === 'passkey-ready') {
+        if (!importMode && entryScreen === 'import') {
+            return (
+                <ImportChooser
+                    flags={snapshot.flags}
+                    onBack={cancelImportMethodSelection}
+                    onSelect={chooseImport}
+                />
+            )
+        }
         if (!importMode) {
             return (
                 <div className="pistachio-wallet-stack">
@@ -227,6 +267,7 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
         }
         return (
             <div className="pistachio-wallet-stack">
+                <BackButton onClick={() => void returnToImportMethods()} />
                 <div className="pistachio-wallet-success" role="status"><Check aria-hidden="true" /> Passkey ready</div>
                 <ScreenIntro title={IMPORT_COPY[importMode].title}>{IMPORT_COPY[importMode].description}</ScreenIntro>
                 {importMode === 'keystore' ? (
@@ -296,6 +337,7 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
     if (snapshot.phase === 'confirm-import') {
         return (
             <div className="pistachio-wallet-stack">
+                <BackButton onClick={() => void returnToImportMethods()} />
                 <ScreenIntro title="Confirm wallet address">Make sure this is the EVM wallet address you expect before saving the encrypted wallet.</ScreenIntro>
                 <div className="pistachio-wallet-field-group"><span>Wallet address</span><code className="pistachio-wallet-address">{derivedAddress}</code></div>
                 <label className="pistachio-wallet-check"><input type="checkbox" checked={addressConfirmed} onChange={(event) => setAddressConfirmed(event.target.checked)} /> I confirm that this is the wallet address I intend to import.</label>

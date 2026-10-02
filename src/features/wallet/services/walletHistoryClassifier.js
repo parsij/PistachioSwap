@@ -13,7 +13,10 @@ import {
     getWrappedNativeTokenAddress,
 } from '../../../web3/curatedEvmChains.js'
 
-export const WALLET_HISTORY_CLASSIFIER_VERSION = 2
+export const WALLET_HISTORY_CLASSIFIER_VERSION = 3
+
+export const ENTRY_POINT_V08_ADDRESS =
+    '0x4337084d9e255ff0702461cf8895ce9e3b5ff108'
 
 export const GAS_ASSIST_ATOMIC_EXECUTOR_ADDRESS =
     '0x973731be76bdb84b994d32ef1e9607edebfbe470'
@@ -29,6 +32,9 @@ const KNOWN_PISTACHIO_BSC_CONTRACT_SET = new Set(
 )
 
 const TRANSFER_EVENT = toEventSelector('Transfer(address,address,uint256)').toLowerCase()
+const USER_OPERATION_EVENT = toEventSelector(
+    'UserOperationEvent(bytes32,address,address,uint256,bool,uint256,uint256)',
+).toLowerCase()
 const SWAP_EVENTS = new Set([
     toEventSelector('Swap(address,uint256,uint256,uint256,uint256,address)'),
     toEventSelector('Swap(address,address,int256,int256,uint160,uint128,int24)'),
@@ -251,6 +257,16 @@ function hasKnownPistachioAuthorization(value) {
         .some(address => KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address))
 }
 
+function userOperationSenders(value) {
+    const candidates = value.user_operation_senders ?? value.userOperationSenders
+    if (!Array.isArray(candidates)) return []
+    return candidates.map(normalizeAddress).filter(Boolean)
+}
+
+function hasWalletUserOperation(value, wallet) {
+    return userOperationSenders(value).includes(wallet)
+}
+
 function isKnownPistachioBscContract(value) {
     const address = normalizeAddress(value)
     return Boolean(address) && KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address)
@@ -408,6 +424,18 @@ export function buildReceiptHistoryRow({
         contract_interactions: [...new Set(logs
             .map(log => normalizeAddress(log.address))
             .filter(Boolean))],
+        user_operation_senders: [...new Set(logs.flatMap(log => {
+            const topics = Array.isArray(log.topics) ? log.topics : []
+            if (
+                normalizeAddress(log.address) !== ENTRY_POINT_V08_ADDRESS ||
+                String(topics[0] ?? '').toLowerCase() !== USER_OPERATION_EVENT ||
+                topics.length < 3
+            ) {
+                return []
+            }
+            const sender = normalizeAddress(`0x${String(topics[2] ?? '').slice(-40)}`)
+            return sender ? [sender] : []
+        }))],
     }
 }
 
@@ -609,6 +637,46 @@ function inferKnownPistachioSwap({
     }
 }
 
+
+function inferSelfHostedGasAssistSwap({
+    chainId,
+    wallet,
+    value,
+    hash,
+    timestamp,
+    outgoing,
+    incoming,
+}) {
+    if (
+        chainId !== 56 ||
+        normalizeAddress(value.to_address) !== ENTRY_POINT_V08_ADDRESS ||
+        value.swap_evidence !== true ||
+        !hasWalletUserOperation(value, wallet)
+    ) {
+        return null
+    }
+
+    const net = netFlows([...outgoing, ...incoming])
+    const sell = singleTokenFlow(net.filter(item => item.direction === 'outgoing'))
+    const buy = singleTokenFlow(net.filter(item => item.direction === 'incoming'))
+    if (!sell || !buy || !differentAssets(chainId, sell.token, buy.token)) return null
+
+    return {
+        id: `${chainId}:${hash}`,
+        walletAddress: wallet,
+        type: 'swapped',
+        chainId,
+        hash,
+        timestamp,
+        sellToken: sell.token,
+        buyToken: buy.token,
+        sellAmount: sell.amount,
+        buyAmount: buy.amount,
+        recipient: wallet,
+        provider: 'pistachio-self-hosted-gas-assist',
+    }
+}
+
 export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
     const wallet = normalizeAddress(walletAddress)
     if (!wallet || !isRecord(value) || String(value.receipt_status ?? '0') !== '1') return null
@@ -653,6 +721,17 @@ export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
     }
     if (!activity) {
         activity = inferKnownPistachioSwap({
+            chainId,
+            wallet,
+            value,
+            hash,
+            timestamp,
+            outgoing,
+            incoming,
+        })
+    }
+    if (!activity) {
+        activity = inferSelfHostedGasAssistSwap({
             chainId,
             wallet,
             value,
@@ -725,7 +804,9 @@ export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
 
     const classificationReason = activity.provider === 'pistachio-gas-assist-cross-chain'
         ? 'Successful Pistachio cross-chain executor receipt with exact reviewed source sell flow'
-        : activity.type === 'swapped'
+        : activity.provider === 'pistachio-self-hosted-gas-assist'
+            ? 'Successful self-hosted Gas Assist UserOperation with wallet-scoped swap flows'
+            : activity.type === 'swapped'
             ? 'Successful receipt with distinct outgoing and incoming assets and swap evidence'
             : activity.type === 'approved'
                 ? 'ERC-20 approval calldata'
@@ -752,7 +833,9 @@ export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
 
 export const walletHistoryClassifierInternals = {
     TRANSFER_EVENT,
+    USER_OPERATION_EVENT,
     SWAP_EVENTS,
+    ENTRY_POINT_V08_ADDRESS,
     differentAssets,
     netFlows,
     normalizeAddress,

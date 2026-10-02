@@ -8,6 +8,7 @@ import {
     Copy,
     ExternalLink,
     MoreHorizontal,
+    Info,
     Landmark,
     RefreshCw,
     Search,
@@ -522,14 +523,18 @@ function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
     const y = (point) => top + ((max - point.value) / Math.max(max - min, 0.000001)) * plotHeight
     const line = points.length >= 2
         ? points.map((point, index) => (index ? 'L' : 'M') + x(point).toFixed(2) + ' ' + y(point).toFixed(2)).join(' ')
-        : ''
-    const area = line
+        : points.length === 1
+            ? 'M ' + Math.max(0, plotWidth - 88).toFixed(2) + ' ' + y(points[0]).toFixed(2) +
+                ' L ' + (plotWidth - 6).toFixed(2) + ' ' + y(points[0]).toFixed(2)
+            : ''
+    const area = points.length >= 2 && line
         ? line + ' L ' + x(points.at(-1)).toFixed(2) + ' ' + (top + plotHeight) +
             ' L ' + x(points[0]).toFixed(2) + ' ' + (top + plotHeight) + ' Z'
         : ''
     const change = portfolioSnapshotChange(points)
     const positive = !change || change.absolute >= 0
     const axis = [max, min + (max - min) * 0.66, min + (max - min) * 0.33, min]
+    const axisFractionDigits = max < 1 ? 2 : max < 100 ? 1 : 0
     const labels = points.length >= 2
         ? [
             points[0],
@@ -567,7 +572,7 @@ function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
                 </svg>
                 <div className="uni-portfolio-chart-y-axis" aria-hidden="true">
                     {axis.map((value, index) => (
-                        <span key={index}>{formatUsd(Math.max(0, value), 0)}</span>
+                        <span key={index}>{formatUsd(Math.max(0, value), axisFractionDigits)}</span>
                     ))}
                 </div>
                 {labels.length > 0 && (
@@ -579,7 +584,9 @@ function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
                 )}
                 {points.length < 2 && (
                     <div className="uni-portfolio-chart-empty-copy">
-                        Portfolio history starts building from this browser.
+                        {points.length === 1
+                            ? 'Current value shown. History builds while you use this browser.'
+                            : 'Portfolio history starts building from this browser.'}
                     </div>
                 )}
             </div>
@@ -599,61 +606,108 @@ function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
     )
 }
 
-function PerformancePanel() {
-    const [period, setPeriod] = useState('All')
-    const [open, setOpen] = useState(false)
-    const ref = useRef(null)
-    useOutsideDismiss(open, ref, () => setOpen(false))
+function PerformancePanel({
+    walletAddress,
+    scope,
+    currentValue,
+    historyRevision,
+}) {
+    const [period, setPeriod] = useState('ALL')
+    const [periodOpen, setPeriodOpen] = useState(false)
+    const [infoOpen, setInfoOpen] = useState(false)
+    const periodRef = useRef(null)
+    const infoRef = useRef(null)
+    useOutsideDismiss(periodOpen, periodRef, () => setPeriodOpen(false))
+    useOutsideDismiss(infoOpen, infoRef, () => setInfoOpen(false))
+
+    const snapshots = useMemo(
+        () => readPortfolioSnapshots({
+            walletAddress,
+            scope,
+            period,
+        }),
+        [historyRevision, period, scope, walletAddress],
+    )
+    const change = useMemo(() => portfolioSnapshotChange(snapshots), [snapshots])
+    const trackedChange = change ?? (snapshots.length === 1
+        ? { absolute: 0, percent: 0 }
+        : null)
+    const totalReturn = trackedChange
+        ? formatSignedUsd(trackedChange.absolute) + ' (' +
+            formatPercent(trackedChange.percent ?? 0, true) + ')'
+        : 'Building history'
+    const totalPositive = trackedChange
+        ? trackedChange.absolute >= 0
+        : undefined
+    const selectedLabel = PORTFOLIO_CHART_PERIODS.find((item) => item.id === period)?.label ?? 'All'
 
     return (
         <section className="uni-portfolio-performance">
             <div className="uni-portfolio-performance-header">
-                <h2>
-                    Performance
-                    <span title="Cost-basis profit and loss is not available from PistachioSwap's current portfolio data.">i</span>
-                </h2>
-                <div className="uni-portfolio-performance-period" ref={ref}>
+                <div className="uni-portfolio-performance-title" ref={infoRef}>
+                    <h2>Performance</h2>
+                    <button
+                        type="button"
+                        className="uni-portfolio-performance-info"
+                        aria-label="About portfolio performance"
+                        aria-expanded={infoOpen}
+                        onClick={() => setInfoOpen((current) => !current)}
+                    >
+                        <Info aria-hidden="true" />
+                    </button>
+                    {infoOpen && (
+                        <div className="uni-portfolio-performance-info-popover" role="note">
+                            Total return is the change in portfolio value recorded by this browser for the selected period. Realized and unrealized cost-basis P/L are not calculated because PistachioSwap does not have reliable acquisition-cost data.
+                        </div>
+                    )}
+                </div>
+                <div className="uni-portfolio-performance-period" ref={periodRef}>
                     <button
                         type="button"
                         aria-haspopup="menu"
-                        aria-expanded={open}
-                        onClick={() => setOpen((current) => !current)}
+                        aria-expanded={periodOpen}
+                        onClick={() => setPeriodOpen((current) => !current)}
                     >
-                        {period} <ChevronDown aria-hidden="true" />
+                        {selectedLabel} <ChevronDown aria-hidden="true" />
                     </button>
-                    {open && (
+                    {periodOpen && (
                         <div role="menu">
-                            {['All', '1M', '1W', '1D'].map((item) => (
+                            {['ALL', '1M', '1W', '1D'].map((item) => (
                                 <button
                                     key={item}
                                     type="button"
                                     role="menuitem"
                                     onClick={() => {
                                         setPeriod(item)
-                                        setOpen(false)
+                                        setPeriodOpen(false)
                                     }}
                                 >
-                                    {item}
+                                    {PORTFOLIO_CHART_PERIODS.find((candidate) => candidate.id === item)?.label ?? item}
                                 </button>
                             ))}
                         </div>
                     )}
                 </div>
             </div>
-            <dl title="Profit and loss needs cost-basis data that PistachioSwap does not currently index.">
+            <dl>
                 <div>
                     <dt>Unrealized return</dt>
-                    <dd>—</dd>
+                    <dd className="uni-portfolio-performance-unavailable">Not tracked</dd>
                 </div>
                 <div>
                     <dt>Realized return</dt>
-                    <dd>—</dd>
+                    <dd className="uni-portfolio-performance-unavailable">Not tracked</dd>
                 </div>
                 <div>
                     <dt>Total return</dt>
-                    <dd>—</dd>
+                    <dd data-positive={totalPositive === undefined ? undefined : String(totalPositive)}>
+                        {totalReturn}
+                    </dd>
                 </div>
             </dl>
+            {snapshots.length === 1 && Number.isFinite(Number(currentValue)) && (
+                <p className="uni-portfolio-performance-note">Tracking started in this browser at {formatUsd(currentValue)}.</p>
+            )}
         </section>
     )
 }
@@ -786,6 +840,8 @@ function Overview({
     change,
     onRefresh,
     onTab,
+    historyScope,
+    historyRevision,
 }) {
     const miniAssets = assets.slice(0, 8)
     return (
@@ -814,7 +870,12 @@ function Overview({
                         address={address}
                         onRefresh={onRefresh}
                     />
-                    <PerformancePanel />
+                    <PerformancePanel
+                        walletAddress={address}
+                        scope={historyScope}
+                        currentValue={totalValue}
+                        historyRevision={historyRevision}
+                    />
                 </aside>
             </div>
 
@@ -1150,6 +1211,8 @@ export default function PortfolioPage({ wallet }) {
                         change={periodChange}
                         onRefresh={refresh}
                         onTab={changeTab}
+                        historyScope={historyScope}
+                        historyRevision={historyRevision}
                     />
                 )}
 

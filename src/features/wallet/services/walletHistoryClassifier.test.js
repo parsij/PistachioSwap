@@ -2,8 +2,11 @@ import { encodeFunctionData } from 'viem'
 import { describe, expect, it } from 'vitest'
 
 import {
+    buildReceiptHistoryRow,
     classifyReceiptHistoryRow,
+    ENTRY_POINT_V08_ADDRESS,
     KNOWN_PISTACHIO_BSC_CONTRACT_ADDRESSES,
+    walletHistoryClassifierInternals,
 } from './walletHistoryClassifier.js'
 
 const wallet = '0x880c39159919700166e4612d4b7aa344fc21cd6f'
@@ -205,6 +208,61 @@ describe('browser wallet-history classifier', () => {
         }))
 
         expect(activity).toMatchObject({ type: 'sent' })
+    })
+
+    it('classifies a self-hosted Gas Assist UserOperation as one swap across devices', () => {
+        const bundler = '0x00000000000000000000000000000000000000f1'
+        const activity = classifyReceiptHistoryRow(56, wallet, row({
+            from_address: bundler,
+            to_address: ENTRY_POINT_V08_ADDRESS,
+            swap_evidence: true,
+            user_operation_senders: [wallet],
+            erc20_transfers: [
+                transfer({ token: tokenA, from: wallet, to: other, value: 2_000_000, symbol: 'USDC' }),
+                transfer({ token: tokenB, from: other, to: wallet, value: 3_000_000, symbol: 'ETH' }),
+            ],
+        }))
+
+        expect(activity).toMatchObject({
+            type: 'swapped',
+            sellAmount: '2',
+            buyAmount: '3',
+            provider: 'pistachio-self-hosted-gas-assist',
+            source: 'remote',
+        })
+    })
+
+    it('extracts the wallet sender from an EntryPoint UserOperationEvent receipt', () => {
+        const senderTopic = `0x${'0'.repeat(24)}${wallet.slice(2)}`
+        const rowValue = buildReceiptHistoryRow({
+            chainId: 56,
+            walletAddress: wallet,
+            transaction: {
+                hash,
+                from: other,
+                to: ENTRY_POINT_V08_ADDRESS,
+                input: '0x1234',
+                value: '0x0',
+                blockNumber: '0x7b',
+                authorizationList: [],
+            },
+            receipt: {
+                status: '0x1',
+                logs: [{
+                    address: ENTRY_POINT_V08_ADDRESS,
+                    topics: [
+                        walletHistoryClassifierInternals.USER_OPERATION_EVENT,
+                        `0x${'11'.repeat(32)}`,
+                        senderTopic,
+                        `0x${'0'.repeat(24)}${other.slice(2)}`,
+                    ],
+                    data: '0x',
+                }],
+            },
+            indexedTransfers: [],
+        })
+
+        expect(rowValue.user_operation_senders).toEqual([wallet])
     })
 
     it('keeps a plain wallet-initiated token transfer as sent', () => {

@@ -115,6 +115,20 @@ describe('PortfolioPage', () => {
         expect(screen.getByRole('img', { name: 'Portfolio value history' })).toBeTruthy()
     })
 
+    it('shows a visible current-value chart and a tappable performance explanation immediately', () => {
+        render(<PortfolioPage wallet={wallet()} />)
+
+        const line = document.querySelector('.uni-portfolio-chart-line')
+        expect(line).toBeTruthy()
+        expect(line.getAttribute('d')).toContain(' L ')
+        expect(screen.getByText('Current value shown. History builds while you use this browser.')).toBeTruthy()
+        expect(screen.getAllByText('Not tracked')).toHaveLength(2)
+        expect(screen.getByText('$0.00 (0.00%)')).toBeTruthy()
+
+        fireEvent.click(screen.getByRole('button', { name: 'About portfolio performance' }))
+        expect(screen.getByRole('note').textContent).toContain('Realized and unrealized cost-basis P/L')
+    })
+
     it('uses the full tokens tab search without changing portfolio data ownership', () => {
         render(<PortfolioPage wallet={wallet()} />)
 

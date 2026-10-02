@@ -327,6 +327,26 @@ describe('Pistachio Wallet manager connection and vault lifecycle', () => {
         expect(storage.saveAndReadBackVault).not.toHaveBeenCalled()
     })
 
+    it('clears a reviewed pending import while keeping the passkey setup ready', async () => {
+        const { manager } = createHarness()
+        await manager.initialize()
+        await manager.prepareNewWallet()
+        const request = vi.fn(async (operation) => {
+            if (operation === 'clearPendingWallet') return { ready: true }
+            throw new Error('Unexpected worker operation.')
+        })
+        manager.client = { request }
+        manager.phase = 'confirm-import'
+
+        await expect(manager.resetPendingImport()).resolves.toBe(true)
+
+        expect(request).toHaveBeenCalledWith('clearPendingWallet')
+        expect(manager.phase).toBe('passkey-ready')
+        expect(manager.error).toBeNull()
+        expect(manager.vault).toBeNull()
+        expect(manager.setupPreviousVaultId).toBe(firstVault.vaultId)
+    })
+
     it('persists a second encrypted vault while preserving the previous vault', async () => {
         const { manager, storage } = createHarness()
         await manager.initialize()

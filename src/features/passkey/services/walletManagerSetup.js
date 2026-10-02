@@ -212,6 +212,16 @@ export const methods = {
         this.notify()
         return result
     },
+    async resetPendingImport() {
+        if (!['passkey-ready', 'confirm-import'].includes(this.phase) || !this.client) {
+            throw managerError('PISTACHIO_WALLET_SETUP_INCOMPLETE', 'Wallet setup is incomplete.')
+        }
+        await this.client.request('clearPendingWallet')
+        this.phase = 'passkey-ready'
+        this.error = null
+        this.notify()
+        return true
+    },
     async restoreEncryptedBackup(text) {
         await this.initialize()
         if (new TextEncoder().encode(String(text ?? '')).byteLength > PISTACHIO_MAX_KEYSTORE_BYTES) {

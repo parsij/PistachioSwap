@@ -1043,6 +1043,7 @@ button:disabled {
 .sell-amount-position,
 .buy-amount-position {
     position: absolute;
+    z-index: 1;
     left: var(--spacing-panel-horizontal);
     right: calc(var(--size-selected-token-min-width) + var(--spacing-token-right) + 8px);
 }
@@ -1121,7 +1122,9 @@ button:disabled {
 .sell-token-position,
 .buy-token-position {
     position: absolute;
+    z-index: 3;
     right: var(--spacing-token-right);
+    pointer-events: auto;
 }
 
 .sell-token-position {

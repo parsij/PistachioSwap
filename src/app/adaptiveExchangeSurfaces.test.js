@@ -65,6 +65,28 @@ describe('adaptive exchange surfaces', () => {
         )
     })
 
+    it('keeps both swap token buttons above amount-input hit areas', () => {
+        const source = css('src/index.css')
+
+        expect(source).toMatch(
+            /\.sell-amount-position,\s*\.buy-amount-position\s*\{[\s\S]*z-index:\s*1/,
+        )
+        expect(source).toMatch(
+            /\.sell-token-position,\s*\.buy-token-position\s*\{[\s\S]*z-index:\s*3[\s\S]*pointer-events:\s*auto/,
+        )
+    })
+
+    it('keeps wallet token-picker backdrops crisp without Safari blur', () => {
+        const source = css('src/features/wallet/components/wallet/sendAssetDialog.css')
+
+        expect(source).toMatch(
+            /\.ps-token-selector-backdrop\[data-side='send'\]\s*\{[\s\S]*backdrop-filter:\s*none/,
+        )
+        expect(source).not.toMatch(
+            /\.ps-token-selector-backdrop\[data-side='send'\]\s*\{[^}]*blur\(/,
+        )
+    })
+
     it('turns review and Gas Assist dialogs into compact bottom sheets', () => {
         for (const [path, selector] of [
             ['src/index.css', '.swap-review-dialog'],

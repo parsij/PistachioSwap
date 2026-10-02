@@ -300,8 +300,8 @@
 .ps-token-selector-backdrop[data-side='send'] {
     z-index: 180;
     background: rgb(0 0 0 / 68%);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .ps-token-selector-backdrop[data-side='send'] .ps-token-selector-dialog {
