@@ -165,10 +165,11 @@ function dexName(
     const attributes = item && isRecord(item.attributes)
         ? item.attributes
         : null
-    return safeText(attributes?.name, 80) ??
+    return (
+        safeText(attributes?.name, 80) ??
         safeText(attributes?.identifier, 80) ??
-        id.split('_').slice(1).join('_') ||
-        null
+        safeText(id.split('_').slice(1).join('_'), 80)
+    )
 }
 
 function protocolLabel(value: string | null) {
@@ -432,7 +433,7 @@ export function createMarketPoolRoutes(
                     chainId: parsedChain as number | 'all',
                     query: request.query.q ?? '',
                     limit: request.query.limit ?? DEFAULT_POOLS,
-                    signal: request.raw.signal,
+                    signal: undefined,
                 })
                 return {
                     schemaVersion: 1,
