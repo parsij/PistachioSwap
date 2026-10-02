@@ -15,6 +15,7 @@ import {
     marketCatalogService,
     marketTokenRoutes,
 } from './modules/market-tokens.js'
+import { marketPoolRoutes } from './modules/market-pools.js'
 import {
     getUniswapVolumeCatalog,
     loadPersistedUniswapVolumeCatalog,
@@ -53,6 +54,7 @@ function canonicalRoutePath(route: string) {
 
 function registerApiRoutes(app: FastifyInstance, prefix = '') {
     app.register(marketTokenRoutes, { prefix })
+    app.register(marketPoolRoutes, { prefix })
     app.register(uniswapVolumeTokenRoutes, { prefix })
     app.register(tokenCatalogRoutes, { prefix })
     app.register(walletTokenRoutes, { prefix })
