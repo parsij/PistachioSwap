@@ -286,6 +286,13 @@
     color: var(--color-muted);
 }
 
+.global-search-pool-unavailable {
+    min-height: 52px;
+    padding: 14px 20px;
+    color: var(--color-subtle-muted);
+    font-size: 13px;
+}
+
 .global-search-empty {
     display: grid;
     min-height: 220px;
