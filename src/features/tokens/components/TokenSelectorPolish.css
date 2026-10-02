@@ -24,6 +24,10 @@
     background: transparent;
 }
 
+.ps-token-selector-handle > span {
+    display: block;
+}
+
 .ps-token-selector-header {
     padding: 18px 18px 14px;
 }
@@ -254,26 +258,39 @@
     }
 
     .ps-token-selector-handle {
-        display: block;
-        width: 52px;
-        height: 20px;
+        position: relative;
+        z-index: 4;
+        display: grid;
+        width: min(220px, 60vw);
+        height: 48px;
+        min-height: 48px;
         flex: 0 0 auto;
-        margin: 2px auto 0;
-        border-radius: 999px;
-        background:
-            linear-gradient(
-                #6f6f6f,
-                #6f6f6f
-            )
-            center / 42px 4px no-repeat;
+        place-items: center;
+        margin: 0 auto -28px;
         cursor: grab;
         touch-action: none;
         -webkit-tap-highlight-color: transparent;
         user-select: none;
     }
 
+    .ps-token-selector-handle > span {
+        width: 48px;
+        height: 5px;
+        border-radius: 999px;
+        background: #6f6f6f;
+        pointer-events: none;
+        transition:
+            width 120ms ease,
+            background-color 120ms ease;
+    }
+
     .ps-token-selector-handle:active {
         cursor: grabbing;
+    }
+
+    .ps-token-selector-handle:active > span {
+        width: 58px;
+        background: #8a8a8a;
     }
 
     .ps-token-selector-header {
