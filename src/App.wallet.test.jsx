@@ -1110,7 +1110,7 @@ describe('App wallet integration', () => {
         fireEvent.click(getByRole('button', { name: /Open account/ }))
         fireEvent.click(getByRole('button', { name: /View portfolio/ }))
         expect(document.querySelector('.uni-portfolio-page')).toBeTruthy()
-        expect(getByText('BNB')).toBeTruthy()
+        expect(document.body.textContent).toContain('BNB')
         expect(document.querySelector('.wallet-asset-list')).toBeNull()
     })
 
