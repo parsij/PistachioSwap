@@ -262,8 +262,8 @@ function normalizePublicRpcUrl(chainId = DEFAULT_CHAIN_ID, value = configuredPub
     if (url.protocol !== 'https:' && !(import.meta.env.DEV && local && url.protocol === 'http:')) {
         throw managerError('PISTACHIO_PUBLIC_RPC_INVALID', 'The public RPC URL must use HTTPS.')
     }
-    if (url.username || url.password || url.hostname.toLowerCase().includes('nodereal')) {
-        throw managerError('PISTACHIO_PUBLIC_RPC_INVALID', 'Credential-bearing and NodeReal browser RPC URLs are forbidden.')
+    if (url.username || url.password) {
+        throw managerError('PISTACHIO_PUBLIC_RPC_INVALID', 'Credential-bearing browser RPC URLs are forbidden.')
     }
     return url.toString()
 }
