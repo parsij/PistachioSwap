@@ -510,7 +510,9 @@ function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
     const timeMin = points[0]?.time ?? Date.now()
     const timeMax = points.at(-1)?.time ?? Date.now()
     const timeSpan = Math.max(timeMax - timeMin, 1)
-    const x = (point) => ((point.time - timeMin) / timeSpan) * plotWidth
+    const x = (point) => points.length === 1
+        ? plotWidth - 6
+        : ((point.time - timeMin) / timeSpan) * plotWidth
     const y = (point) => top + ((max - point.value) / Math.max(max - min, 0.000001)) * plotHeight
     const line = points.length >= 2
         ? points.map((point, index) => (index ? 'L' : 'M') + x(point).toFixed(2) + ' ' + y(point).toFixed(2)).join(' ')
