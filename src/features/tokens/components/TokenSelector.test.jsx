@@ -203,6 +203,8 @@ function renderSelector(overrides = {}) {
 }
 
 describe('TokenSelector mobile sheet drag', () => {
+    afterEach(() => cleanup())
+
     it('dismisses only after a meaningful downward drag or fling', () => {
         expect(shouldDismissTokenSelectorDrag({ offset: { y: 95 }, velocity: { y: 699 } })).toBe(false)
         expect(shouldDismissTokenSelectorDrag({ offset: { y: 96 }, velocity: { y: 0 } })).toBe(true)
