@@ -11,7 +11,6 @@ const GUEST_FILES = [
     'src/features/tokens/hooks/useNativeBalance.js',
     'src/features/approvals/hooks/useSwapApproval.js',
     'src/features/gas-assist/hooks/usePrepaidSponsorship.js',
-    'src/features/gas-assist/hooks/useZeroXGaslessSwap.js',
     'src/features/swap/hooks/useSameChainReceiptLifecycle.js',
 ]
 
