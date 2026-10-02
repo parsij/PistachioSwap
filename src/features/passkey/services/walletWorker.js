@@ -268,6 +268,15 @@ async function handle(operation, message) {
         const imported = await Wallet.fromEncryptedJson(json, String(message.password ?? ''))
         return setPrivateKeyWallet(imported.privateKey, 'imported-keystore')
     }
+    if (operation === 'clearPendingWallet') {
+        requireSetupPrf()
+        wallet = null
+        payload = null
+        wipeBytes(dek)
+        dek = null
+        activeVault = null
+        return { ready: true }
+    }
     if (operation === 'encryptVault') {
         requireSetupPrf()
         const activeWallet = requireWallet()
