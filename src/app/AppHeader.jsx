@@ -18,6 +18,22 @@ function navigationItemIsActive(item) {
         (current.searchParams.get('view') ?? 'trade')
 }
 
+function handleAppNavigation(event, item) {
+    if (typeof window === 'undefined') return
+    const target = new URL(item.href, window.location.origin)
+    if (target.pathname !== '/swap/') return
+
+    event.preventDefault()
+    window.history.pushState(window.history.state, '', target)
+    window.dispatchEvent(new CustomEvent('pistachio:navigate-app', {
+        detail: {
+            view: target.searchParams.get('view') === 'portfolio'
+                ? 'portfolio'
+                : 'trade',
+        },
+    }))
+}
+
 export default function AppHeader({ brand, navigation = [], search, wallet }) {
     return (
         <header className="app-header">
@@ -32,6 +48,7 @@ export default function AppHeader({ brand, navigation = [], search, wallet }) {
                             className={`header-navigation-item${active ? ' active' : ''}`}
                             href={item.href}
                             aria-current={active ? 'page' : undefined}
+                            onClick={(event) => handleAppNavigation(event, item)}
                         >
                             <span>{item.label}</span>
                             {item.badge ? <span className="header-navigation-badge">{item.badge}</span> : null}
