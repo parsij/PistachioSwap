@@ -415,19 +415,6 @@ export default function WalletAccountDialog({
         }
     }, [open, requestedAction?.action, requestedAction?.requestId])
 
-    function openFullPortfolio(event) {
-        event.preventDefault()
-        const url = new URL(window.location.href)
-        url.pathname = '/swap/'
-        url.searchParams.set('view', 'portfolio')
-        url.searchParams.delete('tab')
-        window.history.pushState(window.history.state, '', url)
-        window.dispatchEvent(new CustomEvent('pistachio:navigate-app', {
-            detail: { view: 'portfolio' },
-        }))
-        onOpenChange(false)
-    }
-
     async function copyAddress() {
         try {
             await navigator.clipboard?.writeText(address)
@@ -548,14 +535,14 @@ export default function WalletAccountDialog({
                     </button>
                 </div>
 
-                <a
+                <button
+                    type="button"
                     className="uni-wallet-outline-action"
-                    href="/swap/?view=portfolio"
-                    onClick={openFullPortfolio}
+                    onClick={() => setView('portfolio')}
                 >
                     View portfolio
                     <ArrowRight aria-hidden="true" />
-                </a>
+                </button>
 
                 <section className="uni-wallet-activity-section">
                     <h2>Recent activity</h2>
