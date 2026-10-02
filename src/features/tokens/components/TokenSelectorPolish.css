@@ -366,3 +366,10 @@
         transition: none;
     }
 }
+
+/* Keep the modal depth subtle while preserving the existing sheet/modal layout. */
+.ps-token-selector-backdrop {
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+}
+
