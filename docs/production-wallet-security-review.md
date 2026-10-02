@@ -9,7 +9,7 @@ The encrypted wallet remains saved in IndexedDB. A connected Pistachio Wallet ma
 A fresh passkey verification is required for:
 
 - sending a transaction
-- signing a normal or MegaFuel transaction
+- signing a normal transaction or Gas Assist EIP-7702 authorization
 - signing a message or EIP-712 typed data
 - revealing a recovery phrase or private key
 - exporting a keystore or protected backup
@@ -83,7 +83,7 @@ A Content Security Policy must be tested against WalletConnect, token images, RP
 2. Run dependency, secret, and static-analysis scanning on every pull request and on a schedule.
 3. Use a shared rate-limit store such as Redis before running more than one API process. In-memory limits are per process and therefore not a complete distributed control.
 4. Put the API behind a reverse proxy or managed edge with connection limits, request-size limits, bot controls, and DDoS protection.
-5. Configure provider billing caps and alerts for Alchemy, Moralis, 0x, Uniswap, MegaFuel, The Graph, and every other paid upstream.
+5. Configure provider billing caps and alerts for Alchemy, Moralis, 0x, Uniswap, The Graph, and every other paid upstream.
 6. Add structured security monitoring for repeated signing failures, sponsorship abuse, authentication failures, rate-limit events, provider cost spikes, and unusual wallet-action volume.
 7. Perform a complete authorization review of sponsorship and admin routes. Every wallet, order, intent, refund, and rule identifier must be checked against the authenticated principal or an explicit admin credential.
 8. Keep the wallet and worker scripts on the trusted first-party origin. Do not load third-party JavaScript that is unnecessary for the signing page.

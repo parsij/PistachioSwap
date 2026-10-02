@@ -16,7 +16,7 @@ Record timestamp, environment, commit, configuration switches (never values), ma
 ## 2. Metadata and UI
 
 1. Inspect all 25 chain names, IDs, and native symbols in both source and destination selectors.
-2. Verify Send works as a candidate action on every chain; verify same-chain swap, gasless, and MegaFuel remain BNB Smart Chain-only.
+2. Verify Send works as a candidate action on every chain; verify Gas Assist is available only for BNB Smart Chain source operations.
 3. Select different source/destination chains. Same-chain cross-chain requests must be rejected.
 4. Verify no excluded-provider label or fallback appears in cards, errors, network traffic, configuration, or bundled frontend.
 5. Reload after changing backend enablement and after capability TTL expiry; disabled providers must disappear or return unavailable without stale executable data.

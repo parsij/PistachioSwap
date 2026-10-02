@@ -14,7 +14,7 @@ The implementation is preserved in `src/features/passkey/services/walletManagerC
 | Setup/import | `prepareNewWallet`, `beginPasskeySetup`, `createMnemonicWallet`, `importMnemonic`, `importPrivateKey`, `importKeystore`, `persistPendingWallet`, `finishOnboarding` | worker, passkey, encrypted vault writes | core; crypto/storage services remain canonical |
 | Unlock/session | `unlock`, `markUnlocked`, `lock`, `disconnect`, `clearActiveSession`, `resetAutoLock`, `recordActivity` | worker secret state, timers, preferences, broadcast | core due ordering |
 | Saved vaults | `selectVault`, `refreshVaults`, `renameSavedVault`, `exportStoredVaultBackup`, `deleteLocalVault` | vault storage and metadata | core delegates existing vaultStorage |
-| Signing/provider | `review`, `signMessage`, `signTypedData`, `signMegaFuelTransaction`, `sendTransaction`, `providerRequest` | signing queue, RPC/provider calls | core delegates existing validation/review services |
+| Signing/provider | `review`, `signMessage`, `signTypedData`, `sendTransaction`, `providerRequest`, `signSelfHostedAuthorization` | signing queue, RPC/provider calls | core delegates existing validation/review services |
 | Passkeys/backups | `reauthenticate`, `addBackupPasskey`, `renamePasskey`, `removePasskey`, `exportEncryptedBackup`, `exportKeystore`, `revealRecoveryPhrase`, `revealPrivateKey` | passkey/worker and sensitive transient values | core delegates existing passkey/worker services |
 
 ## Singleton and Storage Contracts
