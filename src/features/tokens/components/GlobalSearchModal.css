@@ -438,6 +438,10 @@
         display: none;
     }
 
+    .global-search-tabs .desktop-only {
+        display: none;
+    }
+
     .global-search-result-row,
     .global-search-wallet-row {
         padding-inline: 16px;
