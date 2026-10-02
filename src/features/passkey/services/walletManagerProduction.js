@@ -373,9 +373,17 @@ export function hardenPistachioWalletManager(manager) {
 
     manager.requestConnection = async function requestConnection() {
         await this.initialize()
-        if (this.vault) {
+
+        // Only silently restore a saved wallet when the user still has an
+        // active Pistachio Wallet session. Explicit disconnect clears
+        // sessionActive, so the next connection must reopen the wallet UI.
+        // This is especially important on iOS Safari, where immediately
+        // reconnecting the previously selected vault can otherwise prevent
+        // the user from reaching recovery-phrase/private-key import.
+        if (this.vault && this.sessionActive) {
             return this.activateReadOnlySession(this.vault.vaultId)
         }
+
         return originalRequestConnection()
     }
 
