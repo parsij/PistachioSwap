@@ -6,8 +6,6 @@ import {
     parseTransaction,
     recoverTransactionAddress,
 } from 'viem'
-import { recoverAuthorizationAddress } from 'viem/utils'
-
 import { getCuratedEvmChain, isCuratedEvmChainId } from '../../../web3/curatedEvmChains.js'
 
 function mismatch(code, message) {
@@ -19,21 +17,6 @@ function mismatch(code, message) {
 function signatureComponent(value) {
     if (value === undefined || value === null) return 0n
     return BigInt(value)
-}
-
-async function requireSignedEip7702Authorization(authorization, walletAddress) {
-    if (signatureComponent(authorization?.r) === 0n || signatureComponent(authorization?.s) === 0n) {
-        mismatch('UNSIGNED_EIP7702_AUTHORIZATION', 'The EIP-7702 authorization is not signed.')
-    }
-    let authority
-    try {
-        authority = await recoverAuthorizationAddress({ authorization })
-    } catch {
-        mismatch('UNSIGNED_EIP7702_AUTHORIZATION', 'The EIP-7702 authorization is not signed.')
-    }
-    if (normalizedAddress(authority) !== normalizedAddress(walletAddress)) {
-        mismatch('WALLET_SIGNER_MISMATCH', 'The EIP-7702 authorization signer does not match the wallet.')
-    }
 }
 
 function quantity(value, fallback = 0n) {
@@ -53,7 +36,15 @@ function normalizedAddress(value) {
  * @returns {Promise<object>} Parsed transaction and recovered signer evidence.
  * @throws A passkey transaction mismatch error before broadcast.
  */
-export async function validateLocallySignedTransaction({ signedTransaction, request, walletAddress, mode }) {
+export async function validateLocallySignedTransaction({
+    signedTransaction,
+    request,
+    walletAddress,
+    mode = 'normal',
+}) {
+    if (mode !== 'normal') {
+        mismatch('WALLET_SIGNING_MODE_UNSUPPORTED', 'Only normal chain transactions use raw transaction validation.')
+    }
     let parsed
     let signer
     try {
@@ -62,44 +53,31 @@ export async function validateLocallySignedTransaction({ signedTransaction, requ
     } catch {
         mismatch('WALLET_RAW_TRANSACTION_MALFORMED', 'The locally signed transaction is malformed.')
     }
-    if (normalizedAddress(signer) !== normalizedAddress(walletAddress)) mismatch('WALLET_SIGNER_MISMATCH', 'The signed transaction account changed.')
+    if (normalizedAddress(signer) !== normalizedAddress(walletAddress)) {
+        mismatch('WALLET_SIGNER_MISMATCH', 'The signed transaction account changed.')
+    }
     const requestedChainId = Number(request.chainId)
-    if (!isCuratedEvmChainId(requestedChainId) || parsed.chainId !== requestedChainId) mismatch('WALLET_REWROTE_CHAIN_ID', 'The signed transaction chain changed.')
-    if (mode === 'megafuel' && parsed.chainId !== 56) mismatch('WALLET_REWROTE_CHAIN_ID', 'MegaFuel transactions must remain on BNB Smart Chain.')
-    if (normalizedAddress(parsed.to) !== normalizedAddress(request.to)) mismatch('WALLET_REWROTE_DESTINATION', 'The signed transaction destination changed.')
-    if (BigInt(parsed.nonce) !== quantity(request.nonce)) mismatch('WALLET_REWROTE_NONCE', 'The signed transaction nonce changed.')
-    if (parsed.gas !== quantity(request.gas ?? request.gasLimit)) mismatch('WALLET_REWROTE_GAS_LIMIT', 'The signed transaction gas limit changed.')
-    if ((parsed.value ?? 0n) !== quantity(request.value)) mismatch('WALLET_REWROTE_VALUE', 'The signed transaction value changed.')
-    if ((parsed.data ?? '0x').toLowerCase() !== String(request.data ?? '0x').toLowerCase()) mismatch('WALLET_REWROTE_CALLDATA', 'The signed transaction calldata changed.')
-    if (mode === 'megafuel') {
-        const eip7702 = parsed.type === 'eip7702'
-        if (parsed.type !== 'legacy' && !eip7702) {
-            mismatch('WALLET_REWROTE_TRANSACTION_TYPE', 'MegaFuel requires a legacy or EIP-7702 transaction.')
-        }
-        if (eip7702) {
-            if ((parsed.maxFeePerGas ?? 0n) !== 0n || (parsed.maxPriorityFeePerGas ?? 0n) !== 0n) {
-                mismatch('WALLET_REWROTE_GAS_PRICE', 'MegaFuel EIP-7702 fees changed from zero.')
-            }
-            if (!parsed.authorizationList || parsed.authorizationList.length !== 1) {
-                mismatch('WALLET_REWROTE_TRANSACTION_TYPE', 'MegaFuel EIP-7702 authorization is missing.')
-            }
-            const expectedAuth = request.authorizationList?.[0]
-            const signedAuth = parsed.authorizationList[0]
-            if (
-                !expectedAuth ||
-                normalizedAddress(signedAuth.address) !== normalizedAddress(expectedAuth.address) ||
-                Number(signedAuth.chainId) !== 56 ||
-                BigInt(signedAuth.nonce) !== quantity(expectedAuth.nonce)
-            ) {
-                mismatch('WALLET_REWROTE_DESTINATION', 'The EIP-7702 authorization changed.')
-            }
-            await requireSignedEip7702Authorization(signedAuth, walletAddress)
-        } else {
-            if ((parsed.gasPrice ?? 0n) !== 0n) mismatch('WALLET_REWROTE_GAS_PRICE', 'MegaFuel gas price changed from zero.')
-            if (parsed.maxFeePerGas != null || parsed.maxPriorityFeePerGas != null) mismatch('WALLET_ADDED_EIP1559_FIELDS', 'MegaFuel transaction gained EIP-1559 fields.')
-        }
-        if (parsed.accessList?.length) mismatch('WALLET_ADDED_ACCESS_LIST', 'MegaFuel transaction gained an access list.')
-    } else if (Number(request.type ?? 0) === 0 && (parsed.gasPrice ?? 0n) !== quantity(request.gasPrice)) {
+    if (!isCuratedEvmChainId(requestedChainId) || parsed.chainId !== requestedChainId) {
+        mismatch('WALLET_REWROTE_CHAIN_ID', 'The signed transaction chain changed.')
+    }
+    if (normalizedAddress(parsed.to) !== normalizedAddress(request.to)) {
+        mismatch('WALLET_REWROTE_DESTINATION', 'The signed transaction destination changed.')
+    }
+    if (BigInt(parsed.nonce) !== quantity(request.nonce)) {
+        mismatch('WALLET_REWROTE_NONCE', 'The signed transaction nonce changed.')
+    }
+    if (parsed.gas !== quantity(request.gas ?? request.gasLimit)) {
+        mismatch('WALLET_REWROTE_GAS_LIMIT', 'The signed transaction gas limit changed.')
+    }
+    if ((parsed.value ?? 0n) !== quantity(request.value)) {
+        mismatch('WALLET_REWROTE_VALUE', 'The signed transaction value changed.')
+    }
+    if ((parsed.data ?? '0x').toLowerCase() !== String(request.data ?? '0x').toLowerCase()) {
+        mismatch('WALLET_REWROTE_CALLDATA', 'The signed transaction calldata changed.')
+    }
+
+    if (Number(request.type ?? 0) === 0 &&
+        (parsed.gasPrice ?? 0n) !== quantity(request.gasPrice)) {
         mismatch('WALLET_REWROTE_GAS_PRICE', 'The signed transaction gas price changed.')
     } else if (Number(request.type) === 2 && (
         parsed.maxFeePerGas !== quantity(request.maxFeePerGas) ||
@@ -143,7 +121,7 @@ export function describeTransactionReview(transaction, mode) {
     const chain = getCuratedEvmChain(transaction.chainId)
     if (!chain) mismatch('PISTACHIO_CHAIN_NOT_ALLOWED', 'This network is not enabled in PistachioSwap.')
     return {
-        actionType: mode === 'megafuel' ? 'MegaFuel sponsored transaction' : approval ? 'Token approval' : transfer ? 'Token transfer' : `${chain.name} transaction`,
+        actionType: approval ? 'Token approval' : transfer ? 'Token transfer' : `${chain.name} transaction`,
         chain: `${chain.name} (${chain.id})`,
         destination: transaction.to ?? null,
         value: String(transaction.value ?? '0'),
@@ -160,6 +138,6 @@ export function describeTransactionReview(transaction, mode) {
         approval,
         unlimitedWarning: approval && amount !== null &&
             amount >= effectivelyUnlimited,
-        submission: mode === 'megafuel' ? 'PistachioSwap will submit this signed transaction.' : `A chain-specific public ${chain.name} RPC will broadcast after approval.`,
+        submission: `A chain-specific public ${chain.name} RPC will broadcast after approval.`,
     }
 }
