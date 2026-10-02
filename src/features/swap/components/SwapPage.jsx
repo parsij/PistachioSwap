@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 
 import PistachioWalletController from '../../passkey/components/PistachioWalletController.jsx'
 import SwapToolbar from './SwapToolbar.jsx'
@@ -20,6 +21,8 @@ const PasskeyVaultTestPanel = import.meta.env.DEV
  * @sideEffects Presentation children emit callbacks; network/wallet behavior remains in feature controllers.
  */
 export default function SwapPage({ toolbar, card, tokenSelector, sameChainReview, gasAssistDialogs, crossChainReview, operationStatus }) {
+    const reducedMotion = useReducedMotion()
+
     return (
         <>
             {PasskeyVaultTestPanel && (
@@ -28,10 +31,18 @@ export default function SwapPage({ toolbar, card, tokenSelector, sameChainReview
                 </Suspense>
             )}
             <PendingWalletOperation walletAddress={operationStatus?.walletAddress ?? null} />
-            <section className="swap-root">
+            <motion.section
+                className="swap-root"
+                initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reducedMotion ? { duration: 0 } : {
+                    duration: 0.28,
+                    ease: [0.22, 1, 0.36, 1],
+                }}
+            >
                 <SwapToolbar {...toolbar} />
                 <SwapCard {...card} />
-            </section>
+            </motion.section>
             <TokenSelectorOverlay {...tokenSelector} />
             <GasAssistDialogs {...gasAssistDialogs} />
             <SameChainReviewDialog {...sameChainReview} />
