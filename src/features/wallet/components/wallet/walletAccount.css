@@ -1,6 +1,7 @@
 .uni-wallet-overlay {
-    background: rgb(0 0 0 / 8%);
+    background: transparent;
     backdrop-filter: none;
+    pointer-events: none;
 }
 
 .wallet-account-dialog.uni-wallet-dialog {
@@ -13,22 +14,22 @@
     --uni-wallet-text: #f7f7f7;
     --uni-wallet-muted: #9c999b;
 
-    top: 50%;
-    right: auto;
-    left: 50%;
-    width: min(420px, calc(100vw - 28px));
+    top: var(--size-header-height);
+    right: 12px;
+    left: auto;
+    width: min(368px, calc(100vw - 24px));
     height: auto;
-    max-height: min(724px, calc(100dvh - 48px));
+    max-height: calc(100dvh - var(--size-header-height) - 16px);
     overflow: hidden;
     padding: 0;
     border: 1px solid var(--uni-wallet-border);
     border-radius: 20px;
     background: var(--uni-wallet-bg);
     box-shadow:
-        0 24px 80px rgb(0 0 0 / 48%),
+        0 18px 54px rgb(0 0 0 / 42%),
         0 0 0 1px rgb(255 255 255 / 2%) inset;
     color: var(--uni-wallet-text);
-    transform: translate(-50%, -50%);
+    transform: none;
 }
 
 .uni-wallet-shell {
