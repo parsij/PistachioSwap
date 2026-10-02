@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatUnits } from 'viem'
 import { resolveSelectedToken } from '../../tokens/services/walletTokens.js'
 import { getDisplayTokenPrice } from '../../tokens/services/tokenPrices.js'
@@ -21,7 +21,7 @@ export const USD_DENOMINATION = 'USD'
  *
  * @param {object} config Input configuration and token catalog.
  * @returns {object} Input state, normalized raw intent, display values, and semantic mutation operations.
- * @sideEffects Updates React state and existing input diagnostics; performs no HTTP, RPC, wallet, or storage calls.
+ * @sideEffects Updates React state/input diagnostics and consumes an optional token deep link from the current URL; performs no HTTP, RPC, wallet, or storage calls.
  * @security Raw-unit conversion is exact and rejects precision beyond token decimals.
  */
 export function useSwapInputs({
@@ -60,6 +60,44 @@ export function useSwapInputs({
         () => resolveSelectedToken(selectedBuyToken, availableTokens),
         [availableTokens, selectedBuyToken],
     )
+    const buyTokenDeepLinkApplied = useRef(false)
+
+    useEffect(() => {
+        if (
+            buyTokenDeepLinkApplied.current ||
+            typeof window === 'undefined'
+        ) return
+
+        const params = new URLSearchParams(window.location.search)
+        const chainId = Number(params.get('buyChainId'))
+        const address = String(params.get('buyToken') ?? '').trim().toLowerCase()
+        if (
+            !Number.isSafeInteger(chainId) ||
+            chainId <= 0 ||
+            !/^0x[a-f0-9]{40}$/.test(address)
+        ) return
+
+        const token = availableTokens.find((candidate) =>
+            Number(candidate?.chainId) === chainId &&
+            String(candidate?.address ?? '').toLowerCase() === address)
+        if (!token) return
+
+        const normalizedToken = {
+            ...normalizeMarketToken(token, chainId, fallbackChainLogo),
+            uiSelectionOrigin: 'user',
+        }
+        const selectedIdentity = getTokenIdentity(normalizedToken, chainId)
+        if (selectedIdentity === getTokenIdentity(sellToken, swapChainId)) {
+            setSelectedSellToken(null)
+        }
+        setSelectedBuyToken(normalizedToken)
+        buyTokenDeepLinkApplied.current = true
+
+        const cleanUrl = new URL(window.location.href)
+        cleanUrl.searchParams.delete('buyChainId')
+        cleanUrl.searchParams.delete('buyToken')
+        window.history.replaceState(window.history.state, '', cleanUrl)
+    }, [availableTokens, fallbackChainLogo, sellToken, swapChainId])
     const sellDisplayPrice = getDisplayTokenPrice(sellToken)
     const buyDisplayPrice = getDisplayTokenPrice(buyToken)
     const sellUsdEligible = Boolean(sellDisplayPrice)
