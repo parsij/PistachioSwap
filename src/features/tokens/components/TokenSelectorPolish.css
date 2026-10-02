@@ -373,3 +373,23 @@
     backdrop-filter: blur(2px);
 }
 
+/* Global search uses Uniswap-like proportions while reusing the trusted token selector. */
+.ps-token-selector-backdrop[data-mode='global-search'] .ps-token-selector-dialog {
+    width: min(640px, calc(100vw - 32px));
+    height: min(520px, calc(100dvh - 32px));
+}
+
+@media (max-width: 1200px) and (min-width: 721px) {
+    .ps-token-selector-backdrop[data-mode='global-search'] .ps-token-selector-dialog {
+        width: min(540px, calc(100vw - 32px));
+    }
+}
+
+@media (max-width: 720px), (max-width: 900px) and (max-height: 760px) {
+    .ps-token-selector-backdrop[data-mode='global-search'] .ps-token-selector-dialog {
+        width: 100%;
+        height: min(85dvh, 720px);
+        min-height: min(520px, calc(100dvh - 48px));
+        max-height: calc(100dvh - 16px);
+    }
+}
