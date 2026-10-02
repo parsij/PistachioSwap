@@ -1,8 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useReducedMotion } from 'motion/react'
-
-import { motion } from 'motion/react'
+import { motion, useDragControls, useReducedMotion } from 'motion/react'
 
 import { TokenSearchResults, TokenSelectorSections as Sections } from './TokenSelectorSections.jsx'
 import { ChainSelector } from './TokenSelectorPrimitives.jsx'
@@ -22,6 +20,12 @@ function isCompactSelectorViewport() {
     return typeof window !== 'undefined' &&
         typeof window.matchMedia === 'function' &&
         window.matchMedia(COMPACT_SELECTOR_QUERY).matches
+}
+
+export function shouldDismissTokenSelectorDrag(info) {
+    const offsetY = Number(info?.offset?.y ?? 0)
+    const velocityY = Number(info?.velocity?.y ?? 0)
+    return offsetY >= 96 || velocityY >= 700
 }
 
 /**
@@ -90,6 +94,7 @@ function GlobalTokenSelector({
     const reducedMotion = useReducedMotion()
     const motionConfig = swapUiConfig.motion.dialog
     const compact = isCompactSelectorViewport()
+    const dragControls = useDragControls()
     const initialScopeApplied = useRef(false)
     const state = useTokenSelectorState({ chainId, tokens, commonTokens, fallbackTokens, walletTokens, search, loading, error, catalogNotice, catalogDiagnostics, currentToken, oppositeToken, onSelect, onClose, hideUnknownTokens, hideSmallBalances })
 
@@ -126,10 +131,42 @@ function GlobalTokenSelector({
     }
     const dialogScale = reducedMotion || compact ? 1 : motionConfig.scale
     const dialogOffset = reducedMotion ? 0 : compact ? 72 : motionConfig.offsetY
+    const startSheetDrag = (event) => {
+        event.stopPropagation()
+        if (!compact) return
+        if (event.button !== undefined && event.button !== 0) return
+        dragControls.start(event)
+    }
+    const finishSheetDrag = (_event, info) => {
+        if (compact && shouldDismissTokenSelectorDrag(info)) onClose()
+    }
 
     return <motion.div className="ps-token-selector-backdrop" data-side={side} data-compact={compact ? 'true' : 'false'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onPointerDown={onClose}>
-        <motion.section role="dialog" aria-modal="true" aria-label={`Select a token for ${side}`} className="ps-token-selector-dialog" initial={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }} transition={{ type: 'spring', stiffness: compact ? 360 : motionConfig.stiffness, damping: compact ? 34 : motionConfig.damping }} onPointerDown={(event) => event.stopPropagation()}>
-            <div className="ps-token-selector-handle" aria-hidden="true" />
+        <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Select a token for ${side}`}
+            className="ps-token-selector-dialog"
+            initial={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }}
+            transition={{ type: 'spring', stiffness: compact ? 360 : motionConfig.stiffness, damping: compact ? 34 : motionConfig.damping }}
+            drag={compact ? 'y' : false}
+            dragControls={dragControls}
+            dragListener={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.72 }}
+            dragMomentum={false}
+            dragSnapToOrigin
+            onDragEnd={finishSheetDrag}
+            onPointerDown={(event) => event.stopPropagation()}
+        >
+            <button
+                type="button"
+                className="ps-token-selector-handle"
+                aria-label="Drag token selector"
+                onPointerDown={startSheetDrag}
+            />
             <header className="ps-token-selector-header"><h2>Select a token</h2><button type="button" className="ps-token-selector-close" aria-label="Close" onClick={onClose}><CloseIcon /></button></header>
             <div className="ps-token-search-wrapper"><div className="ps-token-search"><SearchIcon /><input autoFocus={!compact} aria-label="Search tokens" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search tokens" autoComplete="off" spellCheck="false" /><ChainSelector chainId={state.chainScope} onChange={handleChainChange} /></div></div>
             <div className="ps-token-selector-scroll" onScroll={handleCatalogScroll}>{state.normalizedSearch ? <TokenSearchResults loading={loading} error={error} tokens={state.searchResultTokens} hiddenTokens={state.selectedHiddenTokens} onSelect={state.handleSelect} onContextMenu={state.openContextMenu} currentToken={currentToken} oppositeToken={oppositeToken} /> : <Sections state={state} loading={loading} currentToken={currentToken} oppositeToken={oppositeToken} hideUnknownTokens={hideUnknownTokens} walletOnly={walletOnly} />}</div>
