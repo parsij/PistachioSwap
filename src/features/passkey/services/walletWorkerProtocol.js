@@ -4,6 +4,7 @@ export const WALLET_WORKER_OPERATIONS = Object.freeze([
     'importMnemonic',
     'importPrivateKey',
     'importKeystore',
+    'clearPendingWallet',
     'encryptVault',
     'verifyPersistedVault',
     'unlockVault',
