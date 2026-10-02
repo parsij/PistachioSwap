@@ -8,6 +8,7 @@ import {
     Copy,
     ExternalLink,
     MoreHorizontal,
+    Landmark,
     RefreshCw,
     Search,
     Send,
@@ -446,7 +447,7 @@ function ActionTiles({ ownWallet, address, onRefresh }) {
                 onClick={() => dispatchWalletAction('receive')}
             />
             <ActionTile
-                icon={Wallet}
+                icon={Landmark}
                 label="Buy"
                 onClick={goToTrade}
             />
@@ -593,17 +594,19 @@ function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
     )
 }
 
-function PerformancePanel({ points, assetCount, networkCount }) {
+function PerformancePanel() {
     const [period, setPeriod] = useState('All')
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
     useOutsideDismiss(open, ref, () => setOpen(false))
-    const change = portfolioSnapshotChange(points)
 
     return (
         <section className="uni-portfolio-performance">
             <div className="uni-portfolio-performance-header">
-                <h2>Performance <span title="Based on portfolio snapshots stored in this browser">i</span></h2>
+                <h2>
+                    Performance
+                    <span title="Cost-basis profit and loss is not available from PistachioSwap's current portfolio data.">i</span>
+                </h2>
                 <div className="uni-portfolio-performance-period" ref={ref}>
                     <button
                         type="button"
@@ -632,21 +635,18 @@ function PerformancePanel({ points, assetCount, networkCount }) {
                     )}
                 </div>
             </div>
-            <dl>
+            <dl title="Profit and loss needs cost-basis data that PistachioSwap does not currently index.">
                 <div>
-                    <dt>Period return</dt>
-                    <dd data-positive={change ? String(change.absolute >= 0) : undefined}>
-                        {change ? formatSignedUsd(change.absolute) : '—'}
-                        {change?.percent !== null && change ? ' (' + formatPercent(change.percent) + ')' : ''}
-                    </dd>
+                    <dt>Unrealized return</dt>
+                    <dd>—</dd>
                 </div>
                 <div>
-                    <dt>Tracked assets</dt>
-                    <dd>{assetCount}</dd>
+                    <dt>Realized return</dt>
+                    <dd>—</dd>
                 </div>
                 <div>
-                    <dt>Networks</dt>
-                    <dd>{networkCount}</dd>
+                    <dt>Total return</dt>
+                    <dd>—</dd>
                 </div>
             </dl>
         </section>
@@ -706,7 +706,7 @@ function TokenTable({
                     <HeaderButton id="price">Price</HeaderButton>
                     <HeaderButton id="balance">Balance</HeaderButton>
                     <HeaderButton id="value">Value</HeaderButton>
-                    <HeaderButton id="change">1D</HeaderButton>
+                    <HeaderButton id="change">{compact ? 'Unrealized P/L' : '1D'}</HeaderButton>
                     {!compact && <HeaderButton id="allocation">Allocation</HeaderButton>}
                 </div>
                 {rows.map(({ token, value, price, change, allocation }) => (
@@ -723,8 +723,8 @@ function TokenTable({
                             {formatWalletTokenAmount(token.balance)} {getTokenDisplaySymbol(token)}
                         </span>
                         <strong>{Number.isFinite(value) ? formatUsd(value) : formatWalletUsdValue(token)}</strong>
-                        <span className="uni-portfolio-change" data-positive={change !== null ? String(change >= 0) : undefined}>
-                            {change === null ? '—' : formatPercent(change, true)}
+                        <span className="uni-portfolio-change" data-positive={!compact && change !== null ? String(change >= 0) : undefined}>
+                            {compact ? '—' : change === null ? '—' : formatPercent(change, true)}
                         </span>
                         {!compact && (
                             <span>{allocation === null ? '—' : formatPercent(allocation)}</span>
@@ -810,11 +810,7 @@ function Overview({
                         address={address}
                         onRefresh={onRefresh}
                     />
-                    <PerformancePanel
-                        points={snapshots}
-                        assetCount={assets.length}
-                        networkCount={networkCount}
-                    />
+                    <PerformancePanel />
                 </aside>
             </div>
 
