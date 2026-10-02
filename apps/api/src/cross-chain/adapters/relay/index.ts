@@ -136,7 +136,7 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
                 steps: transactionSteps.map(({ requestId: _requestId, ...step }) => step),
                 // Relay commonly returns an ERC-20 approval first. The quote's
                 // executable transaction must be the deposit/source call;
-                // MegaFuel constructs its own exact approval separately.
+                // Gas Assist constructs its own exact approval separately.
                 transaction: sourceTransaction.transaction,
                 deposit: null,
                 statusId: text(
@@ -405,7 +405,7 @@ function validateRelayDeposit(
         }
         return {
             ...transaction,
-            // MegaFuel builds its own exact approval instead of broadcasting the
+            // Gas Assist builds its own exact approval instead of broadcasting the
             // provider approval step. Keep the authoritative Relay spender on the
             // executable source transaction so sponsorship validation can bind the
             // approval and call atomically.
