@@ -10,6 +10,7 @@ describe('Pistachio wallet worker protocol', () => {
 
     it('contains only the narrow documented operation set', () => {
         expect(walletWorkerProtocolInternals.operationSet.has('signTransaction')).toBe(true)
+        expect(walletWorkerProtocolInternals.operationSet.has('clearPendingWallet')).toBe(true)
         expect(walletWorkerProtocolInternals.operationSet.has('fetch')).toBe(false)
         expect(walletWorkerProtocolInternals.operationSet.has('broadcast')).toBe(false)
     })
