@@ -367,8 +367,8 @@
     }
 }
 
-/* Keep the modal depth subtle while preserving the existing sheet/modal layout. */
+/* Match Uniswap's crisp modal treatment: dim the page without blurring it. */
 .ps-token-selector-backdrop {
-    -webkit-backdrop-filter: blur(2px);
-    backdrop-filter: blur(2px);
-}\n
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
