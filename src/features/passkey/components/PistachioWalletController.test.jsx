@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => {
         open: vi.fn((view = 'wallet') => publish({ view })),
         persistPendingWallet: vi.fn(async () => ({ vaultId: 'new-vault' })),
         prepareNewWallet: vi.fn(async () => publish({ phase: 'empty', vault: null })),
+        resetPendingImport: vi.fn(async () => { publish({ phase: 'passkey-ready' }); return true }),
         recordActivity: vi.fn(),
         reauthenticate: vi.fn(async () => true),
         removePasskey: vi.fn(async () => undefined),
@@ -131,6 +132,10 @@ function resetManager() {
     mocks.manager.disconnect.mockImplementation(async () => mocks.publish({ sessionActive: false, view: null }))
     mocks.manager.open.mockImplementation((view = 'wallet') => mocks.publish({ view }))
     mocks.manager.prepareNewWallet.mockImplementation(async () => mocks.publish({ phase: 'empty', vault: null }))
+    mocks.manager.resetPendingImport.mockImplementation(async () => {
+        mocks.publish({ phase: 'passkey-ready' })
+        return true
+    })
     mocks.manager.clearError.mockImplementation(() => undefined)
     mocks.manager.cancelSetup.mockImplementation(() => true)
     mocks.manager.initialize.mockResolvedValue(undefined)
@@ -502,6 +507,47 @@ describe('Pistachio Wallet entry and modal behavior', () => {
         expect(await screen.findByText('wallet.json')).toBeTruthy()
         expect(screen.getByLabelText('Keystore password')).toBeTruthy()
         expect(screen.getByText(/password is not stored in the JSON file/i)).toBeTruthy()
+    })
+
+    it('lets the user go back from recovery-phrase entry and choose private key without creating another passkey', async () => {
+        const user = userEvent.setup()
+        mocks.manager.beginPasskeySetup.mockImplementation(async () => mocks.publish({ phase: 'passkey-ready' }))
+        render(<PistachioWalletController />)
+
+        await openImportRisk(user)
+        await completeImportPasskeyStep(user)
+        expect(await screen.findByLabelText('Recovery phrase')).toBeTruthy()
+
+        await user.click(screen.getByRole('button', { name: 'Back' }))
+        expect(screen.getByRole('heading', { name: 'Import an existing wallet' })).toBeTruthy()
+        await user.click(screen.getByRole('button', { name: /^Private key/ }))
+
+        expect(await screen.findByLabelText('Private key')).toBeTruthy()
+        expect(mocks.manager.beginPasskeySetup).toHaveBeenCalledOnce()
+        expect(mocks.manager.resetPendingImport).not.toHaveBeenCalled()
+    })
+
+    it('wipes a reviewed pending import before going back to choose a different secret type', async () => {
+        const user = userEvent.setup()
+        mocks.manager.beginPasskeySetup.mockImplementation(async () => mocks.publish({ phase: 'passkey-ready' }))
+        mocks.manager.importMnemonic.mockImplementation(async () => {
+            mocks.publish({ phase: 'confirm-import' })
+            return { address: savedVault.address }
+        })
+        render(<PistachioWalletController />)
+
+        await openImportRisk(user)
+        await completeImportPasskeyStep(user)
+        await user.type(await screen.findByLabelText('Recovery phrase'), 'test phrase')
+        await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
+        expect(await screen.findByRole('heading', { name: 'Confirm wallet address' })).toBeTruthy()
+
+        await user.click(screen.getByRole('button', { name: 'Back' }))
+        await waitFor(() => expect(mocks.manager.resetPendingImport).toHaveBeenCalledOnce())
+        expect(screen.getByRole('heading', { name: 'Import an existing wallet' })).toBeTruthy()
+
+        await user.click(screen.getByRole('button', { name: /^Private key/ }))
+        expect(await screen.findByLabelText('Private key')).toBeTruthy()
     })
 
     it('associates readable mnemonic errors and clears the secret input after failure', async () => {
