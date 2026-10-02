@@ -8,17 +8,20 @@ const mocks = vi.hoisted(() => ({
     authenticate: vi.fn(),
     createOrder: vi.fn(),
     fetchOrder: vi.fn(),
-    preparePackage: vi.fn(),
-    prepareAtomic: vi.fn(),
-    submitPackage: vi.fn(),
-    submitAtomic: vi.fn(),
-    signPackage: vi.fn(),
-    signAtomic: vi.fn(),
+    prepareSelfHosted: vi.fn(),
+    submitSelfHosted: vi.fn(),
 }))
 
 vi.mock('#wallet-runtime', () => ({
     useConnection: () => ({ connector: { id: 'pistachio-local' } }),
-    useWalletClient: () => ({ data: { account: { address: '0x1' }, request: vi.fn() } }),
+    useWalletClient: () => ({
+        data: {
+            account: { address: '0x1' },
+            request: vi.fn(),
+            signTypedData: vi.fn(),
+            signMessage: vi.fn(),
+        },
+    }),
 }))
 
 vi.mock('../services/prepaidSponsorship.js', () => ({
@@ -26,27 +29,15 @@ vi.mock('../services/prepaidSponsorship.js', () => ({
     authenticateSponsorshipWallet: mocks.authenticate,
     createSponsorshipOrder: mocks.createOrder,
     fetchSponsorshipOrder: mocks.fetchOrder,
-    prepareSponsorshipApproval: vi.fn(),
-    prepareSponsorshipContinuation: vi.fn(),
-    prepareSponsorshipPayment: vi.fn(),
-    prepareSponsorshipPackage: mocks.preparePackage,
-    prepareAtomicSponsorship: mocks.prepareAtomic,
-    submitSponsorshipIntent: vi.fn(),
-    submitSponsorshipPackage: mocks.submitPackage,
-    submitAtomicSponsorship: mocks.submitAtomic,
 }))
 
-vi.mock('../services/rawTransactionSigning.js', () => ({
-    detectRawTransactionSigning: () => ({
-        rawTransactionSigningSupported: true,
-        method: 'eth_signTransaction',
-        atomicMethod: 'pistachio_signAtomicMegaFuel',
-        transport: 'pistachio-local',
-        account: null,
-    }),
-    signPreparedSponsoredTransaction: vi.fn(),
-    signPreparedSponsoredPackage: mocks.signPackage,
-    signPreparedAtomicSponsoredTransaction: mocks.signAtomic,
+vi.mock('../services/selfHostedPaymaster.js', () => ({
+    selfHostedFrontendEnabled: (config) =>
+        config?.enabled === true &&
+        config?.provider === 'pistachio-paymaster-v08' &&
+        config?.execution === 'erc4337-v08-eip7702-direct',
+    prepareSelfHostedSponsorship: mocks.prepareSelfHosted,
+    submitSelfHostedPaymasterUserOperation: mocks.submitSelfHosted,
 }))
 
 import { reviewedSponsorshipOrderChanged, usePrepaidSponsorship } from './usePrepaidSponsorship.js'
@@ -55,6 +46,12 @@ const walletA = '0x0000000000000000000000000000000000000001'
 const walletB = '0x0000000000000000000000000000000000000002'
 const tokenA = { address: '0x0000000000000000000000000000000000000011' }
 const tokenB = { address: '0x0000000000000000000000000000000000000012' }
+
+const activeConfig = {
+    enabled: true,
+    provider: 'pistachio-paymaster-v08',
+    execution: 'erc4337-v08-eip7702-direct',
+}
 
 function setup(walletAddress = walletA, onConfirmed = vi.fn(), overrides = {}) {
     return renderHook(({ wallet, inputOverrides }) => usePrepaidSponsorship({
@@ -76,10 +73,7 @@ function setup(walletAddress = walletA, onConfirmed = vi.fn(), overrides = {}) {
 }
 
 async function waitForConfig(result) {
-    await waitFor(() => expect(result.current.config).toEqual({
-        enabled: true,
-        atomicExecution: true,
-    }))
+    await waitFor(() => expect(result.current.config).toEqual(activeConfig))
 }
 
 describe('reviewed sponsorship order binding', () => {
@@ -102,7 +96,7 @@ describe('reviewed sponsorship order binding', () => {
         approvalAmountRaw: '900',
         quoteProvider: 'uniswap',
         sponsoredFlow: 'normal-sponsored-swap',
-        billingMode: 'prepaid-megafuel',
+        billingMode: 'prepaid',
     }
 
     it('ignores lifecycle-only fields but detects reviewed economic or route changes', () => {
@@ -130,28 +124,28 @@ describe('reviewed sponsorship order binding', () => {
     })
 })
 
-describe('prepaid sponsorship async ownership', () => {
+describe('self-hosted sponsorship async ownership', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        mocks.fetchConfig.mockResolvedValue({ enabled: true, atomicExecution: true })
+        mocks.fetchConfig.mockResolvedValue(activeConfig)
         mocks.authenticate.mockResolvedValue({ sessionToken: 'session' })
-        mocks.createOrder.mockResolvedValue({ id: 'order-1', status: 'awaiting-payment' })
-        mocks.prepareAtomic.mockResolvedValue({
+        mocks.createOrder.mockResolvedValue({ id: 'order-1', status: 'quoted' })
+        mocks.prepareSelfHosted.mockResolvedValue({
             orderId: 'order-1',
-            execution: 'atomic',
-            action: 'atomic-swap',
+            provider: 'pistachio-paymaster-v08',
+            execution: 'erc4337-v08-eip7702-direct',
+            stage: 'direct',
+            paymentMode: 'sponsored',
             chainId: 56,
-            expiresAt: new Date(Date.now() + 900_000).toISOString(),
-            recipient: walletA,
-            transaction: {},
-        })
-        mocks.signAtomic.mockResolvedValue({ transactionHash: '0xabc' })
-        mocks.preparePackage.mockResolvedValue({
-            orderId: 'order-1',
             expiresAt: new Date(Date.now() + 900_000).toISOString(),
             transactions: [],
         })
-        mocks.signPackage.mockResolvedValue({ packageStored: true })
+        mocks.submitSelfHosted.mockResolvedValue({
+            orderId: 'order-1',
+            userOpHash: `0x${'1'.repeat(64)}`,
+            transactionHash: `0x${'2'.repeat(64)}`,
+            status: 'source-confirmed',
+        })
     })
 
     afterEach(() => {
@@ -183,11 +177,11 @@ describe('prepaid sponsorship async ownership', () => {
         expect(onConfirmed).toHaveBeenCalledTimes(1)
     })
 
-    it('surfaces the backend rejection code when order polling reports a failed atomic swap', async () => {
+    it('surfaces the backend rejection code when order polling reports a failed swap', async () => {
         mocks.fetchOrder.mockResolvedValue({
             id: 'order-1',
             status: 'failed',
-            safeErrorCode: 'ATOMIC_RECEIPT_INVALID',
+            safeErrorCode: 'PAYMASTER_EXECUTION_REVERTED',
         })
         const { result } = setup()
         await waitForConfig(result)
@@ -200,11 +194,11 @@ describe('prepaid sponsorship async ownership', () => {
 
         expect(result.current.phase).toBe('failed')
         expect(result.current.error).toMatchObject({
-            code: 'ATOMIC_RECEIPT_INVALID',
+            code: 'PAYMASTER_EXECUTION_REVERTED',
             details: {
                 stage: 'order.poll',
                 status: 'failed',
-                rejectionCode: 'ATOMIC_RECEIPT_INVALID',
+                rejectionCode: 'PAYMASTER_EXECUTION_REVERTED',
             },
         })
     })
@@ -242,10 +236,10 @@ describe('prepaid sponsorship async ownership', () => {
         expect(result.current.error).toMatchObject({ code: 'SWAP_AMOUNT_INVALID' })
     })
 
-    it('ignores duplicate package clicks while the first preparation is active', async () => {
-        let resolveAtomic
-        mocks.prepareAtomic.mockImplementation(() => new Promise((resolve) => {
-            resolveAtomic = resolve
+    it('ignores duplicate package clicks while self-hosted preparation is active', async () => {
+        let resolvePrepared
+        mocks.prepareSelfHosted.mockImplementation(() => new Promise((resolve) => {
+            resolvePrepared = resolve
         }))
         const { result } = setup()
         await waitForConfig(result)
@@ -259,28 +253,20 @@ describe('prepaid sponsorship async ownership', () => {
             result.current.signPackage()
             await Promise.resolve()
         })
-        expect(mocks.prepareAtomic).toHaveBeenCalledTimes(1)
-        expect(mocks.preparePackage).not.toHaveBeenCalled()
+        expect(mocks.prepareSelfHosted).toHaveBeenCalledTimes(1)
 
-        await act(async () => resolveAtomic({
+        await act(async () => resolvePrepared({
             orderId: 'order-1',
-            execution: 'atomic',
-            action: 'atomic-swap',
+            provider: 'pistachio-paymaster-v08',
+            execution: 'erc4337-v08-eip7702-direct',
+            stage: 'direct',
+            paymentMode: 'sponsored',
             chainId: 56,
             expiresAt: new Date(Date.now() + 900_000).toISOString(),
-            recipient: walletA,
-            transaction: {},
+            transactions: [],
         }))
         await act(async () => first)
-        expect(mocks.signAtomic).toHaveBeenCalledTimes(1)
-        expect(mocks.signPackage).not.toHaveBeenCalled()
-    })
-
-    it('exposes no external wallet signer state', async () => {
-        const { result } = setup()
-        await waitForConfig(result)
-        expect(result.current.capability.transport).toBe('pistachio-local')
-        expect(result.current.metaMaskSigner).toBeNull()
+        expect(mocks.submitSelfHosted).toHaveBeenCalledTimes(1)
     })
 
     it('requires a second review when the final order differs from the preview', async () => {
@@ -303,7 +289,7 @@ describe('prepaid sponsorship async ownership', () => {
             approvalAmountRaw: '900',
             quoteProvider: 'uniswap',
             sponsoredFlow: 'normal-sponsored-swap',
-            billingMode: 'prepaid-megafuel',
+            billingMode: 'prepaid',
         }
         mocks.createOrder.mockResolvedValue({
             ...previewOrder,
@@ -317,9 +303,6 @@ describe('prepaid sponsorship async ownership', () => {
         await act(async () => {
             await result.current.start()
         })
-        expect(result.current.phase).toBe('review')
-        expect(result.current.order.id).toBe('preview-1')
-
         await act(async () => {
             await result.current.signPackage()
         })
@@ -328,25 +311,43 @@ describe('prepaid sponsorship async ownership', () => {
         expect(result.current.order.id).toBe('order-1')
         expect(result.current.order.paymentAmountRaw).toBe('101')
         expect(result.current.reviewUpdated).toBe(true)
-        expect(mocks.prepareAtomic).not.toHaveBeenCalled()
-        expect(mocks.signAtomic).not.toHaveBeenCalled()
+        expect(mocks.prepareSelfHosted).not.toHaveBeenCalled()
+        expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
     })
 
-    it('fails closed when the atomic path is unavailable instead of using sequential transactions', async () => {
-        mocks.fetchConfig.mockResolvedValue({ enabled: true, atomicExecution: false })
-        const { result } = setup()
-        await waitFor(() => expect(result.current.config).toEqual({
+    it('fails closed when the self-hosted provider is unavailable', async () => {
+        mocks.fetchConfig.mockResolvedValue({
             enabled: true,
-            atomicExecution: false,
-        }))
+            provider: 'particle',
+            execution: 'browser-direct',
+        })
+        const { result } = setup()
+        await waitFor(() => expect(result.current.config?.provider).toBe('particle'))
 
         await act(async () => {
             await result.current.start()
         })
 
         expect(result.current.phase).toBe('failed')
-        expect(result.current.error).toMatchObject({ code: 'ATOMIC_PATH_UNAVAILABLE' })
-        expect(mocks.preparePackage).not.toHaveBeenCalled()
-        expect(mocks.prepareAtomic).not.toHaveBeenCalled()
+        expect(result.current.error).toMatchObject({ code: 'SELF_HOSTED_PAYMASTER_UNAVAILABLE' })
+        expect(mocks.prepareSelfHosted).not.toHaveBeenCalled()
+    })
+
+    it('uses only the self-hosted submission path', async () => {
+        const onConfirmed = vi.fn()
+        const { result } = setup(walletA, onConfirmed)
+        await waitForConfig(result)
+
+        await act(async () => {
+            await result.current.start()
+        })
+        await act(async () => {
+            await result.current.signPackage()
+        })
+
+        expect(mocks.prepareSelfHosted).toHaveBeenCalledTimes(1)
+        expect(mocks.submitSelfHosted).toHaveBeenCalledTimes(1)
+        expect(result.current.phase).toBe('completed')
+        expect(onConfirmed).toHaveBeenCalledTimes(1)
     })
 })
