@@ -208,7 +208,6 @@ export function getChainCapabilities(chainId) {
         sameChainSwap: true,
         crossChainSource: true,
         crossChainDestination: true,
-        gasless: Number(chainId) === 56,
-        megaFuel: Number(chainId) === MEGAFUEL_CHAIN_ID,
+        gasAssist: Number(chainId) === GAS_ASSIST_CHAIN_ID,
     })
 }
