@@ -379,6 +379,18 @@ describe('App wallet integration', () => {
         cleanup()
     })
 
+    it('opens the Sell token selector on touch without quick-amount hover rerender stealing the tap', () => {
+        const { container, getByRole, queryByRole } = render(<App />)
+        const sellPanel = container.querySelector('.sell-panel')
+        const sellTokenButton = container.querySelector('.sell-token-position button')
+
+        fireEvent.pointerEnter(sellPanel, { pointerType: 'touch' })
+        expect(queryByRole('button', { name: '50%' })).toBeNull()
+
+        fireEvent.click(sellTokenButton)
+        expect(getByRole('dialog', { name: 'Select a token for sell' })).toBeTruthy()
+    })
+
     it('opens the output token selector from the Buy token button', () => {
         const { container, getByRole } = render(<App />)
 
