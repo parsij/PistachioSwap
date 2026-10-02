@@ -1,22 +1,28 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
     Activity,
+    ArrowDownCircle,
     ArrowLeftRight,
+    ArrowRight,
+    ChevronDown,
     Copy,
     ExternalLink,
-    Layers3,
-    QrCode,
+    MoreHorizontal,
     RefreshCw,
     Search,
     Send,
+    Share2,
+    Wallet,
 } from 'lucide-react'
 
 import TokenIcon from '../../tokens/components/TokenIcon.jsx'
 import { WalletAvatar } from '../../wallet/components/wallet/WalletAccountButton.jsx'
 import { useWalletActivity } from '../../wallet/hooks/useWalletActivity.js'
 import { filterVisibleActivity } from '../../wallet/services/visibleWalletActivity.js'
+import { useWalletTokens } from '../../tokens/hooks/useWalletTokens.js'
 import {
     filterPortfolioTokens,
+    getHiddenPortfolioTokens,
     sortWalletAssetsByValue,
 } from '../../tokens/services/portfolio.js'
 import {
@@ -30,48 +36,114 @@ import {
 } from '../../tokens/services/tokenDisplay.js'
 import { shortenAddress } from '../../../services/address.js'
 import {
+    CURATED_EVM_CHAINS,
     getCuratedEvmChain,
     getCuratedEvmChainLogoUri,
 } from '../../../web3/curatedEvmChains.js'
+import {
+    PORTFOLIO_CHART_PERIODS,
+    portfolioSnapshotChange,
+    readPortfolioSnapshots,
+    recordPortfolioSnapshot,
+} from '../services/portfolioHistory.js'
 
 import './PortfolioPage.css'
 
 const TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'tokens', label: 'Tokens' },
+    { id: 'nfts', label: 'NFTs' },
     { id: 'activity', label: 'Activity' },
 ]
+
+const TOKEN_SORTS = new Set(['name', 'price', 'balance', 'value', 'change', 'allocation'])
+const ACTIVITY_TYPES = ['all', 'swapped', 'sent', 'received', 'approved', 'contract']
+
+function normalizeAddress(value) {
+    const address = String(value ?? '').trim().toLowerCase()
+    return /^0x[a-f0-9]{40}$/.test(address) ? address : null
+}
 
 function hasPositiveBalance(token) {
     const raw = String(token?.rawBalance ?? '')
     if (/^\d+$/.test(raw)) return BigInt(raw) > 0n
-    return Number(token?.balance ?? 0) > 0
+    return Number(token?.balance ?? token?.formattedBalance ?? 0) > 0
 }
 
-function formatPortfolioTotal(tokens) {
-    const total = tokens
+function resolveTokenPrice(token) {
+    for (const candidate of [
+        token?.trustedPriceUSD,
+        token?.marketPriceUSD,
+        token?.priceUSD,
+    ]) {
+        const value = Number(candidate)
+        if (Number.isFinite(value) && value >= 0) return value
+    }
+
+    const value = Number(resolveWalletUsdValue(token))
+    const balance = Number(token?.balance ?? token?.formattedBalance)
+    if (Number.isFinite(value) && Number.isFinite(balance) && balance > 0) {
+        return value / balance
+    }
+    return null
+}
+
+function resolveTokenChange(token) {
+    const value = Number(token?.priceChange24hPercent)
+    return Number.isFinite(value) ? value : null
+}
+
+function numericPortfolioTotal(tokens) {
+    return tokens
         .map(resolveWalletUsdValue)
         .map(Number)
         .filter((value) => Number.isFinite(value) && value >= 0)
         .reduce((sum, value) => sum + value, 0)
+}
 
+function formatUsd(value, maximumFractionDigits = 2) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return '—'
+    if (numeric > 0 && numeric < 0.01) return '<$0.01'
+    return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits,
+    }).format(numeric)
+}
+
+function formatPrice(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return '—'
+    if (numeric > 0 && numeric < 0.000001) return '<$0.000001'
+    if (numeric > 0 && numeric < 0.01) {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 6,
+        }).format(numeric)
+    }
     return new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency: 'USD',
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-    }).format(total)
+    }).format(numeric)
 }
 
-function tokenSearchMatch(token, search) {
-    const query = search.trim().toLowerCase()
-    if (!query) return true
-    return [
-        token?.name,
-        token?.symbol,
-        token?.address,
-        getCuratedEvmChain(token?.chainId)?.name,
-    ].some((value) => String(value ?? '').toLowerCase().includes(query))
+function formatPercent(value, signed = false) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return '—'
+    const prefix = signed && numeric > 0 ? '+' : ''
+    return prefix + numeric.toFixed(Math.abs(numeric) >= 100 ? 0 : 2) + '%'
+}
+
+function formatSignedUsd(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return '—'
+    const prefix = numeric > 0 ? '+' : numeric < 0 ? '-' : ''
+    return prefix + formatUsd(Math.abs(numeric))
 }
 
 function activityLabel(type) {
@@ -99,14 +171,14 @@ function activitySummary(item) {
         const sellSymbol = item.sellToken?.symbol
         const buySymbol = item.buyToken?.symbol
         if (sell && sellSymbol && buy && buySymbol) {
-            return `${sell} ${sellSymbol} → ${buy} ${buySymbol}`
+            return sell + ' ' + sellSymbol + ' → ' + buy + ' ' + buySymbol
         }
         return [sellSymbol, buySymbol].filter(Boolean).join(' → ') || 'Swap confirmed'
     }
 
     const amount = compactAmount(item.amount)
     const symbol = item.token?.symbol
-    if (amount && symbol) return `${amount} ${symbol}`
+    if (amount && symbol) return amount + ' ' + symbol
     if (symbol) return symbol
     return item.type === 'contract' ? 'Contract interaction' : 'Transaction confirmed'
 }
@@ -114,16 +186,11 @@ function activitySummary(item) {
 function activityTime(timestamp) {
     const date = new Date(timestamp)
     if (!Number.isFinite(date.getTime())) return ''
-    const now = new Date()
-    if (date.toDateString() === now.toDateString()) {
-        return new Intl.DateTimeFormat(undefined, {
-            hour: 'numeric',
-            minute: '2-digit',
-        }).format(date)
-    }
     return new Intl.DateTimeFormat(undefined, {
         month: 'short',
         day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
     }).format(date)
 }
 
@@ -153,7 +220,7 @@ function ActivityIcon({ item, assets }) {
         )
         if (sell && buy) {
             return (
-                <span className="portfolio-activity-pair">
+                <span className="uni-portfolio-activity-pair">
                     <TokenIcon token={sell} size="list" showChainBadge={false} />
                     <TokenIcon token={buy} size="list" showChainBadge={false} />
                 </span>
@@ -162,93 +229,651 @@ function ActivityIcon({ item, assets }) {
     }
 
     const token = resolveActivityToken(item.token, assets, item.chainId)
-    if (token) return <TokenIcon token={token} size="list" showChainBadge={false} />
-    return <Activity aria-hidden="true" />
+    return token
+        ? <TokenIcon token={token} size="list" showChainBadge={false} />
+        : <Activity aria-hidden="true" />
 }
 
-function PortfolioActivityRow({ item, assets }) {
-    const chain = getCuratedEvmChain(item.chainId)
-    const explorer = chain?.blockExplorers?.default?.url
-    const href = explorer && item.hash
-        ? `${explorer.replace(/\/+$/, '')}/tx/${item.hash}`
-        : null
-
-    const body = (
-        <>
-            <span className="portfolio-activity-icon">
-                <ActivityIcon item={item} assets={assets} />
-                {getCuratedEvmChainLogoUri(item.chainId) && (
-                    <img
-                        className="portfolio-activity-chain"
-                        src={getCuratedEvmChainLogoUri(item.chainId)}
-                        alt=""
-                    />
-                )}
-            </span>
-            <span className="portfolio-activity-copy">
-                <strong>{activityLabel(item.type)}</strong>
-                <span>{activitySummary(item)}</span>
-            </span>
-            <time dateTime={item.timestamp}>{activityTime(item.timestamp)}</time>
-            {href && <ExternalLink className="portfolio-row-external" aria-hidden="true" />}
-        </>
-    )
-
-    return href ? (
-        <a
-            className="portfolio-activity-row"
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-        >
-            {body}
-        </a>
-    ) : (
-        <div className="portfolio-activity-row">{body}</div>
-    )
+function useOutsideDismiss(open, ref, close) {
+    useEffect(() => {
+        if (!open) return undefined
+        const handler = (event) => {
+            if (ref.current?.contains(event.target)) return
+            close()
+        }
+        document.addEventListener('pointerdown', handler, true)
+        return () => document.removeEventListener('pointerdown', handler, true)
+    }, [close, open, ref])
 }
 
-function PortfolioTokenRow({ token }) {
-    const chain = getCuratedEvmChain(token.chainId)
+function NetworkFilter({ value, onChange, chainIds }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef(null)
+    useOutsideDismiss(open, ref, () => setOpen(false))
+    const selected = value === 'all' ? null : getCuratedEvmChain(value)
+
     return (
-        <div className="portfolio-token-row">
-            <TokenIcon token={token} size="list" />
-            <span className="portfolio-token-copy">
-                <strong>{getTokenDisplayName(token)}</strong>
-                <span>{getTokenDisplaySymbol(token)}</span>
-            </span>
-            <span className="portfolio-token-chain">
-                {getCuratedEvmChainLogoUri(token.chainId) && (
-                    <img src={getCuratedEvmChainLogoUri(token.chainId)} alt="" />
-                )}
-                <span>{chain?.name ?? `Chain ${token.chainId}`}</span>
-            </span>
-            <span className="portfolio-token-balance">
-                <strong>{formatWalletUsdValue(token)}</strong>
-                <span>{formatWalletTokenAmount(token.balance)} {getTokenDisplaySymbol(token)}</span>
-            </span>
-        </div>
-    )
-}
-
-function LoadingRows() {
-    return (
-        <div className="portfolio-loading" aria-label="Loading activity">
-            {Array.from({ length: 4 }).map((_, index) => (
-                <div className="portfolio-loading-row" key={index}>
-                    <span />
-                    <span />
-                    <span />
+        <div className="uni-portfolio-network" ref={ref}>
+            <button
+                type="button"
+                className="uni-portfolio-control-button uni-portfolio-network-trigger"
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                onClick={() => setOpen((current) => !current)}
+            >
+                <span className="uni-portfolio-network-icons" aria-hidden="true">
+                    {selected ? (
+                        getCuratedEvmChainLogoUri(selected.id) && (
+                            <img src={getCuratedEvmChainLogoUri(selected.id)} alt="" />
+                        )
+                    ) : (
+                        chainIds.slice(0, 4).map((chainId, index) => (
+                            getCuratedEvmChainLogoUri(chainId) && (
+                                <img
+                                    key={chainId}
+                                    src={getCuratedEvmChainLogoUri(chainId)}
+                                    alt=""
+                                    style={{ zIndex: 5 - index }}
+                                />
+                            )
+                        ))
+                    )}
+                </span>
+                <span>{selected?.name ?? 'All networks'}</span>
+                <ChevronDown aria-hidden="true" />
+            </button>
+            {open && (
+                <div className="uni-portfolio-network-menu" role="listbox" aria-label="Portfolio network">
+                    <button
+                        type="button"
+                        role="option"
+                        aria-selected={value === 'all'}
+                        onClick={() => {
+                            onChange('all')
+                            setOpen(false)
+                        }}
+                    >
+                        <span className="uni-portfolio-network-all">◎</span>
+                        <span>All networks</span>
+                    </button>
+                    {CURATED_EVM_CHAINS.map((chain) => (
+                        <button
+                            key={chain.id}
+                            type="button"
+                            role="option"
+                            aria-selected={Number(value) === Number(chain.id)}
+                            onClick={() => {
+                                onChange(chain.id)
+                                setOpen(false)
+                            }}
+                        >
+                            {getCuratedEvmChainLogoUri(chain.id) ? (
+                                <img src={getCuratedEvmChainLogoUri(chain.id)} alt="" />
+                            ) : (
+                                <span className="uni-portfolio-network-fallback" />
+                            )}
+                            <span>{chain.name}</span>
+                        </button>
+                    ))}
                 </div>
-            ))}
+            )}
         </div>
     )
+}
+
+function MoreMenu({ address, onRefresh }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef(null)
+    useOutsideDismiss(open, ref, () => setOpen(false))
+    const chain = getCuratedEvmChain(1)
+    const explorer = chain?.blockExplorers?.default?.url
+
+    return (
+        <div className="uni-portfolio-more" ref={ref}>
+            <button
+                type="button"
+                className="uni-portfolio-more-trigger"
+                aria-label="Portfolio options"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={() => setOpen((current) => !current)}
+            >
+                <MoreHorizontal aria-hidden="true" />
+            </button>
+            {open && (
+                <div className="uni-portfolio-menu" role="menu">
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                            navigator.clipboard?.writeText(address)
+                            setOpen(false)
+                        }}
+                    >
+                        <Copy aria-hidden="true" />
+                        Copy address
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                            onRefresh()
+                            setOpen(false)
+                        }}
+                    >
+                        <RefreshCw aria-hidden="true" />
+                        Refresh
+                    </button>
+                    {explorer && (
+                        <a
+                            role="menuitem"
+                            href={explorer.replace(/\/+$/, '') + '/address/' + address}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setOpen(false)}
+                        >
+                            <ExternalLink aria-hidden="true" />
+                            View explorer
+                        </a>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
+function goToTrade() {
+    const url = new URL(window.location.href)
+    url.pathname = '/swap/'
+    url.searchParams.delete('view')
+    url.searchParams.delete('address')
+    url.searchParams.delete('tab')
+    url.searchParams.delete('network')
+    window.history.pushState(window.history.state, '', url)
+    window.dispatchEvent(new CustomEvent('pistachio:navigate-app', {
+        detail: { view: 'trade' },
+    }))
 }
 
 function dispatchWalletAction(action) {
     window.dispatchEvent(new CustomEvent('pistachio:open-wallet-action', {
         detail: { action },
     }))
+}
+
+function ActionTile({ icon: Icon, label, onClick, children }) {
+    return (
+        <div className="uni-portfolio-action-wrap">
+            <button type="button" className="uni-portfolio-action-tile" onClick={onClick}>
+                <Icon aria-hidden="true" />
+                <span>{label}</span>
+            </button>
+            {children}
+        </div>
+    )
+}
+
+function ActionTiles({ ownWallet, address, onRefresh }) {
+    const [moreOpen, setMoreOpen] = useState(false)
+
+    if (!ownWallet) {
+        return (
+            <div className="uni-portfolio-action-grid two">
+                <ActionTile
+                    icon={Copy}
+                    label="Copy"
+                    onClick={() => navigator.clipboard?.writeText(address)}
+                />
+                <ActionTile
+                    icon={ArrowLeftRight}
+                    label="Trade"
+                    onClick={goToTrade}
+                />
+            </div>
+        )
+    }
+
+    return (
+        <div className="uni-portfolio-action-grid">
+            <ActionTile
+                icon={Send}
+                label="Send"
+                onClick={() => dispatchWalletAction('send')}
+            />
+            <ActionTile
+                icon={ArrowDownCircle}
+                label="Receive"
+                onClick={() => dispatchWalletAction('receive')}
+            />
+            <ActionTile
+                icon={Wallet}
+                label="Buy"
+                onClick={goToTrade}
+            />
+            <ActionTile
+                icon={MoreHorizontal}
+                label="More"
+                onClick={() => setMoreOpen((current) => !current)}
+            >
+                {moreOpen && (
+                    <div className="uni-portfolio-action-menu">
+                        <button type="button" onClick={goToTrade}>
+                            <ArrowLeftRight aria-hidden="true" /> Swap
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onRefresh()
+                                setMoreOpen(false)
+                            }}
+                        >
+                            <RefreshCw aria-hidden="true" /> Refresh
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                navigator.clipboard?.writeText(address)
+                                setMoreOpen(false)
+                            }}
+                        >
+                            <Copy aria-hidden="true" /> Copy address
+                        </button>
+                    </div>
+                )}
+            </ActionTile>
+        </div>
+    )
+}
+
+function historyDateLabel(timestamp, period) {
+    const options = period === '1H' || period === '1D'
+        ? { hour: 'numeric', minute: '2-digit' }
+        : { month: 'short', day: 'numeric' }
+    return new Intl.DateTimeFormat(undefined, options).format(new Date(timestamp))
+}
+
+function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
+    const width = 820
+    const height = 300
+    const top = 18
+    const bottom = 28
+    const right = 54
+    const plotWidth = width - right
+    const plotHeight = height - top - bottom
+    const values = points.map((point) => Number(point.value)).filter(Number.isFinite)
+    const latest = values.at(-1) ?? currentValue
+    const rawMin = values.length ? Math.min(...values) : latest
+    const rawMax = values.length ? Math.max(...values) : latest
+    const span = Math.max(rawMax - rawMin, Math.max(Math.abs(latest) * 0.05, 0.01))
+    const min = Math.max(0, rawMin - span * 0.18)
+    const max = rawMax + span * 0.18
+    const timeMin = points[0]?.time ?? Date.now()
+    const timeMax = points.at(-1)?.time ?? Date.now()
+    const timeSpan = Math.max(timeMax - timeMin, 1)
+    const x = (point) => ((point.time - timeMin) / timeSpan) * plotWidth
+    const y = (point) => top + ((max - point.value) / Math.max(max - min, 0.000001)) * plotHeight
+    const line = points.length >= 2
+        ? points.map((point, index) => (index ? 'L' : 'M') + x(point).toFixed(2) + ' ' + y(point).toFixed(2)).join(' ')
+        : ''
+    const area = line
+        ? line + ' L ' + x(points.at(-1)).toFixed(2) + ' ' + (top + plotHeight) +
+            ' L ' + x(points[0]).toFixed(2) + ' ' + (top + plotHeight) + ' Z'
+        : ''
+    const change = portfolioSnapshotChange(points)
+    const positive = !change || change.absolute >= 0
+    const axis = [max, min + (max - min) * 0.66, min + (max - min) * 0.33, min]
+    const labels = points.length >= 2
+        ? [
+            points[0],
+            points[Math.floor((points.length - 1) / 3)],
+            points[Math.floor(((points.length - 1) * 2) / 3)],
+            points.at(-1),
+        ]
+        : []
+
+    return (
+        <div className="uni-portfolio-chart-block">
+            <div className="uni-portfolio-chart-canvas" data-positive={positive ? 'true' : 'false'}>
+                <svg
+                    viewBox={'0 0 ' + width + ' ' + height}
+                    preserveAspectRatio="none"
+                    role="img"
+                    aria-label="Portfolio value history"
+                >
+                    <defs>
+                        <linearGradient id="portfolio-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="currentColor" stopOpacity="0.26" />
+                            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+                        </linearGradient>
+                    </defs>
+                    {area && <path className="uni-portfolio-chart-area" d={area} />}
+                    {line && <path className="uni-portfolio-chart-line" d={line} />}
+                    {points.length > 0 && (
+                        <circle
+                            className="uni-portfolio-chart-dot"
+                            cx={x(points.at(-1))}
+                            cy={y(points.at(-1))}
+                            r="5"
+                        />
+                    )}
+                </svg>
+                <div className="uni-portfolio-chart-y-axis" aria-hidden="true">
+                    {axis.map((value, index) => (
+                        <span key={index}>{formatUsd(Math.max(0, value), 0)}</span>
+                    ))}
+                </div>
+                {labels.length > 0 && (
+                    <div className="uni-portfolio-chart-x-axis" aria-hidden="true">
+                        {labels.map((point, index) => (
+                            <span key={index}>{historyDateLabel(point.time, period)}</span>
+                        ))}
+                    </div>
+                )}
+                {points.length < 2 && (
+                    <div className="uni-portfolio-chart-empty-copy">
+                        Portfolio history starts building from this browser.
+                    </div>
+                )}
+            </div>
+            <div className="uni-portfolio-periods" aria-label="Portfolio chart period">
+                {PORTFOLIO_CHART_PERIODS.map((item) => (
+                    <button
+                        key={item.id}
+                        type="button"
+                        className={period === item.id ? 'active' : ''}
+                        onClick={() => onPeriodChange(item.id)}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+function PerformancePanel({ points, assetCount, networkCount }) {
+    const [period, setPeriod] = useState('All')
+    const [open, setOpen] = useState(false)
+    const ref = useRef(null)
+    useOutsideDismiss(open, ref, () => setOpen(false))
+    const change = portfolioSnapshotChange(points)
+
+    return (
+        <section className="uni-portfolio-performance">
+            <div className="uni-portfolio-performance-header">
+                <h2>Performance <span title="Based on portfolio snapshots stored in this browser">i</span></h2>
+                <div className="uni-portfolio-performance-period" ref={ref}>
+                    <button
+                        type="button"
+                        aria-haspopup="menu"
+                        aria-expanded={open}
+                        onClick={() => setOpen((current) => !current)}
+                    >
+                        {period} <ChevronDown aria-hidden="true" />
+                    </button>
+                    {open && (
+                        <div role="menu">
+                            {['All', '1M', '1W', '1D'].map((item) => (
+                                <button
+                                    key={item}
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        setPeriod(item)
+                                        setOpen(false)
+                                    }}
+                                >
+                                    {item}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+            <dl>
+                <div>
+                    <dt>Period return</dt>
+                    <dd data-positive={change ? String(change.absolute >= 0) : undefined}>
+                        {change ? formatSignedUsd(change.absolute) : '—'}
+                        {change?.percent !== null && change ? ' (' + formatPercent(change.percent) + ')' : ''}
+                    </dd>
+                </div>
+                <div>
+                    <dt>Tracked assets</dt>
+                    <dd>{assetCount}</dd>
+                </div>
+                <div>
+                    <dt>Networks</dt>
+                    <dd>{networkCount}</dd>
+                </div>
+            </dl>
+        </section>
+    )
+}
+
+function TokenTable({
+    tokens,
+    totalValue,
+    compact = false,
+    sortKey,
+    sortDirection,
+    onSort,
+}) {
+    const rows = useMemo(() => {
+        const next = tokens.map((token) => {
+            const value = Number(resolveWalletUsdValue(token))
+            const price = resolveTokenPrice(token)
+            const balance = Number(token?.balance ?? token?.formattedBalance)
+            const change = resolveTokenChange(token)
+            const allocation = totalValue > 0 && Number.isFinite(value)
+                ? (value / totalValue) * 100
+                : null
+            return { token, value, price, balance, change, allocation }
+        })
+
+        if (!sortKey) return next
+        const direction = sortDirection === 'asc' ? 1 : -1
+        return next.toSorted((left, right) => {
+            if (sortKey === 'name') {
+                return getTokenDisplayName(left.token).localeCompare(getTokenDisplayName(right.token)) * direction
+            }
+            const a = Number(left[sortKey])
+            const b = Number(right[sortKey])
+            if (!Number.isFinite(a) && !Number.isFinite(b)) return 0
+            if (!Number.isFinite(a)) return 1
+            if (!Number.isFinite(b)) return -1
+            return (a - b) * direction
+        })
+    }, [sortDirection, sortKey, tokens, totalValue])
+
+    function HeaderButton({ id, children }) {
+        if (compact || !onSort) return <span>{children}</span>
+        return (
+            <button type="button" onClick={() => onSort(id)}>
+                {children}
+                {sortKey === id ? <small>{sortDirection === 'asc' ? '↑' : '↓'}</small> : null}
+            </button>
+        )
+    }
+
+    return (
+        <div className={'uni-portfolio-token-table-wrap' + (compact ? ' compact' : '')}>
+            <div className="uni-portfolio-token-table">
+                <div className="uni-portfolio-token-table-head">
+                    <HeaderButton id="name">Token</HeaderButton>
+                    <HeaderButton id="price">Price</HeaderButton>
+                    <HeaderButton id="balance">Balance</HeaderButton>
+                    <HeaderButton id="value">Value</HeaderButton>
+                    <HeaderButton id="change">1D</HeaderButton>
+                    {!compact && <HeaderButton id="allocation">Allocation</HeaderButton>}
+                </div>
+                {rows.map(({ token, value, price, change, allocation }) => (
+                    <div className="uni-portfolio-token-row" key={Number(token.chainId) + ':' + token.address}>
+                        <div className="uni-portfolio-token-info">
+                            <TokenIcon token={token} size="list" />
+                            <span>
+                                <strong>{getTokenDisplayName(token)}</strong>
+                                <small>{getTokenDisplaySymbol(token)}</small>
+                            </span>
+                        </div>
+                        <span>{formatPrice(price)}</span>
+                        <span>
+                            {formatWalletTokenAmount(token.balance)} {getTokenDisplaySymbol(token)}
+                        </span>
+                        <strong>{Number.isFinite(value) ? formatUsd(value) : formatWalletUsdValue(token)}</strong>
+                        <span className="uni-portfolio-change" data-positive={change !== null ? String(change >= 0) : undefined}>
+                            {change === null ? '—' : formatPercent(change, true)}
+                        </span>
+                        {!compact && (
+                            <span>{allocation === null ? '—' : formatPercent(allocation)}</span>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+function ActivityRow({ item, assets }) {
+    const chain = getCuratedEvmChain(item.chainId)
+    const explorer = chain?.blockExplorers?.default?.url
+    const href = explorer && item.hash
+        ? explorer.replace(/\/+$/, '') + '/tx/' + item.hash
+        : null
+    const row = (
+        <>
+            <span className="uni-portfolio-activity-icon">
+                <ActivityIcon item={item} assets={assets} />
+                {getCuratedEvmChainLogoUri(item.chainId) && (
+                    <img src={getCuratedEvmChainLogoUri(item.chainId)} alt="" />
+                )}
+            </span>
+            <span className="uni-portfolio-activity-copy">
+                <strong>{activityLabel(item.type)}</strong>
+                <small>{activitySummary(item)}</small>
+            </span>
+            <span className="uni-portfolio-activity-network">{chain?.name ?? 'Chain ' + item.chainId}</span>
+            <time dateTime={item.timestamp}>{activityTime(item.timestamp)}</time>
+            {href && <ExternalLink aria-hidden="true" />}
+        </>
+    )
+    return href ? (
+        <a className="uni-portfolio-activity-row" href={href} target="_blank" rel="noopener noreferrer">
+            {row}
+        </a>
+    ) : (
+        <div className="uni-portfolio-activity-row">{row}</div>
+    )
+}
+
+function Overview({
+    address,
+    ownWallet,
+    assets,
+    allAssets,
+    activity,
+    totalValue,
+    networkCount,
+    snapshots,
+    period,
+    setPeriod,
+    change,
+    onRefresh,
+    onTab,
+}) {
+    const miniAssets = assets.slice(0, 8)
+    return (
+        <div className="uni-portfolio-overview">
+            <div className="uni-portfolio-hero">
+                <section className="uni-portfolio-chart-column">
+                    <div className="uni-portfolio-balance-header">
+                        <strong>{formatUsd(totalValue)}</strong>
+                        <span data-positive={change ? String(change.absolute >= 0) : undefined}>
+                            {change
+                                ? formatSignedUsd(change.absolute) + ' (' + formatPercent(change.percent ?? 0) + ') this ' + (period === 'ALL' ? 'period' : period.toLowerCase())
+                                : 'Portfolio history is building'}
+                        </span>
+                    </div>
+                    <PortfolioChart
+                        points={snapshots}
+                        currentValue={totalValue}
+                        period={period}
+                        onPeriodChange={setPeriod}
+                    />
+                </section>
+
+                <aside className="uni-portfolio-right-rail">
+                    <ActionTiles
+                        ownWallet={ownWallet}
+                        address={address}
+                        onRefresh={onRefresh}
+                    />
+                    <PerformancePanel
+                        points={snapshots}
+                        assetCount={assets.length}
+                        networkCount={networkCount}
+                    />
+                </aside>
+            </div>
+
+            <div className="uni-portfolio-separator" />
+
+            <div className="uni-portfolio-overview-tables">
+                <section className="uni-portfolio-overview-main">
+                    <div className="uni-portfolio-section-title">
+                        <div>
+                            <h2>Tokens</h2>
+                            <span>{assets.length} {assets.length === 1 ? 'token' : 'tokens'}</span>
+                        </div>
+                    </div>
+                    {miniAssets.length > 0 ? (
+                        <TokenTable
+                            tokens={miniAssets}
+                            totalValue={totalValue}
+                            compact
+                        />
+                    ) : (
+                        <div className="uni-portfolio-empty-row">No visible token balances.</div>
+                    )}
+                    {assets.length > 0 && (
+                        <button
+                            type="button"
+                            className="uni-portfolio-view-all"
+                            onClick={() => onTab('tokens')}
+                        >
+                            View all tokens <ArrowRight aria-hidden="true" />
+                        </button>
+                    )}
+                </section>
+
+                <aside className="uni-portfolio-overview-side">
+                    <div className="uni-portfolio-section-title">
+                        <div>
+                            <h2>Activity</h2>
+                            <span>Recent transactions</span>
+                        </div>
+                    </div>
+                    <div className="uni-portfolio-mini-activity">
+                        {activity.slice(0, 5).map((item) => (
+                            <ActivityRow key={item.id} item={item} assets={allAssets} />
+                        ))}
+                        {activity.length === 0 && (
+                            <div className="uni-portfolio-empty-row">No recent activity.</div>
+                        )}
+                    </div>
+                    {activity.length > 5 && (
+                        <button
+                            type="button"
+                            className="uni-portfolio-view-all"
+                            onClick={() => onTab('activity')}
+                        >
+                            View all activity <ArrowRight aria-hidden="true" />
+                        </button>
+                    )}
+                </aside>
+            </div>
+        </div>
+    )
 }
 
 export default function PortfolioPage({ wallet }) {
@@ -259,60 +884,133 @@ export default function PortfolioPage({ wallet }) {
         selectedTokens = [],
         onRefetch,
     } = wallet
+    const params = new URLSearchParams(window.location.search)
+    const requestedAddress = normalizeAddress(params.get('address'))
+    const connectedAddress = normalizeAddress(walletState.address)
+    const address = requestedAddress ?? connectedAddress
+    const ownWallet = Boolean(address && connectedAddress && address === connectedAddress)
+
+    const externalWallet = useWalletTokens({
+        chainId: 'all',
+        walletAddress: address,
+        enabled: Boolean(address && !ownWallet),
+    })
+    const activeWalletTokens = ownWallet ? walletTokens : externalWallet.tokens
+
     const [tab, setTab] = useState(() => {
         const requested = new URLSearchParams(window.location.search).get('tab')
         return TABS.some((item) => item.id === requested) ? requested : 'overview'
     })
-    const [search, setSearch] = useState('')
-    const [chainFilter, setChainFilter] = useState('all')
+    const [chainFilter, setChainFilter] = useState(() => {
+        const value = new URLSearchParams(window.location.search).get('network')
+        const parsed = Number(value)
+        return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 'all'
+    })
+    const [tokenSearch, setTokenSearch] = useState('')
+    const [activitySearch, setActivitySearch] = useState('')
+    const [activityType, setActivityType] = useState('all')
+    const [sortKey, setSortKey] = useState('value')
+    const [sortDirection, setSortDirection] = useState('desc')
+    const [period, setPeriod] = useState('1M')
+    const [historyRevision, setHistoryRevision] = useState(0)
     const [refreshing, setRefreshing] = useState(false)
-    const [copied, setCopied] = useState(false)
+    const [shareNotice, setShareNotice] = useState('')
 
     const {
-        items: activity,
+        items: walletActivity,
         loading: activityLoading,
         error: activityError,
         refetch: refetchActivity,
     } = useWalletActivity({
-        walletAddress: walletState.address,
-        enabled: walletState.isConnected,
-        limit: 50,
+        walletAddress: address,
+        enabled: Boolean(address),
+        limit: 100,
     })
 
     const heldAssets = useMemo(
-        () => walletTokens.filter(hasPositiveBalance),
-        [walletTokens],
+        () => activeWalletTokens.filter(hasPositiveBalance),
+        [activeWalletTokens],
     )
-    const portfolioAssets = useMemo(
+    const trustedAssets = useMemo(
         () => sortWalletAssetsByValue(filterPortfolioTokens(heldAssets, {
             ...settings,
-            selectedTokens,
+            selectedTokens: ownWallet ? selectedTokens : [],
         })),
-        [heldAssets, selectedTokens, settings],
+        [heldAssets, ownWallet, selectedTokens, settings],
     )
+    const hiddenAssets = useMemo(
+        () => getHiddenPortfolioTokens(heldAssets),
+        [heldAssets],
+    )
+    const assets = useMemo(
+        () => chainFilter === 'all'
+            ? trustedAssets
+            : trustedAssets.filter((token) => Number(token.chainId) === Number(chainFilter)),
+        [chainFilter, trustedAssets],
+    )
+    const totalValue = useMemo(() => numericPortfolioTotal(assets), [assets])
+    const allTotalValue = useMemo(() => numericPortfolioTotal(trustedAssets), [trustedAssets])
     const visibleActivity = useMemo(
-        () => filterVisibleActivity(activity, walletTokens),
-        [activity, walletTokens],
-    )
-    const filteredAssets = useMemo(
-        () => portfolioAssets.filter((token) =>
-            (chainFilter === 'all' || Number(token.chainId) === Number(chainFilter)) &&
-            tokenSearchMatch(token, search)),
-        [chainFilter, portfolioAssets, search],
+        () => filterVisibleActivity(walletActivity, activeWalletTokens)
+            .filter((item) => chainFilter === 'all' || Number(item.chainId) === Number(chainFilter)),
+        [activeWalletTokens, chainFilter, walletActivity],
     )
     const chainIds = useMemo(
-        () => [...new Set(portfolioAssets.map((token) => Number(token.chainId)))]
-            .filter((chainId) => getCuratedEvmChain(chainId))
-            .sort((left, right) =>
-                (getCuratedEvmChain(left)?.name ?? '').localeCompare(
-                    getCuratedEvmChain(right)?.name ?? '',
-                )),
-        [portfolioAssets],
+        () => [...new Set(trustedAssets.map((token) => Number(token.chainId)))]
+            .filter((chainId) => getCuratedEvmChain(chainId)),
+        [trustedAssets],
     )
-    const totalValue = useMemo(
-        () => formatPortfolioTotal(portfolioAssets),
-        [portfolioAssets],
+    const filteredTokens = useMemo(() => {
+        const query = tokenSearch.trim().toLowerCase()
+        if (!query) return assets
+        return assets.filter((token) => [
+            token.name,
+            token.symbol,
+            token.address,
+            getCuratedEvmChain(token.chainId)?.name,
+        ].some((value) => String(value ?? '').toLowerCase().includes(query)))
+    }, [assets, tokenSearch])
+    const filteredActivity = useMemo(() => {
+        const query = activitySearch.trim().toLowerCase()
+        return visibleActivity.filter((item) => {
+            if (activityType !== 'all' && item.type !== activityType) return false
+            if (!query) return true
+            return [
+                activityLabel(item.type),
+                activitySummary(item),
+                item.hash,
+                getCuratedEvmChain(item.chainId)?.name,
+            ].some((value) => String(value ?? '').toLowerCase().includes(query))
+        })
+    }, [activitySearch, activityType, visibleActivity])
+
+    const historyScope = chainFilter === 'all' ? 'all' : String(chainFilter)
+    const snapshots = useMemo(
+        () => readPortfolioSnapshots({
+            walletAddress: address,
+            scope: historyScope,
+            period,
+        }),
+        [address, historyRevision, historyScope, period],
     )
+    const periodChange = useMemo(() => portfolioSnapshotChange(snapshots), [snapshots])
+
+    useEffect(() => {
+        if (!address || !Number.isFinite(totalValue)) return
+        if (recordPortfolioSnapshot({
+            walletAddress: address,
+            scope: historyScope,
+            valueUSD: totalValue,
+        })) {
+            setHistoryRevision((revision) => revision + 1)
+        }
+    }, [address, historyScope, totalValue])
+
+    useEffect(() => {
+        if (!shareNotice) return undefined
+        const timeout = window.setTimeout(() => setShareNotice(''), 1600)
+        return () => window.clearTimeout(timeout)
+    }, [shareNotice])
 
     function changeTab(nextTab) {
         setTab(nextTab)
@@ -322,12 +1020,30 @@ export default function PortfolioPage({ wallet }) {
         window.history.replaceState(window.history.state, '', url)
     }
 
+    function changeNetwork(nextChain) {
+        setChainFilter(nextChain)
+        const url = new URL(window.location.href)
+        if (nextChain === 'all') url.searchParams.delete('network')
+        else url.searchParams.set('network', String(nextChain))
+        window.history.replaceState(window.history.state, '', url)
+    }
+
+    function changeSort(nextKey) {
+        if (!TOKEN_SORTS.has(nextKey)) return
+        if (sortKey === nextKey) {
+            setSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortKey(nextKey)
+            setSortDirection(nextKey === 'name' ? 'asc' : 'desc')
+        }
+    }
+
     async function refresh() {
         if (refreshing) return
         setRefreshing(true)
         try {
             await Promise.all([
-                Promise.resolve(onRefetch?.()),
+                Promise.resolve(ownWallet ? onRefetch?.() : externalWallet.refetch?.()),
                 Promise.resolve(refetchActivity?.()),
             ])
         } finally {
@@ -335,57 +1051,62 @@ export default function PortfolioPage({ wallet }) {
         }
     }
 
-    async function copyAddress() {
+    async function sharePortfolio() {
+        const url = window.location.href
         try {
-            await navigator.clipboard?.writeText(walletState.address)
-            setCopied(true)
-            window.setTimeout(() => setCopied(false), 1400)
+            if (navigator.share) {
+                await navigator.share({
+                    title: 'PistachioSwap Portfolio',
+                    url,
+                })
+                return
+            }
+            await navigator.clipboard?.writeText(url)
+            setShareNotice('Link copied')
         } catch {
-            setCopied(false)
+            setShareNotice('')
         }
     }
 
-    if (!walletState.isConnected) {
+    if (!address) {
         return (
-            <section className="portfolio-page portfolio-disconnected">
-                <div className="portfolio-empty-card">
+            <section className="uni-portfolio-page uni-portfolio-disconnected">
+                <div className="uni-portfolio-connect-card">
                     <WalletAvatar address={null} size="md" />
                     <h2>Your portfolio</h2>
-                    <p>Connect a wallet from the header to see balances, tokens, and activity across supported networks.</p>
+                    <p>Connect a wallet from the header to view tokens and activity.</p>
                 </div>
             </section>
         )
     }
 
-    const overviewAssets = portfolioAssets.slice(0, 5)
-    const overviewActivity = visibleActivity.slice(0, 5)
-
     return (
-        <section className="portfolio-page">
-            <header className="portfolio-header">
-                <div className="portfolio-identity">
-                    <WalletAvatar address={walletState.address} size="md" />
-                    <div>
-                        <span>Portfolio</span>
-                        <button type="button" onClick={copyAddress}>
-                            {shortenAddress(walletState.address, 6)}
-                            <Copy aria-hidden="true" />
-                            {copied && <small>Copied</small>}
+        <section className="uni-portfolio-page">
+            <header className="uni-portfolio-header">
+                <div className="uni-portfolio-header-top">
+                    <div className="uni-portfolio-address">
+                        <WalletAvatar address={address} size="md" />
+                        <strong>{shortenAddress(address, 5)}</strong>
+                    </div>
+                    <div className="uni-portfolio-header-controls">
+                        <MoreMenu address={address} onRefresh={refresh} />
+                        <button
+                            type="button"
+                            className="uni-portfolio-control-button"
+                            onClick={sharePortfolio}
+                        >
+                            <Share2 aria-hidden="true" />
+                            <span>Share</span>
                         </button>
+                        <NetworkFilter
+                            value={chainFilter}
+                            onChange={changeNetwork}
+                            chainIds={chainIds}
+                        />
                     </div>
                 </div>
-                <div className="portfolio-header-actions">
-                    <button
-                        type="button"
-                        className="portfolio-icon-button"
-                        aria-label="Refresh portfolio"
-                        onClick={refresh}
-                        disabled={refreshing}
-                    >
-                        <RefreshCw className={refreshing ? 'spinning' : ''} aria-hidden="true" />
-                    </button>
-                </div>
-                <nav className="portfolio-tabs" aria-label="Portfolio views">
+
+                <nav className="uni-portfolio-tabs" aria-label="Portfolio views">
                     {TABS.map((item) => (
                         <button
                             key={item.id}
@@ -398,171 +1119,162 @@ export default function PortfolioPage({ wallet }) {
                         </button>
                     ))}
                 </nav>
+                {shareNotice && <span className="uni-portfolio-toast">{shareNotice}</span>}
             </header>
 
-            {tab === 'overview' && (
-                <div className="portfolio-overview">
-                    <section className="portfolio-balance-card">
-                        <span className="portfolio-eyebrow">Portfolio balance</span>
-                        <strong className="portfolio-total">{totalValue}</strong>
-                        <span className="portfolio-subtitle">
-                            {portfolioAssets.length} {portfolioAssets.length === 1 ? 'asset' : 'assets'} across {chainIds.length || 1} {chainIds.length === 1 ? 'network' : 'networks'}
-                        </span>
-                    </section>
+            <div className="uni-portfolio-content">
+                {tab === 'overview' && (
+                    <Overview
+                        address={address}
+                        ownWallet={ownWallet}
+                        assets={assets}
+                        allAssets={activeWalletTokens}
+                        activity={visibleActivity}
+                        totalValue={totalValue}
+                        networkCount={chainFilter === 'all' ? chainIds.length : 1}
+                        snapshots={snapshots}
+                        period={period}
+                        setPeriod={setPeriod}
+                        change={periodChange}
+                        onRefresh={refresh}
+                        onTab={changeTab}
+                    />
+                )}
 
-                    <div className="portfolio-action-grid" aria-label="Portfolio actions">
-                        <a className="portfolio-action-tile" href="/swap/">
-                            <ArrowLeftRight aria-hidden="true" />
-                            <span>Trade</span>
-                        </a>
-                        <button type="button" className="portfolio-action-tile" onClick={() => dispatchWalletAction('send')}>
-                            <Send aria-hidden="true" />
-                            <span>Send</span>
-                        </button>
-                        <button type="button" className="portfolio-action-tile" onClick={() => dispatchWalletAction('receive')}>
-                            <QrCode aria-hidden="true" />
-                            <span>Receive</span>
-                        </button>
-                        <button type="button" className="portfolio-action-tile" onClick={() => changeTab('tokens')}>
-                            <Layers3 aria-hidden="true" />
-                            <span>Tokens</span>
-                        </button>
-                    </div>
-
-                    <div className="portfolio-overview-grid">
-                        <section className="portfolio-card portfolio-assets-card">
-                            <div className="portfolio-card-header">
-                                <h2>Tokens</h2>
-                                <button type="button" onClick={() => changeTab('tokens')}>View all</button>
+                {tab === 'tokens' && (
+                    <section className="uni-portfolio-tab-page">
+                        <div className="uni-portfolio-tab-toolbar">
+                            <div>
+                                <h1>{formatUsd(totalValue)}</h1>
+                                <span>{filteredTokens.length} {filteredTokens.length === 1 ? 'token' : 'tokens'}</span>
                             </div>
-                            {overviewAssets.length > 0 ? (
-                                <div className="portfolio-token-list">
-                                    {overviewAssets.map((token) => (
-                                        <PortfolioTokenRow
-                                            key={`${token.chainId}:${token.address}`}
-                                            token={token}
-                                        />
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="portfolio-empty-copy">No visible token balances yet.</p>
-                            )}
-                        </section>
-
-                        <section className="portfolio-card portfolio-activity-card">
-                            <div className="portfolio-card-header">
-                                <h2>Activity</h2>
-                                <button type="button" onClick={() => changeTab('activity')}>View all</button>
-                            </div>
-                            {activityLoading && overviewActivity.length === 0 ? (
-                                <LoadingRows />
-                            ) : overviewActivity.length > 0 ? (
-                                <div className="portfolio-activity-list">
-                                    {overviewActivity.map((item) => (
-                                        <PortfolioActivityRow
-                                            key={item.id}
-                                            item={item}
-                                            assets={walletTokens}
-                                        />
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="portfolio-empty-copy">No recent activity.</p>
-                            )}
-                        </section>
-                    </div>
-                </div>
-            )}
-
-            {tab === 'tokens' && (
-                <section className="portfolio-card portfolio-full-card">
-                    <div className="portfolio-list-toolbar">
-                        <div>
-                            <h2>Tokens</h2>
-                            <span>{portfolioAssets.length} visible assets</span>
-                        </div>
-                        <div className="portfolio-token-filters">
-                            <label className="portfolio-token-search">
+                            <label className="uni-portfolio-search-input">
                                 <Search aria-hidden="true" />
-                                <span className="portfolio-visually-hidden">Search portfolio tokens</span>
                                 <input
-                                    value={search}
-                                    onChange={(event) => setSearch(event.target.value)}
+                                    aria-label="Search portfolio tokens"
+                                    value={tokenSearch}
+                                    onChange={(event) => setTokenSearch(event.target.value)}
                                     placeholder="Search tokens"
                                     autoComplete="off"
                                     spellCheck="false"
                                 />
                             </label>
-                            <select
-                                value={chainFilter}
-                                onChange={(event) => setChainFilter(event.target.value)}
-                                aria-label="Filter portfolio by network"
-                            >
-                                <option value="all">All networks</option>
-                                {chainIds.map((chainId) => (
-                                    <option key={chainId} value={chainId}>
-                                        {getCuratedEvmChain(chainId)?.name}
-                                    </option>
-                                ))}
-                            </select>
                         </div>
-                    </div>
-                    {filteredAssets.length > 0 ? (
-                        <div className="portfolio-token-list portfolio-token-list-full">
-                            {filteredAssets.map((token) => (
-                                <PortfolioTokenRow
-                                    key={`${token.chainId}:${token.address}`}
-                                    token={token}
-                                />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="portfolio-empty-inline">
-                            <Search aria-hidden="true" />
-                            <p>{search || chainFilter !== 'all' ? 'No matching tokens.' : 'No visible token balances yet.'}</p>
-                        </div>
-                    )}
-                </section>
-            )}
 
-            {tab === 'activity' && (
-                <section className="portfolio-card portfolio-full-card">
-                    <div className="portfolio-list-toolbar">
-                        <div>
-                            <h2>Activity</h2>
-                            <span>Recent wallet activity across supported networks</span>
+                        {filteredTokens.length > 0 ? (
+                            <TokenTable
+                                tokens={filteredTokens}
+                                totalValue={totalValue}
+                                sortKey={sortKey}
+                                sortDirection={sortDirection}
+                                onSort={changeSort}
+                            />
+                        ) : (
+                            <div className="uni-portfolio-large-empty">
+                                <Search aria-hidden="true" />
+                                <strong>No matching tokens</strong>
+                                <span>Try another token name, symbol, contract, or network.</span>
+                            </div>
+                        )}
+
+                        {hiddenAssets.length > 0 && (
+                            <details className="uni-portfolio-hidden-assets">
+                                <summary>Hidden tokens ({hiddenAssets.length})</summary>
+                                <p>Unverified or risky assets stay outside the main portfolio value.</p>
+                            </details>
+                        )}
+                    </section>
+                )}
+
+                {tab === 'nfts' && (
+                    <section className="uni-portfolio-tab-page">
+                        <div className="uni-portfolio-tab-toolbar">
+                            <div>
+                                <h1>NFTs</h1>
+                                <span>Collectibles owned by this wallet</span>
+                            </div>
                         </div>
-                        <button
-                            type="button"
-                            className="portfolio-refresh-button"
-                            onClick={refresh}
-                            disabled={refreshing}
-                        >
-                            <RefreshCw className={refreshing ? 'spinning' : ''} aria-hidden="true" />
-                            Refresh
-                        </button>
-                    </div>
-                    {activityError && <p className="portfolio-inline-notice">{activityError}</p>}
-                    {activityLoading && visibleActivity.length === 0 ? (
-                        <LoadingRows />
-                    ) : visibleActivity.length > 0 ? (
-                        <div className="portfolio-activity-list portfolio-activity-list-full">
-                            {visibleActivity.map((item) => (
-                                <PortfolioActivityRow
-                                    key={item.id}
-                                    item={item}
-                                    assets={walletTokens}
-                                />
-                            ))}
+                        <div className="uni-portfolio-large-empty">
+                            <span className="uni-portfolio-nft-placeholder">◇</span>
+                            <strong>NFT indexing is not enabled</strong>
+                            <span>PistachioSwap does not currently load NFT inventory, so this view stays empty rather than inventing holdings.</span>
                         </div>
-                    ) : (
-                        <div className="portfolio-empty-inline">
-                            <Activity aria-hidden="true" />
-                            <p>No wallet activity yet.</p>
+                    </section>
+                )}
+
+                {tab === 'activity' && (
+                    <section className="uni-portfolio-tab-page">
+                        <div className="uni-portfolio-tab-toolbar activity">
+                            <div>
+                                <h1>Activity</h1>
+                                <span>{visibleActivity.length} confirmed transactions</span>
+                            </div>
+                            <div className="uni-portfolio-activity-filters">
+                                <label className="uni-portfolio-search-input">
+                                    <Search aria-hidden="true" />
+                                    <input
+                                        aria-label="Search portfolio activity"
+                                        value={activitySearch}
+                                        onChange={(event) => setActivitySearch(event.target.value)}
+                                        placeholder="Search activity"
+                                        autoComplete="off"
+                                        spellCheck="false"
+                                    />
+                                </label>
+                                <select
+                                    aria-label="Filter activity type"
+                                    value={activityType}
+                                    onChange={(event) => setActivityType(event.target.value)}
+                                >
+                                    {ACTIVITY_TYPES.map((type) => (
+                                        <option key={type} value={type}>
+                                            {type === 'all' ? 'All activity' : activityLabel(type)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                    )}
-                </section>
-            )}
+
+                        {activityError && (
+                            <p className="uni-portfolio-inline-notice">{activityError}</p>
+                        )}
+                        {activityLoading && filteredActivity.length === 0 ? (
+                            <div className="uni-portfolio-activity-loading">
+                                {Array.from({ length: 5 }).map((_, index) => <span key={index} />)}
+                            </div>
+                        ) : filteredActivity.length > 0 ? (
+                            <div className="uni-portfolio-activity-table">
+                                <div className="uni-portfolio-activity-head">
+                                    <span>Transaction</span>
+                                    <span>Network</span>
+                                    <span>Time</span>
+                                    <span />
+                                </div>
+                                {filteredActivity.map((item) => (
+                                    <ActivityRow
+                                        key={item.id}
+                                        item={item}
+                                        assets={activeWalletTokens}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="uni-portfolio-large-empty">
+                                <Activity aria-hidden="true" />
+                                <strong>No activity found</strong>
+                                <span>Confirmed wallet transactions will appear here.</span>
+                            </div>
+                        )}
+                    </section>
+                )}
+            </div>
+
+            <span className="uni-portfolio-sr-only" aria-live="polite">
+                {refreshing ? 'Refreshing portfolio' : ''}
+                {!ownWallet && externalWallet.loading ? 'Loading external wallet portfolio' : ''}
+                {!ownWallet && externalWallet.error ? externalWallet.error : ''}
+                {allTotalValue < 0 ? 'Portfolio unavailable' : ''}
+            </span>
         </section>
     )
 }
