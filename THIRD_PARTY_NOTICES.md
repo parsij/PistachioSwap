@@ -82,7 +82,7 @@ These determinations must be rechecked when versions change. A past audit result
 
 PistachioSwap may request or display data from third-party APIs, blockchains, token lists, RPC providers, indexers, market-data services, bridge providers, swap providers, and security services. API terms, data licenses, trademarks, attribution duties, rate limits, and acceptable-use rules can apply separately from npm package licenses.
 
-Repository code currently contains integrations or optional support for providers/services including Reown/WalletConnect, MetaMask, Uniswap, 0x, PancakeSwap, Across, deBridge, Relay, Chainflip, NodeReal/MegaFuel, Alchemy, Moralis, CoinGecko, GeckoTerminal, DexScreener, DexPaprika, ShapeShift asset data, Honeypot.is, GoPlus, and public blockchain/RPC infrastructure. Naming a provider here does not mean it is enabled in every deployment or that PistachioSwap owns, endorses, or is endorsed by that provider.
+Repository code currently contains integrations or optional support for providers/services including Reown/WalletConnect, MetaMask, Uniswap, 0x, PancakeSwap, Across, deBridge, Relay, Chainflip, Alchemy, Moralis, CoinGecko, GeckoTerminal, DexScreener, DexPaprika, ShapeShift asset data, Honeypot.is, GoPlus, and public blockchain/RPC infrastructure. Naming a provider here does not mean it is enabled in every deployment or that PistachioSwap owns, endorses, or is endorsed by that provider.
 
 Production operators must comply with the API/data terms for the services actually enabled.
 

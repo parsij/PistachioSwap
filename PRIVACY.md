@@ -116,7 +116,7 @@ Information may be disclosed as necessary to operate the Service to categories s
 
 - hosting, database, CDN, security, RPC, and indexing providers;
 - wallet-connection and wallet-software providers such as Reown/WalletConnect or the wallet you choose;
-- swap, liquidity, sponsorship, and bridge providers such as configured Uniswap, 0x, PancakeSwap, MegaFuel/NodeReal, Across, deBridge, Relay, Chainflip, or similar services;
+- swap, liquidity, sponsorship, and bridge providers such as configured Uniswap, 0x, PancakeSwap, Across, deBridge, Relay, Chainflip, the self-hosted Gas Assist infrastructure, or similar services;
 - market-data and token-security providers such as configured CoinGecko, GeckoTerminal, DexScreener, DexPaprika, Moralis, Alchemy, Honeypot.is, GoPlus, ShapeShift asset data, token lists, or self-hosted Pchained infrastructure;
 - accountants, auditors, insurers, attorneys, regulators, courts, or law enforcement when reasonably necessary and lawful; and
 - an acquirer, successor, or newly formed operating entity in a financing, merger, reorganization, sale, insolvency, or similar business transfer.
