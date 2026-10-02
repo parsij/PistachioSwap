@@ -13,7 +13,6 @@ import {
     Search,
     Send,
     Share2,
-    Wallet,
 } from 'lucide-react'
 
 import TokenIcon from '../../tokens/components/TokenIcon.jsx'
@@ -775,7 +774,6 @@ function Overview({
     allAssets,
     activity,
     totalValue,
-    networkCount,
     snapshots,
     period,
     setPeriod,
@@ -959,7 +957,6 @@ export default function PortfolioPage({ wallet }) {
         [chainFilter, trustedAssets],
     )
     const totalValue = useMemo(() => numericPortfolioTotal(assets), [assets])
-    const allTotalValue = useMemo(() => numericPortfolioTotal(trustedAssets), [trustedAssets])
     const visibleActivity = useMemo(
         () => filterVisibleActivity(walletActivity, activeWalletTokens)
             .filter((item) => chainFilter === 'all' || Number(item.chainId) === Number(chainFilter)),
@@ -1141,7 +1138,6 @@ export default function PortfolioPage({ wallet }) {
                         allAssets={activeWalletTokens}
                         activity={visibleActivity}
                         totalValue={totalValue}
-                        networkCount={chainFilter === 'all' ? chainIds.length : 1}
                         snapshots={snapshots}
                         period={period}
                         setPeriod={setPeriod}
@@ -1283,7 +1279,6 @@ export default function PortfolioPage({ wallet }) {
                 {refreshing ? 'Refreshing portfolio' : ''}
                 {!ownWallet && externalWallet.loading ? 'Loading external wallet portfolio' : ''}
                 {!ownWallet && externalWallet.error ? externalWallet.error : ''}
-                {allTotalValue < 0 ? 'Portfolio unavailable' : ''}
             </span>
         </section>
     )
