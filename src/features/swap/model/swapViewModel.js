@@ -363,7 +363,10 @@ export function createSwapViewModel(context) {
         header: {
             brand,
             navigation,
-            searchLabel: copy.searchLabel,
+            search: {
+                label: copy.searchLabel,
+                onOpen: callbacks.onOpenGlobalSearch,
+            },
             wallet: {
                 walletState,
                 nativeBalance: catalog.nativeBalance,
@@ -502,6 +505,7 @@ export function createSwapViewModel(context) {
                 open: Boolean(catalog.selector.side),
                 selectorProps: {
                     side: catalog.selector.side,
+                    mode: catalog.selector.mode,
                     chainId: catalog.selector.chainId,
                     tokens: catalog.selector.marketTokens,
                     commonTokens: catalog.selector.commonTokens,
