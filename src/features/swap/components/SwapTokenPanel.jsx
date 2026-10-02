@@ -34,9 +34,19 @@ export default function SwapTokenPanel(props) {
             layout
             className={panelClassName}
             transition={{ layout: motionConfig.sharedLayout }}
-            onPointerEnter={quickAmounts?.onShow}
-            onPointerLeave={quickAmounts?.onHide}
-            onFocusCapture={quickAmounts?.onShow}
+            onPointerEnter={(event) => {
+                if (event.pointerType === 'touch' || event.pointerType === 'pen') return
+                quickAmounts?.onShow?.()
+            }}
+            onPointerLeave={(event) => {
+                if (event.pointerType === 'touch' || event.pointerType === 'pen') return
+                quickAmounts?.onHide?.()
+            }}
+            onFocusCapture={(event) => {
+                if (event.target?.matches?.(':focus-visible')) {
+                    quickAmounts?.onShow?.()
+                }
+            }}
             onBlurCapture={quickAmounts?.onBlur}
             data-highlighted={highlighted || undefined}
         >

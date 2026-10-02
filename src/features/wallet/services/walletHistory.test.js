@@ -69,7 +69,7 @@ describe('direct browser wallet history', () => {
             partial: false,
             source: 'browser-direct',
         })
-        expect(fetchMock).toHaveBeenCalledTimes(5)
+        expect(fetchMock).toHaveBeenCalledTimes(7)
 
         const callsAfterBootstrap = fetchMock.mock.calls.length
         const second = await fetchWalletHistory({
@@ -105,12 +105,16 @@ describe('direct browser wallet history', () => {
         vi.stubGlobal('fetch', fetchMock)
 
         await fetchWalletHistory({ walletAddress: wallet, chainIds: [56], force: true })
-        expect(fromBlocks.slice(0, 4)).toEqual(['0x0', '0x0', '0x0', '0x0'])
+        expect(fromBlocks.slice(0, 6)).toEqual([
+            '0x0', '0x0', '0x0', '0x0', '0x0', '0x0',
+        ])
 
         fromBlocks.length = 0
         latestBlock = 1100
         await fetchWalletHistory({ walletAddress: wallet, chainIds: [56], force: true })
         expect(fromBlocks).toEqual([
+            '0x3a8',
+            '0x3a8',
             '0x3a8',
             '0x3a8',
             '0x3a8',

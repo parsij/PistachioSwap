@@ -2,6 +2,7 @@ import {
     decodeFunctionData,
     formatUnits,
     isHex,
+    parseUnits,
     toEventSelector,
     zeroAddress,
 } from 'viem'
@@ -13,7 +14,7 @@ import {
     getWrappedNativeTokenAddress,
 } from '../../../web3/curatedEvmChains.js'
 
-export const WALLET_HISTORY_CLASSIFIER_VERSION = 3
+export const WALLET_HISTORY_CLASSIFIER_VERSION = 4
 
 export const ENTRY_POINT_V08_ADDRESS =
     '0x4337084d9e255ff0702461cf8895ce9e3b5ff108'
@@ -267,6 +268,21 @@ function hasWalletUserOperation(value, wallet) {
     return userOperationSenders(value).includes(wallet)
 }
 
+function userOperationPaymasters(value) {
+    const candidates = value.user_operation_paymasters ?? value.userOperationPaymasters
+    if (!Array.isArray(candidates)) return []
+    return candidates.map(normalizeAddress).filter(Boolean)
+}
+
+function configuredPistachioPaymasterAddress() {
+    return normalizeAddress(import.meta.env?.VITE_PISTACHIO_PAYMASTER_ADDRESS)
+}
+
+function hasPistachioPaymasterUserOperation(value) {
+    const paymaster = configuredPistachioPaymasterAddress()
+    return Boolean(paymaster) && userOperationPaymasters(value).includes(paymaster)
+}
+
 function isKnownPistachioBscContract(value) {
     const address = normalizeAddress(value)
     return Boolean(address) && KNOWN_PISTACHIO_BSC_CONTRACT_SET.has(address)
@@ -393,15 +409,55 @@ export function buildReceiptHistoryRow({
         })
     }
 
+    const nativeTransferMap = new Map()
+    for (const item of indexedTransfers) {
+        if (!isRecord(item)) continue
+        const category = String(item.category ?? '').trim().toLowerCase()
+        if (category !== 'external' && category !== 'internal') continue
+        const from = normalizeAddress(item.from)
+        const to = normalizeAddress(item.to)
+        if (!from || !to || (from !== wallet && to !== wallet)) continue
+
+        const rawContract = isRecord(item.rawContract) ? item.rawContract : {}
+        let rawAmount = uintValue(rawContract.value)
+        if (rawAmount === null) {
+            const formatted = decimalValue(item.value)
+            if (formatted) {
+                try {
+                    rawAmount = parseUnits(formatted, 18)
+                } catch {
+                    rawAmount = null
+                }
+            }
+        }
+        if (rawAmount === null || rawAmount === 0n) continue
+
+        const key = `${from}:${to}:${rawAmount.toString()}`
+        nativeTransferMap.set(key, {
+            from_address: from,
+            to_address: to,
+            value: rawAmount.toString(),
+            value_formatted: formatUnits(rawAmount, 18),
+        })
+    }
+
     const nativeAmount = uintValue(transaction.value) ?? 0n
-    const nativeTransfers = nativeAmount > 0n
-        ? [{
-            from_address: transaction.from,
-            to_address: transaction.to,
-            value: nativeAmount.toString(),
-            value_formatted: formatUnits(nativeAmount, 18),
-        }]
-        : []
+    if (nativeAmount > 0n) {
+        const from = normalizeAddress(transaction.from)
+        const to = normalizeAddress(transaction.to)
+        if (from && to) {
+            nativeTransferMap.set(
+                `${from}:${to}:${nativeAmount.toString()}`,
+                {
+                    from_address: from,
+                    to_address: to,
+                    value: nativeAmount.toString(),
+                    value_formatted: formatUnits(nativeAmount, 18),
+                },
+            )
+        }
+    }
+    const nativeTransfers = [...nativeTransferMap.values()]
     const metadataEntry = indexedTransfers
         .map(item => isRecord(item) ? item.metadata : null)
         .find(isRecord)
@@ -435,6 +491,18 @@ export function buildReceiptHistoryRow({
             }
             const sender = normalizeAddress(`0x${String(topics[2] ?? '').slice(-40)}`)
             return sender ? [sender] : []
+        }))],
+        user_operation_paymasters: [...new Set(logs.flatMap(log => {
+            const topics = Array.isArray(log.topics) ? log.topics : []
+            if (
+                normalizeAddress(log.address) !== ENTRY_POINT_V08_ADDRESS ||
+                String(topics[0] ?? '').toLowerCase() !== USER_OPERATION_EVENT ||
+                topics.length < 4
+            ) {
+                return []
+            }
+            const paymaster = normalizeAddress(`0x${String(topics[3] ?? '').slice(-40)}`)
+            return paymaster ? [paymaster] : []
         }))],
     }
 }
@@ -650,8 +718,8 @@ function inferSelfHostedGasAssistSwap({
     if (
         chainId !== 56 ||
         normalizeAddress(value.to_address) !== ENTRY_POINT_V08_ADDRESS ||
-        value.swap_evidence !== true ||
-        !hasWalletUserOperation(value, wallet)
+        !hasWalletUserOperation(value, wallet) ||
+        !hasPistachioPaymasterUserOperation(value)
     ) {
         return null
     }
@@ -836,6 +904,7 @@ export const walletHistoryClassifierInternals = {
     USER_OPERATION_EVENT,
     SWAP_EVENTS,
     ENTRY_POINT_V08_ADDRESS,
+    configuredPistachioPaymasterAddress,
     differentAssets,
     netFlows,
     normalizeAddress,

@@ -252,7 +252,7 @@ async function transferStream({
 }
 
 async function discoverTransfers({ chainId, walletAddress, fromBlock, signal }) {
-    const streams = await Promise.all([
+    const requiredStreams = await Promise.all([
         ['fromAddress', 'external'],
         ['fromAddress', 'erc20'],
         ['toAddress', 'external'],
@@ -265,6 +265,27 @@ async function discoverTransfers({ chainId, walletAddress, fromBlock, signal }) 
         fromBlock,
         signal,
     })))
+
+    const internalStreams = Number(chainId) === 56
+        ? await Promise.allSettled([
+            ['fromAddress', 'internal'],
+            ['toAddress', 'internal'],
+        ].map(([direction, category]) => transferStream({
+            chainId,
+            walletAddress,
+            direction,
+            category,
+            fromBlock,
+            signal,
+        })))
+        : []
+
+    const streams = [
+        ...requiredStreams,
+        ...internalStreams
+            .filter(result => result.status === 'fulfilled')
+            .map(result => result.value),
+    ]
 
     const unique = new Map()
     for (const { transfers } of streams) {
