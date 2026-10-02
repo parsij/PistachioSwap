@@ -530,14 +530,6 @@ export function createSwapViewModel(context) {
                 },
             },
             gasAssistDialogs: {
-                approval: {
-                    dialog: gasAssist.gasAssist.dialog,
-                    buyToken,
-                    token: sellToken,
-                    amount: inputs.sellAmount,
-                    onClose: gasAssist.gasAssist.close,
-                    onConfirm: gasAssist.gasAssist.confirm,
-                },
                 prepayment: {
                     key: crossChainGasAssist?.sponsorship?.order?.id ??
                         gasAssist.prepaidSponsorship?.order?.id ?? 'prepaid-sponsorship',

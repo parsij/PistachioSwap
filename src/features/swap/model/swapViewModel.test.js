@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -108,5 +110,17 @@ describe('formatTokenDisplayAmount', () => {
             address: '0x00000000000000000000000000000000000000ff',
             symbol: 'USDC',
         })).toBe('1.25 USDC')
+    })
+})
+
+
+describe('retired Gas Assist surface', () => {
+    it('does not read the removed nested legacy gasAssist controller state', () => {
+        const viewModelSource = readFileSync('src/features/swap/model/swapViewModel.js', 'utf8')
+        const dialogsSource = readFileSync('src/features/gas-assist/components/GasAssistDialogs.jsx', 'utf8')
+
+        expect(viewModelSource).not.toContain('gasAssist.gasAssist')
+        expect(dialogsSource).not.toContain('GasAssistApprovalDialog')
+        expect(dialogsSource).toContain('GasAssistPrepaymentDialog')
     })
 })
