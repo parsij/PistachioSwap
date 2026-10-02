@@ -194,8 +194,11 @@ export default function GlobalSearchModal({
     }, [])
 
     const trendingTokenGroups = useMemo(
-        () => groupAcrossNetworks(state.sortedGlobalMarketTokens),
-        [state.sortedGlobalMarketTokens],
+        () => groupAcrossNetworks([
+            ...state.sortedGlobalMarketTokens,
+            ...state.primaryWalletTokens,
+        ]).filter((group) => group.volume24hUsd > 0),
+        [state.primaryWalletTokens, state.sortedGlobalMarketTokens],
     )
 
     const resultTokens = query ? state.searchResultTokens : []
@@ -335,6 +338,17 @@ export default function GlobalSearchModal({
                                                 />
                                             ))
                                     )}
+                                </Section>
+                            )}
+
+                            {activeTab === 'all' && (
+                                <Section
+                                    title="Pools by 24H volume"
+                                    icon={TrendingUp}
+                                >
+                                    <div className="global-search-pool-unavailable">
+                                        Pool rankings are not indexed yet.
+                                    </div>
                                 </Section>
                             )}
 
