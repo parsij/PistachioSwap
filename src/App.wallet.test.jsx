@@ -390,6 +390,16 @@ describe('App wallet integration', () => {
         cleanup()
     })
 
+    it('opens the output token selector from the Buy token button', () => {
+        const { container, getByRole } = render(<App />)
+
+        const outputTokenButton = container.querySelector('.buy-token-position button')
+        expect(outputTokenButton).toBeTruthy()
+        fireEvent.click(outputTokenButton)
+
+        expect(getByRole('dialog', { name: 'Select a token for buy' })).toBeTruthy()
+    })
+
     it('renders when retired cross-chain Gas Assist has a null sponsorship', () => {
         const { getByRole } = render(<App />)
         expect(getByRole('button', { name: 'Connect' })).toBeTruthy()
