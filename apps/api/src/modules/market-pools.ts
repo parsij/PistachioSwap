@@ -242,7 +242,7 @@ export function extractMarketPools(payload: unknown): MarketPool[] {
 
     return pools.sort((left, right) =>
         right.volume24hUsd - left.volume24hUsd ||
-        right.liquidityUsd! - left.liquidityUsd!)
+        (right.liquidityUsd ?? 0) - (left.liquidityUsd ?? 0))
 }
 
 function normalizeScope(value: number | 'all') {
