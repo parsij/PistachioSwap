@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import PortfolioPage from './PortfolioPage.jsx'
 
+const externalWalletTokens = vi.fn()
+
 vi.mock('../../wallet/hooks/useWalletActivity.js', () => ({
     useWalletActivity: () => ({
         items: [],
@@ -12,6 +14,10 @@ vi.mock('../../wallet/hooks/useWalletActivity.js', () => ({
         error: null,
         refetch: vi.fn(),
     }),
+}))
+
+vi.mock('../../tokens/hooks/useWalletTokens.js', () => ({
+    useWalletTokens: (...args) => externalWalletTokens(...args),
 }))
 
 const TOKEN = {
@@ -25,6 +31,7 @@ const TOKEN = {
     rawBalance: '12500000',
     valueUSD: '12.50',
     trustedPriceUSD: '1',
+    priceChange24hPercent: 1.25,
     priceConfidence: 'trusted',
     recognitionStatus: 'established',
     recognitionReasons: ['curated-official-contract'],
@@ -56,30 +63,82 @@ function wallet(overrides = {}) {
 
 afterEach(() => {
     cleanup()
-    window.history.replaceState({}, '', '/swap/')
+    window.history.replaceState({}, '', '/swap/?view=portfolio')
+    window.localStorage.clear()
+    vi.restoreAllMocks()
+    externalWalletTokens.mockReset()
+    externalWalletTokens.mockReturnValue({
+        tokens: [],
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+    })
 })
 
 describe('PortfolioPage', () => {
-    it('renders a real balance overview from wallet-token data', () => {
+    it('matches the wide Uniswap-style information architecture with real wallet data', () => {
         render(<PortfolioPage wallet={wallet()} />)
 
-        expect(screen.getByText('$12.50')).toBeTruthy()
+        expect(screen.getAllByText('$12.50').length).toBeGreaterThan(0)
+        expect(screen.getByRole('button', { name: 'Share' })).toBeTruthy()
+        expect(screen.getByRole('button', { name: /All networks/ })).toBeTruthy()
+        expect(screen.getByRole('button', { name: 'Overview' }).getAttribute('aria-current'))
+            .toBe('page')
+        expect(screen.getByRole('button', { name: 'NFTs' })).toBeTruthy()
+        expect(screen.getByText('Performance')).toBeTruthy()
+        expect(screen.getByRole('button', { name: '1M' }).className).toContain('active')
         expect(screen.getByText('USD Coin')).toBeTruthy()
-        expect(screen.getAllByRole('button', { name: 'Tokens' }).length).toBeGreaterThan(0)
+        expect(document.querySelector('.uni-portfolio-hero')).toBeTruthy()
+        expect(document.querySelector('.uni-portfolio-right-rail')).toBeTruthy()
+        expect(document.querySelector('.uni-portfolio-token-table-head')).toBeTruthy()
     })
 
-    it('filters the full token view locally', () => {
+    it('uses the full tokens tab search without changing portfolio data ownership', () => {
         render(<PortfolioPage wallet={wallet()} />)
 
-        fireEvent.click(screen.getAllByRole('button', { name: 'Tokens' })[0])
+        fireEvent.click(screen.getByRole('button', { name: 'Tokens' }))
         fireEvent.change(screen.getByRole('textbox', { name: 'Search portfolio tokens' }), {
             target: { value: 'nope' },
         })
 
-        expect(screen.getByText('No matching tokens.')).toBeTruthy()
+        expect(screen.getByText('No matching tokens')).toBeTruthy()
     })
 
-    it('keeps disconnected state informative instead of rendering fake balances', () => {
+    it('shows the NFT tab honestly when NFT indexing is unavailable', () => {
+        render(<PortfolioPage wallet={wallet()} />)
+
+        fireEvent.click(screen.getByRole('button', { name: 'NFTs' }))
+
+        expect(screen.getByText('NFT indexing is not enabled')).toBeTruthy()
+        expect(screen.getByText(/does not currently load NFT inventory/)).toBeTruthy()
+    })
+
+    it('loads an external address through the existing all-chain wallet-token hook', () => {
+        const externalAddress = '0x2222222222222222222222222222222222222222'
+        externalWalletTokens.mockReturnValue({
+            tokens: [TOKEN],
+            loading: false,
+            error: null,
+            refetch: vi.fn(),
+        })
+        window.history.replaceState(
+            {},
+            '',
+            '/swap/?view=portfolio&address=' + externalAddress,
+        )
+
+        render(<PortfolioPage wallet={wallet()} />)
+
+        expect(externalWalletTokens).toHaveBeenCalledWith({
+            chainId: 'all',
+            walletAddress: externalAddress,
+            enabled: true,
+        })
+        expect(screen.getAllByText('$12.50').length).toBeGreaterThan(0)
+        expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy()
+    })
+
+    it('keeps disconnected state informative instead of fabricating a portfolio', () => {
         render(<PortfolioPage wallet={wallet({
             walletState: { isConnected: false, address: null },
             walletTokens: [],
