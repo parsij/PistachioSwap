@@ -22,6 +22,32 @@ describe('adaptive exchange surfaces', () => {
         )
     })
 
+    it('keeps search readable instead of blurring the application behind it', () => {
+        const source = css('src/features/tokens/components/GlobalSearchModal.css')
+
+        expect(source).toMatch(
+            /\.global-search-backdrop\s*\{[\s\S]*background:\s*rgb\(0 0 0 \/ 46%\)/,
+        )
+        expect(source).not.toMatch(
+            /\.global-search-backdrop\s*\{[^}]*backdrop-filter:\s*blur/,
+        )
+        expect(source).not.toContain('.global-search-footer')
+    })
+
+    it('uses Uniswap desktop account-drawer geometry instead of a centered wallet modal', () => {
+        const source = css('src/features/wallet/components/wallet/walletAccount.css')
+
+        expect(source).toMatch(
+            /\.wallet-account-dialog\.uni-wallet-dialog\s*\{[\s\S]*right:\s*12px[\s\S]*width:\s*min\(368px/,
+        )
+        expect(source).toMatch(
+            /\.wallet-account-dialog\.uni-wallet-dialog\s*\{[\s\S]*top:\s*var\(--size-header-height\)/,
+        )
+        expect(source).toMatch(
+            /\.wallet-account-dialog\.uni-wallet-dialog\s*\{[\s\S]*transform:\s*none/,
+        )
+    })
+
     it('keeps the portfolio at the same 1200/360 geometry as the reference layout', () => {
         const source = css('src/features/portfolio/components/PortfolioPage.css')
 

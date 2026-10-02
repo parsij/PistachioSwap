@@ -5,9 +5,7 @@
     display: grid;
     place-items: center;
     padding: 16px;
-    background: rgb(0 0 0 / 54%);
-    -webkit-backdrop-filter: blur(3px);
-    backdrop-filter: blur(3px);
+    background: rgb(0 0 0 / 46%);
 }
 
 .global-search-modal {
@@ -19,10 +17,10 @@
     flex-direction: column;
     overflow: hidden;
     border: 1px solid var(--color-border);
-    border-radius: 24px;
+    border-radius: 20px;
     outline: 0;
     background: var(--color-background);
-    box-shadow: 0 28px 90px rgb(0 0 0 / 62%);
+    box-shadow: 0 24px 72px rgb(0 0 0 / 48%);
     color: var(--color-text);
 }
 
@@ -51,8 +49,8 @@
 }
 
 .global-search-input-shell:focus-within {
-    border-color: var(--color-border);
-    background: var(--color-panel);
+    border-color: transparent;
+    background: transparent;
 }
 
 .global-search-input-shell > svg {
@@ -84,11 +82,23 @@
 }
 
 .global-search-input-shell .ps-network-trigger {
+    width: 54px;
+    min-width: 54px;
     min-height: 36px;
-    max-width: 156px;
-    padding: 0 10px;
+    max-width: 54px;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 8px;
     border: 0;
+    background: transparent;
+}
+
+.global-search-input-shell .ps-network-trigger:hover {
     background: var(--color-panel);
+}
+
+.global-search-input-shell .ps-network-trigger > span:not(.ps-token-network-badge) {
+    display: none;
 }
 
 .global-search-input-shell .ps-network-menu {
@@ -138,7 +148,7 @@
 
 .global-search-section-heading {
     display: flex;
-    min-height: 32px;
+    min-height: 36px;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
@@ -146,6 +156,19 @@
     color: var(--color-muted);
     font-size: 13px;
     font-weight: 550;
+}
+
+.global-search-section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.global-search-section-label > svg {
+    width: 16px;
+    height: 16px;
+    color: var(--color-muted);
+    stroke-width: 2;
 }
 
 .global-search-section-action {
@@ -171,8 +194,8 @@
 
 .global-search-result-row {
     display: grid;
-    min-height: 64px;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    min-height: 66px;
+    grid-template-columns: 40px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     padding: 8px 20px;
@@ -184,16 +207,14 @@
     background: var(--color-hover);
 }
 
-.global-search-result-copy,
-.global-search-result-value {
+.global-search-result-copy {
     display: flex;
     min-width: 0;
     flex-direction: column;
     gap: 4px;
 }
 
-.global-search-result-copy strong,
-.global-search-result-value strong {
+.global-search-result-copy strong {
     overflow: hidden;
     font-size: 15px;
     font-weight: 550;
@@ -201,25 +222,12 @@
     white-space: nowrap;
 }
 
-.global-search-result-copy span,
-.global-search-result-value span {
+.global-search-result-copy span {
     overflow: hidden;
     color: var(--color-muted);
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.global-search-result-value {
-    min-width: 70px;
-    align-items: flex-end;
-    color: var(--color-muted);
-    text-align: right;
-}
-
-.global-search-result-value > svg {
-    width: 16px;
-    height: 16px;
 }
 
 .global-search-wallet-row {
@@ -278,6 +286,93 @@
     color: var(--color-muted);
 }
 
+.global-search-pool-row {
+    display: grid;
+    min-height: 66px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px;
+    color: var(--color-text);
+}
+
+.global-search-pool-icons {
+    position: relative;
+    display: block;
+    width: 40px;
+    height: 40px;
+}
+
+.global-search-pool-icons > * {
+    position: absolute;
+    width: 31px !important;
+    height: 31px !important;
+}
+
+.global-search-pool-icons > *:first-child {
+    top: 0;
+    left: 0;
+    z-index: 2;
+}
+
+.global-search-pool-icons > *:last-child {
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+}
+
+.global-search-pool-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.global-search-pool-copy > strong {
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 550;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.global-search-pool-copy > span {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 5px;
+}
+
+.global-search-pool-copy small {
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: var(--color-active-tab);
+    color: var(--color-muted);
+    font-size: 10px;
+    font-weight: 600;
+    font-style: normal;
+}
+
+.global-search-pool-copy em {
+    overflow: hidden;
+    color: var(--color-muted);
+    font-size: 12px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.global-search-loading.pools span {
+    height: 66px;
+}
+
+.global-search-pool-unavailable {
+    min-height: 52px;
+    padding: 14px 20px;
+    color: var(--color-subtle-muted);
+    font-size: 13px;
+}
+
 .global-search-empty {
     display: grid;
     min-height: 220px;
@@ -287,6 +382,10 @@
     padding: 32px;
     color: var(--color-muted);
     text-align: center;
+}
+
+.global-search-empty.compact {
+    min-height: 180px;
 }
 
 .global-search-empty > svg {
@@ -330,38 +429,6 @@
             );
     background-size: 240% 100%;
     animation: global-search-shimmer 1.2s linear infinite;
-}
-
-.global-search-footer {
-    display: flex;
-    min-height: 38px;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 16px;
-    padding: 0 16px;
-    border-top: 1px solid var(--color-border);
-    color: var(--color-subtle-muted);
-    font-size: 11px;
-}
-
-.global-search-footer span {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.global-search-footer kbd {
-    display: grid;
-    min-width: 20px;
-    height: 20px;
-    place-items: center;
-    padding: 0 5px;
-    border: 1px solid var(--color-border);
-    border-radius: 5px;
-    background: var(--color-panel);
-    color: var(--color-muted);
-    font: 10px/1 var(--font-family);
 }
 
 @keyframes global-search-shimmer {
@@ -422,7 +489,9 @@
     }
 
     .global-search-input-shell .ps-network-trigger {
-        max-width: 122px;
+        width: 54px;
+        min-width: 54px;
+        max-width: 54px;
         min-height: 36px;
         background: var(--color-active-tab);
     }
@@ -451,9 +520,6 @@
         padding-inline: 16px;
     }
 
-    .global-search-footer {
-        display: none;
-    }
 }
 
 @media (prefers-reduced-motion: reduce) {

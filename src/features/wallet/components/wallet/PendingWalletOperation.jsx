@@ -123,7 +123,7 @@ export default function PendingWalletOperation({ walletAddress }) {
                     layout
                     initial={{ opacity: 0, y: -4, scale: 0.94 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -5, scale: 0.94, filter: 'blur(3px)' }}
+                    exit={{ opacity: 0, y: -5, scale: 0.94 }}
                     transition={{
                         layout: {
                             type: 'spring',

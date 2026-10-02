@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import PortfolioPage from './PortfolioPage.jsx'
+import { recordPortfolioSnapshot } from '../services/portfolioHistory.js'
 
 const externalWalletTokens = vi.fn()
 
@@ -94,6 +95,24 @@ describe('PortfolioPage', () => {
         expect(document.querySelector('.uni-portfolio-hero')).toBeTruthy()
         expect(document.querySelector('.uni-portfolio-right-rail')).toBeTruthy()
         expect(document.querySelector('.uni-portfolio-token-table-head')).toBeTruthy()
+    })
+
+    it('renders zero-decimal chart axis labels without invalid NumberFormat options', () => {
+        const walletAddress = wallet().walletState.address
+        const now = Date.now()
+        recordPortfolioSnapshot({
+            walletAddress,
+            valueUSD: 10,
+            now: now - 60_000,
+        })
+        recordPortfolioSnapshot({
+            walletAddress,
+            valueUSD: 12.5,
+            now,
+        })
+
+        expect(() => render(<PortfolioPage wallet={wallet()} />)).not.toThrow()
+        expect(screen.getByRole('img', { name: 'Portfolio value history' })).toBeTruthy()
     })
 
     it('uses the full tokens tab search without changing portfolio data ownership', () => {

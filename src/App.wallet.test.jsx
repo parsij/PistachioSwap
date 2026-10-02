@@ -1081,10 +1081,11 @@ describe('App wallet integration', () => {
             walletAddress: ADDRESS,
             enabled: true,
         })
-        expect(getByRole('heading', { name: 'Portfolio' })).toBeTruthy()
-        expect(getByRole('button', { name: 'Back to wallet overview' }))
-            .toBeTruthy()
-        expect(queryByText('1 asset')).toBeTruthy()
+        expect(document.querySelector('.uni-portfolio-page')).toBeTruthy()
+        expect(getByRole('button', { name: 'Overview' }).getAttribute('aria-current'))
+            .toBe('page')
+        expect(queryByText('1 token')).toBeTruthy()
+        expect(document.querySelector('.wallet-account-dialog')).toBeNull()
         expect(document.querySelector('.appkit-network-control')).toBeNull()
         expect(queryByText('Fund wallet')).toBeNull()
     })
@@ -1108,9 +1109,9 @@ describe('App wallet integration', () => {
 
         fireEvent.click(getByRole('button', { name: /Open account/ }))
         fireEvent.click(getByRole('button', { name: /View portfolio/ }))
-        expect(getByText('1 asset')).toBeTruthy()
-        expect(document.querySelector('.wallet-asset-list').textContent)
-            .toContain('BNB')
+        expect(document.querySelector('.uni-portfolio-page')).toBeTruthy()
+        expect(document.body.textContent).toContain('BNB')
+        expect(document.querySelector('.wallet-asset-list')).toBeNull()
     })
 
     it('does not show a refresh-failure warning for a partial response without failed chains', () => {

@@ -105,11 +105,17 @@ function formatUsd(value, maximumFractionDigits = 2) {
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) return '—'
     if (numeric > 0 && numeric < 0.01) return '<$0.01'
+
+    const safeMaximumFractionDigits = Math.min(
+        20,
+        Math.max(0, Math.trunc(Number(maximumFractionDigits) || 0)),
+    )
+
     return new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency: 'USD',
-        minimumFractionDigits: 2,
-        maximumFractionDigits,
+        minimumFractionDigits: Math.min(2, safeMaximumFractionDigits),
+        maximumFractionDigits: safeMaximumFractionDigits,
     }).format(numeric)
 }
 

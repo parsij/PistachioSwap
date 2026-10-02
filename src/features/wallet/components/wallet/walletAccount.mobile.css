@@ -2,6 +2,7 @@
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
     .wallet-dialog-overlay.uni-wallet-overlay {
         background: rgb(0 0 0 / 34%);
+        pointer-events: auto;
     }
 
     .wallet-dialog.wallet-account-dialog.uni-wallet-dialog {

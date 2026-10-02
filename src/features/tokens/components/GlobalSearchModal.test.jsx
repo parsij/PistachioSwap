@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TokenSelector from './TokenSelector.jsx'
+
+const mocks = vi.hoisted(() => ({
+    fetchMarketPools: vi.fn(),
+}))
+
+vi.mock('../services/marketPools.js', () => ({
+    fetchMarketPools: mocks.fetchMarketPools,
+}))
 
 const TOKEN = {
     id: '56:0x0000000000000000000000000000000000000001',
@@ -53,6 +61,12 @@ function renderSearch(overrides = {}) {
 beforeEach(() => {
     window.localStorage.clear()
     window.history.replaceState({}, '', '/swap/?view=portfolio')
+    mocks.fetchMarketPools.mockReset()
+    mocks.fetchMarketPools.mockResolvedValue({
+        pools: [],
+        partial: false,
+        generatedAt: 1,
+    })
 })
 
 afterEach(() => {
@@ -65,12 +79,68 @@ describe('GlobalSearchModal', () => {
         renderSearch()
 
         expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy()
-        expect(screen.getByRole('textbox', { name: 'Search tokens and wallets' })).toBeTruthy()
+        const input = screen.getByRole('textbox', { name: 'Search tokens and wallets' })
+        expect(input.getAttribute('placeholder')).toBe('Search by name, symbol, or address')
         expect(screen.getByRole('button', { name: 'All' })).toBeTruthy()
         expect(screen.getByRole('button', { name: 'Tokens' })).toBeTruthy()
+        expect(screen.getByRole('button', { name: 'Pools' })).toBeTruthy()
         expect(screen.getByRole('button', { name: 'Wallets' })).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Auctions' })).toBeNull()
+        expect(screen.getByText('Tokens by 24H volume')).toBeTruthy()
+        expect(screen.getByText('Pools by 24H volume')).toBeTruthy()
+        expect(screen.queryByText('Your tokens')).toBeNull()
+        expect(document.querySelector('.global-search-footer')).toBeNull()
         expect(document.querySelector('.global-search-modal')).toBeTruthy()
         expect(document.querySelector('.ps-token-selector-dialog')).toBeNull()
+    })
+
+    it('renders real top-pool rows in the no-query All view', async () => {
+        mocks.fetchMarketPools.mockResolvedValue({
+            pools: [{
+                id: 'bsc_0x0000000000000000000000000000000000000abc',
+                chainId: 56,
+                networkId: 'bsc',
+                address: '0x0000000000000000000000000000000000000abc',
+                name: 'WBNB/USDT',
+                protocol: 'v3',
+                feePercent: '0.01',
+                volume24hUsd: 1000000,
+                liquidityUsd: 2000000,
+                baseToken: {
+                    chainId: 56,
+                    address: '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c',
+                    name: 'Wrapped BNB',
+                    symbol: 'WBNB',
+                    decimals: 18,
+                    logoURI: null,
+                },
+                quoteToken: {
+                    chainId: 56,
+                    address: '0x55d398326f99059ff775485246999027b3197955',
+                    name: 'Tether USD',
+                    symbol: 'USDT',
+                    decimals: 18,
+                    logoURI: null,
+                },
+            }],
+            partial: false,
+            generatedAt: 1,
+        })
+
+        renderSearch()
+
+        await waitFor(() => {
+            expect(screen.getByText('WBNB/USDT')).toBeTruthy()
+        })
+        expect(screen.getByText('v3')).toBeTruthy()
+        expect(screen.getByText('0.01%')).toBeTruthy()
+        expect(mocks.fetchMarketPools).toHaveBeenCalledWith(
+            expect.objectContaining({
+                chainId: 'all',
+                query: '',
+                limit: 3,
+            }),
+        )
     })
 
     it('uses the existing trusted token state and returns token selection', () => {

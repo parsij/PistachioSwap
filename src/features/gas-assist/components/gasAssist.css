@@ -2,8 +2,8 @@
     position: fixed;
     inset: 0;
     z-index: 10010;
-    background: rgb(0 0 0 / 68%);
-    backdrop-filter: blur(8px);
+    background: rgb(0 0 0 / 56%);
+    backdrop-filter: none;
 }
 
 .gas-assist-dialog {
