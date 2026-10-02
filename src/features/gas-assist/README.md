@@ -1,40 +1,24 @@
-# Gas Assist Feature
+# Gas Assist
 
-## Purpose
+Gas Assist uses the self-hosted BNB Chain ERC-4337 v0.8 Paymaster path.
 
-Owns the atomic sponsored-swap behavior and UI. Normal ERC-20 and Permit2 approval remains in `features/approvals`.
+## Runtime boundaries
 
-## Responsibilities and files
+- `hooks/usePrepaidSponsorship.js`: owns review/authentication/order/submission state.
+- `services/prepaidSponsorship.js`: provider-neutral HTTP client for config, wallet authentication, order creation, and order polling.
+- `services/selfHostedPaymaster.js`: validates the exact reviewed five-call batch, builds the EIP-7702/ERC-4337 UserOperation, requests Paymaster sponsorship, obtains the user's local signatures, and submits the final signed UserOperation to the Bundler.
+- `components/`: Gas Assist review, status, and error UI.
 
-- `hooks/useGasAssistController.js`: composes atomic sponsorship state, derives the active quote/status, synchronizes Buy output, and maps visible errors.
-- `hooks/usePrepaidSponsorship.js`, `hooks/useSponsorshipPreview.js`, and `hooks/useSponsorshipConfig.js`: atomic sponsorship lifecycle and configuration.
-- `services/prepaidSponsorship.js`: sponsorship HTTP boundary.
-- `components/`: review, status/error, prepaid, and dialog composition.
+There is no 0x Gasless, Particle, MegaFuel, server-submitted raw-transaction, or alternate sponsorship runtime in this feature. If the self-hosted Paymaster configuration is unavailable or mismatched, Gas Assist fails closed.
 
-`useZeroXGaslessSwap.js` and `useGasAssistConfig.js` are inert compatibility shims for older test/view contracts. Production routing does not use 0x Gasless execution, and the shims must not acquire provider, signing, submission, or polling behavior.
+## Transaction boundary
 
-## What does not belong here
+The reviewed sponsored batch is exactly:
 
-Normal same-chain allowance reads/approvals, quote-provider ranking, cross-chain routes, token selection, or wallet connector setup.
+1. Gas Assist payment to the configured treasury.
+2. Sell-token allowance reset to zero.
+3. Exact net sell-token allowance.
+4. Exact reviewed router calldata with zero native value.
+5. Allowance reset to zero.
 
-## Flow
-
-`routing preference -> atomic sponsorship availability -> preview -> explicit fee review -> EIP-7702 self-transaction -> paymaster submission -> confirmed callback -> balance refresh`.
-
-The retired 0x Gasless flow and the old three-transaction payment/approval/swap package are not supported. The fee transfers directly from the user's delegated EOA to the treasury, while the swap principal remains in that EOA and is spent directly by the independently quoted router. Both actions share one transaction and revert together.
-
-## Inputs, outputs, side effects, and errors
-
-The controller accepts the normalized intent, routing state, output setter, and confirmed callback. It returns atomic sponsorship state, the active execution mode, active quote/status, and compatibility view-model fields. Sponsorship hooks make backend requests and explicit wallet operations only through the reviewed atomic flow.
-
-## Logging and security
-
-Do not expose secrets or full calldata in customer-facing errors. Preserve stable Gas Assist diagnostics needed for debugging. Atomic execution must remain bound to the reviewed wallet, tokens, amounts, fee, router, calldata, deadline, and sponsorship policy.
-
-## Tests and mocked limitations
-
-Tests mock wallet clients, browser state, feature responses, and sponsorship operations. They do not prove live provider, paymaster, or wallet behavior.
-
-## Common manual edits and debt
-
-Controller routing/error display: `useGasAssistController.js`; sponsorship HTTP: `services/prepaidSponsorship.js`; review/dialog copy: components. Remove the two compatibility shims once the remaining legacy test/view-model names are migrated.
+The user's wallet creates the EIP-7702 authorization and final UserOperation signature locally. The Gas-Assist API receives only unsigned UserOperations for policy/sponsorship. The signed UserOperation is sent from the browser to the Pistachio Bundler.
