@@ -76,6 +76,17 @@ describe('adaptive exchange surfaces', () => {
         )
     })
 
+    it('keeps wallet token-picker backdrops crisp without Safari blur', () => {
+        const source = css('src/features/wallet/components/wallet/sendAssetDialog.css')
+
+        expect(source).toMatch(
+            /\.ps-token-selector-backdrop\[data-side='send'\]\s*\{[\s\S]*backdrop-filter:\s*none/,
+        )
+        expect(source).not.toMatch(
+            /\.ps-token-selector-backdrop\[data-side='send'\]\s*\{[^}]*blur\(/,
+        )
+    })
+
     it('turns review and Gas Assist dialogs into compact bottom sheets', () => {
         for (const [path, selector] of [
             ['src/index.css', '.swap-review-dialog'],
