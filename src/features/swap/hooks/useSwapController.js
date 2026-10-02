@@ -626,10 +626,22 @@ export function useSwapController() {
             nativeMaximumRequestedRef.current = false
 
             if (catalog.selector.mode === 'global-search') {
-                const url = new URL('/swap/', window.location.origin)
-                url.searchParams.set('buyChainId', String(token.chainId))
-                url.searchParams.set('buyToken', String(token.address))
-                window.location.assign(url)
+                inputs.selectToken({
+                    token,
+                    side: 'buy',
+                    selectorChainId: Number(token.chainId),
+                })
+                catalog.selector.close()
+                resetQuoteAndReview()
+
+                const url = new URL(window.location.href)
+                url.pathname = '/swap/'
+                url.searchParams.delete('view')
+                url.searchParams.delete('tab')
+                window.history.pushState(window.history.state, '', url)
+                window.dispatchEvent(new CustomEvent('pistachio:navigate-app', {
+                    detail: { view: 'trade' },
+                }))
                 return
             }
 
