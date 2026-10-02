@@ -1,17 +1,17 @@
 .header-search {
     display: flex;
-    width: min(320px, 26vw);
+    width: 320px;
+    min-width: 320px;
     height: 40px;
     align-items: center;
-    gap: 10px;
-    padding: 0 10px 0 13px;
-    border: 1px solid transparent;
+    gap: 12px;
+    padding: 0 10px 0 16px;
+    border: 1px solid var(--color-border);
     border-radius: 20px;
-    background: #242424;
+    background: var(--color-panel);
     color: var(--color-muted);
     text-align: left;
     transition:
-            width 180ms ease,
             background-color 140ms ease,
             border-color 140ms ease,
             color 140ms ease;
@@ -19,14 +19,14 @@
 
 .header-search:hover,
 .header-search:focus-visible {
-    border-color: #383838;
-    background: #292929;
+    border-color: color-mix(in srgb, var(--color-muted) 35%, var(--color-border));
+    background: var(--color-hover);
     color: var(--color-text);
 }
 
 .header-search-icon {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     flex: 0 0 auto;
 }
 
@@ -42,46 +42,38 @@
 
 .header-search-shortcut {
     display: grid;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     flex: 0 0 auto;
     place-items: center;
-    border: 1px solid #3b3b3b;
-    border-radius: 7px;
-    background: #1d1d1d;
-    color: #858585;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: var(--color-active-tab, #343434);
+    color: var(--color-muted);
     font: 12px/1 var(--font-family);
+    opacity: 0.72;
 }
 
-@media (max-width: 1260px) {
+/*
+ * Uniswap collapses the full search input when the nav no longer has enough
+ * horizontal room. Pistachio has fewer nav items, so a fixed breakpoint gives
+ * the same visible behavior without a resize observer measuring every label.
+ */
+@media (max-width: 1500px) {
     .header-search {
-        width: min(220px, 20vw);
-    }
-}
-
-@media (max-width: 1024px) {
-    .header-search {
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
         justify-content: center;
         padding: 0;
-        border-radius: 14px;
+        border-color: transparent;
+        border-radius: 12px;
         background: transparent;
     }
 
     .header-search-label,
     .header-search-shortcut {
-        display: none;
-    }
-
-    .header-search-icon {
-        width: 21px;
-        height: 21px;
-    }
-}
-
-@media (max-width: 360px) {
-    .header-search {
         display: none;
     }
 }
