@@ -345,6 +345,52 @@ describe('browser wallet-history classifier', () => {
         expect(activity.sellToken).toMatchObject({ isNative: true, symbol: 'BNB' })
     })
 
+    it('classifies a sponsored token-to-BNB UserOperation as one swap', () => {
+        const bundler = '0x00000000000000000000000000000000000000f1'
+        const activity = classifyReceiptHistoryRow(56, wallet, row({
+            from_address: bundler,
+            to_address: ENTRY_POINT_V08_ADDRESS,
+            swap_evidence: false,
+            user_operation_senders: [wallet],
+            user_operation_paymasters: [paymaster],
+            erc20_transfers: [
+                transfer({ token: tokenA, from: wallet, to: other, value: 2_000_000, symbol: 'SELL' }),
+            ],
+            native_transfers: [{
+                from_address: other,
+                to_address: wallet,
+                value: '125000000000000000',
+                value_formatted: '0.125',
+            }],
+        }))
+
+        expect(activity).toMatchObject({
+            type: 'swapped',
+            sellAmount: '2',
+            buyAmount: '0.125',
+            provider: 'pistachio-self-hosted-gas-assist',
+        })
+        expect(activity.buyToken).toMatchObject({ isNative: true, symbol: 'BNB' })
+    })
+
+    it('does not label an unrelated ERC-4337 UserOperation as Pistachio Gas Assist', () => {
+        const bundler = '0x00000000000000000000000000000000000000f1'
+        const unrelatedPaymaster = '0x00000000000000000000000000000000000000f2'
+        const activity = classifyReceiptHistoryRow(56, wallet, row({
+            from_address: bundler,
+            to_address: ENTRY_POINT_V08_ADDRESS,
+            swap_evidence: false,
+            user_operation_senders: [wallet],
+            user_operation_paymasters: [unrelatedPaymaster],
+            erc20_transfers: [
+                transfer({ token: tokenA, from: wallet, to: other, value: 2_000_000, symbol: 'SELL' }),
+                transfer({ token: tokenB, from: other, to: wallet, value: 3_000_000, symbol: 'BUY' }),
+            ],
+        }))
+
+        expect(activity).toBeNull()
+    })
+
     it('keeps a plain wallet-initiated token transfer as sent', () => {
         const activity = classifyReceiptHistoryRow(56, wallet, row({
             erc20_transfers: [
