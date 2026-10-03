@@ -62,7 +62,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "viem": "^2.55.1",
-    "wagmi": "^3.7.1"
+    "wagmi": "^3.7.1",
+    "lightweight-charts": "5.2.1"
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",
