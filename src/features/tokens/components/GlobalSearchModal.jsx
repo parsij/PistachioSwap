@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { ArrowRight, Clock3, Search, Wallet } from 'lucide-react'
 
 import TokenIcon from './TokenIcon.jsx'
+import TokenHoverCard from './TokenHoverCard.jsx'
 import { ChainSelector } from './TokenSelectorPrimitives.jsx'
 import { useTokenSelectorState } from '../hooks/useTokenSelectorState.js'
 import {
@@ -81,13 +82,43 @@ function tokenSecondaryText(token, variant, networkCount = 1) {
     return [symbol, chainName].filter(Boolean).join(' · ')
 }
 
+function formatMarketPrice(token) {
+    const value = Number(
+        token?.priceUSD ??
+        token?.marketPriceUSD ??
+        token?.trustedPriceUSD,
+    )
+    if (!Number.isFinite(value)) return null
+    if (value >= 1) {
+        return value.toLocaleString(undefined, {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 2,
+        })
+    }
+    return '$' + value.toLocaleString(undefined, {
+        maximumSignificantDigits: 6,
+    })
+}
+
+function formatMarketChange(token) {
+    const value = Number(token?.priceChange24hPercent)
+    if (!Number.isFinite(value)) return null
+    return {
+        value,
+        label: `${value > 0 ? '+' : ''}${value.toFixed(2)}%`,
+    }
+}
+
 function SearchTokenRow({
     token,
     onSelect,
     variant = 'query',
     networkCount = 1,
 }) {
-    return (
+    const price = formatMarketPrice(token)
+    const change = formatMarketChange(token)
+    const row = (
         <button
             type="button"
             className="global-search-result-row"
@@ -98,7 +129,21 @@ function SearchTokenRow({
                 <strong>{getTokenDisplayName(token)}</strong>
                 <span>{tokenSecondaryText(token, variant, networkCount)}</span>
             </span>
+            <span className="global-search-result-market">
+                {price && <strong>{price}</strong>}
+                {change && (
+                    <span className={change.value < 0 ? 'negative' : 'positive'}>
+                        {change.label}
+                    </span>
+                )}
+            </span>
         </button>
+    )
+
+    return (
+        <TokenHoverCard token={token} onNavigate={onSelect}>
+            {row}
+        </TokenHoverCard>
     )
 }
 
@@ -193,12 +238,17 @@ export default function GlobalSearchModal({
     }, [])
 
 
-    const trendingTokenGroups = useMemo(
+    const browseTokenGroups = useMemo(
         () => groupAcrossNetworks([
-            ...state.sortedGlobalMarketTokens,
             ...state.primaryWalletTokens,
-        ]).filter((group) => group.volume24hUsd > 0),
-        [state.primaryWalletTokens, state.sortedGlobalMarketTokens],
+            ...state.sortedGlobalMarketTokens,
+            ...state.commonMarketTokens,
+        ]),
+        [
+            state.commonMarketTokens,
+            state.primaryWalletTokens,
+            state.sortedGlobalMarketTokens,
+        ],
     )
 
     const resultTokens = query ? state.searchResultTokens : []
@@ -315,15 +365,15 @@ export default function GlobalSearchModal({
 
                             {(activeTab === 'all' || activeTab === 'tokens') && (
                                 <Section title="Tokens">
-                                    {loading && trendingTokenGroups.length === 0 ? (
+                                    {loading && browseTokenGroups.length === 0 ? (
                                         <div className="global-search-loading">
                                             {Array.from({ length: 5 }).map((_, index) => (
                                                 <span key={index} />
                                             ))}
                                         </div>
                                     ) : (
-                                        trendingTokenGroups
-                                            .slice(0, activeTab === 'all' ? 3 : 15)
+                                        browseTokenGroups
+                                            .slice(0, activeTab === 'all' ? 5 : undefined)
                                             .map(({ token, networkCount }) => (
                                                 <SearchTokenRow
                                                     key={searchTokenGroupKey(token)}
