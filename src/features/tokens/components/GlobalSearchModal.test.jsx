@@ -65,6 +65,12 @@ afterEach(() => {
 })
 
 describe('GlobalSearchModal', () => {
+    it('shows the full available token list immediately on All without a tab switch', () => {
+        const tokens = Array.from({ length: 8 }, (_, i) => ({ ...TOKEN, address: `0x${(i + 1).toString(16).padStart(40, '0')}`, name: `Canonical ${i}` }))
+        renderSearch({ tokens })
+        expect(screen.getByRole('tab', { name: 'All' }).getAttribute('aria-selected')).toBe('true')
+        for (const token of tokens) expect(screen.getByText(token.name)).toBeTruthy()
+    })
     it('is a dedicated search surface rather than the swap token picker', () => {
         renderSearch()
 

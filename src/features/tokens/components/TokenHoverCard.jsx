@@ -4,6 +4,7 @@ import { cloneElement, useEffect, useMemo, useRef, useState } from 'react'
 import { createCssVariables } from '../../../swapConfig.js'
 import TokenIcon from './TokenIcon.jsx'
 import TokenMarketChart from './TokenMarketChart.jsx'
+import MarketActionTooltip from './MarketActionTooltip.jsx'
 import { useTokenMarketSnapshot } from '../hooks/useTokenMarketSnapshot.js'
 import { getTokenDisplaySymbol } from '../services/tokenDisplay.js'
 import { marketNumber, marketPercent, marketUsd } from '../services/marketPresentation.js'
@@ -134,12 +135,12 @@ export default function TokenHoverCard({ token, children, onNavigate }) {
                             <span>{getTokenDisplaySymbol(token)}</span>
                         </div>
                         <div className="token-hover-card-actions">
-                            {hasContract && <button type="button" aria-label={copied ? 'Address copied' : 'Copy token address'} onClick={copyAddress}>
+                            {hasContract && <MarketActionTooltip label={copied ? 'Address copied' : 'Copy token address'}><button type="button" aria-label={copied ? 'Address copied' : 'Copy token address'} onClick={copyAddress}>
                                 {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                            </button>}
-                            <button type="button" aria-label="Open token details" onClick={() => { close(); onNavigate(token) }}>
+                            </button></MarketActionTooltip>}
+                            <MarketActionTooltip label="Open token details"><button type="button" aria-label="Open token details" onClick={() => { close(); onNavigate(token) }}>
                                 <Maximize2 aria-hidden="true" />
-                            </button>
+                            </button></MarketActionTooltip>
                         </div>
                     </div>
                     {loading ? (

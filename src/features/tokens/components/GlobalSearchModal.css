@@ -496,3 +496,8 @@
     .global-search-mobile-handle::after { content: ''; display: block; width: 38px; height: 4px; margin: 10px auto; border-radius: 99px; background: var(--color-muted); }
     .global-search-input-region { padding-right: 44px; }
 }
+
+.global-search-result-row { width: calc(100% - 24px); margin: 2px 12px; padding: 10px 12px; border-radius: 12px; gap: 12px; }
+.global-search-result-row .ps-token-network-badge { width: 18px; height: 18px; right: -2px; bottom: -2px; border-color: var(--color-background); }
+.global-search-result-row:hover .ps-token-network-badge, .global-search-result-row.keyboard-active .ps-token-network-badge { border-color: var(--color-hover); }
+.global-search-backdrop { font-family: var(--font-family); }

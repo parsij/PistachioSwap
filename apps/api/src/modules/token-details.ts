@@ -15,6 +15,7 @@ type TokenDetailsQuery = {
 type TokenMarketQuery = TokenDetailsQuery & {
     period?: string
     includeYearStats?: string
+    chartStyle?: string
 }
 
 type MarketPeriod = '1H' | '1D' | '1W' | '1M' | '1Y' | 'ALL'
@@ -25,7 +26,7 @@ const MARKET_PERIOD_DAYS: Readonly<Record<MarketPeriod, string>> = Object.freeze
     '1W': '7',
     '1M': '30',
     '1Y': '365',
-    ALL: 'max',
+    ALL: '365',
 })
 
 function createCoinGeckoUrl(coinGeckoId: string) {
@@ -43,6 +44,25 @@ function finiteNumber(value: unknown) {
 
 function recordValue(value: unknown, key: string) {
     return isRecord(value) ? value[key] : undefined
+}
+
+function parseCandles(value: unknown, period: MarketPeriod) {
+    if (!Array.isArray(value)) return []
+    const candles = value.flatMap((entry) => {
+        if (!Array.isArray(entry) || entry.length !== 5) return []
+        const [timestamp, open, high, low, close] = entry.map(finiteNumber)
+        if (timestamp == null || timestamp <= 0 || open == null || high == null || low == null || close == null || low < 0 || high < Math.max(open, close) || low > Math.min(open, close)) return []
+        return [{ timestamp: Math.trunc(timestamp), open, high, low, close }]
+    }).sort((a, b) => a.timestamp - b.timestamp)
+    const cutoff = (candles.at(-1)?.timestamp ?? 0) - 60 * 60 * 1000
+    return period === '1H' ? candles.filter((candle) => candle.timestamp >= cutoff) : candles
+}
+
+function publicLinks(value: unknown) {
+    return (Array.isArray(value) ? value : []).flatMap((item) => {
+        if (typeof item !== 'string') return []
+        try { const url = new URL(item); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? [url.href] : [] } catch { return [] }
+    })
 }
 
 function usdValue(value: unknown) {
@@ -229,6 +249,7 @@ export function createTokenDetailsRoutes(
                             'address',
                             'period',
                             'includeYearStats',
+                            'chartStyle',
                         ].includes(key),
                     )
                 ) {
@@ -280,6 +301,8 @@ export function createTokenDetailsRoutes(
                     })
                 }
 
+                const chartStyle = request.query.chartStyle ?? 'line'
+                if (!['line', 'candles'].includes(chartStyle)) return reply.code(400).send({ error: { code: 'INVALID_CHART_STYLE', message: 'Chart style must be line or candles.' } })
                 const includeYearStats = parseBooleanQuery(request.query.includeYearStats)
                 if (includeYearStats === null) {
                     return reply.code(400).send({
@@ -321,7 +344,7 @@ export function createTokenDetailsRoutes(
                         `/coins/${encodedId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`
                     const chartPath =
                         `/coins/${encodedId}/market_chart?vs_currency=usd&days=${MARKET_PERIOD_DAYS[period]}`
-                    const yearNeeded = includeYearStats && period !== '1Y'
+                    const yearNeeded = includeYearStats && !['1Y', 'ALL'].includes(period)
                     const requests = await Promise.allSettled([
                         requestCoinGecko(detailsPath, { signal: controller.signal }),
                         requestCoinGecko(chartPath, { signal: controller.signal }),
@@ -330,6 +353,9 @@ export function createTokenDetailsRoutes(
                                 `/coins/${encodedId}/market_chart?vs_currency=usd&days=365`,
                                 { signal: controller.signal },
                             )
+                            : Promise.resolve(null),
+                        chartStyle === 'candles'
+                            ? requestCoinGecko(`/coins/${encodedId}/ohlc?vs_currency=usd&days=${MARKET_PERIOD_DAYS[period]}`, { signal: controller.signal })
                             : Promise.resolve(null),
                     ])
 
@@ -352,7 +378,7 @@ export function createTokenDetailsRoutes(
                         ? requests[2].status === 'fulfilled'
                             ? parsePriceSeries(requests[2].value, '1Y')
                             : []
-                        : period === '1Y'
+                        : ['1Y', 'ALL'].includes(period)
                             ? points
                             : []
                     const yearCutoff = (yearPoints.at(-1)?.timestamp ?? Date.now()) - 365 * 24 * 60 * 60 * 1000
@@ -400,7 +426,14 @@ export function createTokenDetailsRoutes(
                         chart: {
                             period,
                             points,
+                            candles: parseCandles(requests[3].status === 'fulfilled' ? requests[3].value : null, period),
+                            historyLimitDays: period === 'ALL' ? 365 : null,
                         },
+                        about: typeof recordValue(detailsRecord.description, 'en') === 'string'
+                            ? String(recordValue(detailsRecord.description, 'en')).replace(/<[^>]*>/g, '').trim().slice(0, 6000)
+                            : null,
+                        websites: publicLinks(recordValue(detailsRecord.links, 'homepage')),
+                        coinGeckoUrl: createCoinGeckoUrl(coinGeckoId),
                         stats: {
                             tvlUsd: usdValue(marketData.total_value_locked),
                             marketCapUsd: usdValue(marketData.market_cap),

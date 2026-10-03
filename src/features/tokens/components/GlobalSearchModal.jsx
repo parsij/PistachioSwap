@@ -328,7 +328,6 @@ export default function GlobalSearchModal({
                                         </div>
                                     ) : (
                                         browseTokens
-                                            .slice(0, activeTab === 'all' ? 5 : undefined)
                                             .map((token, index) => (
                                                 <SearchTokenRow
                                                     key={Number(token.chainId) + ":" + token.address}
