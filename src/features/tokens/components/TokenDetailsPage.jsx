@@ -4,7 +4,7 @@ import {
     LineChart,
     Share2,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import PistachioWalletController from '../../passkey/components/PistachioWalletController.jsx'
 import GasAssistDialogs from '../../gas-assist/components/GasAssistDialogs.jsx'
@@ -85,6 +85,7 @@ export default function TokenDetailsPage({ token, page }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
     const [copied, setCopied] = useState(false)
+    const yearStatsLoaded = useRef(false)
 
     useEffect(() => {
         if (!token) {
@@ -99,20 +100,22 @@ export default function TokenDetailsPage({ token, page }) {
         setError(null)
         fetchTokenMarketDetails(token, {
             period,
-            includeYearStats: stats === null,
+            includeYearStats: !yearStatsLoaded.current,
             signal: controller.signal,
         }).then((payload) => {
             if (controller.signal.aborted) return
             setMarket(payload)
-            if (payload.stats && (
-                payload.stats.high52wUsd != null ||
-                payload.stats.low52wUsd != null ||
-                stats === null
-            )) {
+            if (payload.stats) {
                 setStats((current) => ({
                     ...(current ?? {}),
                     ...payload.stats,
                 }))
+                if (
+                    payload.stats.high52wUsd != null ||
+                    payload.stats.low52wUsd != null
+                ) {
+                    yearStatsLoaded.current = true
+                }
             }
         }).catch((marketError) => {
             if (!controller.signal.aborted) {
@@ -135,6 +138,7 @@ export default function TokenDetailsPage({ token, page }) {
         setMarket(null)
         setStats(null)
         setError(null)
+        yearStatsLoaded.current = false
     }, [token?.chainId, token?.address])
 
     const displayPrice =
