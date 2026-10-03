@@ -94,7 +94,7 @@ describe('TokenDetailsPage', () => {
             '52W High',
             '52W Low',
         ]) {
-            expect(screen.getByText(label)).toBeTruthy()
+            expect(screen.getByText(label, { selector: '.token-details-stat > span' })).toBeTruthy()
         }
         expect(screen.getByTestId('swap-toolbar')).toBeTruthy()
         expect(screen.getByTestId('swap-card')).toBeTruthy()
@@ -145,3 +145,14 @@ describe('TokenDetailsPage', () => {
     })
 
 })
+
+ it('requests provider candles and exposes honest TVL and token-link controls', async () => {
+    render(<TokenDetailsPage token={TOKEN} page={PAGE} />)
+    await waitFor(() => expect(mocks.fetchMarket).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: 'Candlestick chart' }))
+    await waitFor(() => expect(mocks.fetchMarket).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ chartStyle: 'candles' })))
+    fireEvent.click(screen.getByRole('button', { name: 'TVL', exact: true }))
+    expect(screen.getByRole('button', { name: 'TVL', exact: true }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'More token options' }))
+    expect(screen.getByRole('link', { name: /View on explorer/ }).href).toContain(TOKEN.address)
+ })

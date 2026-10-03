@@ -54,3 +54,18 @@ describe('useSwapInputs selection intent', () => {
         expect(setSwapChainId).toHaveBeenCalledWith(137)
     })
 })
+
+it('uses the detail network native input while ordinary buy selection preserves cross-chain intent', () => {
+    const setSwapChainId = vi.fn()
+    const { result } = renderHook(() => useSwapInputs({
+        tokensConfig: { initialSellToken: BNB, initialBuyToken: null }, tabs: ['Swap'], availableTokens: [BNB, POLYGON_USDC],
+        swapChainId: 56, setSwapChainId, fallbackChainLogo: null, setVisibleStatus: vi.fn(), diagnostic: vi.fn(),
+    }))
+    act(() => result.current.selectToken({ token: POLYGON_USDC, side: 'buy', selectorChainId: 137 }))
+    expect(result.current.sellToken.symbol).toBe('BNB')
+    act(() => result.current.selectToken({ token: POLYGON_USDC, side: 'buy', selectorChainId: 137, pairWithNative: true }))
+    expect(result.current.sellToken).toMatchObject({ symbol: 'POL', chainId: 137, isNative: true })
+    expect(result.current.buyToken.chainId).toBe(137)
+    expect(setSwapChainId).toHaveBeenCalledWith(137)
+    expect(result.current.sellAmount).toBe('')
+})

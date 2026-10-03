@@ -12,6 +12,7 @@ import {
     multiplyUnitsByDecimal,
 } from '../model/amountMath.js'
 import { tokenDiagnostic } from '../../../shared/logging/swapDiagnostics.js'
+import { tokenDetailSellToken } from '../../tokens/model/tokenDetailPair.js'
 
 export const TOKEN_DENOMINATION = 'TOKEN'
 export const USD_DENOMINATION = 'USD'
@@ -214,7 +215,7 @@ export function useSwapInputs({
         diagnostic('input.denomination.changed', { side, denomination: TOKEN_DENOMINATION, amount: nextAmount, token: tokenDiagnostic(buyToken) })
     }
 
-    function selectToken({ token, side, selectorChainId }) {
+    function selectToken({ token, side, selectorChainId, pairWithNative = false }) {
         // Keep selection intent separate from catalog/provider metadata. The
         // selector uses this UI-only marker to distinguish the configured
         // default input token from a token the user deliberately chose.
@@ -237,7 +238,12 @@ export function useSwapInputs({
             setSwapChainId(Number(normalizedToken.chainId))
         }
         if (side === 'buy') {
-            if (selectedIdentity === sellIdentity) setSelectedSellToken(buyToken)
+            if (pairWithNative) {
+                setSelectedSellToken(tokenDetailSellToken(normalizedToken, availableTokens))
+                setSwapChainId(Number(normalizedToken.chainId))
+                setSellAmount('')
+                setBuyAmount('0')
+            } else if (selectedIdentity === sellIdentity) setSelectedSellToken(buyToken)
             setSelectedBuyToken(normalizedToken)
             if (!sellToken) setSwapChainId(Number(normalizedToken.chainId))
         }

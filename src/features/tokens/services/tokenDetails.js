@@ -126,6 +126,7 @@ export async function fetchTokenMarketDetails(
     {
         period = '1D',
         includeYearStats = false,
+        chartStyle = 'line',
         signal,
     } = {},
 ) {
@@ -151,6 +152,7 @@ export async function fetchTokenMarketDetails(
     url.searchParams.set('address', address)
     url.searchParams.set('period', normalizedPeriod)
     if (includeYearStats) url.searchParams.set('includeYearStats', 'true')
+    if (chartStyle === 'candles') url.searchParams.set('chartStyle', chartStyle)
 
     const response = await fetch(url.toString(), {
         method: 'GET',

@@ -3,8 +3,12 @@ import {
     Copy,
     LineChart,
     Share2,
+    CandlestickChart,
+    Ellipsis,
+    ExternalLink,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import * as Popover from '@radix-ui/react-popover'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import PistachioWalletController from '../../passkey/components/PistachioWalletController.jsx'
 import GasAssistDialogs from '../../gas-assist/components/GasAssistDialogs.jsx'
@@ -16,6 +20,9 @@ import PendingWalletOperation from '../../wallet/components/wallet/PendingWallet
 import TokenSelectorOverlay from './TokenSelectorOverlay.jsx'
 import TokenIcon from './TokenIcon.jsx'
 import TokenMarketChart from './TokenMarketChart.jsx'
+import MarketActionTooltip from './MarketActionTooltip.jsx'
+import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
+import { createCssVariables } from '../../../swapConfig.js'
 import { useTokenMarketSnapshot } from '../hooks/useTokenMarketSnapshot.js'
 import { marketNumber, marketUsd } from '../services/marketPresentation.js'
 import {
@@ -29,6 +36,7 @@ const PERIODS = ['1H', '1D', '1W', '1M', '1Y', 'ALL']
 const CHART_MODES = [
     { id: 'price', label: 'Price' },
     { id: 'volume', label: 'Volume' },
+    { id: 'tvl', label: 'TVL' },
 ]
 
 const finite = marketNumber
@@ -54,13 +62,19 @@ function TokenStat({ label, value }) {
 export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
     const [period, setPeriod] = useState('1D')
     const [chartMode, setChartMode] = useState('price')
-    const { market, stats, loading, error } = useTokenMarketSnapshot(token, period, true, true)
+    const [chartStyle, setChartStyle] = useState('line')
+    const { market, stats, loading, error } = useTokenMarketSnapshot(token, period, true, true, chartMode === 'price' ? chartStyle : 'line')
     const [copied, setCopied] = useState(false)
+    const copyTimer = useRef(null)
+    const theme = useMemo(() => createCssVariables(), [])
+    const chain = getCuratedEvmChain(token?.chainId)
     const [hovered, setHovered] = useState(null)
+    useEffect(() => () => window.clearTimeout(copyTimer.current), [])
 
     useEffect(() => {
         setPeriod('1D')
         setChartMode('price')
+        setChartStyle('line')
         setHovered(null)
     }, [token?.chainId, token?.address])
 
@@ -99,7 +113,8 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
         try {
             await navigator.clipboard.writeText(address)
             setCopied(true)
-            window.setTimeout(() => setCopied(false), 1200)
+            window.clearTimeout(copyTimer.current)
+            copyTimer.current = window.setTimeout(() => setCopied(false), 1200)
         } catch {
             // Clipboard is optional in private contexts.
         }
@@ -153,7 +168,7 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
                                 {name}
                                 <span>{symbol}</span>
                             </h2>
-                            <button
+                            <MarketActionTooltip label={copied ? 'Address copied' : 'Copy token address'}><button
                                 type="button"
                                 disabled={token?.isNative === true || /^0x0{40}$/i.test(token.address)}
                                 className="token-details-address"
@@ -164,17 +179,24 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
                                 {copied
                                     ? <Check aria-hidden="true" />
                                     : <Copy aria-hidden="true" />}
-                            </button>
+                            </button></MarketActionTooltip>
                         </div>
                     </div>
-                    <button
+                    <div className="token-details-header-actions"><MarketActionTooltip label="Share token"><button
                         type="button"
                         className="token-details-share"
                         aria-label="Share token"
                         onClick={shareToken}
                     >
                         <Share2 aria-hidden="true" />
-                    </button>
+                    </button></MarketActionTooltip>
+                    <Popover.Root><Popover.Trigger asChild><button type="button" className="token-details-share" aria-label="More token options"><Ellipsis aria-hidden="true" /></button></Popover.Trigger>
+                        <Popover.Portal><Popover.Content className="token-details-links" style={theme} sideOffset={8} collisionPadding={12} aria-label="Token links">
+                            {chain?.blockExplorers?.default?.url && <a href={`${chain.blockExplorers.default.url}${token.isNative || /^0x0{40}$/i.test(token.address) ? '' : `/token/${token.address}`}`} target="_blank" rel="noopener noreferrer">View on explorer <ExternalLink size={16} /></a>}
+                            {market?.coinGeckoUrl && <a href={market.coinGeckoUrl} target="_blank" rel="noopener noreferrer">View on CoinGecko <ExternalLink size={16} /></a>}
+                            {market?.websites?.slice(0, 1).map((url) => <a key={url} href={url} target="_blank" rel="noopener noreferrer">Official website <ExternalLink size={16} /></a>)}
+                        </Popover.Content></Popover.Portal>
+                    </Popover.Root></div>
                 </header>
 
                 <div className="token-details-divider" />
@@ -183,8 +205,10 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
                     <main className="token-details-left">
                         <section className="token-details-chart-section">
                             <div className="token-details-price-copy">
-                                <strong>{chartMode === 'volume' ? formatCompactUsd(hovered?.value ?? market?.chart?.points?.at(-1)?.volumeUsd) : formatPrice(displayPrice)}</strong>
+                                <strong>{chartMode === 'tvl' ? formatCompactUsd(stats?.tvlUsd) : chartMode === 'volume' ? formatCompactUsd(hovered?.value ?? market?.chart?.points?.at(-1)?.volumeUsd) : formatPrice(displayPrice)}</strong>
                                 {chartMode === 'volume' && <small className="token-details-chart-caption">Reported 24-hour volume</small>}
+                                {chartMode === 'tvl' && <small className="token-details-chart-caption">Total value locked</small>}
+                                {period === 'ALL' && market?.chart?.historyLimitDays && <small className="token-details-chart-caption">Available history · up to {market.chart.historyLimitDays} days</small>}
                                 {chartMode === 'price' && changeNumber !== null && (
                                     <span className={changeClass}>
                                         {changeNumber < 0 ? '▼' : '▲'}{' '}
@@ -204,6 +228,8 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
                             >
                                 <TokenMarketChart
                                     points={market?.chart?.points ?? []}
+                                    candles={market?.chart?.candles ?? []}
+                                    chartStyle={chartStyle}
                                     height={360}
                                     onHover={setHovered}
                                     mode={chartMode}
@@ -219,9 +245,10 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
 
                             <div className="token-details-chart-controls">
                                 <div className="token-details-chart-style" aria-label="Chart style">
-                                    <button type="button" className="active" aria-label="Line chart">
+                                    <MarketActionTooltip label="Line chart"><button type="button" className={chartStyle === 'line' ? 'active' : ''} aria-label="Line chart" aria-pressed={chartStyle === 'line'} onClick={() => { setHovered(null); setChartStyle('line') }} disabled={chartMode !== 'price'}>
                                         <LineChart aria-hidden="true" />
-                                    </button>
+                                    </button></MarketActionTooltip>
+                                    <MarketActionTooltip label="Candlestick chart"><button type="button" className={chartStyle === 'candles' ? 'active' : ''} aria-label="Candlestick chart" aria-pressed={chartStyle === 'candles'} onClick={() => { setHovered(null); setChartStyle('candles') }} disabled={chartMode !== 'price'}><CandlestickChart aria-hidden="true" /></button></MarketActionTooltip>
                                 </div>
                                 <div className="token-details-chart-types">
                                     {CHART_MODES.map((option) => (
@@ -262,6 +289,9 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
                                 <TokenStat label="52W High" value={stats?.high52wUsd} />
                                 <TokenStat label="52W Low" value={stats?.low52wUsd} />
                             </div>
+                        </section>
+                        <section className="token-details-about"><h3>About {name}</h3><p>{market?.about || 'Token description unavailable.'}</p>
+                            <span>{getCuratedEvmChain(token.chainId)?.name} · {symbol}</span>
                         </section>
                     </main>
 

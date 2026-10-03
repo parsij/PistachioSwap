@@ -567,6 +567,7 @@ export function useSwapController() {
         review.handleOpenChange(open)
     }, [execution.cancelSameChainExecution, review.handleOpenChange])
     const [tokenRouteRevision, setTokenRouteRevision] = useState(0)
+    const hydratedTokenRoute = useRef(null)
     useEffect(() => {
         const updateRoute = () => setTokenRouteRevision((current) => current + 1)
         window.addEventListener('popstate', updateRoute)
@@ -579,7 +580,7 @@ export function useSwapController() {
     useEffect(() => {
         if (typeof window === 'undefined') return
         const params = new URLSearchParams(window.location.search)
-        if (params.get('view') !== 'token') return
+        if (params.get('view') !== 'token') { hydratedTokenRoute.current = null; return }
 
         const routeChainId = Number(params.get('chain'))
         const routeAddress = String(params.get('token') ?? '').toLowerCase()
@@ -593,7 +594,7 @@ export function useSwapController() {
         const currentAddress = String(inputs.buyToken?.address ?? '').toLowerCase()
         if (
             Number(inputs.buyToken?.chainId) === routeChainId &&
-            currentAddress === routeAddress
+            currentAddress === routeAddress && hydratedTokenRoute.current === `${routeChainId}:${routeAddress}`
         ) {
             return
         }
@@ -602,11 +603,13 @@ export function useSwapController() {
             Number(candidate?.chainId) === routeChainId &&
             String(candidate?.address ?? '').toLowerCase() === routeAddress)
         if (!routeToken) return
+        hydratedTokenRoute.current = `${routeChainId}:${routeAddress}`
 
         inputs.selectToken({
             token: routeToken,
             side: 'buy',
             selectorChainId: routeChainId,
+            pairWithNative: true,
         })
         resetQuoteAndReview()
     }, [
@@ -680,6 +683,7 @@ export function useSwapController() {
                     token,
                     side: 'buy',
                     selectorChainId: Number(token.chainId),
+                    pairWithNative: true,
                 })
                 catalog.selector.close()
                 resetQuoteAndReview()
