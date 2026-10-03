@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -73,12 +76,23 @@ describe('GlobalSearchModal', () => {
         expect(screen.queryByRole('button', { name: 'Pools' })).toBeNull()
         expect(screen.getByRole('button', { name: 'Wallets' })).toBeTruthy()
         expect(screen.queryByRole('button', { name: 'Auctions' })).toBeNull()
-        expect(screen.getByText('Tokens')).toBeTruthy()
+        expect(screen.getAllByText('Tokens').length).toBeGreaterThanOrEqual(2)
         expect(screen.queryByText('Pools by 24H volume')).toBeNull()
         expect(screen.queryByText('Your tokens')).toBeNull()
         expect(document.querySelector('.global-search-footer')).toBeNull()
         expect(document.querySelector('.global-search-modal')).toBeTruthy()
         expect(document.querySelector('.ps-token-selector-dialog')).toBeNull()
+    })
+
+    it('uses an opaque search backdrop without blur', () => {
+        const css = readFileSync(
+            resolve('src/features/tokens/components/GlobalSearchModal.css'),
+            'utf8',
+        )
+
+        expect(css).toMatch(
+            /\.global-search-backdrop\s*\{[\s\S]*?background:\s*#0f0f0f;[\s\S]*?backdrop-filter:\s*none;/,
+        )
     })
 
     it('uses the existing trusted token state and returns token selection', () => {
