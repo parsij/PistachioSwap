@@ -107,8 +107,30 @@ export default function TokenDetailsPage({ token, page }) {
             setMarket(payload)
             if (payload.stats) {
                 setStats((current) => ({
-                    ...(current ?? {}),
-                    ...payload.stats,
+                    tvlUsd:
+                        payload.stats.tvlUsd ??
+                        current?.tvlUsd ??
+                        null,
+                    marketCapUsd:
+                        payload.stats.marketCapUsd ??
+                        current?.marketCapUsd ??
+                        null,
+                    fdvUsd:
+                        payload.stats.fdvUsd ??
+                        current?.fdvUsd ??
+                        null,
+                    volume24hUsd:
+                        payload.stats.volume24hUsd ??
+                        current?.volume24hUsd ??
+                        null,
+                    high52wUsd:
+                        payload.stats.high52wUsd ??
+                        current?.high52wUsd ??
+                        null,
+                    low52wUsd:
+                        payload.stats.low52wUsd ??
+                        current?.low52wUsd ??
+                        null,
                 }))
                 if (
                     payload.stats.high52wUsd != null ||
