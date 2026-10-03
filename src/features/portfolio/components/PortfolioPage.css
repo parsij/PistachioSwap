@@ -1,7 +1,7 @@
 .uni-portfolio-page {
     position: relative;
     z-index: 1;
-    width: min(1200px, calc(100vw - 48px));
+    width: min(1280px, calc(100vw - 48px));
     margin: 0 auto;
     padding: 0 0 56px;
     color: var(--color-text);
@@ -226,15 +226,19 @@
     background: var(--color-active-tab, #343434);
 }
 
-.uni-portfolio-network-all {
+.uni-portfolio-network .ps-chain-icon-all {
     display: grid;
     width: 22px;
     height: 22px;
     place-items: center;
     border-radius: 50%;
     background: var(--color-panel);
-    color: var(--color-accent);
-    font-size: 16px;
+    color: var(--color-text);
+}
+
+.uni-portfolio-network .ps-chain-icon-all svg {
+    width: 14px;
+    height: 14px;
 }
 
 .uni-portfolio-tabs {
@@ -301,12 +305,14 @@
 }
 
 .uni-portfolio-hero {
-    display: flex;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    align-items: start;
     gap: 40px;
 }
 
 .uni-portfolio-chart-column {
+    width: 100%;
     min-width: 0;
     flex: 1 1 auto;
 }
@@ -694,9 +700,9 @@
 }
 
 .uni-portfolio-overview-tables {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    align-items: start;
     gap: 40px;
 }
 
@@ -1227,9 +1233,9 @@
     to { background-position: -120% 0; }
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 960px) {
     .uni-portfolio-hero {
-        flex-direction: column;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .uni-portfolio-right-rail {
@@ -1251,7 +1257,7 @@
     }
 
     .uni-portfolio-overview-tables {
-        flex-direction: column;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .uni-portfolio-overview-main,
@@ -1296,7 +1302,7 @@
         border-color: transparent;
     }
 
-    .uni-portfolio-control-button > span,
+    .uni-portfolio-control-button > span:not(.uni-portfolio-network-icons),
     .uni-portfolio-network-trigger > span:not(.uni-portfolio-network-icons) {
         display: none;
     }

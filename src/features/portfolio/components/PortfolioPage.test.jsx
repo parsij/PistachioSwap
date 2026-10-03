@@ -97,6 +97,18 @@ describe('PortfolioPage', () => {
         expect(document.querySelector('.uni-portfolio-token-table-head')).toBeTruthy()
     })
 
+    it('uses the same canonical All Chains icon in the trigger and menu and dismisses with Escape', () => {
+        render(<PortfolioPage wallet={wallet()} />)
+        const trigger = screen.getByRole('button', { name: /All networks/ })
+        fireEvent.click(trigger)
+        const option = screen.getByRole('option', { name: 'All networks' })
+        expect(trigger.querySelector('.ps-chain-icon-all svg').outerHTML)
+            .toBe(option.querySelector('.ps-chain-icon-all svg').outerHTML)
+        fireEvent.keyDown(option, { key: 'Escape' })
+        expect(screen.queryByRole('listbox')).toBeNull()
+        expect(document.activeElement).toBe(trigger)
+    })
+
     it('renders zero-decimal chart axis labels without invalid NumberFormat options', () => {
         const walletAddress = wallet().walletState.address
         const now = Date.now()

@@ -27,6 +27,7 @@ export default function WalletConnectionButton({
     const [accountOpen, setAccountOpen] = useState(false)
     const [requestedAction, setRequestedAction] = useState(null)
     const requestSequence = useRef(0)
+    const accountControl = useRef(null)
 
     useEffect(() => {
         function handleWalletAction(event) {
@@ -56,7 +57,7 @@ export default function WalletConnectionButton({
     }
 
     return (
-        <div className="appkit-account-control">
+        <div className="appkit-account-control" ref={accountControl}>
             <WalletAccountButton
                 isConnected={walletState.isConnected}
                 address={walletState.address}
@@ -66,6 +67,7 @@ export default function WalletConnectionButton({
                 <WalletAccountDialog
                     open={accountOpen}
                     onOpenChange={handleAccountOpenChange}
+                    onReturnFocus={() => accountControl.current?.querySelector('.wallet-account-button')?.focus()}
                     requestedAction={requestedAction}
                     address={walletState.address}
                     chainId={walletState.chainId}

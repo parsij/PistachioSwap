@@ -18,7 +18,6 @@ import {
     Send,
     X,
 } from 'lucide-react'
-import { motion } from 'motion/react'
 import { useDisconnect } from '#wallet-runtime'
 
 import ReceiveDialog from './ReceiveDialog.jsx'
@@ -37,8 +36,11 @@ import {
     getCuratedEvmChain,
     getCuratedEvmChainLogoUri,
 } from '../../../../web3/curatedEvmChains.js'
+import { createCssVariables } from '../../../../swapConfig.js'
 import './walletAccount.css'
 import './walletActivitySwap.css'
+
+const portalTheme = createCssVariables()
 
 function portfolioValue(tokens) {
     const values = tokens
@@ -307,6 +309,7 @@ function ActivityRow({
 export default function WalletAccountDialog({
     open,
     onOpenChange,
+    onReturnFocus,
     address,
     chainId,
     nativeBalance,
@@ -671,9 +674,15 @@ export default function WalletAccountDialog({
         <>
             <Dialog.Root open={open} onOpenChange={onOpenChange}>
                 <Dialog.Portal>
-                    <Dialog.Overlay className="wallet-dialog-overlay uni-wallet-overlay" />
+                    <Dialog.Overlay className="wallet-dialog-overlay uni-wallet-overlay" style={portalTheme} />
                     <Dialog.Content
                         className="wallet-dialog wallet-account-dialog uni-wallet-dialog"
+                        style={portalTheme}
+                        onCloseAutoFocus={(event) => {
+                            if (!onReturnFocus) return
+                            event.preventDefault()
+                            onReturnFocus()
+                        }}
                         aria-describedby="uni-wallet-description"
                     >
                         <Dialog.Title className="uni-wallet-sr-only">
@@ -686,18 +695,10 @@ export default function WalletAccountDialog({
                             Wallet balance, actions, portfolio, and recent activity.
                         </Dialog.Description>
 
-                        <motion.div
-                            className="uni-wallet-shell"
-                            initial={{ opacity: 0, scale: 0.985, y: -8 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            transition={{
-                                duration: 0.18,
-                                ease: [0.22, 1, 0.36, 1],
-                            }}
-                        >
+                        <div className="uni-wallet-shell">
                             {view === 'overview' && renderOverview()}
                             {view === 'activity' && renderActivity()}
-                        </motion.div>
+                        </div>
                     </Dialog.Content>
                 </Dialog.Portal>
             </Dialog.Root>
