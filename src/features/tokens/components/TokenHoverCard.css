@@ -1,0 +1,137 @@
+.token-hover-card {
+    z-index: 12100;
+    width: 272px;
+    padding: 16px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 20px;
+    outline: none;
+    background: var(--color-background);
+    box-shadow: 0 12px 36px rgb(0 0 0 / 44%);
+    color: var(--color-text);
+}
+
+.token-hover-card-header,
+.token-hover-card-identity,
+.token-hover-card-actions,
+.token-hover-card-price {
+    display: flex;
+    align-items: center;
+}
+
+.token-hover-card-header {
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.token-hover-card-identity {
+    min-width: 0;
+    gap: 8px;
+    color: var(--color-muted);
+    font-size: 14px;
+    font-weight: 550;
+}
+
+.token-hover-card-actions {
+    gap: 8px;
+}
+
+.token-hover-card-actions button {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-muted);
+}
+
+.token-hover-card-actions button:hover {
+    color: var(--color-text);
+}
+
+.token-hover-card-actions svg {
+    width: 15px;
+    height: 15px;
+}
+
+.token-hover-card-price {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+}
+
+.token-hover-card-price strong {
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+}
+
+.token-hover-card-price span {
+    font-size: 12px;
+    font-weight: 550;
+}
+
+.token-hover-card-price span.positive {
+    color: var(--color-success, #22c55e);
+}
+
+.token-hover-card-price span.negative {
+    color: var(--color-danger, #ff4d4f);
+}
+
+.token-hover-card-price em {
+    color: var(--color-muted);
+    font-style: normal;
+    font-weight: 450;
+}
+
+.token-hover-card-loading {
+    display: grid;
+    gap: 8px;
+    padding-top: 14px;
+}
+
+.token-hover-card-loading span {
+    display: block;
+    height: 14px;
+    border-radius: 8px;
+    background: var(--color-panel);
+}
+
+.token-hover-card-loading span:first-child {
+    width: 45%;
+    height: 28px;
+}
+
+.token-hover-card-loading span:last-child {
+    height: 104px;
+}
+
+.token-hover-card-unavailable {
+    display: grid;
+    min-height: 104px;
+    margin-top: 12px;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--color-panel);
+    color: var(--color-muted);
+    font-size: 13px;
+}
+
+.token-market-chart {
+    width: 100%;
+    min-width: 0;
+}
+
+.token-market-chart-compact {
+    margin-top: 4px;
+}
+
+@media (hover: none), (pointer: coarse) {
+    .token-hover-card {
+        display: none;
+    }
+}

@@ -276,4 +276,118 @@ describe('chain-aware token details', () => {
         )).statusCode).toBe(400)
         await app.close()
     })
+
+    it('returns the Uniswap-style token detail market payload with 1D change and 52W range', async () => {
+        const address = '0x0000000000000000000000000000000000000001'
+        const lookup = vi.fn(async () => ({
+            address,
+            name: 'Example Token',
+            symbol: 'EXT',
+            imageUrl: 'https://example.com/token.png',
+            coinGeckoId: 'example',
+        }))
+        const marketRequest = vi.fn(async (path: string) => {
+            if (path.includes('/market_chart?') && path.includes('days=365')) {
+                return {
+                    prices: [[1_000, 5], [2_000, 20]],
+                    total_volumes: [[1_000, 100], [2_000, 200]],
+                }
+            }
+            if (path.includes('/market_chart?')) {
+                return {
+                    prices: [[1_000, 10], [2_000, 12]],
+                    total_volumes: [[1_000, 800], [2_000, 900]],
+                }
+            }
+            return {
+                name: 'Example Token',
+                symbol: 'ext',
+                image: { large: 'https://example.com/token-large.png' },
+                market_data: {
+                    current_price: { usd: 12 },
+                    market_cap: { usd: 1_000_000 },
+                    fully_diluted_valuation: { usd: 1_500_000 },
+                    total_volume: { usd: 90_000 },
+                    total_value_locked: { usd: 250_000 },
+                    price_change_percentage_24h: 20,
+                },
+            }
+        })
+        const app = Fastify()
+        await app.register(createTokenDetailsRoutes(
+            lookup as never,
+            marketRequest as never,
+        ))
+
+        const response = await app.inject(
+            `/v1/token-details/market?chainId=1&address=${address}&period=1D&includeYearStats=true`,
+        )
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toMatchObject({
+            schemaVersion: 1,
+            chainId: 1,
+            address,
+            coinGeckoId: 'example',
+            currentPriceUsd: 12,
+            change24hPercent: 20,
+            change24hUsd: 2,
+            stats: {
+                tvlUsd: 250_000,
+                marketCapUsd: 1_000_000,
+                fdvUsd: 1_500_000,
+                volume24hUsd: 90_000,
+                high52wUsd: 20,
+                low52wUsd: 5,
+            },
+            chart: {
+                period: '1D',
+                points: [
+                    { timestamp: 1_000, priceUsd: 10, volumeUsd: 800 },
+                    { timestamp: 2_000, priceUsd: 12, volumeUsd: 900 },
+                ],
+            },
+        })
+        expect(marketRequest).toHaveBeenCalledTimes(3)
+        expect((await app.inject(
+            `/v1/token-details/market?chainId=1&address=${address}&period=wat`,
+        )).statusCode).toBe(400)
+        await app.close()
+    })
+
+    it('uses the configured native CoinGecko ID without contract lookup', async () => {
+        const lookup = vi.fn()
+        const marketRequest = vi.fn(async (path: string) => {
+            if (path.includes('/market_chart?')) {
+                return { prices: [[1_000, 1], [2_000, 2]], total_volumes: [] }
+            }
+            return {
+                name: 'Ether',
+                symbol: 'eth',
+                market_data: {
+                    current_price: { usd: 2 },
+                    market_cap: { usd: 3 },
+                    fully_diluted_valuation: { usd: 4 },
+                    total_volume: { usd: 5 },
+                },
+            }
+        })
+        const app = Fastify()
+        await app.register(createTokenDetailsRoutes(
+            lookup as never,
+            marketRequest as never,
+        ))
+
+        const response = await app.inject(
+            `/v1/token-details/market?chainId=1&address=${NATIVE_TOKEN_ADDRESS}&period=1D`,
+        )
+        expect(response.statusCode).toBe(200)
+        expect(lookup).not.toHaveBeenCalled()
+        expect(response.json()).toMatchObject({
+            chainId: 1,
+            address: NATIVE_TOKEN_ADDRESS,
+            symbol: 'ETH',
+        })
+        await app.close()
+    })
+
 })

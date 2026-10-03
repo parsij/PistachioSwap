@@ -95,6 +95,29 @@ describe('GlobalSearchModal', () => {
         )
     })
 
+    it('shows the same fallback token selection even when 24H volume is unavailable', () => {
+        const fallbackToken = {
+            ...TOKEN,
+            id: '56:0x0000000000000000000000000000000000000002',
+            address: '0x0000000000000000000000000000000000000002',
+            name: 'Fallback Coin',
+            symbol: 'FALL',
+            volume24hUsd: null,
+            priceUSD: '2.5',
+            priceChange24hPercent: -1.25,
+        }
+
+        renderSearch({
+            tokens: [],
+            commonTokens: [fallbackToken],
+            fallbackTokens: [fallbackToken],
+        })
+
+        expect(screen.getByText('Fallback Coin')).toBeTruthy()
+        expect(screen.getByText('$2.50')).toBeTruthy()
+        expect(screen.getByText('-1.25%')).toBeTruthy()
+    })
+
     it('uses the existing trusted token state and returns token selection', () => {
         const onSelect = vi.fn()
         renderSearch({

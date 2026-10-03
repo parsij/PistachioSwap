@@ -566,6 +566,46 @@ export function useSwapController() {
         if (!open) execution.cancelSameChainExecution()
         review.handleOpenChange(open)
     }, [execution.cancelSameChainExecution, review.handleOpenChange])
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('view') !== 'token') return
+
+        const routeChainId = Number(params.get('chain'))
+        const routeAddress = String(params.get('token') ?? '').toLowerCase()
+        if (
+            !Number.isSafeInteger(routeChainId) ||
+            !/^0x[a-f0-9]{40}$/.test(routeAddress)
+        ) {
+            return
+        }
+
+        const currentAddress = String(inputs.buyToken?.address ?? '').toLowerCase()
+        if (
+            Number(inputs.buyToken?.chainId) === routeChainId &&
+            currentAddress === routeAddress
+        ) {
+            return
+        }
+
+        const routeToken = catalog.availableTokens.find((candidate) =>
+            Number(candidate?.chainId) === routeChainId &&
+            String(candidate?.address ?? '').toLowerCase() === routeAddress)
+        if (!routeToken) return
+
+        inputs.selectToken({
+            token: routeToken,
+            side: 'buy',
+            selectorChainId: routeChainId,
+        })
+        resetQuoteAndReview()
+    }, [
+        catalog.availableTokens,
+        inputs.buyToken,
+        inputs.selectToken,
+        resetQuoteAndReview,
+    ])
+
     const callbacks = {
         onSettingsChange: setSwapSettings,
         onSellAmountChange: (event) => {
@@ -635,11 +675,14 @@ export function useSwapController() {
 
                 const url = new URL(window.location.href)
                 url.pathname = '/swap/'
-                url.searchParams.delete('view')
+                url.searchParams.set('view', 'token')
+                url.searchParams.set('chain', String(token.chainId))
+                url.searchParams.set('token', String(token.address))
+                url.searchParams.delete('address')
                 url.searchParams.delete('tab')
                 window.history.pushState(window.history.state, '', url)
                 window.dispatchEvent(new CustomEvent('pistachio:navigate-app', {
-                    detail: { view: 'trade' },
+                    detail: { view: 'token' },
                 }))
                 return
             }

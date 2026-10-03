@@ -4,6 +4,7 @@ import AppHeader from './app/AppHeader.jsx'
 import AppLayout from './app/AppLayout.jsx'
 import SwapPage from './features/swap/components/SwapPage.jsx'
 import TokenSelectorOverlay from './features/tokens/components/TokenSelectorOverlay.jsx'
+import TokenDetailsPage from './features/tokens/components/TokenDetailsPage.jsx'
 import PortfolioPage from './features/portfolio/components/PortfolioPage.jsx'
 import { useSwapController } from './features/swap/hooks/useSwapController.js'
 
@@ -16,9 +17,8 @@ import { useSwapController } from './features/swap/hooks/useSwapController.js'
  */
 function currentAppView() {
     if (typeof window === 'undefined') return 'trade'
-    return new URLSearchParams(window.location.search).get('view') === 'portfolio'
-        ? 'portfolio'
-        : 'trade'
+    const view = new URLSearchParams(window.location.search).get('view')
+    return ['portfolio', 'token'].includes(view) ? view : 'trade'
 }
 
 export default function App() {
@@ -28,7 +28,11 @@ export default function App() {
     useEffect(() => {
         const syncFromLocation = () => setAppView(currentAppView())
         const handleAppNavigation = (event) => {
-            setAppView(event.detail?.view === 'portfolio' ? 'portfolio' : 'trade')
+            setAppView(
+                ['portfolio', 'token'].includes(event.detail?.view)
+                    ? event.detail.view
+                    : 'trade',
+            )
         }
 
         window.addEventListener('popstate', syncFromLocation)
@@ -40,6 +44,7 @@ export default function App() {
     }, [])
 
     const portfolioView = appView === 'portfolio'
+    const tokenView = appView === 'token'
 
     return (
         <AppLayout
@@ -51,6 +56,11 @@ export default function App() {
                     <PortfolioPage wallet={header.wallet} />
                     <TokenSelectorOverlay {...page.tokenSelector} />
                 </>
+            ) : tokenView ? (
+                <TokenDetailsPage
+                    token={page.card.buyPanel.token}
+                    page={page}
+                />
             ) : (
                 <SwapPage {...page} />
             )}
