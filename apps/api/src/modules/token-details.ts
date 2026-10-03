@@ -383,6 +383,8 @@ export function createTokenDetailsRoutes(
                                     ? image.small
                                     : token?.imageUrl ?? null,
                         currentPriceUsd,
+                        periodChangePercent: change.percent,
+                        periodChangeUsd: change.absoluteUsd,
                         change24hPercent: period === '1D'
                             ? change.percent
                             : finiteNumber(marketData.price_change_percentage_24h),
