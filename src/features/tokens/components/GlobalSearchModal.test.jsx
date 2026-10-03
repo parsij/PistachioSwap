@@ -71,10 +71,10 @@ describe('GlobalSearchModal', () => {
         expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy()
         const input = screen.getByRole('textbox', { name: 'Search tokens and wallets' })
         expect(input.getAttribute('placeholder')).toBe('Search by name, symbol, or address')
-        expect(screen.getByRole('button', { name: 'All' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Tokens' })).toBeTruthy()
+        expect(screen.getByRole('tab', { name: 'All' })).toBeTruthy()
+        expect(screen.getByRole('tab', { name: 'Tokens' })).toBeTruthy()
         expect(screen.queryByRole('button', { name: 'Pools' })).toBeNull()
-        expect(screen.getByRole('button', { name: 'Wallets' })).toBeTruthy()
+        expect(screen.getByRole('tab', { name: 'Wallets' })).toBeTruthy()
         expect(screen.queryByRole('button', { name: 'Auctions' })).toBeNull()
         expect(screen.getAllByText('Tokens').length).toBeGreaterThanOrEqual(2)
         expect(screen.queryByText('Pools by 24H volume')).toBeNull()
@@ -127,6 +127,20 @@ describe('GlobalSearchModal', () => {
 
         fireEvent.click(screen.getByText('USD Coin').closest('.global-search-result-row'))
         expect(onSelect).toHaveBeenCalledWith(TOKEN)
+    })
+
+    it('searches canonical tokens with missing market metrics and selects with the keyboard', () => {
+        const token = { ...TOKEN, volume24hUsd: null, liquidityUsd: null, priceUSD: null, priceChange24hPercent: null }
+        const { props } = renderSearch({ tokens: [token], search: 'usdc' })
+        expect(screen.getByText('USD Coin')).toBeTruthy()
+        expect(screen.queryByText('$0.00')).toBeNull()
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
+        expect(props.onSelect).toHaveBeenCalledWith(token)
+    })
+
+    it('does not reset an explicitly selected network', () => {
+        const { props } = renderSearch({ chainId: 56 })
+        expect(props.onChainChange).not.toHaveBeenCalled()
     })
 
     it('opens an exact EVM wallet result in the portfolio view', () => {

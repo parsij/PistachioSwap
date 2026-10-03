@@ -8,7 +8,7 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-it('fetches internal token market data for the requested Uniswap chart period', async () => {
+it('fetches internal token market data for the requested chart period', async () => {
     const fetchMock = vi.fn(async (url) => {
         const parsed = new URL(String(url))
         expect(parsed.pathname).toBe('/api/v1/token-details/market')

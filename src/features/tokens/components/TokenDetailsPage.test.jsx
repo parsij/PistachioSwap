@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TokenDetailsPage from './TokenDetailsPage.jsx'
 
@@ -51,6 +51,8 @@ const PAGE = {
     crossChainReview: {},
 }
 
+afterEach(() => cleanup())
+
 beforeEach(() => {
     mocks.fetchMarket.mockReset()
     mocks.fetchMarket.mockResolvedValue({
@@ -78,7 +80,7 @@ beforeEach(() => {
 })
 
 describe('TokenDetailsPage', () => {
-    it('renders the uploaded-Uniswap TDP structure with real market stats and the swap rail', async () => {
+    it('renders Pistachio token details with real market stats and the swap rail', async () => {
         render(<TokenDetailsPage token={TOKEN} page={PAGE} />)
 
         expect(screen.getByText('Tokens')).toBeTruthy()
@@ -108,7 +110,7 @@ describe('TokenDetailsPage', () => {
         })
     })
 
-    it('uses the same period selector pattern as the uploaded Uniswap TDP', async () => {
+    it('fetches the selected history period', async () => {
         render(<TokenDetailsPage token={TOKEN} page={PAGE} />)
         await waitFor(() => expect(mocks.fetchMarket).toHaveBeenCalledTimes(1))
 
@@ -121,4 +123,25 @@ describe('TokenDetailsPage', () => {
             )
         })
     })
+    it('shows unavailable stats and period changes without manufacturing zero', async () => {
+        mocks.fetchMarket.mockResolvedValue({ currentPriceUsd: null, periodChangePercent: null, chart: { points: [] }, stats: { marketCapUsd: null } })
+        render(<TokenDetailsPage token={{ ...TOKEN, priceUSD: null, volume24hUsd: null, fdvUsd: null }} page={PAGE} />)
+        await waitFor(() => expect(screen.getByText('Change unavailable · 1D')).toBeTruthy())
+        expect(screen.queryByText('$0.00')).toBeNull()
+        fireEvent.click(screen.getByRole('button', { name: 'Volume' }))
+        expect(screen.getByRole('button', { name: 'Volume' }).getAttribute('aria-pressed')).toBe('true')
+    })
+    it('rejects late data from a previous timeframe and aborts its request', async () => {
+        let resolveDay
+        mocks.fetchMarket.mockImplementationOnce(() => new Promise((resolve) => { resolveDay = resolve }))
+        render(<TokenDetailsPage token={TOKEN} page={PAGE} />)
+        await waitFor(() => expect(mocks.fetchMarket).toHaveBeenCalledTimes(1))
+        const daySignal = mocks.fetchMarket.mock.calls[0][1].signal
+        fireEvent.click(screen.getByRole('button', { name: '1W' }))
+        await waitFor(() => expect(mocks.fetchMarket).toHaveBeenCalledTimes(2))
+        expect(daySignal.aborted).toBe(true)
+        resolveDay({ currentPriceUsd: 999, chart: { points: [] } })
+        await waitFor(() => expect(screen.queryByText('$999.00')).toBeNull())
+    })
+
 })

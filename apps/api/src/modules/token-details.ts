@@ -36,6 +36,7 @@ function createCoinGeckoUrl(coinGeckoId: string) {
 }
 
 function finiteNumber(value: unknown) {
+    if (value == null || typeof value === 'boolean' || String(value).trim() === '') return null
     const result = Number(value)
     return Number.isFinite(result) ? result : null
 }
@@ -53,17 +54,20 @@ function parsePriceSeries(value: unknown, period: MarketPeriod) {
     const volumes = Array.isArray(value.total_volumes)
         ? value.total_volumes
         : []
-    const points = value.prices.flatMap((entry, index) => {
+    const volumeByTime = new Map<number, number | null>()
+    for (const entry of volumes) {
+        if (!Array.isArray(entry) || entry.length < 2) continue
+        const timestamp = finiteNumber(entry[0])
+        if (timestamp !== null) volumeByTime.set(Math.trunc(timestamp), finiteNumber(entry[1]))
+    }
+    const points = value.prices.flatMap((entry) => {
         if (!Array.isArray(entry) || entry.length < 2) return []
         const timestamp = finiteNumber(entry[0])
         const priceUsd = finiteNumber(entry[1])
         if (timestamp === null || priceUsd === null || timestamp <= 0 || priceUsd < 0) {
             return []
         }
-        const volumeEntry = volumes[index]
-        const volumeUsd = Array.isArray(volumeEntry) && volumeEntry.length >= 2
-            ? finiteNumber(volumeEntry[1])
-            : null
+        const volumeUsd = volumeByTime.get(Math.trunc(timestamp)) ?? null
         return [{
             timestamp: Math.trunc(timestamp),
             priceUsd,
@@ -71,6 +75,7 @@ function parsePriceSeries(value: unknown, period: MarketPeriod) {
         }]
     })
 
+    points.sort((left, right) => left.timestamp - right.timestamp)
     if (period !== '1H' || points.length === 0) return points
     const latest = points[points.length - 1].timestamp
     const cutoff = latest - 60 * 60 * 1000
@@ -112,7 +117,7 @@ function parseBooleanQuery(value: string | undefined) {
 
 function normalizedPeriod(value: string | undefined): MarketPeriod | null {
     const period = String(value ?? '1D').trim().toUpperCase()
-    return period in MARKET_PERIOD_DAYS ? period as MarketPeriod : null
+    return Object.hasOwn(MARKET_PERIOD_DAYS, period) ? period as MarketPeriod : null
 }
 
 function resolveTokenIdentity(chainIdValue: string | undefined, addressValue: string | undefined) {
@@ -316,7 +321,7 @@ export function createTokenDetailsRoutes(
                         `/coins/${encodedId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`
                     const chartPath =
                         `/coins/${encodedId}/market_chart?vs_currency=usd&days=${MARKET_PERIOD_DAYS[period]}`
-                    const yearNeeded = includeYearStats && !['1Y', 'ALL'].includes(period)
+                    const yearNeeded = includeYearStats && period !== '1Y'
                     const requests = await Promise.allSettled([
                         requestCoinGecko(detailsPath, { signal: controller.signal }),
                         requestCoinGecko(chartPath, { signal: controller.signal }),
@@ -347,10 +352,11 @@ export function createTokenDetailsRoutes(
                         ? requests[2].status === 'fulfilled'
                             ? parsePriceSeries(requests[2].value, '1Y')
                             : []
-                        : ['1Y', 'ALL'].includes(period)
+                        : period === '1Y'
                             ? points
                             : []
-                    const range = priceRange(yearPoints)
+                    const yearCutoff = (yearPoints.at(-1)?.timestamp ?? Date.now()) - 365 * 24 * 60 * 60 * 1000
+                    const range = priceRange(yearPoints.filter((point) => point.timestamp >= yearCutoff))
                     const change = priceChange(points)
 
                     const detailsRecord = isRecord(details) ? details : {}
@@ -358,8 +364,8 @@ export function createTokenDetailsRoutes(
                         ? detailsRecord.market_data
                         : {}
                     const currentPriceUsd =
-                        points.at(-1)?.priceUsd ??
-                        usdValue(marketData.current_price)
+                        usdValue(marketData.current_price) ??
+                        points.at(-1)?.priceUsd ?? null
                     const image = isRecord(detailsRecord.image)
                         ? detailsRecord.image
                         : {}
