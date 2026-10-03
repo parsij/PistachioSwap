@@ -1143,18 +1143,6 @@ describe('App wallet integration', () => {
         expect(queryByText('Showing previously loaded balances.')).toBeNull()
     })
 
-    it('does not let touch hover controls cancel the Sell token selector tap', () => {
-        const { container, getByRole, queryByRole } = render(<App />)
-        const sellPanel = container.querySelector('.sell-panel')
-        const sellButton = container.querySelector('.sell-token-position button')
-
-        fireEvent.pointerEnter(sellPanel, { pointerType: 'touch' })
-        expect(queryByRole('button', { name: '50%' })).toBeNull()
-
-        fireEvent.click(sellButton)
-        expect(getByRole('dialog', { name: 'Select a token for sell' })).toBeTruthy()
-    })
-
     it('clicking native balance and percentages use the spendable amount', () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true

@@ -203,6 +203,8 @@ function renderSelector(overrides = {}) {
 }
 
 describe('TokenSelector mobile sheet drag', () => {
+    afterEach(() => cleanup())
+
     it('dismisses only after a meaningful downward drag or fling', () => {
         expect(shouldDismissTokenSelectorDrag({ offset: { y: 95 }, velocity: { y: 699 } })).toBe(false)
         expect(shouldDismissTokenSelectorDrag({ offset: { y: 96 }, velocity: { y: 0 } })).toBe(true)
@@ -210,9 +212,34 @@ describe('TokenSelector mobile sheet drag', () => {
         expect(shouldDismissTokenSelectorDrag({ offset: { y: -120 }, velocity: { y: -900 } })).toBe(false)
     })
 
-    it('renders a real drag control instead of a decorative handle', () => {
+    it('renders a large real drag target instead of a decorative handle', () => {
         renderSelector()
-        expect(screen.getByRole('button', { name: 'Drag token selector' })).toBeTruthy()
+        const handle = screen.getByRole('button', { name: 'Drag token selector' })
+        expect(handle).toBeTruthy()
+        expect(handle.querySelector('span')).toBeTruthy()
+
+        const css = readFileSync(
+            resolve('src/features/tokens/components/TokenSelectorPolish.css'),
+            'utf8',
+        )
+        expect(css).toMatch(
+            /\.ps-token-selector-handle\s*\{[\s\S]*?width:\s*min\(220px, 60vw\)[\s\S]*?height:\s*48px/,
+        )
+        expect(css).toMatch(
+            /\.ps-token-selector-handle > span\s*\{[\s\S]*?width:\s*48px[\s\S]*?height:\s*5px/,
+        )
+    })
+
+    it('uses direct downward drag travel instead of elastic resistance', () => {
+        const source = readFileSync(
+            resolve('src/features/tokens/components/TokenSelector.jsx'),
+            'utf8',
+        )
+
+        expect(source).toContain('bottom: compact ? 1200 : 0')
+        expect(source).toContain('dragElastic={0}')
+        expect(source).toContain('bounceStiffness: 520')
+        expect(source).not.toContain("dragElastic={{ top: 0, bottom: 0.72 }}")
     })
 })
 

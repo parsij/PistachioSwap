@@ -258,13 +258,15 @@
     }
 
     .ps-token-selector-handle {
+        position: relative;
+        z-index: 4;
         display: grid;
-        width: 100%;
+        width: min(220px, 60vw);
         height: 48px;
         min-height: 48px;
         flex: 0 0 auto;
         place-items: center;
-        margin: 0;
+        margin: 0 auto -28px;
         cursor: grab;
         touch-action: none;
         -webkit-tap-highlight-color: transparent;
