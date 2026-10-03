@@ -566,6 +566,16 @@ export function useSwapController() {
         if (!open) execution.cancelSameChainExecution()
         review.handleOpenChange(open)
     }, [execution.cancelSameChainExecution, review.handleOpenChange])
+    const [tokenRouteRevision, setTokenRouteRevision] = useState(0)
+    useEffect(() => {
+        const updateRoute = () => setTokenRouteRevision((current) => current + 1)
+        window.addEventListener('popstate', updateRoute)
+        window.addEventListener('pistachio:navigate-app', updateRoute)
+        return () => {
+            window.removeEventListener('popstate', updateRoute)
+            window.removeEventListener('pistachio:navigate-app', updateRoute)
+        }
+    }, [])
     useEffect(() => {
         if (typeof window === 'undefined') return
         const params = new URLSearchParams(window.location.search)
@@ -600,6 +610,7 @@ export function useSwapController() {
         })
         resetQuoteAndReview()
     }, [
+        tokenRouteRevision,
         catalog.availableTokens,
         inputs.buyToken,
         inputs.selectToken,

@@ -1,174 +1,131 @@
 import * as Popover from '@radix-ui/react-popover'
-import { Copy, Maximize2 } from 'lucide-react'
-import { cloneElement, useEffect, useRef, useState } from 'react'
-
+import { Check, Copy, Maximize2 } from 'lucide-react'
+import { cloneElement, useEffect, useMemo, useRef, useState } from 'react'
+import { createCssVariables } from '../../../swapConfig.js'
 import TokenIcon from './TokenIcon.jsx'
 import TokenMarketChart from './TokenMarketChart.jsx'
-import { fetchTokenMarketDetails } from '../services/tokenDetails.js'
-import {
-    getTokenDisplaySymbol,
-} from '../services/tokenDisplay.js'
-
+import { useTokenMarketSnapshot } from '../hooks/useTokenMarketSnapshot.js'
+import { getTokenDisplaySymbol } from '../services/tokenDisplay.js'
+import { marketNumber, marketPercent, marketUsd } from '../services/marketPresentation.js'
 import './TokenHoverCard.css'
 
-const OPEN_DELAY_MS = 300
-const CLOSE_DELAY_MS = 100
+const HOVER_QUERY = '(hover: hover) and (pointer: fine)'
+const PREVIEW_WAIT = 300
+const LEAVE_GRACE = 180
 
-function canHover() {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-        return false
-    }
-    return window.matchMedia('(hover: hover) and (pointer: fine)').matches
-}
-
-function formatPrice(value) {
-    const number = Number(value)
-    if (!Number.isFinite(number)) return '—'
-    if (number >= 1) {
-        return number.toLocaleString(undefined, {
-            style: 'currency',
-            currency: 'USD',
-            maximumFractionDigits: 2,
-        })
-    }
-    return '$' + number.toLocaleString(undefined, {
-        maximumSignificantDigits: 6,
-    })
-}
-
-function formatChange(value) {
-    const number = Number(value)
-    if (!Number.isFinite(number)) return '—'
-    const prefix = number > 0 ? '+' : ''
-    return `${prefix}${number.toFixed(2)}%`
-}
-
-/**
- * Search-result hover card adapted from the uploaded Uniswap
- * TokenHoverCard/HoverCard source: 300 ms deferred open, no touch rendering,
- * right-start placement, 8 px offset, and data fetching only after hover intent.
- */
-export default function TokenHoverCard({
-    token,
-    children,
-    onNavigate,
-}) {
-    const [open, setOpen] = useState(false)
-    const [hasOpenIntent, setHasOpenIntent] = useState(false)
-    const [market, setMarket] = useState(null)
-    const [loading, setLoading] = useState(false)
-    const [copied, setCopied] = useState(false)
-    const openTimer = useRef(null)
-    const closeTimer = useRef(null)
-
-    const clearTimers = () => {
-        window.clearTimeout(openTimer.current)
-        window.clearTimeout(closeTimer.current)
-        openTimer.current = null
-        closeTimer.current = null
-    }
-
-    const scheduleOpen = () => {
-        if (!canHover()) return
-        window.clearTimeout(closeTimer.current)
-        if (open || openTimer.current) return
-        openTimer.current = window.setTimeout(() => {
-            openTimer.current = null
-            setHasOpenIntent(true)
-            setOpen(true)
-        }, OPEN_DELAY_MS)
-    }
-
-    const scheduleClose = () => {
-        window.clearTimeout(openTimer.current)
-        openTimer.current = null
-        window.clearTimeout(closeTimer.current)
-        closeTimer.current = window.setTimeout(() => {
-            closeTimer.current = null
-            setOpen(false)
-        }, CLOSE_DELAY_MS)
-    }
-
-    useEffect(() => () => clearTimers(), [])
-
+function usePreviewPointer() {
+    const [available, setAvailable] = useState(() => window.matchMedia?.(HOVER_QUERY).matches ?? false)
     useEffect(() => {
-        if (!hasOpenIntent || market || loading) return undefined
-        const controller = new AbortController()
-        setLoading(true)
-        fetchTokenMarketDetails(token, {
-            period: '1D',
-            signal: controller.signal,
-        }).then((payload) => {
-            if (!controller.signal.aborted) setMarket(payload)
-        }).catch(() => {
-            if (!controller.signal.aborted) setMarket({ unavailable: true })
-        }).finally(() => {
-            if (!controller.signal.aborted) setLoading(false)
-        })
-        return () => controller.abort()
-    }, [hasOpenIntent, loading, market, token])
+        const query = window.matchMedia?.(HOVER_QUERY)
+        if (!query) return undefined
+        const update = () => setAvailable(query.matches)
+        query.addEventListener('change', update)
+        return () => query.removeEventListener('change', update)
+    }, [])
+    return available
+}
 
+/** Independent Pistachio preview: delayed intent, interactive gap grace, read-only data. */
+export default function TokenHoverCard({ token, children, onNavigate }) {
+    const available = usePreviewPointer()
+    const theme = useMemo(() => createCssVariables(), [])
+    const [open, setOpen] = useState(false)
+    const [requested, setRequested] = useState(false)
+    const [copied, setCopied] = useState(false)
+    const timer = useRef(null)
+    const copyTimer = useRef(null)
+    const cardRef = useRef(null)
+    const { market, loading, error } = useTokenMarketSnapshot(token, '1D', requested && available)
+
+    function cancelIntent() {
+        window.clearTimeout(timer.current)
+        timer.current = null
+    }
+    function enter() {
+        cancelIntent()
+        if (!available || open) return
+        timer.current = window.setTimeout(() => {
+            setRequested(true)
+            setOpen(true)
+        }, PREVIEW_WAIT)
+    }
+    function leave() {
+        cancelIntent()
+        timer.current = window.setTimeout(() => setOpen(false), LEAVE_GRACE)
+    }
+    function close() {
+        cancelIntent()
+        setOpen(false)
+    }
+    useEffect(() => () => {
+        window.clearTimeout(timer.current)
+        window.clearTimeout(copyTimer.current)
+    }, [])
+    useEffect(() => {
+        if (!open) return undefined
+        const dismiss = (event) => {
+            if (event.type === 'scroll' && cardRef.current?.contains(event.target)) return
+            setOpen(false)
+        }
+        window.addEventListener('scroll', dismiss, true)
+        window.addEventListener('resize', dismiss)
+        return () => {
+            window.removeEventListener('scroll', dismiss, true)
+            window.removeEventListener('resize', dismiss)
+        }
+    }, [open])
+
+    if (!available) return children
     const trigger = cloneElement(children, {
         onPointerEnter: (event) => {
             children.props.onPointerEnter?.(event)
-            if (event.pointerType === 'mouse') scheduleOpen()
+            if (event.pointerType === 'mouse') enter()
         },
         onPointerLeave: (event) => {
             children.props.onPointerLeave?.(event)
-            if (event.pointerType === 'mouse') scheduleClose()
+            if (event.pointerType === 'mouse') leave()
         },
         onFocus: (event) => {
             children.props.onFocus?.(event)
-            if (event.currentTarget.matches?.(':focus-visible')) scheduleOpen()
+            if (event.currentTarget.matches(':focus-visible')) enter()
         },
         onBlur: (event) => {
             children.props.onBlur?.(event)
-            scheduleClose()
+            if (!cardRef.current?.contains(event.relatedTarget)) leave()
         },
+        'aria-expanded': open,
     })
+    const price = market?.currentPriceUsd ?? token?.priceUSD ?? token?.marketPriceUSD ?? token?.trustedPriceUSD
+    const change = market?.change24hPercent ?? token?.priceChange24hPercent
+    const hasContract = /^0x[a-fA-F0-9]{40}$/.test(token?.address ?? '') && token?.isNative !== true && !/^0x0{40}$/i.test(token.address)
+    const hasData = marketNumber(price) !== null || (market?.chart?.points?.length ?? 0) > 1
 
-    async function copyAddress(event) {
-        event.preventDefault()
-        event.stopPropagation()
-        const address = String(token?.address ?? '')
-        if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return
+    async function copyAddress() {
         try {
-            await navigator.clipboard.writeText(address)
+            await navigator.clipboard.writeText(token.address)
             setCopied(true)
-            window.setTimeout(() => setCopied(false), 1200)
-        } catch {
-            // Clipboard can be unavailable in private contexts.
-        }
+            window.clearTimeout(copyTimer.current)
+            copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+        } catch { setCopied(false) }
     }
-
-    function expand(event) {
-        event.preventDefault()
-        event.stopPropagation()
-        setOpen(false)
-        onNavigate(token)
-    }
-
-    if (!canHover()) return children
-
-    const change = market?.change24hPercent
-    const changeClass = Number(change) < 0 ? 'negative' : 'positive'
 
     return (
-        <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Root open={open} onOpenChange={(value) => value ? setOpen(true) : close()}>
             <Popover.Anchor asChild>{trigger}</Popover.Anchor>
             <Popover.Portal>
                 <Popover.Content
+                    ref={cardRef}
+                    aria-label={`${getTokenDisplaySymbol(token)} market preview`}
                     className="token-hover-card"
-                    side="right"
-                    align="start"
-                    sideOffset={8}
-                    collisionPadding={16}
+                    style={theme}
+                    side="right" align="start" sideOffset={8} collisionPadding={16}
                     onOpenAutoFocus={(event) => event.preventDefault()}
-                    onPointerEnter={() => {
-                        window.clearTimeout(closeTimer.current)
-                        closeTimer.current = null
+                    onCloseAutoFocus={(event) => event.preventDefault()}
+                    onPointerEnter={cancelIntent} onPointerLeave={leave}
+                    onFocusCapture={cancelIntent}
+                    onBlurCapture={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget)) leave()
                     }}
-                    onPointerLeave={scheduleClose}
                     onPointerDown={(event) => event.stopPropagation()}
                 >
                     <div className="token-hover-card-header">
@@ -177,47 +134,28 @@ export default function TokenHoverCard({
                             <span>{getTokenDisplaySymbol(token)}</span>
                         </div>
                         <div className="token-hover-card-actions">
-                            <button
-                                type="button"
-                                aria-label={copied ? 'Address copied' : 'Copy token address'}
-                                onClick={copyAddress}
-                            >
-                                <Copy aria-hidden="true" />
-                            </button>
-                            <button
-                                type="button"
-                                aria-label="Open token details"
-                                onClick={expand}
-                            >
+                            {hasContract && <button type="button" aria-label={copied ? 'Address copied' : 'Copy token address'} onClick={copyAddress}>
+                                {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                            </button>}
+                            <button type="button" aria-label="Open token details" onClick={() => { close(); onNavigate(token) }}>
                                 <Maximize2 aria-hidden="true" />
                             </button>
                         </div>
                     </div>
-
                     {loading ? (
-                        <div className="token-hover-card-loading" aria-label="Loading token market data">
-                            <span />
-                            <span />
-                            <span />
-                        </div>
-                    ) : market?.unavailable ? (
-                        <div className="token-hover-card-unavailable">
-                            Token data unavailable
-                        </div>
+                        <div className="token-hover-card-loading" role="status" aria-label="Loading token market data"><span /><span /><span /></div>
+                    ) : !hasData ? (
+                        <div className="token-hover-card-unavailable" role="status">Market data unavailable</div>
                     ) : (
                         <>
                             <div className="token-hover-card-price">
-                                <strong>{formatPrice(market?.currentPriceUsd)}</strong>
-                                <span className={changeClass}>
-                                    {formatChange(change)} <em>today</em>
+                                <strong>{marketUsd(price)}</strong>
+                                <span className={marketNumber(change) === null ? '' : Number(change) < 0 ? 'negative' : 'positive'}>
+                                    {marketPercent(change)} <em>today</em>
                                 </span>
                             </div>
-                            <TokenMarketChart
-                                compact
-                                height={104}
-                                points={market?.chart?.points ?? []}
-                                change={change}
-                            />
+                            <TokenMarketChart compact height={104} points={market?.chart?.points ?? []} change={change} />
+                            {error && <small className="token-hover-card-notice">History could not be refreshed</small>}
                         </>
                     )}
                 </Popover.Content>

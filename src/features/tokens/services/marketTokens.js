@@ -62,7 +62,7 @@ export function getCanonicalTokenIdentity(token) {
     return `${chainId}:${address}`
 }
 
-export function getMarketTokenExclusionReason(token) {
+export function getMarketTokenExclusionReason(token, { requireMarketMetrics = true } = {}) {
     const identity = getCanonicalTokenIdentity(token)
     if (!identity) return 'invalidIdentity'
     if (token?.source === 'shapeshift-local' &&
@@ -96,22 +96,22 @@ export function getMarketTokenExclusionReason(token) {
     if (!String(token?.name ?? '').trim() || !String(token?.symbol ?? '').trim() ||
         !Number.isInteger(Number(token?.decimals)) || Number(token.decimals) < 0 ||
         Number(token.decimals) > 255) return 'invalidMetadata'
-    if (!(Number(token?.volume24hUsd) > 0)) return 'missingVolume'
-    if (!(Number(token?.liquidityUsd) > 0) ||
+    if (requireMarketMetrics && !(Number(token?.volume24hUsd) > 0)) return 'missingVolume'
+    if (requireMarketMetrics && (!(Number(token?.liquidityUsd) > 0) ||
         (!reasons.includes('minimum-liquidity-met') &&
-            !reasons.includes('minimum-trusted-liquidity-met'))) {
+            !reasons.includes('minimum-trusted-liquidity-met')))) {
         return 'insufficientLiquidity'
     }
     if (token?.classificationTier !== undefined &&
         !['core', 'established'].includes(token.classificationTier)) return 'hidden'
-    if (token?.includeInPortfolioValue === false ||
+    if (requireMarketMetrics && (token?.includeInPortfolioValue === false ||
         token?.priceConfidence === 'untrusted' ||
-        token?.priceConfidence === 'unknown') return 'hidden'
+        token?.priceConfidence === 'unknown')) return 'hidden'
     return null
 }
 
-export function filterEligibleMarketTokens(tokens) {
-    return tokens.filter((token) => getMarketTokenExclusionReason(token) === null)
+export function filterEligibleMarketTokens(tokens, options) {
+    return tokens.filter((token) => getMarketTokenExclusionReason(token, options) === null)
 }
 
 export function isCuratedCommonMarketToken(token) {

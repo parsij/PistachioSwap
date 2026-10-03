@@ -1,169 +1,79 @@
-import { useEffect, useRef } from 'react'
-import {
-    AreaSeries,
-    ColorType,
-    HistogramSeries,
-    LineSeries,
-    createChart,
-} from 'lightweight-charts'
+import { useEffect, useMemo, useRef } from 'react'
+import { ColorType, CrosshairMode, HistogramSeries, LineSeries, createChart } from 'lightweight-charts'
+import { marketUsd } from '../services/marketPresentation.js'
 
-function cssColor(name, fallback) {
-    if (typeof window === 'undefined') return fallback
-    const value = window.getComputedStyle(document.documentElement)
-        .getPropertyValue(name)
-        .trim()
-    return value || fallback
+import { toMarketChartPoints } from '../model/marketChartPoints.js'
+
+function themeColor(root, name, fallback) {
+    return getComputedStyle(root).getPropertyValue(name).trim() || fallback
 }
 
-function alphaColor(value, alpha, fallback) {
-    const hex = String(value ?? '').trim()
-    const match = /^#([a-fA-F0-9]{6})$/.exec(hex)
-    if (!match) return fallback
-    const raw = match[1]
-    return `rgba(${parseInt(raw.slice(0, 2), 16)}, ${parseInt(raw.slice(2, 4), 16)}, ${parseInt(raw.slice(4, 6), 16)}, ${alpha})`
-}
-
-function chartPoints(points, valueKey) {
-    const unique = new Map()
-    for (const point of points ?? []) {
-        const timestamp = Number(point?.timestamp)
-        const value = Number(point?.[valueKey])
-        if (!Number.isFinite(timestamp) || !Number.isFinite(value)) continue
-        unique.set(Math.max(1, Math.floor(timestamp / 1000)), value)
-    }
-    return [...unique.entries()]
-        .sort((left, right) => left[0] - right[0])
-        .map(([time, value]) => ({ time, value }))
-}
-
-export default function TokenMarketChart({
-    points = [],
-    height = 320,
-    compact = false,
-    mode = 'price',
-    change = null,
-}) {
+export default function TokenMarketChart({ points = [], height = 320, compact = false, mode = 'price', change = null, onHover }) {
     const rootRef = useRef(null)
+    const instance = useRef(null)
+    const hoverRef = useRef(onHover)
+    useEffect(() => { hoverRef.current = onHover }, [onHover])
+    const data = useMemo(() => toMarketChartPoints(points, mode), [mode, points])
 
     useEffect(() => {
         const root = rootRef.current
         if (!root) return undefined
-
-        const background = cssColor('--color-background', '#111111')
-        const text = cssColor('--color-muted', '#8f8f8f')
-        const border = cssColor('--color-border', '#2a2a2a')
-        const accent = cssColor('--color-accent', '#76a34a')
-        const success = cssColor('--color-success', '#22c55e')
-        const critical = cssColor('--color-danger', '#ff4d4f')
-        const directional = Number(change) < 0 ? critical : success
-        const priceColor = compact ? directional : accent
-
+        const muted = themeColor(root, '--color-muted', '#8f8f8f')
+        const border = themeColor(root, '--color-border', '#2a2a2a')
         const chart = createChart(root, {
-            width: root.clientWidth || 1,
+            autoSize: true,
             height,
-            layout: {
-                background: { type: ColorType.Solid, color: background },
-                textColor: text,
-                fontFamily: 'Ubuntu, system-ui, sans-serif',
-                fontSize: compact ? 10 : 12,
-            },
-            grid: {
-                vertLines: { visible: !compact, color: border },
-                horzLines: { visible: !compact, color: border },
-            },
+            layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: muted,
+                fontFamily: getComputedStyle(root).fontFamily, fontSize: 12, attributionLogo: false },
+            localization: { priceFormatter: (value) => marketUsd(value, mode === 'volume') },
+            grid: { vertLines: { visible: false }, horzLines: { visible: false } },
             leftPriceScale: { visible: false },
-            rightPriceScale: {
-                visible: !compact,
-                borderVisible: false,
-                scaleMargins: { top: 0.12, bottom: 0.12 },
-            },
-            timeScale: {
-                visible: !compact,
-                borderVisible: false,
-                timeVisible: true,
-                secondsVisible: false,
-                fixLeftEdge: true,
-                fixRightEdge: true,
-            },
-            crosshair: {
-                vertLine: { visible: !compact },
-                horzLine: { visible: !compact },
-            },
-            handleScroll: !compact,
-            handleScale: !compact,
+            rightPriceScale: { visible: !compact && root.clientWidth > 480, borderVisible: false,
+                scaleMargins: { top: compact ? 0.15 : 0.27, bottom: 0.12 } },
+            timeScale: { visible: !compact, borderVisible: false, timeVisible: true, secondsVisible: false,
+                fixLeftEdge: true, fixRightEdge: true },
+            crosshair: { mode: compact ? CrosshairMode.Hidden : CrosshairMode.Magnet,
+                vertLine: { color: border, labelVisible: false }, horzLine: { visible: false, labelVisible: false } },
+            handleScroll: compact ? false : { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+            handleScale: compact ? false : { mouseWheel: false, pinch: true, axisPressedMouseMove: false },
         })
-
-        const data = chartPoints(
-            points,
-            mode === 'volume' ? 'volumeUsd' : 'priceUsd',
-        )
-        if (data.length > 0) {
-            if (mode === 'volume') {
-                const series = chart.addSeries(HistogramSeries, {
-                    color: accent,
-                    priceFormat: { type: 'volume' },
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                })
-                series.setData(data)
-            } else if (compact) {
-                const series = chart.addSeries(LineSeries, {
-                    color: priceColor,
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                    crosshairMarkerVisible: false,
-                })
-                series.setData(data)
-            } else {
-                const series = chart.addSeries(AreaSeries, {
-                    lineColor: priceColor,
-                    lineWidth: 2,
-                    topColor: alphaColor(
-                        priceColor,
-                        0.28,
-                        'rgba(118, 163, 74, 0.28)',
-                    ),
-                    bottomColor: alphaColor(
-                        priceColor,
-                        0.02,
-                        'rgba(118, 163, 74, 0.02)',
-                    ),
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                })
-                series.setData(data)
-            }
-            chart.timeScale().fitContent()
+        const series = chart.addSeries(mode === 'volume' ? HistogramSeries : LineSeries, {
+            color: themeColor(root, '--color-accent', '#76a34a'), lineWidth: 2,
+            priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: !compact,
+        })
+        instance.current = { chart, series }
+        const hover = (event) => {
+            const value = event.seriesData.get(series)
+            hoverRef.current?.(event.point && value ? { time: value.time, value: value.value } : null)
         }
-
-        const resize = () => {
-            chart.applyOptions({
-                width: root.clientWidth || 1,
-                height,
-            })
-        }
-        const observer = typeof ResizeObserver === 'function'
-            ? new ResizeObserver(resize)
-            : null
-        observer?.observe(root)
-        window.addEventListener('resize', resize)
-
+        chart.subscribeCrosshairMove(hover)
+        const observer = new ResizeObserver(() => {
+            chart.applyOptions({ rightPriceScale: { visible: !compact && root.clientWidth > 480 } })
+        })
+        observer.observe(root)
         return () => {
-            observer?.disconnect()
-            window.removeEventListener('resize', resize)
+            observer.disconnect()
+            chart.unsubscribeCrosshairMove(hover)
             chart.remove()
+            instance.current = null
         }
-    }, [change, compact, height, mode, points])
+    }, [compact, height, mode])
+
+    useEffect(() => {
+        const current = instance.current
+        if (!current) return
+        const color = compact ? themeColor(rootRef.current, Number(change) < 0 ? '--color-danger' : '--color-success', Number(change) < 0 ? '#ff4d4f' : '#22c55e')
+            : themeColor(rootRef.current, '--color-accent', '#76a34a')
+        current.series.applyOptions({ color })
+        current.series.setData(data)
+        current.chart.timeScale().fitContent()
+        hoverRef.current?.(null)
+    }, [change, compact, data, height, mode])
 
     return (
-        <div
-            ref={rootRef}
-            className={compact
-                ? 'token-market-chart token-market-chart-compact'
-                : 'token-market-chart'}
-            style={{ height }}
-            aria-label={mode === 'volume' ? 'Token volume chart' : 'Token price chart'}
-        />
+        <div className={`token-chart-container${compact ? ' compact' : ''}`} style={{ height }}>
+            <div ref={rootRef} className="token-market-chart" style={{ height }} aria-label={mode === 'volume' ? 'Token volume chart' : 'Token price chart'} />
+            {data.length < 2 && <div className="token-chart-no-data" role="status">{mode === 'volume' ? 'Volume history unavailable' : 'Price history unavailable'}</div>}
+        </div>
     )
 }

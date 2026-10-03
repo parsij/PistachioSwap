@@ -58,6 +58,7 @@ export default function App() {
                 </>
             ) : tokenView ? (
                 <TokenDetailsPage
+                    onBrowseTokens={header.search?.onOpen}
                     token={page.card.buyPanel.token}
                     page={page}
                 />

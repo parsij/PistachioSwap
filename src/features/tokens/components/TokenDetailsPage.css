@@ -347,6 +347,7 @@
     }
 
     .token-details-chart-frame,
+    .token-details-chart-frame .token-chart-container,
     .token-details-chart-frame .token-market-chart {
         min-height: 300px;
         height: 300px !important;
@@ -387,3 +388,22 @@
         animation: none;
     }
 }
+
+.token-details-breadcrumb a { color: inherit; text-decoration: none; }
+.token-details-breadcrumb a:hover { color: var(--color-accent); }
+.token-details-page button:focus-visible, .token-details-breadcrumb a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.token-details-address:disabled { cursor: default; }
+.token-details-address:disabled svg { display: none; }
+.token-details-chart-caption, .token-details-price-copy time { color: var(--color-muted); font-size: 12px; }
+.token-details-chart-skeleton { position: absolute; inset: 0; border-radius: 12px; background: linear-gradient(110deg, var(--color-background) 25%, var(--color-panel) 50%, var(--color-background) 75%); background-size: 220% 100%; animation: token-details-skeleton 1.3s linear infinite; }
+.token-details-chart-error { inset: 70px 16px auto; padding: 12px; border-radius: 10px; background: var(--color-panel); }
+.token-chart-container { position: relative; width: 100%; min-width: 0; }
+.token-chart-no-data { position: absolute; inset: 0; display: grid; place-items: center; color: var(--color-muted); font-size: 13px; pointer-events: none; }
+.token-details-left { display: flex; flex-direction: column; gap: 48px; }
+.token-details-stats { margin-top: 0; }
+.token-details-right { align-self: flex-start; position: sticky; top: 100px; }
+@media (max-width: 1200px) { .token-details-right { position: static; align-self: center; } }
+@media (max-width: 720px) { .token-details-left { gap: 36px; } .token-details-price-copy { min-height: 92px; } }
+@media (prefers-reduced-motion: reduce) { .token-details-chart-skeleton { animation: none; } }
+.token-details-browse { padding: 0; background: transparent; color: inherit; font: inherit; }
+.token-details-browse:hover { color: var(--color-accent); }

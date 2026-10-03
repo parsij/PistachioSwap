@@ -53,7 +53,7 @@ async function copyText(text) {
 }
 
 function filterSelectableCatalogTokens(tokens) {
-    const eligible = new Set(filterEligibleMarketTokens(tokens).map(getTokenKey))
+    const eligible = new Set(filterEligibleMarketTokens(tokens, { requireMarketMetrics: false }).map(getTokenKey))
     return tokens.filter((token) =>
         eligible.has(getTokenKey(token)) || token?.source === 'catalog-supplement')
 }
@@ -123,13 +123,13 @@ export function useTokenSelectorState({
         tokens,
         walletTokensByKey,
     ])
-    const scopedFallbackMarketTokens = useMemo(() => deduplicateTokens(fallbackTokens)
+    const scopedFallbackMarketTokens = useMemo(() => deduplicateTokens([...commonTokens, ...fallbackTokens])
         .filter(tokenIsInScope)
-        .filter(isStaticFallbackMarketToken)
+        .filter((token) => isStaticFallbackMarketToken(token) || filterSelectableCatalogTokens([token]).length > 0)
         .filter((token) => !shouldHideCatalogWrappedNativeToken(token, { exactAddressSearch, walletTokensByKey }))
         .filter((token) => !walletTokensByKey.has(getTokenKey(token)))
         .filter((token) => !safeMarketTokens.some((marketToken) => getTokenKey(marketToken) === getTokenKey(token)))
-        .sort((left, right) => Number(left.rank ?? 9999) - Number(right.rank ?? 9999) || String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))), [exactAddressSearch, fallbackTokens, safeMarketTokens, tokenIsInScope, walletTokensByKey])
+        .sort((left, right) => Number(left.rank ?? 9999) - Number(right.rank ?? 9999) || String(getTokenKey(left)).localeCompare(String(getTokenKey(right)))), [commonTokens, exactAddressSearch, fallbackTokens, safeMarketTokens, tokenIsInScope, walletTokensByKey])
     const commonMarketTokens = normalizedSearch ? EMPTY_TOKENS : scopedFallbackMarketTokens
     const primaryWalletTokens = useMemo(() => sortWalletTokens(walletPartitions.primaryTokens.filter((token) => {
         const displayValue = resolveWalletUsdValue(token)

@@ -4,7 +4,7 @@ import {
     LineChart,
     Share2,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import PistachioWalletController from '../../passkey/components/PistachioWalletController.jsx'
 import GasAssistDialogs from '../../gas-assist/components/GasAssistDialogs.jsx'
@@ -16,7 +16,8 @@ import PendingWalletOperation from '../../wallet/components/wallet/PendingWallet
 import TokenSelectorOverlay from './TokenSelectorOverlay.jsx'
 import TokenIcon from './TokenIcon.jsx'
 import TokenMarketChart from './TokenMarketChart.jsx'
-import { fetchTokenMarketDetails } from '../services/tokenDetails.js'
+import { useTokenMarketSnapshot } from '../hooks/useTokenMarketSnapshot.js'
+import { marketNumber, marketUsd } from '../services/marketPresentation.js'
 import {
     getTokenDisplayName,
     getTokenDisplaySymbol,
@@ -30,36 +31,9 @@ const CHART_MODES = [
     { id: 'volume', label: 'Volume' },
 ]
 
-function finite(value) {
-    const result = Number(value)
-    return Number.isFinite(result) ? result : null
-}
-
-function formatPrice(value) {
-    const number = finite(value)
-    if (number === null) return '—'
-    if (Math.abs(number) >= 1) {
-        return number.toLocaleString(undefined, {
-            style: 'currency',
-            currency: 'USD',
-            maximumFractionDigits: 2,
-        })
-    }
-    return '$' + number.toLocaleString(undefined, {
-        maximumSignificantDigits: 6,
-    })
-}
-
-function formatCompactUsd(value) {
-    const number = finite(value)
-    if (number === null) return '—'
-    return number.toLocaleString(undefined, {
-        style: 'currency',
-        currency: 'USD',
-        notation: Math.abs(number) >= 10_000 ? 'compact' : 'standard',
-        maximumFractionDigits: Math.abs(number) >= 10_000 ? 1 : 2,
-    })
-}
+const finite = marketNumber
+const formatPrice = marketUsd
+const formatCompactUsd = (value) => marketUsd(value, true)
 
 function shortAddress(value) {
     const address = String(value ?? '')
@@ -70,107 +44,34 @@ function shortAddress(value) {
 
 function TokenStat({ label, value }) {
     return (
-        <div className="token-details-stat">
+        <div className="token-details-stat" title={label.startsWith("52W") ? "Based on available historical price samples over the last year" : undefined}>
             <span>{label}</span>
             <strong>{formatCompactUsd(value)}</strong>
         </div>
     )
 }
 
-export default function TokenDetailsPage({ token, page }) {
+export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
     const [period, setPeriod] = useState('1D')
     const [chartMode, setChartMode] = useState('price')
-    const [market, setMarket] = useState(null)
-    const [stats, setStats] = useState(null)
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState(null)
+    const { market, stats, loading, error } = useTokenMarketSnapshot(token, period, true, true)
     const [copied, setCopied] = useState(false)
-    const yearStatsLoaded = useRef(false)
-
-    useEffect(() => {
-        if (!token) {
-            setMarket(null)
-            setStats(null)
-            setError(null)
-            return undefined
-        }
-
-        const controller = new AbortController()
-        setLoading(true)
-        setError(null)
-        fetchTokenMarketDetails(token, {
-            period,
-            includeYearStats: !yearStatsLoaded.current,
-            signal: controller.signal,
-        }).then((payload) => {
-            if (controller.signal.aborted) return
-            setMarket(payload)
-            if (payload.stats) {
-                setStats((current) => ({
-                    tvlUsd:
-                        payload.stats.tvlUsd ??
-                        current?.tvlUsd ??
-                        null,
-                    marketCapUsd:
-                        payload.stats.marketCapUsd ??
-                        current?.marketCapUsd ??
-                        null,
-                    fdvUsd:
-                        payload.stats.fdvUsd ??
-                        current?.fdvUsd ??
-                        null,
-                    volume24hUsd:
-                        payload.stats.volume24hUsd ??
-                        current?.volume24hUsd ??
-                        null,
-                    high52wUsd:
-                        payload.stats.high52wUsd ??
-                        current?.high52wUsd ??
-                        null,
-                    low52wUsd:
-                        payload.stats.low52wUsd ??
-                        current?.low52wUsd ??
-                        null,
-                }))
-                if (
-                    payload.stats.high52wUsd != null ||
-                    payload.stats.low52wUsd != null
-                ) {
-                    yearStatsLoaded.current = true
-                }
-            }
-        }).catch((marketError) => {
-            if (!controller.signal.aborted) {
-                setError(
-                    marketError instanceof Error
-                        ? marketError.message
-                        : 'Token market data is unavailable.',
-                )
-            }
-        }).finally(() => {
-            if (!controller.signal.aborted) setLoading(false)
-        })
-
-        return () => controller.abort()
-    }, [period, token])
+    const [hovered, setHovered] = useState(null)
 
     useEffect(() => {
         setPeriod('1D')
         setChartMode('price')
-        setMarket(null)
-        setStats(null)
-        setError(null)
-        yearStatsLoaded.current = false
+        setHovered(null)
     }, [token?.chainId, token?.address])
 
     const displayPrice =
+        (chartMode === 'price' ? hovered?.value : null) ??
         market?.currentPriceUsd ??
         token?.priceUSD ??
         token?.marketPriceUSD ??
         token?.trustedPriceUSD
-    const displayChange =
-        market?.periodChangePercent ??
-        token?.priceChange24hPercent
+    const displayChange = market?.periodChangePercent ??
+        (period === '1D' ? token?.priceChange24hPercent : null)
     const displayChangeUsd = market?.periodChangeUsd
     const changeNumber = finite(displayChange)
     const changeClass = changeNumber !== null && changeNumber < 0
@@ -194,7 +95,7 @@ export default function TokenDetailsPage({ token, page }) {
 
     async function copyAddress() {
         const address = String(token?.address ?? '')
-        if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return
+        if (token?.isNative || /^0x0{40}$/i.test(address) || !/^0x[a-fA-F0-9]{40}$/.test(address)) return
         try {
             await navigator.clipboard.writeText(address)
             setCopied(true)
@@ -239,7 +140,7 @@ export default function TokenDetailsPage({ token, page }) {
             />
             <section className="token-details-page">
                 <nav className="token-details-breadcrumb" aria-label="Token breadcrumb">
-                    <span>Tokens</span>
+                    <button type="button" className="token-details-browse" onClick={onBrowseTokens}>Tokens</button>
                     <span aria-hidden="true">›</span>
                     <strong>{symbol}</strong>
                 </nav>
@@ -254,11 +155,12 @@ export default function TokenDetailsPage({ token, page }) {
                             </h2>
                             <button
                                 type="button"
+                                disabled={token?.isNative === true || /^0x0{40}$/i.test(token.address)}
                                 className="token-details-address"
                                 onClick={copyAddress}
                                 aria-label="Copy token address"
                             >
-                                <span>{shortAddress(token.address)}</span>
+                                <span>{token?.isNative || /^0x0{40}$/i.test(token.address) ? "Native token" : shortAddress(token.address)}</span>
                                 {copied
                                     ? <Check aria-hidden="true" />
                                     : <Copy aria-hidden="true" />}
@@ -281,16 +183,19 @@ export default function TokenDetailsPage({ token, page }) {
                     <main className="token-details-left">
                         <section className="token-details-chart-section">
                             <div className="token-details-price-copy">
-                                <strong>{formatPrice(displayPrice)}</strong>
-                                {changeNumber !== null && (
+                                <strong>{chartMode === 'volume' ? formatCompactUsd(hovered?.value ?? market?.chart?.points?.at(-1)?.volumeUsd) : formatPrice(displayPrice)}</strong>
+                                {chartMode === 'volume' && <small className="token-details-chart-caption">Reported 24-hour volume</small>}
+                                {chartMode === 'price' && changeNumber !== null && (
                                     <span className={changeClass}>
-                                        {changeNumber > 0 ? '▲' : '▼'}{' '}
+                                        {changeNumber < 0 ? '▼' : '▲'}{' '}
                                         {displayChangeUsd != null
                                             ? `${formatPrice(Math.abs(displayChangeUsd))} `
                                             : ''}
                                         ({Math.abs(changeNumber).toFixed(2)}%) {period}
                                     </span>
                                 )}
+                                {chartMode === 'price' && changeNumber === null && <span>Change unavailable · {period === 'ALL' ? 'All time' : period}</span>}
+                                {hovered && <time dateTime={new Date(hovered.time * 1000).toISOString()}>{new Date(hovered.time * 1000).toLocaleString()}</time>}
                             </div>
 
                             <div className={loading
@@ -300,12 +205,14 @@ export default function TokenDetailsPage({ token, page }) {
                                 <TokenMarketChart
                                     points={market?.chart?.points ?? []}
                                     height={360}
+                                    onHover={setHovered}
                                     mode={chartMode}
                                     change={displayChange}
                                 />
+                                {loading && <div className="token-details-chart-skeleton" role="status" aria-label="Loading market history" />}
                                 {error && (market?.chart?.points?.length ?? 0) === 0 && (
                                     <div className="token-details-chart-error">
-                                        {error}
+                                        Market data could not be refreshed.
                                     </div>
                                 )}
                             </div>
@@ -322,7 +229,8 @@ export default function TokenDetailsPage({ token, page }) {
                                             key={option.id}
                                             type="button"
                                             className={chartMode === option.id ? 'active' : ''}
-                                            onClick={() => setChartMode(option.id)}
+                                            aria-pressed={chartMode === option.id}
+                                            onClick={() => { setHovered(null); setChartMode(option.id) }}
                                         >
                                             {option.label}
                                         </button>
@@ -334,7 +242,8 @@ export default function TokenDetailsPage({ token, page }) {
                                             key={option}
                                             type="button"
                                             className={period === option ? 'active' : ''}
-                                            onClick={() => setPeriod(option)}
+                                            aria-pressed={period === option}
+                                            onClick={() => { setHovered(null); setPeriod(option) }}
                                         >
                                             {option === 'ALL' ? 'All' : option}
                                         </button>
@@ -343,10 +252,10 @@ export default function TokenDetailsPage({ token, page }) {
                             </div>
                         </section>
 
-                        <section className="token-details-stats">
+                        <section className="token-details-stats" aria-busy={loading && !stats}>
                             <h3>Stats</h3>
                             <div className="token-details-stats-grid">
-                                <TokenStat label="TVL" value={stats?.tvlUsd ?? token?.liquidityUsd} />
+                                <TokenStat label={stats?.tvlUsd != null ? "TVL" : token?.liquidityUsd != null ? "Pool liquidity" : "TVL"} value={stats?.tvlUsd ?? token?.liquidityUsd} />
                                 <TokenStat label="Market cap" value={stats?.marketCapUsd} />
                                 <TokenStat label="FDV" value={stats?.fdvUsd ?? token?.fdvUsd} />
                                 <TokenStat label="1 day volume" value={stats?.volume24hUsd ?? token?.volume24hUsd} />
