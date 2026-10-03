@@ -41,18 +41,18 @@ describe('adaptive exchange surfaces', () => {
             /\.wallet-account-dialog\.uni-wallet-dialog\s*\{[\s\S]*right:\s*12px[\s\S]*width:\s*min\(368px/,
         )
         expect(source).toMatch(
-            /\.wallet-account-dialog\.uni-wallet-dialog\s*\{[\s\S]*top:\s*var\(--size-header-height\)/,
+            /\.wallet-account-dialog\.uni-wallet-dialog\s*\{[\s\S]*top:\s*var\(--size-header-height,\s*72px\)/,
         )
         expect(source).toMatch(
             /\.wallet-account-dialog\.uni-wallet-dialog\s*\{[\s\S]*transform:\s*none/,
         )
     })
 
-    it('keeps the portfolio at the same 1200/360 geometry as the reference layout', () => {
+    it('keeps a wide portfolio chart beside the action rail', () => {
         const source = css('src/features/portfolio/components/PortfolioPage.css')
 
         expect(source).toMatch(
-            /\.uni-portfolio-page\s*\{[\s\S]*width:\s*min\(1200px/,
+            /\.uni-portfolio-page\s*\{[\s\S]*width:\s*min\(1280px/,
         )
         expect(source).toMatch(
             /\.uni-portfolio-right-rail\s*\{[\s\S]*width:\s*360px[\s\S]*padding-top:\s*92px/,

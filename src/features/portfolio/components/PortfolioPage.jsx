@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 
 import TokenIcon from '../../tokens/components/TokenIcon.jsx'
+import { AllChainsIcon } from '../../tokens/components/TokenSelectorIcons.jsx'
 import { WalletAvatar } from '../../wallet/components/wallet/WalletAccountButton.jsx'
 import { useWalletActivity } from '../../wallet/hooks/useWalletActivity.js'
 import { filterVisibleActivity } from '../../wallet/services/visibleWalletActivity.js'
@@ -253,10 +254,21 @@ function useOutsideDismiss(open, ref, close) {
     }, [close, open, ref])
 }
 
-function NetworkFilter({ value, onChange, chainIds }) {
+function NetworkFilter({ value, onChange }) {
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
     useOutsideDismiss(open, ref, () => setOpen(false))
+    useEffect(() => {
+        if (!open) return undefined
+        const dismiss = (event) => {
+            if (event.key === 'Escape') {
+                setOpen(false)
+                ref.current?.querySelector('button')?.focus()
+            }
+        }
+        document.addEventListener('keydown', dismiss)
+        return () => document.removeEventListener('keydown', dismiss)
+    }, [open])
     const selected = value === 'all' ? null : getCuratedEvmChain(value)
 
     return (
@@ -264,6 +276,7 @@ function NetworkFilter({ value, onChange, chainIds }) {
             <button
                 type="button"
                 className="uni-portfolio-control-button uni-portfolio-network-trigger"
+                aria-label={selected?.name ?? 'All networks'}
                 aria-haspopup="listbox"
                 aria-expanded={open}
                 onClick={() => setOpen((current) => !current)}
@@ -274,16 +287,7 @@ function NetworkFilter({ value, onChange, chainIds }) {
                             <img src={getCuratedEvmChainLogoUri(selected.id)} alt="" />
                         )
                     ) : (
-                        chainIds.slice(0, 4).map((chainId, index) => (
-                            getCuratedEvmChainLogoUri(chainId) && (
-                                <img
-                                    key={chainId}
-                                    src={getCuratedEvmChainLogoUri(chainId)}
-                                    alt=""
-                                    style={{ zIndex: 5 - index }}
-                                />
-                            )
-                        ))
+                        <AllChainsIcon />
                     )}
                 </span>
                 <span>{selected?.name ?? 'All networks'}</span>
@@ -300,7 +304,7 @@ function NetworkFilter({ value, onChange, chainIds }) {
                             setOpen(false)
                         }}
                     >
-                        <span className="uni-portfolio-network-all">◎</span>
+                        <AllChainsIcon />
                         <span>All networks</span>
                     </button>
                     {CURATED_EVM_CHAINS.map((chain) => (
@@ -596,6 +600,7 @@ function PortfolioChart({ points, currentValue, period, onPeriodChange }) {
                         key={item.id}
                         type="button"
                         className={period === item.id ? 'active' : ''}
+                        aria-pressed={period === item.id}
                         onClick={() => onPeriodChange(item.id)}
                     >
                         {item.label}
@@ -1029,11 +1034,6 @@ export default function PortfolioPage({ wallet }) {
             .filter((item) => chainFilter === 'all' || Number(item.chainId) === Number(chainFilter)),
         [activeWalletTokens, chainFilter, walletActivity],
     )
-    const chainIds = useMemo(
-        () => [...new Set(trustedAssets.map((token) => Number(token.chainId)))]
-            .filter((chainId) => getCuratedEvmChain(chainId)),
-        [trustedAssets],
-    )
     const filteredTokens = useMemo(() => {
         const query = tokenSearch.trim().toLowerCase()
         if (!query) return assets
@@ -1168,6 +1168,7 @@ export default function PortfolioPage({ wallet }) {
                             type="button"
                             className="uni-portfolio-control-button"
                             onClick={sharePortfolio}
+                            aria-label="Share"
                         >
                             <Share2 aria-hidden="true" />
                             <span>Share</span>
@@ -1175,7 +1176,6 @@ export default function PortfolioPage({ wallet }) {
                         <NetworkFilter
                             value={chainFilter}
                             onChange={changeNetwork}
-                            chainIds={chainIds}
                         />
                     </div>
                 </div>

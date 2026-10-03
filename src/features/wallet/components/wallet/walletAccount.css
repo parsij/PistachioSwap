@@ -1,4 +1,4 @@
-.uni-wallet-overlay {
+.wallet-dialog-overlay.uni-wallet-overlay {
     background: transparent;
     backdrop-filter: none;
     pointer-events: none;
@@ -14,12 +14,12 @@
     --uni-wallet-text: #f7f7f7;
     --uni-wallet-muted: #9c999b;
 
-    top: var(--size-header-height);
+    top: var(--size-header-height, 72px);
     right: 12px;
     left: auto;
     width: min(368px, calc(100vw - 24px));
     height: auto;
-    max-height: calc(100dvh - var(--size-header-height) - 16px);
+    max-height: calc(100dvh - var(--size-header-height, 72px) - 16px);
     overflow: hidden;
     padding: 0;
     border: 1px solid var(--uni-wallet-border);

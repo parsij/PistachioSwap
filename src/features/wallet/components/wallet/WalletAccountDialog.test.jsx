@@ -171,6 +171,14 @@ describe('WalletAccountDialog trust filtering', () => {
         vi.clearAllMocks()
     })
 
+    it('supplies positioning and typography variables to the portaled account dialog', () => {
+        renderDialog()
+        const dialog = screen.getByRole('dialog', { name: 'Wallet' })
+        expect(dialog.style.getPropertyValue('--size-header-height')).not.toBe('')
+        expect(dialog.style.getPropertyValue('--font-family')).not.toBe('')
+        expect(dialog.querySelector('.uni-wallet-shell').style.opacity).not.toBe('0')
+    })
+
     it('renders trusted portfolio value and recent activity without scam-token leaks', () => {
         mocks.activity = [
             activity('received', scam, '666', '1'),
