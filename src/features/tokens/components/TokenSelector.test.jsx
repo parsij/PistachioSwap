@@ -223,23 +223,26 @@ describe('TokenSelector mobile sheet drag', () => {
             'utf8',
         )
         expect(css).toMatch(
-            /\.ps-token-selector-handle\s*\{[\s\S]*?width:\s*min\(220px, 60vw\)[\s\S]*?height:\s*48px/,
+            /\.ps-token-selector-handle\s*\{[\s\S]*?width:\s*min\(320px, 82vw\)[\s\S]*?height:\s*52px/,
         )
         expect(css).toMatch(
             /\.ps-token-selector-handle > span\s*\{[\s\S]*?width:\s*48px[\s\S]*?height:\s*5px/,
         )
     })
 
-    it('uses direct downward drag travel instead of elastic resistance', () => {
+    it('captures the pointer and tracks direct vertical drag on the handle', () => {
         const source = readFileSync(
             resolve('src/features/tokens/components/TokenSelector.jsx'),
             'utf8',
         )
 
-        expect(source).toContain('bottom: compact ? 1200 : 0')
-        expect(source).toContain('dragElastic={0}')
-        expect(source).toContain('bounceStiffness: 520')
-        expect(source).not.toContain("dragElastic={{ top: 0, bottom: 0.72 }}")
+        expect(source).toContain('setPointerCapture')
+        expect(source).toContain('releasePointerCapture')
+        expect(source).toContain('onPointerMove={moveSheetDrag}')
+        expect(source).toContain('onPointerCancel=')
+        expect(source).toContain('dragY.set(nextY)')
+        expect(source).not.toContain('useDragControls')
+        expect(source).not.toContain('dragElastic=')
     })
 })
 
