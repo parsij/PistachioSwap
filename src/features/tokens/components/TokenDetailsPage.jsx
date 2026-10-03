@@ -346,7 +346,7 @@ export default function TokenDetailsPage({ token, page }) {
                         <section className="token-details-stats">
                             <h3>Stats</h3>
                             <div className="token-details-stats-grid">
-                                <TokenStat label="TVL" value={stats?.tvlUsd} />
+                                <TokenStat label="TVL" value={stats?.tvlUsd ?? token?.liquidityUsd} />
                                 <TokenStat label="Market cap" value={stats?.marketCapUsd} />
                                 <TokenStat label="FDV" value={stats?.fdvUsd ?? token?.fdvUsd} />
                                 <TokenStat label="1 day volume" value={stats?.volume24hUsd ?? token?.volume24hUsd} />
