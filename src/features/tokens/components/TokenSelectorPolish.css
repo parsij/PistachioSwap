@@ -261,9 +261,9 @@
         position: relative;
         z-index: 4;
         display: grid;
-        width: min(220px, 60vw);
-        height: 48px;
-        min-height: 48px;
+        width: min(320px, 82vw);
+        height: 52px;
+        min-height: 52px;
         flex: 0 0 auto;
         place-items: center;
         margin: 0 auto -28px;
@@ -399,7 +399,8 @@
     .ps-token-selector-close,
     .ps-token-search,
     .ps-network-trigger,
-    .ps-token-section-action {
+    .ps-token-section-action,
+    .ps-token-selector-handle > span {
         transition: none;
     }
 }

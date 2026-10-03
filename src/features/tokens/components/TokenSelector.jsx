@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, useDragControls, useReducedMotion } from 'motion/react'
+import { animate, motion, useMotionValue, useReducedMotion } from 'motion/react'
 
 import { TokenSearchResults, TokenSelectorSections as Sections } from './TokenSelectorSections.jsx'
 import { ChainSelector } from './TokenSelectorPrimitives.jsx'
@@ -94,9 +94,30 @@ function GlobalTokenSelector({
     const reducedMotion = useReducedMotion()
     const motionConfig = swapUiConfig.motion.dialog
     const compact = isCompactSelectorViewport()
-    const dragControls = useDragControls()
+    const dragY = useMotionValue(compact && !reducedMotion ? 72 : 0)
+    const dragSession = useRef(null)
+    const settleAnimation = useRef(null)
     const initialScopeApplied = useRef(false)
     const state = useTokenSelectorState({ chainId, tokens, commonTokens, fallbackTokens, walletTokens, search, loading, error, catalogNotice, catalogDiagnostics, currentToken, oppositeToken, onSelect, onClose, hideUnknownTokens, hideSmallBalances })
+
+    useEffect(() => {
+        settleAnimation.current?.stop?.()
+        settleAnimation.current = null
+
+        if (!compact || reducedMotion) {
+            dragY.set(0)
+            return undefined
+        }
+
+        const controls = animate(dragY, 0, {
+            type: 'spring',
+            stiffness: 360,
+            damping: 34,
+        })
+        settleAnimation.current = controls
+
+        return () => controls.stop()
+    }, [compact, dragY, reducedMotion])
 
     useLayoutEffect(() => {
         if (initialScopeApplied.current || !onChainChange) return
@@ -131,14 +152,72 @@ function GlobalTokenSelector({
     }
     const dialogScale = reducedMotion || compact ? 1 : motionConfig.scale
     const dialogOffset = reducedMotion ? 0 : compact ? 72 : motionConfig.offsetY
+    const settleSheet = () => {
+        settleAnimation.current?.stop?.()
+        if (reducedMotion) {
+            dragY.set(0)
+            return
+        }
+        settleAnimation.current = animate(dragY, 0, {
+            type: 'spring',
+            stiffness: 520,
+            damping: 42,
+        })
+    }
     const startSheetDrag = (event) => {
         event.stopPropagation()
         if (!compact) return
         if (event.button !== undefined && event.button !== 0) return
-        dragControls.start(event)
+
+        event.preventDefault()
+        settleAnimation.current?.stop?.()
+        settleAnimation.current = null
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+
+        dragSession.current = {
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            startOffsetY: Number(dragY.get()) || 0,
+            lastY: event.clientY,
+            lastTime: event.timeStamp,
+            velocityY: 0,
+        }
     }
-    const finishSheetDrag = (_event, info) => {
-        if (compact && shouldDismissTokenSelectorDrag(info)) onClose()
+    const moveSheetDrag = (event) => {
+        const session = dragSession.current
+        if (!session || event.pointerId !== session.pointerId) return
+
+        event.preventDefault()
+        const nextY = Math.max(
+            0,
+            session.startOffsetY + event.clientY - session.startY,
+        )
+        const elapsed = event.timeStamp - session.lastTime
+        if (elapsed > 0) {
+            session.velocityY = ((event.clientY - session.lastY) / elapsed) * 1000
+        }
+        session.lastY = event.clientY
+        session.lastTime = event.timeStamp
+        dragY.set(nextY)
+    }
+    const finishSheetDrag = (event, { cancelled = false } = {}) => {
+        const session = dragSession.current
+        if (!session || event.pointerId !== session.pointerId) return
+
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId)
+        }
+        dragSession.current = null
+
+        const info = {
+            offset: { y: Number(dragY.get()) || 0 },
+            velocity: { y: session.velocityY },
+        }
+        if (!cancelled && shouldDismissTokenSelectorDrag(info)) {
+            onClose()
+            return
+        }
+        settleSheet()
     }
 
     return <motion.div className="ps-token-selector-backdrop" data-side={side} data-compact={compact ? 'true' : 'false'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onPointerDown={onClose}>
@@ -147,19 +226,17 @@ function GlobalTokenSelector({
             aria-modal="true"
             aria-label={`Select a token for ${side}`}
             className="ps-token-selector-dialog"
-            initial={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }}
+            initial={compact
+                ? { opacity: reducedMotion ? 1 : 0, scale: 1 }
+                : { opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }}
+            animate={compact
+                ? { opacity: 1, scale: 1 }
+                : { opacity: 1, scale: 1, y: 0 }}
+            exit={compact
+                ? { opacity: reducedMotion ? 1 : 0, scale: 1 }
+                : { opacity: reducedMotion ? 1 : 0, scale: dialogScale, y: dialogOffset }}
             transition={{ type: 'spring', stiffness: compact ? 360 : motionConfig.stiffness, damping: compact ? 34 : motionConfig.damping }}
-            drag={compact ? 'y' : false}
-            dragControls={dragControls}
-            dragListener={false}
-            dragConstraints={{ top: 0, bottom: compact ? 1200 : 0 }}
-            dragElastic={0}
-            dragMomentum={false}
-            dragSnapToOrigin
-            dragTransition={{ bounceStiffness: 520, bounceDamping: 42 }}
-            onDragEnd={finishSheetDrag}
+            style={compact ? { y: dragY } : undefined}
             onPointerDown={(event) => event.stopPropagation()}
         >
             <button
@@ -167,6 +244,9 @@ function GlobalTokenSelector({
                 className="ps-token-selector-handle"
                 aria-label="Drag token selector"
                 onPointerDown={startSheetDrag}
+                onPointerMove={moveSheetDrag}
+                onPointerUp={finishSheetDrag}
+                onPointerCancel={(event) => finishSheetDrag(event, { cancelled: true })}
             >
                 <span aria-hidden="true" />
             </button>

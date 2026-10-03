@@ -3,7 +3,8 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { deleteWalletHistoryCache } from './walletHistoryCache.js'
+import { deleteWalletHistoryCache, writeWalletHistoryCache } from './walletHistoryCache.js'
+import { WALLET_HISTORY_CLASSIFIER_VERSION } from './walletHistoryClassifier.js'
 import {
     fetchWalletHistory,
     SUPPORTED_WALLET_HISTORY_CHAIN_IDS,
@@ -78,6 +79,56 @@ describe('direct browser wallet history', () => {
         })
         expect(second.items).toEqual([])
         expect(fetchMock).toHaveBeenCalledTimes(callsAfterBootstrap)
+    })
+
+    it('invalidates cached activity from an older classifier version', async () => {
+        await writeWalletHistoryCache({
+            walletAddress: wallet,
+            chainId: 56,
+            activities: [{
+                id: 'stale-send',
+                hash: `0x${'ab'.repeat(32)}`,
+                type: 'sent',
+                chainId: 56,
+                timestamp: '2026-09-01T00:00:00.000Z',
+                blockNumber: 900,
+            }],
+            lastScannedBlock: 900,
+            lastRefreshAt: Date.now(),
+            classifierVersion: WALLET_HISTORY_CLASSIFIER_VERSION - 1,
+        })
+
+        const fromBlocks = []
+        const fetchMock = vi.fn(async (_url, options) => {
+            const request = JSON.parse(options.body)
+            if (request.method === 'eth_blockNumber') {
+                return jsonResponse({
+                    jsonrpc: '2.0',
+                    id: request.id,
+                    result: '0x3e8',
+                })
+            }
+            if (request.method === 'alchemy_getAssetTransfers') {
+                fromBlocks.push(request.params[0].fromBlock)
+                return jsonResponse({
+                    jsonrpc: '2.0',
+                    id: request.id,
+                    result: { transfers: [] },
+                })
+            }
+            throw new Error(`Unexpected direct request ${request.method}`)
+        })
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await fetchWalletHistory({
+            walletAddress: wallet,
+            chainIds: [56],
+        })
+
+        expect(result.items).toEqual([])
+        expect(fromBlocks).toEqual([
+            '0x0', '0x0', '0x0', '0x0', '0x0', '0x0',
+        ])
     })
 
     it('refreshes only from the cached checkpoint minus the reorg buffer', async () => {

@@ -1,17 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TokenSelector from './TokenSelector.jsx'
 
-const mocks = vi.hoisted(() => ({
-    fetchMarketPools: vi.fn(),
-}))
-
-vi.mock('../services/marketPools.js', () => ({
-    fetchMarketPools: mocks.fetchMarketPools,
-}))
 
 const TOKEN = {
     id: '56:0x0000000000000000000000000000000000000001',
@@ -61,12 +57,6 @@ function renderSearch(overrides = {}) {
 beforeEach(() => {
     window.localStorage.clear()
     window.history.replaceState({}, '', '/swap/?view=portfolio')
-    mocks.fetchMarketPools.mockReset()
-    mocks.fetchMarketPools.mockResolvedValue({
-        pools: [],
-        partial: false,
-        generatedAt: 1,
-    })
 })
 
 afterEach(() => {
@@ -83,63 +73,25 @@ describe('GlobalSearchModal', () => {
         expect(input.getAttribute('placeholder')).toBe('Search by name, symbol, or address')
         expect(screen.getByRole('button', { name: 'All' })).toBeTruthy()
         expect(screen.getByRole('button', { name: 'Tokens' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: 'Pools' })).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Pools' })).toBeNull()
         expect(screen.getByRole('button', { name: 'Wallets' })).toBeTruthy()
         expect(screen.queryByRole('button', { name: 'Auctions' })).toBeNull()
-        expect(screen.getByText('Tokens by 24H volume')).toBeTruthy()
-        expect(screen.getByText('Pools by 24H volume')).toBeTruthy()
+        expect(screen.getAllByText('Tokens').length).toBeGreaterThanOrEqual(2)
+        expect(screen.queryByText('Pools by 24H volume')).toBeNull()
         expect(screen.queryByText('Your tokens')).toBeNull()
         expect(document.querySelector('.global-search-footer')).toBeNull()
         expect(document.querySelector('.global-search-modal')).toBeTruthy()
         expect(document.querySelector('.ps-token-selector-dialog')).toBeNull()
     })
 
-    it('renders real top-pool rows in the no-query All view', async () => {
-        mocks.fetchMarketPools.mockResolvedValue({
-            pools: [{
-                id: 'bsc_0x0000000000000000000000000000000000000abc',
-                chainId: 56,
-                networkId: 'bsc',
-                address: '0x0000000000000000000000000000000000000abc',
-                name: 'WBNB/USDT',
-                protocol: 'v3',
-                feePercent: '0.01',
-                volume24hUsd: 1000000,
-                liquidityUsd: 2000000,
-                baseToken: {
-                    chainId: 56,
-                    address: '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c',
-                    name: 'Wrapped BNB',
-                    symbol: 'WBNB',
-                    decimals: 18,
-                    logoURI: null,
-                },
-                quoteToken: {
-                    chainId: 56,
-                    address: '0x55d398326f99059ff775485246999027b3197955',
-                    name: 'Tether USD',
-                    symbol: 'USDT',
-                    decimals: 18,
-                    logoURI: null,
-                },
-            }],
-            partial: false,
-            generatedAt: 1,
-        })
+    it('uses an opaque search backdrop without blur', () => {
+        const css = readFileSync(
+            resolve('src/features/tokens/components/GlobalSearchModal.css'),
+            'utf8',
+        )
 
-        renderSearch()
-
-        await waitFor(() => {
-            expect(screen.getByText('WBNB/USDT')).toBeTruthy()
-        })
-        expect(screen.getByText('v3')).toBeTruthy()
-        expect(screen.getByText('0.01%')).toBeTruthy()
-        expect(mocks.fetchMarketPools).toHaveBeenCalledWith(
-            expect.objectContaining({
-                chainId: 'all',
-                query: '',
-                limit: 3,
-            }),
+        expect(css).toMatch(
+            /\.global-search-backdrop\s*\{[\s\S]*?background:\s*#0f0f0f;[\s\S]*?backdrop-filter:\s*none;/,
         )
     })
 

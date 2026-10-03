@@ -5,7 +5,9 @@
     display: grid;
     place-items: center;
     padding: 16px;
-    background: rgb(0 0 0 / 46%);
+    background: #0f0f0f;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 
 .global-search-modal {
@@ -286,92 +288,6 @@
     color: var(--color-muted);
 }
 
-.global-search-pool-row {
-    display: grid;
-    min-height: 66px;
-    grid-template-columns: 40px minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
-    padding: 8px 20px;
-    color: var(--color-text);
-}
-
-.global-search-pool-icons {
-    position: relative;
-    display: block;
-    width: 40px;
-    height: 40px;
-}
-
-.global-search-pool-icons > * {
-    position: absolute;
-    width: 31px !important;
-    height: 31px !important;
-}
-
-.global-search-pool-icons > *:first-child {
-    top: 0;
-    left: 0;
-    z-index: 2;
-}
-
-.global-search-pool-icons > *:last-child {
-    right: 0;
-    bottom: 0;
-    z-index: 1;
-}
-
-.global-search-pool-copy {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.global-search-pool-copy > strong {
-    overflow: hidden;
-    font-size: 15px;
-    font-weight: 550;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.global-search-pool-copy > span {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 5px;
-}
-
-.global-search-pool-copy small {
-    padding: 2px 5px;
-    border-radius: 4px;
-    background: var(--color-active-tab);
-    color: var(--color-muted);
-    font-size: 10px;
-    font-weight: 600;
-    font-style: normal;
-}
-
-.global-search-pool-copy em {
-    overflow: hidden;
-    color: var(--color-muted);
-    font-size: 12px;
-    font-style: normal;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.global-search-loading.pools span {
-    height: 66px;
-}
-
-.global-search-pool-unavailable {
-    min-height: 52px;
-    padding: 14px 20px;
-    color: var(--color-subtle-muted);
-    font-size: 13px;
-}
 
 .global-search-empty {
     display: grid;
