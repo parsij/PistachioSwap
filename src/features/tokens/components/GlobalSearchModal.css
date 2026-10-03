@@ -197,7 +197,7 @@
 .global-search-result-row {
     display: grid;
     min-height: 66px;
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr) max-content;
     align-items: center;
     gap: 12px;
     padding: 8px 20px;
@@ -230,6 +230,34 @@
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.global-search-result-market {
+    display: flex;
+    min-width: 88px;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 4px;
+    text-align: right;
+}
+
+.global-search-result-market strong {
+    color: var(--color-text);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.global-search-result-market span {
+    font-size: 12px;
+    font-weight: 550;
+}
+
+.global-search-result-market .positive {
+    color: var(--color-success, #22c55e);
+}
+
+.global-search-result-market .negative {
+    color: var(--color-danger, #ff4d4f);
 }
 
 .global-search-wallet-row {
@@ -430,6 +458,10 @@
     .global-search-result-row,
     .global-search-wallet-row {
         padding-inline: 16px;
+    }
+
+    .global-search-result-market {
+        min-width: 76px;
     }
 
     .global-search-section-heading {
