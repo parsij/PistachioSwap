@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
     write: vi.fn(),
     switchNetwork: vi.fn(),
     runtimeChainId: 56,
+    wagmiChainId: 56,
+    pendingChainId: null,
+    postSwitchReads: 0,
+    config: {},
     publicClient: {
         getGasPrice: vi.fn().mockResolvedValue(3_000_000_000n),
         estimateGas: vi.fn().mockResolvedValue(21_000n),
@@ -23,9 +27,23 @@ vi.mock('#wallet-runtime', () => ({
         chainId: mocks.runtimeChainId,
         switchNetwork: mocks.switchNetwork,
     }),
+    useConfig: () => mocks.config,
     usePublicClient: () => mocks.publicClient,
     useSendTransaction: () => ({ mutateAsync: mocks.send }),
     useWriteContract: () => ({ mutateAsync: mocks.write }),
+}))
+
+vi.mock('wagmi/actions', () => ({
+    getAccount: () => {
+        if (mocks.pendingChainId !== null) {
+            mocks.postSwitchReads += 1
+            if (mocks.postSwitchReads >= 2) {
+                mocks.wagmiChainId = mocks.pendingChainId
+                mocks.pendingChainId = null
+            }
+        }
+        return { chainId: mocks.wagmiChainId }
+    },
 }))
 
 import SendAssetDialog from './SendAssetDialog.jsx'
@@ -62,6 +80,36 @@ const polygonNative = {
     priceUSD: '1',
     valueUSD: '2',
     logoURI: '/icons/polygon.svg',
+}
+const baseEth = {
+    ...native,
+    chainId: 8453,
+    name: 'Ether',
+    symbol: 'ETH',
+    rawBalance: parseEther('0.01').toString(),
+    balance: '0.01',
+    priceUSD: '1',
+    trustedPriceUSD: '1',
+    valueUSD: '0.01',
+    logoURI: '/networkIcons/base.webp',
+}
+const baseUsdc = {
+    ...native,
+    chainId: 8453,
+    address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+    isNative: false,
+    name: 'USD Coin',
+    symbol: 'USDC',
+    decimals: 6,
+    rawBalance: '291426',
+    balance: '0.291426',
+    formattedBalance: '0.291426',
+    priceUSD: '1',
+    trustedPriceUSD: '1',
+    valueUSD: '0.291426',
+    verifiedContract: true,
+    recognitionReasons: ['coingecko-exact-contract'],
+    logoURI: '/icons/usdc.svg',
 }
 const blocked = {
     ...native,
@@ -124,7 +172,15 @@ describe('SendAssetDialog', () => {
     beforeEach(() => {
         window.localStorage.clear()
         mocks.runtimeChainId = 56
-        mocks.switchNetwork.mockResolvedValue(undefined)
+        mocks.wagmiChainId = 56
+        mocks.pendingChainId = null
+        mocks.postSwitchReads = 0
+        mocks.config = {}
+        mocks.switchNetwork.mockImplementation(async (targetChain) => {
+            mocks.runtimeChainId = Number(targetChain.id)
+            mocks.pendingChainId = Number(targetChain.id)
+            mocks.postSwitchReads = 0
+        })
     })
     afterEach(() => {
         cleanup()
@@ -210,6 +266,50 @@ describe('SendAssetDialog', () => {
         await waitFor(() => expect(mocks.switchNetwork).toHaveBeenCalledOnce())
         expect(mocks.switchNetwork).toHaveBeenCalledWith(expect.objectContaining({ id: 137 }))
         await waitFor(() => expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 })))
+    })
+
+    it('waits for Wagmi to reach Base before submitting an ERC-20 send', async () => {
+        const hash = '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+        mocks.write.mockImplementation(async (request) => {
+            if (Number(mocks.wagmiChainId) !== Number(request.chainId)) {
+                throw new Error(
+                    `wallet chain ${mocks.wagmiChainId} does not match target ${request.chainId}`,
+                )
+            }
+            return hash
+        })
+        const onConfirmed = vi.fn()
+        renderDialog({
+            assets: [baseUsdc, baseEth],
+            onConfirmed,
+        })
+
+        expect(screen.getByRole('button', { name: /USDC/ })).toBeTruthy()
+        fireEvent.change(screen.getByLabelText('Amount to send'), {
+            target: { value: '0.291426' },
+        })
+        fireEvent.change(screen.getByLabelText('Send to'), {
+            target: { value: recipient },
+        })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+
+        await screen.findByRole('heading', { name: 'Review send' })
+        expect(screen.getByText('Base')).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+
+        await waitFor(() => expect(mocks.switchNetwork).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 8453 }),
+        ))
+        await waitFor(() => expect(mocks.write).toHaveBeenCalledOnce())
+        expect(mocks.postSwitchReads).toBeGreaterThanOrEqual(2)
+        expect(mocks.wagmiChainId).toBe(8453)
+        expect(mocks.write).toHaveBeenCalledWith(expect.objectContaining({
+            chainId: 8453,
+            address: baseUsdc.address,
+            functionName: 'transfer',
+            args: [recipient, 291426n],
+        }))
+        await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
     })
 
     it('requires an extra acknowledgement before reviewing a blocked token', () => {
