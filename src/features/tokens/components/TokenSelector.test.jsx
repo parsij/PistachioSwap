@@ -291,6 +291,34 @@ describe('TokenSelector wallet rows', () => {
         expect(container.querySelectorAll('.ps-token-row')).toHaveLength(7)
     })
 
+    it('shows Base native ETH when Base is selected and ETH is searched', () => {
+        const baseNative = {
+            ...ethNative,
+            id: '8453:0x0000000000000000000000000000000000000000',
+            chainId: 8453,
+            source: 'registry-native',
+            name: 'Ether (Base)',
+            verificationStatus: 'established',
+            verificationReasons: ['active-chain-registry-native'],
+            recognitionReasons: ['active-chain-registry-native'],
+            rawBalance: null,
+            balance: null,
+            valueUSD: null,
+        }
+        renderSelector({
+            chainId: 8453,
+            tokens: [baseNative],
+            walletTokens: [],
+            search: 'eth',
+            currentToken: null,
+        })
+
+        expect(screen.getByText('Ether (Base)', { selector: 'strong' }))
+            .toBeTruthy()
+        expect(screen.getByText('ETH', { selector: '.ps-token-symbol' }))
+            .toBeTruthy()
+    })
+
     it('keeps wallet-owned tokens visible when the popular catalog is unavailable', () => {
         renderSelector({
             tokens: [],
