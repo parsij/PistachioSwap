@@ -79,7 +79,7 @@ function Countdown({ expiresAt, onExpired }) {
 }
 
 function packageExecutionInFlight(phase, order) {
-    if (order?.preSignedPackage) return true
+    if (order?.preSignedPackage || order?.userOpHash) return true
     return [
         'package-preparing',
         'package-signing',
@@ -105,6 +105,21 @@ function packageExecutionInFlight(phase, order) {
 }
 
 function statusContent({ phase, order, orderExpired }) {
+    if (phase === 'completed' || order?.status === 'completed') {
+        return { tone: 'success', title: 'Swap complete', detail: 'Your sponsored swap was confirmed.' }
+    }
+    if (phase !== 'failed' && (phase === 'destination-pending' || order?.sourceStatus === 'confirmed')) {
+        return { title: 'Source confirmed', detail: 'Waiting for the destination transfer to complete.' }
+    }
+    if (phase === 'confirmation-unresolved') {
+        return { title: 'Confirmation unresolved', detail: 'The submitted operation has no verified outcome yet. Recovery will continue; do not submit this order again.' }
+    }
+    if (phase === 'confirmation-delayed' && order?.submissionAmbiguous) {
+        return { title: 'Submission outcome unknown', detail: 'The send request lost its response. Recovery is checking the public operation hash; do not submit this order again.' }
+    }
+    if (phase === 'confirmation-delayed') {
+        return { title: 'Transaction submitted', detail: 'Confirmation is taking longer than expected. You can leave this page; status will continue to recover.' }
+    }
     if (orderExpired) {
         return {
             tone: 'error',
@@ -126,7 +141,7 @@ function statusContent({ phase, order, orderExpired }) {
     }
     if (['atomic-submitting', 'atomic-submitted'].includes(order?.status) ||
         (phase === 'swap-confirming' && order?.atomicExecution)) {
-        return { title: 'Confirming your swap', detail: 'Confirming the one sponsored transaction on BNB Chain.' }
+        return { title: 'Confirming your swap', detail: 'Waiting for the sponsored transaction to confirm on BNB Chain.' }
     }
     if (['payment-confirming', 'payment-submitting'].includes(phase) ||
         ['payment-submitting', 'payment-submitted'].includes(order?.status)) {
@@ -214,13 +229,14 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                 <ChevronDown aria-hidden="true" />
             </summary>
             <div className="gas-assist-technical-content">
+                {order.userOpHash && <div><span>UserOperation</span><code>{order.userOpHash}</code></div>}
                 {order && paymentToken && (
                     <div className="gas-assist-details">
                         <div><span>Gross input</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Gas Assist fee</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong></div>
                         <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong></div>
-                        {!completed && <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>}
+                        {!completed && !order.userOpHash && <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>}
                         {atomic && hashes[0] && (
                             <div><span>Transaction</span><code>{hashes[0]}</code></div>
                         )}
@@ -262,6 +278,7 @@ export default function GasAssistPrepaymentDialog({
 
     if (!sponsorship?.open) return null
 
+    const submitted = Boolean(order?.userOpHash)
     const walletBusy = sponsorship.phase === 'preview-loading' ||
         sponsorship.phase === 'authenticating' ||
         sponsorship.phase === 'continuation-loading' ||
@@ -291,7 +308,7 @@ export default function GasAssistPrepaymentDialog({
 
     let primaryAction = null
     let primaryLabel = null
-    if (!terminalFailure && !orderExpired && showPayment && sponsorship.signPackage) {
+    if (!submitted && !terminalFailure && !orderExpired && showPayment && sponsorship.signPackage) {
         primaryAction = sponsorship.signPackage
         primaryLabel = reviewUpdated ? 'Confirm updated quote' : GAS_ASSIST_SWAP_ACTION
     } else if (!terminalFailure && !orderExpired && showPayment && sponsorship.signPayment) {
@@ -308,7 +325,7 @@ export default function GasAssistPrepaymentDialog({
         primaryLabel = 'Confirm swap'
     }
 
-    const canRetry = refreshableError || terminalFailure || orderExpired
+    const canRetry = !submitted && (refreshableError || terminalFailure || orderExpired)
     const refreshable = refreshableError || orderExpired
     const retryAction = refreshable
         ? sponsorship.refreshQuote ?? sponsorship.retryStart
@@ -321,7 +338,7 @@ export default function GasAssistPrepaymentDialog({
     const feeUsdSuffix = feeUsd === 'Unavailable' ? '' : ` (${feeUsd})`
 
     return (
-        <Dialog.Root open onOpenChange={(open) => !open && !walletBusy && !waitingForChain && sponsorship.close()}>
+        <Dialog.Root open onOpenChange={(open) => !open && !walletBusy && (!waitingForChain || submitted) && sponsorship.close()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="gas-assist-overlay" />
                 <Dialog.Content className="gas-assist-dialog gas-assist-prepayment-dialog">
@@ -334,7 +351,7 @@ export default function GasAssistPrepaymentDialog({
                                 : 'PistachioSwap covers the network fee and deducts one clear fee from your sell token.'}</Dialog.Description>
                         </div>
                         <Dialog.Close asChild>
-                            <button className="gas-assist-close" type="button" disabled={walletBusy || waitingForChain} aria-label="Close">
+                            <button className="gas-assist-close" type="button" disabled={walletBusy || (waitingForChain && !submitted)} aria-label="Close">
                                 <X aria-hidden="true" />
                             </button>
                         </Dialog.Close>
@@ -361,7 +378,7 @@ export default function GasAssistPrepaymentDialog({
                                 <span>Gas Assist fee</span>
                                 <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong>
                             </div>
-                            {!completed && <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />}
+                            {!completed && !order.userOpHash && <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />}
                         </div>
                     )}
 
@@ -382,7 +399,7 @@ export default function GasAssistPrepaymentDialog({
                             className="gas-assist-primary gas-assist-swap-button"
                             type="button"
                             onClick={primaryAction}
-                            disabled={walletBusy || waitingForChain}
+                            disabled={walletBusy || (waitingForChain && !submitted)}
                         >
                             {walletBusy ? 'Preparing…' : primaryLabel}
                         </button>

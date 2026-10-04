@@ -361,7 +361,7 @@ describe('Gas Assist prepayment review', () => {
         />)
 
         expect(screen.getByText('Confirming your swap')).toBeTruthy()
-        expect(screen.getAllByText(/one sponsored transaction/).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/sponsored transaction to confirm/).length).toBeGreaterThan(0)
         expect(screen.getByText('Transaction', { selector: '.gas-assist-details span' })).toBeTruthy()
         expect(screen.queryByText('Fee transaction')).toBeNull()
         expect(screen.queryByText('Approval transaction')).toBeNull()
@@ -390,5 +390,35 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.queryByText('package.prepare')).toBeNull()
         expect(screen.queryByText('request-123')).toBeNull()
         expect(screen.queryByText('The raw sponsor service timed out.')).toBeNull()
+    })
+})
+
+describe('submitted operation UX', () => {
+    it('allows safe close and hides quote expiry and retry after submission', () => {
+        const flow = sponsorship({ phase: 'confirmation-delayed' })
+        flow.order = { ...flow.order, status: 'atomic-submitting', userOpHash: `0x${'ab'.repeat(32)}`,
+            expiresAt: new Date(Date.now() - 60_000).toISOString(), atomicExecution: true }
+        render(<GasAssistPrepaymentDialog sponsorship={flow} sellToken={sellToken} buyToken={buyToken} />)
+        expect(screen.getByText('Transaction submitted')).toBeTruthy()
+        expect(screen.queryByText('Quote expired')).toBeNull()
+        expect(screen.queryByText('Quote expires')).toBeNull()
+        expect(screen.queryByRole('button', { name: /try again|refresh quote|swap with gas assist/i })).toBeNull()
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+        expect(flow.close).toHaveBeenCalledTimes(1)
+    })
+    it('shows destination waiting after source confirmation without claiming completion', () => {
+        const flow = sponsorship({ phase: 'destination-pending' })
+        flow.order = { ...flow.order, status: 'atomic-submitted', sourceStatus: 'confirmed', userOpHash: `0x${'ab'.repeat(32)}` }
+        render(<GasAssistPrepaymentDialog sponsorship={flow} sellToken={sellToken} buyToken={buyToken} />)
+        expect(screen.getByText('Source confirmed')).toBeTruthy()
+        expect(screen.queryByText('Swap complete')).toBeNull()
+        expect(screen.queryByText('Confirming your swap')).toBeNull()
+    })
+    it('shows verified source failure without destination waiting', () => {
+        const flow = sponsorship({ phase: 'failed' })
+        flow.order = { ...flow.order, status: 'failed', sourceStatus: 'reverted', userOpHash: `0x${'ab'.repeat(32)}` }
+        render(<GasAssistPrepaymentDialog sponsorship={flow} sellToken={sellToken} buyToken={buyToken} />)
+        expect(screen.getByText('Swap could not continue')).toBeTruthy()
+        expect(screen.queryByText('Source confirmed')).toBeNull()
     })
 })

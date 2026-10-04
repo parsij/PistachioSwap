@@ -4,6 +4,7 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
+    recoverSelfHostedUserOperation,
     bundlerUserOperation,
     classifyDelegationCode,
     encodeSelfHostedBatch,
@@ -60,6 +61,9 @@ function prepared(overrides = {}) {
 }
 
 beforeEach(() => {
+    vi.stubGlobal('navigator', { locks: { request: async (_name, callback) => callback() } })
+    const storage = new Map()
+    vi.stubGlobal('localStorage', { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) })
     vi.stubEnv('VITE_GAS_ASSIST_ENABLED', 'true')
     vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'true')
     vi.stubEnv('VITE_ENTRYPOINT_V08_ADDRESS', entryPoint)
@@ -69,6 +73,7 @@ beforeEach(() => {
     vi.stubEnv('VITE_BSC_BUNDLER_RPC_URL', 'https://bundler.example')
 })
 afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -151,9 +156,12 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             .toThrow(/unrecognized contract code/iu)
     })
 
-    it.each(['0x', `0xef0100${delegate.slice(2)}`, `0xef0100${treasury.slice(2)}`])(
+    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted']])(
         'always includes a fresh EIP-7702 auth with factory 0x7702 and submits for code %s',
-        async (onChainCode) => {
+        async (onChainCode, delayed, mode) => {
+            const onSubmitted = vi.fn()
+            if (delayed) vi.useFakeTimers()
+            let receiptAttempts = 0
             const requests = []
             let locallySignedHash
             let estimateAttempts = 0
@@ -191,8 +199,12 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 case 'eth_estimateUserOperationGas':
                     return { callGasLimit: '0x186a0', verificationGasLimit: '0x30d40', preVerificationGas: '0x11170' }
                 case 'eth_sendUserOperation': return locallySignedHash
-                case 'eth_getUserOperationReceipt': return {
-                    success: true, receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
+                case 'eth_getUserOperationReceipt':
+                    receiptAttempts += 1
+                    if (mode === 'transient' && receiptAttempts === 1) throw new Error('Temporary Bundler outage')
+                    if (delayed) return null
+                    return {
+                    success: mode !== 'reverted', receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
                 }
                 default: throw new Error(`Unexpected RPC ${method}`)
                 }
@@ -215,6 +227,9 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                         jsonrpc: '2.0', id: 1, result: rpcResult(body.method),
                     }), { status: 200 })
                 }
+                if (String(url).endsWith('/paymaster/receipt')) return new Response(JSON.stringify({
+                    ...body, sourceStatus: mode === 'reverted' ? 'reverted' : 'confirmed',
+                }))
                 const isStub = String(url).endsWith('/paymaster/stub')
                 return new Response(JSON.stringify(isStub ? {
                     paymaster, paymasterData: `0x${'aa'.repeat(125)}`,
@@ -225,13 +240,42 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                     isFinal: true, validUntil: Math.floor(Date.now() / 1000) + 60,
                 }), { status: 200 })
             }))
-            const result = await submitSelfHostedPaymasterUserOperation({
+            const submittedPromise = submitSelfHostedPaymasterUserOperation({
                 prepared: prepared(), order, backendConfig,
                 quoteEndpoint: 'http://localhost:3001/v1/quote',
                 sessionToken: 'session',
-                walletClient, authenticatedWalletAddress: sender,
+                walletClient, authenticatedWalletAddress: sender, onSubmitted,
             })
-            expect(result).toMatchObject({ status: 'source-confirmed', userOpHash: locallySignedHash })
+            if (delayed) {
+                await vi.waitFor(() => expect(receiptAttempts).toBeGreaterThan(0))
+                await vi.runAllTimersAsync()
+            }
+            if (mode === 'reverted') {
+                await expect(submittedPromise).rejects.toMatchObject({ code: 'PAYMASTER_EXECUTION_REVERTED' })
+                expect(onSubmitted).not.toHaveBeenCalled()
+                expect(requests.filter((r) => r.body.method === 'eth_sendUserOperation')).toHaveLength(1)
+                return
+            }
+            const result = await submittedPromise
+            expect(result).toMatchObject({ status: delayed ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
+            if (delayed) {
+                expect(receiptAttempts).toBe(60)
+                await expect(submitSelfHostedPaymasterUserOperation({
+                    prepared: prepared(), order, backendConfig,
+                    authenticatedWalletAddress: sender,
+                })).rejects.toMatchObject({ code: 'PAYMASTER_ALREADY_SUBMITTED' })
+                const persisted = JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))[0]
+                expect(Object.keys(persisted)).toEqual(['orderId', 'userOpHash', 'walletAddress', 'chainId', 'timestamp', 'ambiguous', 'routeId'])
+                const fetchBeforeRecovery = globalThis.fetch
+                vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+                    ...persisted, chainId: 56, transactionHash: `0x${'fa'.repeat(32)}`,
+                    sourceStatus: 'confirmed', status: 'completed',
+                }))))
+                expect(await recoverSelfHostedUserOperation({
+                    quoteEndpoint: 'http://localhost:3001/v1/quote', operation: persisted,
+                })).toMatchObject({ status: 'completed' })
+                vi.stubGlobal('fetch', fetchBeforeRecovery)
+            }
             const stubIndex = requests.findIndex((r) => r.url.endsWith('/paymaster/stub'))
             const estimateIndex = requests.findIndex((r) => r.body.method === 'eth_estimateUserOperationGas')
             const sponsorIndex = requests.findIndex((r) => r.url.endsWith('/paymaster/sponsor'))
@@ -262,7 +306,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(requests[sendIndex].body.params[0].maxFeePerGas).toBe('0x77359400')
             expect(requests[sendIndex].url).toBe('https://bundler.example/')
             expect(requests.filter((r) => r.url.startsWith('http://localhost:3001')).every(
-                (r) => !JSON.stringify(r.body).includes(locallySignedHash),
+                (r) => !JSON.stringify(r.body).includes(requests[sendIndex].body.params[0].signature) && !JSON.stringify(r.body).includes(sendAuth.r),
             )).toBe(true)
             expect(walletClient.request).toHaveBeenCalledTimes(1)
         },

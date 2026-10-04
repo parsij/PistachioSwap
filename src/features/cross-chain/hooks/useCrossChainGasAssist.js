@@ -200,6 +200,7 @@ export function useCrossChainGasAssist({
     }, [account, buyToken, onConfirmed, sellToken, totalInputRaw])
 
     const sponsorship = usePrepaidSponsorship({
+        recoveryKind: 'cross-chain',
         quoteEndpoint,
         walletAddress: account,
         sellToken,

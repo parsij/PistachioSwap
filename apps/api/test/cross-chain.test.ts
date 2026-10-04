@@ -1918,3 +1918,38 @@ describe('cross-chain backend', () => {
         expect(prepared.preparedRoute.deposit?.address).toBe(target)
     })
 })
+
+describe('verified sponsored source recovery', () => {
+    it('recovers an expired quote only after verified source inclusion and waits for destination', async () => {
+        const repository = new MemoryCrossChainRouteRepository()
+        const adapter = fixtureAdapter('across', '900')
+        adapter.getStatus = async (statusId) => ({ provider: 'across', statusId,
+            status: 'in-flight', sourceTransactionHash: null, destinationTransactionHash: null })
+        const route = await repository.create(fixtureQuote({ statusId: 'across-status', request: { ...request, sourceAsset: { ...request.sourceAsset, chainId: 56 } } }))
+        await repository.markPrepared(route.publicRouteId, sender)
+        const hash = `0x${'ab'.repeat(32)}`
+        const recover = vi.fn(async () => ({ orderId: 'order123', walletAddress: sender,
+            routeId: route.publicRouteId, sourceStatus: 'confirmed', transactionHash: hash }))
+        const service = new CrossChainRouteService(new CrossChainRegistry([adapter]), repository, recover)
+        vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 120_000)
+        try {
+            const result = await service.recoverSponsorship(route.publicRouteId,
+                { orderId: 'order123', walletAddress: sender, userOpHash: hash }, '127.0.0.1')
+            expect(result.destination.status).toBe('in-flight')
+            expect(result.destination.sourceTransactionHash).toBe(hash)
+            await service.recoverSponsorship(route.publicRouteId,
+                { orderId: 'order123', walletAddress: sender, userOpHash: hash }, '127.0.0.1')
+            expect((await repository.get(route.publicRouteId))?.submissionAttempts).toBe(1)
+        } finally { vi.restoreAllMocks() }
+    })
+    it('rejects mismatched operation/route binding without changing source state', async () => {
+        const repository = new MemoryCrossChainRouteRepository()
+        const route = await repository.create(fixtureQuote({ request: { ...request, sourceAsset: { ...request.sourceAsset, chainId: 56 } } }))
+        await repository.markPrepared(route.publicRouteId, sender)
+        const service = new CrossChainRouteService(new CrossChainRegistry([]), repository,
+            async () => ({ walletAddress: sender, routeId: 'another-route', sourceStatus: 'confirmed', transactionHash: `0x${'ab'.repeat(32)}` }))
+        await expect(service.recoverSponsorship(route.publicRouteId,
+            { orderId: 'order123', walletAddress: sender, userOpHash: `0x${'ab'.repeat(32)}` }, '127.0.0.1')).rejects.toThrow(/another route/)
+        expect((await repository.get(route.publicRouteId))?.submissionAttempts).toBe(0)
+    })
+})
