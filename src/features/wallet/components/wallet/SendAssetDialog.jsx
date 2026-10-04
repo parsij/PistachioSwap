@@ -229,6 +229,8 @@ export default function SendAssetDialog({
             phase = 'send'
             transactionHash = await submitSendPlan({
                 walletClient: resolvedWallet.walletClient,
+                manager: resolvedWallet.manager ?? null,
+                account: resolvedWallet.account,
                 targetChain,
                 plan: review.plan,
             })
