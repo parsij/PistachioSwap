@@ -229,6 +229,34 @@ describe('production Pistachio Wallet hardening', () => {
         })
     })
 
+    it('keeps token-chain Send behind a fresh passkey and forwards the detached-chain option', async () => {
+        const manager = createManager()
+        const originalLock = manager.lock
+        const originalUnlock = manager.unlock
+        const originalSend = vi.fn(async function sendTransaction(transaction, options) {
+            await this.ensureUnlockedForSigning()
+            return { transaction, options, hash: '0xtransaction' }
+        })
+        manager.sendTransaction = originalSend
+        manager.sessionActive = true
+        hardenPistachioWalletManager(manager)
+
+        await expect(manager.sendTransaction(
+            { chainId: 8453, to: address, value: 1n },
+            { requireActiveChain: false },
+        )).resolves.toMatchObject({
+            hash: '0xtransaction',
+            options: { requireActiveChain: false },
+        })
+
+        expect(originalUnlock).toHaveBeenCalledOnce()
+        expect(originalSend).toHaveBeenCalledWith(
+            expect.objectContaining({ chainId: 8453 }),
+            { requireActiveChain: false },
+        )
+        expect(originalLock).toHaveBeenCalledOnce()
+    })
+
     it('treats self-hosted Gas Assist authorization signing as a sensitive action and wipes the worker afterward', async () => {
         const manager = createManager()
         const originalAuthorizationSigner = manager.signSelfHostedAuthorization
