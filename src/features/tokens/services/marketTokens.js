@@ -84,7 +84,12 @@ export function getMarketTokenExclusionReason(token, { requireMarketMetrics = tr
         ? token.verificationReasons
         : []
     const isNative = identity.endsWith(`:${CANONICAL_NATIVE_TOKEN_ADDRESS}`)
-    if (!(isNative && reasons.includes('explicit-native-allowlist')) &&
+    const trustedNative = isNative && reasons.some((reason) => [
+        'explicit-native-allowlist',
+        'active-chain-registry-native',
+        'native-token',
+    ].includes(reason))
+    if (!trustedNative &&
         !reasons.some((reason) => [
             'coingecko-exact-contract',
             'curated-official-contract',
