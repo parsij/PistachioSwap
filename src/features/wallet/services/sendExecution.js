@@ -1,6 +1,7 @@
 import {
     createWalletClient,
     custom,
+    encodeFunctionData,
     getAddress,
 } from 'viem'
 
@@ -29,12 +30,6 @@ function localSessionAddress(snapshot) {
         snapshot?.address ??
         (snapshot?.sessionActive ? snapshot?.vault?.address : null),
     )
-}
-
-function localManagerProvider(manager) {
-    return {
-        request: (request) => manager.providerRequest(request),
-    }
 }
 
 async function waitForProviderChain({
@@ -72,8 +67,6 @@ async function resolveLocalPistachioWallet({
     connectedAddress,
     targetChain,
     manager = getPistachioWalletManager(),
-    createClient = createWalletClient,
-    createTransport = custom,
 }) {
     await manager.initialize()
     const snapshot = manager.snapshot()
@@ -86,25 +79,15 @@ async function resolveLocalPistachioWallet({
         return null
     }
 
-    // Send is asset-scoped. The selected token's chain is the signing chain.
-    // This intentionally does not depend on the swap page's active network.
-    await manager.switchChain(targetChain.id)
-    const provider = localManagerProvider(manager)
-    await waitForProviderChain({
-        provider,
-        targetChainId: targetChain.id,
-    })
-    const account = await verifyProviderAccount(provider, expectedAddress)
-    const walletClient = createClient({
-        account,
-        chain: targetChain,
-        transport: createTransport(provider),
-    })
+    // Pistachio Wallet Send is intentionally detached from the swap page's
+    // global chain state. The reviewed token chain is carried into the signing
+    // request directly, so changing AppKit/Wagmi state cannot race this send.
     return {
-        account,
+        account: expectedAddress,
         connectorId: PISTACHIO_CONNECTOR_ID,
-        provider,
-        walletClient,
+        manager,
+        targetChain,
+        walletClient: null,
     }
 }
 
@@ -177,8 +160,6 @@ export async function resolveSendWallet({
             connectedAddress,
             targetChain,
             manager,
-            createClient,
-            createTransport,
         })
         if (local) return local
         if (connector?.id === PISTACHIO_CONNECTOR_ID) {
@@ -197,13 +178,53 @@ export async function resolveSendWallet({
 
 export async function submitSendPlan({
     walletClient,
+    manager,
+    account,
     targetChain,
     plan,
 }) {
-    if (!walletClient || Number(walletClient.chain?.id) !== Number(targetChain?.id)) {
-        throw new Error('The send wallet is not bound to the selected token network.')
+    if (!targetChain?.id) {
+        throw new Error('The selected token network is unavailable.')
     }
 
+    // Local Pistachio Wallet sends do not mutate or wait on the app-wide
+    // network. The selected token's chain is pinned into the transaction and
+    // the manager still performs passkey unlock, review, local signing,
+    // chain-specific RPC validation, and broadcast.
+    if (manager) {
+        const from = normalizedAddress(account)
+        if (!from) throw new Error('The reviewed wallet account is invalid.')
+        let transaction
+        if (plan?.kind === 'native') {
+            transaction = {
+                chainId: targetChain.id,
+                from,
+                to: plan.request.to,
+                value: plan.amountWei,
+            }
+        } else if (plan?.kind === 'erc20') {
+            transaction = {
+                chainId: targetChain.id,
+                from,
+                to: plan.request.address,
+                data: encodeFunctionData({
+                    abi: plan.request.abi,
+                    functionName: plan.request.functionName,
+                    args: plan.request.args,
+                }),
+                value: 0n,
+            }
+        } else {
+            throw new Error('The reviewed send is invalid.')
+        }
+        return manager.sendTransaction(transaction, {
+            requireActiveChain: false,
+        })
+    }
+
+    if (!walletClient || Number(walletClient.chain?.id) !== Number(targetChain.id)) {
+        throw new Error('The send wallet is not bound to the selected token network.')
+    }
     if (plan?.kind === 'native') {
         return walletClient.sendTransaction({
             account: walletClient.account,
