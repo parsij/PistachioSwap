@@ -30,6 +30,7 @@ export interface CrossChainRouteRepository {
         ownerAddress: string,
         transactionHash: string,
     ): Promise<PublicCrossChainRoute>
+    recoverVerifiedSubmission(routeId: string, ownerAddress: string, transactionHash: string): Promise<PublicCrossChainRoute>
     updateProviderStatus(
         routeId: string,
         update: ProviderStatusUpdate,
@@ -79,7 +80,7 @@ export class MemoryCrossChainRouteRepository implements CrossChainRouteRepositor
         return clone(route)
     }
 
-    async get(routeId: string) {
+    async get(routeId: string): Promise<PublicCrossChainRoute | null> {
         const route = this.routes.get(routeId)
         if (!route) return null
         this.expire(route)
@@ -141,6 +142,17 @@ export class MemoryCrossChainRouteRepository implements CrossChainRouteRepositor
         return clone(route)
     }
 
+    // Called only after the trusted Paymaster verifier establishes source inclusion.
+    // Quote expiry cannot invalidate an already executed source transaction.
+    async recoverVerifiedSubmission(routeId: string, ownerAddress: string, transactionHash: string) {
+        const route = this.requireOwned(routeId, ownerAddress)
+        if (route.sourceTransactionHash === transactionHash) return clone(route)
+        if (route.sourceTransactionHash) throw routeError('SOURCE_SUBMISSION_NOT_CLAIMED', 'Another source transaction is already recorded.')
+        route.submissionAttempts = 1
+        route.claimedAt ??= new Date().toISOString()
+        return this.markSubmitted(routeId, ownerAddress, transactionHash)
+    }
+
     async updateProviderStatus(routeId: string, update: ProviderStatusUpdate) {
         const route = this.routes.get(routeId)
         if (!route) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
@@ -158,7 +170,7 @@ export class MemoryCrossChainRouteRepository implements CrossChainRouteRepositor
     }
 
     private expire(route: PublicCrossChainRoute) {
-        if (Date.parse(route.expiresAt) <= Date.now() && !terminal(route.status)) {
+        if (Date.parse(route.expiresAt) <= Date.now() && ['quoted', 'prepared'].includes(route.status)) {
             route.status = 'expired'
             route.failureCode = 'QUOTE_EXPIRED'
             route.updatedAt = new Date().toISOString()
@@ -266,7 +278,7 @@ class PostgresCrossChainRouteRepository implements CrossChainRouteRepository {
         }
     }
 
-    async get(routeId: string) {
+    async get(routeId: string): Promise<PublicCrossChainRoute | null> {
         const db = getDatabase()
         const [row] = await db.select().from(crossChainRoutes)
             .where(eq(crossChainRoutes.id, routeId)).limit(1)
@@ -275,13 +287,15 @@ class PostgresCrossChainRouteRepository implements CrossChainRouteRepository {
             .where(eq(crossChainRouteSteps.routeId, routeId))
             .orderBy(asc(crossChainRouteSteps.stepIndex))
         const route = rowToPublic(row, steps)
-        if (Date.parse(route.expiresAt) <= Date.now() && !terminal(route.status)) {
+        if (Date.parse(route.expiresAt) <= Date.now() && ['quoted', 'prepared'].includes(route.status)) {
             const now = new Date()
-            await db.update(crossChainRoutes).set({
+            const expired = await db.update(crossChainRoutes).set({
                 status: 'expired',
                 failureCode: 'QUOTE_EXPIRED',
                 updatedAt: now,
-            }).where(eq(crossChainRoutes.id, routeId))
+            }).where(and(eq(crossChainRoutes.id, routeId),
+                sql`${crossChainRoutes.status} IN ('quoted','prepared')`)).returning()
+            if (!expired.length) return this.get(routeId)
             route.status = 'expired'
             route.failureCode = 'QUOTE_EXPIRED'
             route.updatedAt = now.toISOString()
@@ -368,6 +382,24 @@ class PostgresCrossChainRouteRepository implements CrossChainRouteRepository {
         )).returning()
         if (!rows[0]) {
             throw routeError('SOURCE_SUBMISSION_NOT_CLAIMED', 'Source submission is not claimable.')
+        }
+        return this.getRequired(routeId)
+    }
+
+    async recoverVerifiedSubmission(routeId: string, ownerAddress: string, transactionHash: string) {
+        const existing = await this.getOwned(routeId, ownerAddress)
+        if (existing.sourceTransactionHash === transactionHash) return existing
+        const now = new Date()
+        const rows = await getDatabase().update(crossChainRoutes).set({
+            submissionAttempts: 1, claimedAt: existing.claimedAt ? new Date(existing.claimedAt) : now,
+            sourceTransactionHash: transactionHash, submittedAt: now,
+            status: 'source-submitted', updatedAt: now,
+        }).where(and(eq(crossChainRoutes.id, routeId), eq(crossChainRoutes.ownerAddress, ownerAddress),
+            isNull(crossChainRoutes.sourceTransactionHash))).returning()
+        if (!rows[0]) {
+            const current = await this.getOwned(routeId, ownerAddress)
+            if (current.sourceTransactionHash === transactionHash) return current
+            throw routeError('SOURCE_SUBMISSION_NOT_CLAIMED', 'Another source transaction is already recorded.')
         }
         return this.getRequired(routeId)
     }

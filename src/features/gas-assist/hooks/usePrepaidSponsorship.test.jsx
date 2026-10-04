@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+    recover: vi.fn(),
     fetchConfig: vi.fn(),
     authenticate: vi.fn(),
     createOrder: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('../services/prepaidSponsorship.js', () => ({
 }))
 
 vi.mock('../services/selfHostedPaymaster.js', () => ({
+    recoverSelfHostedUserOperation: mocks.recover,
     selfHostedFrontendEnabled: (config) =>
         config?.enabled === true &&
         config?.provider === 'pistachio-paymaster-v08' &&
@@ -349,5 +351,46 @@ describe('self-hosted sponsorship async ownership', () => {
         expect(mocks.submitSelfHosted).toHaveBeenCalledTimes(1)
         expect(result.current.phase).toBe('completed')
         expect(onConfirmed).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('refresh recovery from public identifiers', () => {
+    const wallet = '0x1111111111111111111111111111111111111111'
+    const userOpHash = `0x${'ab'.repeat(32)}`
+    beforeEach(() => {
+        vi.clearAllMocks()
+        localStorage.clear()
+        localStorage.setItem('pistachioswap:pending-userops:v1', JSON.stringify([{
+            orderId: 'recovery-order', walletAddress: wallet, userOpHash,
+            chainId: 56, timestamp: Date.now() - 130_000,
+        }]))
+        mocks.fetchConfig.mockResolvedValue(activeConfig)
+    })
+    afterEach(() => localStorage.clear())
+    it('survives refresh and close without signing or sending again', async () => {
+        mocks.recover.mockResolvedValue({ orderId: 'recovery-order', walletAddress: wallet,
+            userOpHash, chainId: 56, status: 'atomic-submitting', sourceStatus: 'pending' })
+        const first = renderHook(() => usePrepaidSponsorship({ quoteEndpoint: '/api/v1/quote', walletAddress: wallet }))
+        await waitFor(() => expect(first.result.current.phase).toBe('confirmation-delayed'))
+        act(() => first.result.current.close())
+        expect(first.result.current.open).toBe(false)
+        expect(JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))).toHaveLength(1)
+        first.unmount()
+        mocks.recover.mockResolvedValue({ orderId: 'recovery-order', walletAddress: wallet,
+            userOpHash, chainId: 56, transactionHash: `0x${'cd'.repeat(32)}`, status: 'completed', sourceStatus: 'confirmed' })
+        const second = renderHook(() => usePrepaidSponsorship({ quoteEndpoint: '/api/v1/quote', walletAddress: wallet }))
+        await waitFor(() => expect(second.result.current.phase).toBe('completed'))
+        expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
+        expect(mocks.authenticate).not.toHaveBeenCalled()
+        expect(JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))).toEqual([])
+        second.unmount()
+    })
+    it('keeps transient receipt failures pending', async () => {
+        mocks.recover.mockRejectedValue(new Error('RPC unavailable'))
+        const hook = renderHook(() => usePrepaidSponsorship({ quoteEndpoint: '/api/v1/quote', walletAddress: wallet }))
+        await waitFor(() => expect(mocks.recover).toHaveBeenCalled())
+        expect(hook.result.current.phase).toBe('confirmation-delayed')
+        expect(hook.result.current.error).toBeNull()
+        hook.unmount()
     })
 })

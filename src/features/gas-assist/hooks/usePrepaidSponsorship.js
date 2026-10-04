@@ -13,10 +13,13 @@ import {
     gasAssistTraceStep,
 } from '../services/gasAssistTrace.js'
 import {
+    recoverSelfHostedUserOperation,
     prepareSelfHostedSponsorship,
     selfHostedFrontendEnabled,
     submitSelfHostedPaymasterUserOperation,
 } from '../services/selfHostedPaymaster.js'
+import { pendingUserOperations, removePendingUserOperation } from '../services/pendingUserOperations.js'
+import { getGasAssistBaseUrl } from '../services/gasAssist.js'
 import { isUserRejectedError } from '../../../services/swapTransaction.js'
 
 const initial = {
@@ -135,6 +138,7 @@ export function usePrepaidSponsorship({
     onSubmitted,
     createOrder: createOrderOverride,
     previewOrder,
+    recoveryKind = 'same-chain',
 }) {
     const connection = useConnection()
     const { data: walletClient } = useWalletClient({ chainId: 56 })
@@ -142,10 +146,12 @@ export function usePrepaidSponsorship({
     const [configStatus, setConfigStatus] = useState('idle')
     const [configError, setConfigError] = useState(null)
     const [state, setState] = useState(initial)
+    const [recoveryRevision, setRecoveryRevision] = useState(0)
     const sessionTokenRef = useRef(null)
     const walletEpochRef = useRef(0)
     const flowEpochRef = useRef(0)
     const operationRef = useRef(null)
+    const sendControllerRef = useRef(null)
     const confirmedOrderIdsRef = useRef(new Set())
     const submittedOrderIdsRef = useRef(new Set())
     const forceImmediatePollRef = useRef(false)
@@ -251,6 +257,7 @@ export function usePrepaidSponsorship({
     }, [onSubmitted])
 
     useEffect(() => {
+        sendControllerRef.current?.abort()
         walletEpochRef.current += 1
         flowEpochRef.current += 1
         operationRef.current = null
@@ -263,6 +270,7 @@ export function usePrepaidSponsorship({
             connectorId: connection.connector?.id,
             quoteEndpoint,
         })
+        return () => sendControllerRef.current?.abort()
     }, [connection.connector?.id, quoteEndpoint, walletAddress])
 
     useEffect(() => {
@@ -301,6 +309,10 @@ export function usePrepaidSponsorship({
     }, [quoteEndpoint, walletAddress])
 
     const reviewOrder = useCallback((order) => {
+        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
+            setState((current) => ({ ...current, open: true }))
+            return
+        }
         if (!order?.id || order.isPreview !== true) {
             throw flowError(
                 'SPONSORSHIP_PREVIEW_INVALID',
@@ -326,15 +338,19 @@ export function usePrepaidSponsorship({
             walletAddress,
             previewId: order.id,
         })
-    }, [config, walletAddress])
+    }, [config, walletAddress, recoveryKind])
 
     const openPreviewLoading = useCallback(() => {
+        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
+            setState((current) => ({ ...current, open: true }))
+            return
+        }
         flowEpochRef.current += 1
         operationRef.current = null
         sessionTokenRef.current = null
         setState({ ...initial, open: true, phase: 'preview-loading', config })
         gasAssistTrace('flow.preview.loading', { walletAddress })
-    }, [config, walletAddress])
+    }, [config, walletAddress, recoveryKind])
 
     const failPreview = useCallback((error) => {
         setState((current) => ({
@@ -346,6 +362,10 @@ export function usePrepaidSponsorship({
     }, [])
 
     const start = useCallback(async () => {
+        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
+            setState((current) => ({ ...current, open: true }))
+            return
+        }
         if (previewOrder) {
             reviewOrder(previewOrder)
             return
@@ -468,9 +488,13 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient])
+    }, [beginOperation, buyToken, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient, recoveryKind])
 
     const signPackage = useCallback(async () => {
+        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
+            setState((current) => ({ ...current, open: true, phase: 'confirmation-delayed' }))
+            return
+        }
         const operation = 'package'
         if (!beginOperation(operation)) return
         let order = state.order
@@ -574,7 +598,9 @@ export function usePrepaidSponsorship({
                     : current.order,
             }))
             if (selfHostedFrontendEnabled(config)) {
+                sendControllerRef.current = new AbortController()
                 const submission = await submitSelfHostedPaymasterUserOperation({
+                    signal: sendControllerRef.current.signal,
                     prepared,
                     order,
                     backendConfig: config,
@@ -582,6 +608,12 @@ export function usePrepaidSponsorship({
                     sessionToken,
                     walletClient,
                     authenticatedWalletAddress: walletAddress,
+                    onBroadcast: ({ userOpHash }) => {
+                        if (!isCurrent(walletEpoch, flowEpoch)) return
+                        setState((current) => ({ ...current, phase: 'swap-confirming',
+                            order: { ...order, userOpHash, atomicExecution: true,
+                                status: 'atomic-submitting', sourceStatus: 'pending' } }))
+                    },
                     onSubmitted: async ({ transactionHash, userOpHash }) => {
                         if (isCurrent(walletEpoch, flowEpoch)) {
                             await notifySubmitted({ ...order, userOpHash }, transactionHash)
@@ -604,12 +636,13 @@ export function usePrepaidSponsorship({
                     destinationStatus: isCrossChain ? 'pending' : null,
                     status: confirmed ? 'completed' : 'atomic-submitted',
                 }
-                setState((current) => ({
+                setState((current) => ['completed', 'failed'].includes(current.order?.status) ? current : ({
                     ...current,
-                    phase: confirmed ? 'completed' : 'swap-confirming',
+                    phase: confirmed ? 'completed' : sourceConfirmed ? 'destination-pending' : 'confirmation-delayed',
                     intentExpiresAt: null,
                     order: { ...current.order, ...completedOrder },
                 }))
+                if (confirmed) removePendingUserOperation(order.id)
                 if (confirmed && !confirmedOrderIdsRef.current.has(order.id)) {
                     await onConfirmedRef.current?.(completedOrder)
                     confirmedOrderIdsRef.current.add(order.id)
@@ -617,11 +650,108 @@ export function usePrepaidSponsorship({
                 return
             }
         } catch (error) {
-            publishFailure(error, { walletEpoch, flowEpoch })
+            const pending = pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))[0]
+            if (pending && isCurrent(walletEpoch, flowEpoch)) {
+                setState((current) => ({ ...current, phase: 'confirmation-delayed', error: null,
+                    order: { ...current.order, userOpHash: pending.userOpHash,
+                        status: 'atomic-submitting', submissionAmbiguous: pending.ambiguous } }))
+            } else publishFailure(error, { walletEpoch, flowEpoch })
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient])
+    }, [beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient, recoveryKind])
+
+    useEffect(() => {
+        if (!walletAddress || !quoteEndpoint) return undefined
+        const controller = new AbortController()
+        let timer
+        let attempt = 0
+        let running = false
+        const walletEpoch = walletEpochRef.current
+        const operation = pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))[0]
+        if (operation) {
+            setState((current) => current.order?.id === operation.orderId ? current : {
+                ...initial, open: true, phase: 'confirmation-delayed',
+                order: { id: operation.orderId, userOpHash: operation.userOpHash,
+                    walletAddress: operation.walletAddress, atomicExecution: true,
+                    status: 'atomic-submitting', sourceStatus: 'pending', submissionAmbiguous: operation.ambiguous },
+            })
+            gasAssistTrace('userop.recovery.started', { orderId: operation.orderId })
+        }
+        if (!operation) return () => controller.abort()
+        const schedule = () => {
+            const old = Date.now() - operation.timestamp > 24 * 60 * 60 * 1_000
+            timer = window.setTimeout(poll, old ? 60_000 : Math.min(15_000, 5_000 * (1 + attempt)))
+        }
+        async function poll() {
+            if (controller.signal.aborted || running) return
+            if (document.hidden) return
+            running = true
+            try {
+                let recovered = await recoverSelfHostedUserOperation({ quoteEndpoint, operation, signal: controller.signal })
+                if (operation.routeId && recovered.sourceStatus === 'confirmed') {
+                    const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}/v1/cross-chain/routes/${encodeURIComponent(operation.routeId)}/sponsorship/recovery`, {
+                        method: 'POST', headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ orderId: operation.orderId, walletAddress: operation.walletAddress, userOpHash: operation.userOpHash }),
+                        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
+                    })
+                    if (response.ok) {
+                        const routeRecovery = await response.json()
+                        const destination = routeRecovery.destination
+                        if (destination?.publicRouteId === operation.routeId) {
+                            recovered = { ...recovered, destinationStatus: destination.status,
+                                status: destination.status === 'completed' ? 'completed' :
+                                    ['failed', 'refunded'].includes(destination.status) ? 'failed' : 'atomic-submitted' }
+                        }
+                    }
+                }
+                if (controller.signal.aborted || walletEpochRef.current !== walletEpoch) return
+                const terminal = ['completed', 'failed', 'rejected'].includes(recovered.status)
+                const phase = recovered.status === 'completed' ? 'completed'
+                    : terminal || recovered.sourceStatus === 'reverted' ? 'failed'
+                    : recovered.sourceStatus === 'confirmed' ? 'destination-pending'
+                    : Date.now() - operation.timestamp > 24 * 60 * 60 * 1_000 ? 'confirmation-unresolved'
+                    : Date.now() - operation.timestamp > 120_000 ? 'confirmation-delayed' : 'swap-confirming'
+                gasAssistTrace(`userop.recovery.${phase}`, { orderId: operation.orderId, userOpHash: operation.userOpHash, transactionHash: recovered.transactionHash })
+                const order = { id: operation.orderId, ...recovered,
+                    swapTransactionHash: recovered.transactionHash, atomicTransactionHash: recovered.transactionHash,
+                    atomicExecution: true, crossChainRouteId: operation.routeId }
+                setState((current) => ({ ...current, order: { ...current.order, ...order }, phase,
+                    error: phase === 'failed' ? flowError('PAYMASTER_EXECUTION_REVERTED', 'The sponsored operation could not complete.') : null,
+                    lastPollError: null }))
+                if (terminal || recovered.sourceStatus === 'reverted') {
+                    removePendingUserOperation(operation.orderId)
+                    controller.abort()
+                    setRecoveryRevision((revision) => revision + 1)
+                    if (phase === 'completed' && !confirmedOrderIdsRef.current.has(operation.orderId)) {
+                        confirmedOrderIdsRef.current.add(operation.orderId)
+                        await onConfirmedRef.current?.(order)
+                    }
+                    return
+                }
+                if (recovered.sourceStatus === 'confirmed' && recovered.transactionHash) {
+                    await notifySubmitted(order, recovered.transactionHash)
+                }
+                attempt += 1
+            } catch {
+                // Receipt/RPC outages cannot establish execution failure.
+                gasAssistTrace('userop.recovery.deferred', { orderId: operation.orderId })
+                attempt += 1
+            } finally { running = false }
+            if (!controller.signal.aborted) schedule()
+        }
+        const visible = () => {
+            window.clearTimeout(timer)
+            if (!document.hidden) void poll()
+        }
+        document.addEventListener('visibilitychange', visible)
+        void poll()
+        return () => {
+            controller.abort()
+            window.clearTimeout(timer)
+            document.removeEventListener('visibilitychange', visible)
+        }
+    }, [walletAddress, quoteEndpoint, state.order?.userOpHash, notifySubmitted, recoveryKind, recoveryRevision])
 
     const pollOrderId = state.order?.id ?? null
     const pollOrderIsPreview = state.order?.isPreview === true
@@ -632,7 +762,7 @@ export function usePrepaidSponsorship({
         const orderId = pollOrderId
         const walletEpoch = walletEpochRef.current
         const flowEpoch = flowEpochRef.current
-        if (!state.open || !orderId || pollOrderIsPreview || !sessionToken ||
+        if (state.order?.userOpHash || !state.open || !orderId || pollOrderIsPreview || !sessionToken ||
             ['completed', 'expired', 'rejected', 'failed'].includes(pollOrderStatus)) return undefined
         const controller = new AbortController()
         const delay = forceImmediatePollRef.current ? 0 : 3_000
@@ -707,6 +837,7 @@ export function usePrepaidSponsorship({
         pollOrderStatus,
         quoteEndpoint,
         state.open,
+        state.order?.userOpHash,
         state.pollRevision,
     ])
 
@@ -725,6 +856,10 @@ export function usePrepaidSponsorship({
     }, [state.open])
 
     const close = useCallback(() => {
+        if (state.order?.userOpHash && !state.phase.endsWith('-signing')) {
+            setState((current) => ({ ...current, open: false }))
+            return
+        }
         if (state.phase.endsWith('-signing') ||
             state.phase.endsWith('-preparing') ||
             state.phase.endsWith('-confirming') ||
@@ -735,7 +870,7 @@ export function usePrepaidSponsorship({
         operationRef.current = null
         setState(initial)
         gasAssistTrace('flow.closed', { walletAddress })
-    }, [state.phase, walletAddress])
+    }, [state.phase, state.order?.userOpHash, walletAddress])
 
     return {
         ...state,

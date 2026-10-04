@@ -30,6 +30,7 @@ const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/sponsor$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/submitted$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/receipt$`, 'u')],
+    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/recovery$`, 'u')],
 ] as const)
 
 type ProxyConfig = {

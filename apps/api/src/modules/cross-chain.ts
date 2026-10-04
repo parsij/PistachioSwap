@@ -303,6 +303,17 @@ export function createCrossChainRoutes(
             (request, reply) => status(request.params.routeId, request, reply),
         )
 
+        app.post<{ Params: { routeId: string }; Body: unknown }>(
+            '/v1/cross-chain/routes/:routeId/sponsorship/recovery',
+            { config: { rateLimit: { max: 12, timeWindow: '1 minute' } } },
+            async (request, reply) => {
+                try {
+                    const body = exactBody(request.body, ['orderId', 'walletAddress', 'userOpHash'])
+                    return reply.send(await service.recoverSponsorship(request.params.routeId, body, request.ip))
+                } catch (error) { return sendError(reply, error) }
+            },
+        )
+
         for (const action of ['claim', 'submitted'] as const) {
             app.post<{ Params: { routeId: string }; Body: unknown }>(
                 `/v1/cross-chain/routes/:routeId/${action}`,

@@ -13,8 +13,12 @@ import {
 } from 'viem'
 import { hashAuthorization, recoverAuthorizationAddress } from 'viem/utils'
 
+import { pendingUserOperations, persistPendingUserOperation } from './pendingUserOperations.js'
+import { gasAssistTrace } from './gasAssistTrace.js'
+
 import { getGasAssistBaseUrl } from './gasAssist.js'
 
+const activeSubmissions = new Set()
 const CHAIN_ID = 56
 const ENTRY_POINT = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
 const FACTORY_MARKER = '0x7702000000000000000000000000000000000000'
@@ -286,7 +290,12 @@ async function reportPaymasterHash(quoteEndpoint, sessionToken, path, body, sign
             body: JSON.stringify(body),
             signal,
         })
-        return response.ok
+        if (!response.ok) return false
+        if (!path.endsWith('/receipt')) return true
+        const verified = await response.json()
+        return verified.sourceStatus === 'confirmed' &&
+            verified.userOpHash?.toLowerCase() === body.userOpHash.toLowerCase() &&
+            verified.transactionHash?.toLowerCase() === body.transactionHash.toLowerCase()
     } catch {
         // The UserOperation may already have been broadcast. Reporting must
         // never trigger a replacement transaction or label it as reverted.
@@ -434,10 +443,13 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
         s: parsed.s,
     }
 }
-export async function submitSelfHostedPaymasterUserOperation({
+async function submitOperation({
     prepared, order, backendConfig, quoteEndpoint, sessionToken,
-    walletClient, authenticatedWalletAddress, signal, onSubmitted,
+    walletClient, authenticatedWalletAddress, signal, onSubmitted, onBroadcast,
 }) {
+    if (pendingUserOperations(authenticatedWalletAddress).some((item) => item.orderId === order.id)) {
+        deny('PAYMASTER_ALREADY_SUBMITTED', 'This operation is unresolved. Resume confirmation instead of sending again.')
+    }
     const settings = frontendConfig(backendConfig)
     const calls = validateSelfHostedPrepared(prepared, order, settings)
     const sender = address(authenticatedWalletAddress, 'authenticated wallet')
@@ -553,17 +565,34 @@ export async function submitSelfHostedPaymasterUserOperation({
         signature,
         ...(eip7702Auth ? { eip7702Auth } : {}),
     }
+    // Persist the locally expected PUBLIC hash before the ambiguous send boundary.
+    // No signatures, operation body, credentials or RPC URLs are stored.
+    const recovery = persistPendingUserOperation({
+        orderId: prepared.orderId, userOpHash: expectedHash, chainId: 56,
+        walletAddress: sender, timestamp: Date.now(), routeId: order.crossChainRouteId,
+        ambiguous: true,
+    })
     const userOpHash = await rpc(settings.bundlerRpc, 'eth_sendUserOperation',
         [bundlerUserOperation(finalOperation), settings.entryPoint], signal)
     if (!HASH.test(String(userOpHash ?? '')) || userOpHash.toLowerCase() !== expectedHash.toLowerCase()) {
         deny('PAYMASTER_USEROP_HASH_MISMATCH', 'The Bundler returned a UserOperation hash different from the locally signed hash.')
     }
+    persistPendingUserOperation({ ...recovery, userOpHash, ambiguous: false })
+    gasAssistTrace('userop.submitted', { orderId: prepared.orderId, userOpHash })
+    onBroadcast?.({ orderId: prepared.orderId, userOpHash, timestamp: recovery.timestamp })
     // Inform the backend that its one permitted authorization was submitted.
     // It receives only a public hash and cannot relay or modify the operation.
     await reportPaymasterHash(quoteEndpoint, sessionToken,
         `${endpoint}/submitted`, { userOpHash }, signal)
+    gasAssistTrace('userop.foreground.started', { orderId: prepared.orderId, userOpHash })
     for (let attempt = 0; attempt < 60; attempt += 1) {
-        const receipt = await rpc(settings.bundlerRpc, 'eth_getUserOperationReceipt', [userOpHash], signal)
+        if (signal?.aborted) break
+        let receipt
+        try {
+            receipt = await rpc(settings.bundlerRpc, 'eth_getUserOperationReceipt', [userOpHash], signal)
+        } catch {
+            gasAssistTrace('userop.receipt.deferred', { orderId: prepared.orderId, userOpHash })
+        }
         if (receipt) {
             const transactionHash = receipt.receipt?.transactionHash ?? null
             if (transactionHash && !HASH.test(transactionHash)) {
@@ -583,15 +612,48 @@ export async function submitSelfHostedPaymasterUserOperation({
             // Only advance the bridge route after an actual successful source
             // operation. A reverted sponsored operation must not receive an
             // optimistic destination credit or "source submitted" callback.
-            if (transactionHash) await onSubmitted?.({
+            if (transactionHash && sourceReport) await onSubmitted?.({
                 orderId: prepared.orderId, userOpHash, transactionHash, sourceReport,
             })
             return {
                 orderId: prepared.orderId, userOpHash, transactionHash,
-                status: 'source-confirmed', backendSourceReceiptVerified: sourceReport,
+                status: sourceReport ? 'source-confirmed' : 'pending', backendSourceReceiptVerified: sourceReport,
             }
         }
         await new Promise((resolve) => globalThis.setTimeout(resolve, 2_000))
     }
+    gasAssistTrace('userop.foreground.exhausted', { orderId: prepared.orderId, userOpHash })
     return { orderId: prepared.orderId, userOpHash, transactionHash: null, status: 'pending' }
+}
+
+export async function submitSelfHostedPaymasterUserOperation(options) {
+    const send = async () => {
+        if (activeSubmissions.has(options.order.id)) deny('PAYMASTER_ALREADY_SUBMITTED', 'This order is already submitting.')
+        activeSubmissions.add(options.order.id)
+        try { return await submitOperation(options) }
+        finally { activeSubmissions.delete(options.order.id) }
+    }
+    // Serialize tabs before checking persisted unresolved state. No automatic retry.
+    if (globalThis.navigator?.locks?.request) {
+        return globalThis.navigator.locks.request(
+            `pistachioswap:gas-assist:${options.order.id}`, send,
+        )
+    }
+    deny('PAYMASTER_RECOVERY_LOCK_UNAVAILABLE', 'This browser cannot safely coordinate sponsored submissions. Use a browser with Web Locks support.')
+}
+
+export async function recoverSelfHostedUserOperation({ quoteEndpoint, operation, signal }) {
+    const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/orders/${encodeURIComponent(operation.orderId)}/paymaster/recovery`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ walletAddress: operation.walletAddress, userOpHash: operation.userOpHash }),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) throw new Error('Confirmation status is temporarily unavailable.')
+    const result = await response.json()
+    if (result.orderId !== operation.orderId || result.userOpHash?.toLowerCase() !== operation.userOpHash ||
+        result.walletAddress?.toLowerCase() !== operation.walletAddress || result.chainId !== 56 ||
+        (result.transactionHash && !HASH.test(result.transactionHash))) {
+        throw new Error('Recovery identifiers did not match.')
+    }
+    return result
 }

@@ -151,6 +151,26 @@ export class CrossChainRouteService {
         return routeResponse(route)
     }
 
+    async recoverSponsorship(routeId: string, body: Record<string, unknown>, clientIp: string) {
+        routeId = requireRouteId(routeId)
+        const route = await this.repository.get(routeId)
+        const owner = requireOwner(body.walletAddress)
+        if (!route || route.ownerAddress !== owner || route.sourceAsset.chainId !== 56 || route.destinationAsset.chainId === 56) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
+        const recovered = await this.privateGasAssistRequest({
+            pathname: '/internal/v1/sponsorship/recovery', clientIp,
+            idempotencyKey: `recover-${routeId}`, body,
+        }) as Record<string, unknown>
+        if (recovered.routeId !== routeId || recovered.walletAddress?.toString().toLowerCase() !== owner) {
+            throw routeError('SPONSORSHIP_RECOVERY_MISMATCH', 'The source operation belongs to another route.')
+        }
+        // The private verifier has checked the exact EntryPoint event. No user
+        // signatures or authenticated route session need to survive refresh.
+        if (recovered.sourceStatus === 'confirmed' && recovered.transactionHash) {
+            await this.repository.recoverVerifiedSubmission(routeId, owner, String(recovered.transactionHash))
+        }
+        return { ...recovered, destination: await this.get(routeId) }
+    }
+
     async claim(routeId: string, ownerValue: unknown, sourceChainId?: number) {
         routeId = requireRouteId(routeId)
         const ownerAddress = requireOwner(ownerValue)
