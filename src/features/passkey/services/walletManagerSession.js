@@ -344,24 +344,37 @@ export const methods = {
         }
         this.requireUnlocked()
     },
-    captureSigningContext(expectedChainId = this.activeChainId) {
+    captureSigningContext(
+        expectedChainId = this.activeChainId,
+        { requireActiveChain = true } = {},
+    ) {
         this.requireUnlocked()
         const chainId = normalizeAllowedChainId(expectedChainId)
-        if (chainId !== this.activeChainId) throw managerError('PISTACHIO_CHAIN_INVARIANT_FAILED', 'The request is not for the active chain.')
+        if (requireActiveChain && chainId !== this.activeChainId) {
+            throw managerError(
+                'PISTACHIO_CHAIN_INVARIANT_FAILED',
+                'The request is not for the active chain.',
+            )
+        }
         return Object.freeze({
             address: this.address,
             chainId,
             generation: this.signingContextGeneration,
+            requireActiveChain,
         })
     },
     assertSigningContext(context) {
         this.requireUnlocked()
         if (
             context.generation !== this.signingContextGeneration ||
-            context.chainId !== this.activeChainId ||
+            (context.requireActiveChain !== false &&
+                context.chainId !== this.activeChainId) ||
             getAddress(context.address) !== getAddress(this.address)
         ) {
-            throw managerError('PISTACHIO_SIGNING_CONTEXT_CHANGED', 'The active chain or wallet account changed during signing.')
+            throw managerError(
+                'PISTACHIO_SIGNING_CONTEXT_CHANGED',
+                'The wallet account or signing context changed during signing.',
+            )
         }
     },
     async switchChain(chainId) {
