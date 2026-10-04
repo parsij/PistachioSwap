@@ -69,6 +69,8 @@ import {
     getWalletTokens,
     setWalletTokenCacheForTest,
 } from '../src/providers/alchemy/wallet-tokens.js'
+import { runWithShapeShiftDexScreenerPricing } from '../src/providers/wallet-price-request-scope.js'
+import { ACTIVE_TOKEN_DISCOVERY_CHAINS } from '../src/token-discovery/registry.js'
 
 const wallet = '0x1000000000000000000000000000000000000042'
 const xautAddress = '0x21caef8a43163eea865baee23b9c2e327696a3bf'
@@ -241,6 +243,56 @@ describe('normalized wallet token response', () => {
                 includeInPortfolioValue: true,
             }),
         ]))
+    })
+
+    it('recovers an omitted native balance for every active network in the production wallet scope', async () => {
+        mocks.alchemyRpc.mockImplementation(async (request) =>
+            request.method === 'eth_getBalance'
+                ? '0x2386f26fc10000'
+                : { tokenBalances: [] },
+        )
+
+        for (const chain of ACTIVE_TOKEN_DISCOVERY_CHAINS) {
+            clearWalletTokenCacheForTest()
+            const tokens = await runWithShapeShiftDexScreenerPricing(() =>
+                getWalletTokens({
+                    chainId: chain.chainId,
+                    walletAddress: wallet,
+                    inventory: {
+                        balances: new Map(),
+                        nativeBalance: null,
+                        pageCount: 1,
+                        metadata: new Map(),
+                        prices: new Map(),
+                        nativePriceUSD: null,
+                        source: 'alchemy-portfolio',
+                    },
+                }),
+            )
+
+            expect(tokens).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    chainId: chain.chainId,
+                    address: '0x0000000000000000000000000000000000000000',
+                    isNative: true,
+                    name: chain.native.name,
+                    symbol: chain.native.symbol,
+                    decimals: 18,
+                    balance: '0.01',
+                    rawBalance: '10000000000000000',
+                    recognitionStatus: 'established',
+                    visibility: 'primary',
+                    includeInPortfolioValue: true,
+                }),
+            ]))
+        }
+
+        const nativeCalls = mocks.alchemyRpc.mock.calls.filter(
+            ([request]) => request.method === 'eth_getBalance',
+        )
+        expect(nativeCalls).toHaveLength(ACTIVE_TOKEN_DISCOVERY_CHAINS.length)
+        expect(new Set(nativeCalls.map((call) => call[2])))
+            .toEqual(new Set(ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => chain.chainId)))
     })
 
     it('does not fetch native prices for a zero native balance', async () => {
