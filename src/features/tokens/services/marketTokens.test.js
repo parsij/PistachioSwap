@@ -518,6 +518,37 @@ describe.sequential('frontend market-token services', () => {
         ])).toHaveLength(1)
     })
 
+    it('admits canonical Base ETH from the active-chain registry', () => {
+        const baseNative = {
+            chainId: 8453,
+            address: '0x0000000000000000000000000000000000000000',
+            isNative: true,
+            source: 'registry-native',
+            name: 'Ether (Base)',
+            symbol: 'ETH',
+            decimals: 18,
+            verificationStatus: 'established',
+            recognitionStatus: 'established',
+            verificationReasons: ['active-chain-registry-native'],
+            recognitionReasons: ['active-chain-registry-native'],
+            verifiedContract: null,
+            possibleSpam: false,
+            visibility: 'primary',
+        }
+        expect(filterEligibleMarketTokens(
+            [baseNative],
+            { requireMarketMetrics: false },
+        )).toEqual([baseNative])
+
+        expect(filterEligibleMarketTokens([
+            {
+                ...baseNative,
+                isNative: false,
+                address: '0x0000000000000000000000000000000000000001',
+            },
+        ], { requireMarketMetrics: false })).toEqual([])
+    })
+
     it('requires real activity for the curated official XAUt identity', () => {
         const xaut = {
             chainId: 56,
