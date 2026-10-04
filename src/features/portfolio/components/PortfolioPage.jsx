@@ -336,8 +336,6 @@ function MoreMenu({ address, onRefresh }) {
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
     useOutsideDismiss(open, ref, () => setOpen(false))
-    const chain = getCuratedEvmChain(1)
-    const explorer = chain?.blockExplorers?.default?.url
 
     return (
         <div className="uni-portfolio-more" ref={ref}>
@@ -375,18 +373,16 @@ function MoreMenu({ address, onRefresh }) {
                         <RefreshCw aria-hidden="true" />
                         Refresh
                     </button>
-                    {explorer && (
-                        <a
-                            role="menuitem"
-                            href={explorer.replace(/\/+$/, '') + '/address/' + address}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() => setOpen(false)}
-                        >
-                            <ExternalLink aria-hidden="true" />
-                            View explorer
-                        </a>
-                    )}
+                    <a
+                        role="menuitem"
+                        href={'https://blockscan.com/Address/' + address}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setOpen(false)}
+                    >
+                        <ExternalLink aria-hidden="true" />
+                        View explorer
+                    </a>
                 </div>
             )}
         </div>
