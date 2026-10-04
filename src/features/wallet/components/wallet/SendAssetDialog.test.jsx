@@ -5,15 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseEther } from 'viem'
 
 const mocks = vi.hoisted(() => ({
-    send: vi.fn(),
-    write: vi.fn(),
-    switchNetwork: vi.fn(),
-    switchChain: vi.fn(),
-    runtimeChainId: 56,
-    wagmiChainId: 56,
-    pendingChainId: null,
-    postSwitchReads: 0,
-    config: {},
+    resolveSendWallet: vi.fn(),
+    submitSendPlan: vi.fn(),
+    connector: { id: 'pistachio-local' },
     publicClient: {
         getGasPrice: vi.fn().mockResolvedValue(3_000_000_000n),
         estimateGas: vi.fn().mockResolvedValue(21_000n),
@@ -24,30 +18,13 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('#wallet-runtime', () => ({
-    useAppKitNetwork: () => ({
-        chainId: mocks.runtimeChainId,
-        switchNetwork: mocks.switchNetwork,
-    }),
-    useConfig: () => mocks.config,
+    useConnection: () => ({ connector: mocks.connector }),
     usePublicClient: () => mocks.publicClient,
-    useSendTransaction: () => ({ mutateAsync: mocks.send }),
-    useWriteContract: () => ({ mutateAsync: mocks.write }),
 }))
 
-vi.mock('wagmi/actions', () => ({
-    getAccount: () => {
-        if (mocks.pendingChainId !== null) {
-            mocks.postSwitchReads += 1
-            if (mocks.postSwitchReads >= 2) {
-                mocks.wagmiChainId = mocks.pendingChainId
-                mocks.pendingChainId = null
-            }
-        }
-        return { chainId: mocks.wagmiChainId }
-    },
-    switchChain: async (_config, parameters) => {
-        await mocks.switchChain(parameters)
-    },
+vi.mock('../../services/sendExecution.js', () => ({
+    resolveSendWallet: (...args) => mocks.resolveSendWallet(...args),
+    submitSendPlan: (...args) => mocks.submitSendPlan(...args),
 }))
 
 import SendAssetDialog from './SendAssetDialog.jsx'
@@ -175,16 +152,18 @@ function renderDialog(overrides = {}) {
 describe('SendAssetDialog', () => {
     beforeEach(() => {
         window.localStorage.clear()
-        mocks.runtimeChainId = 56
-        mocks.wagmiChainId = 56
-        mocks.pendingChainId = null
-        mocks.postSwitchReads = 0
-        mocks.config = {}
-        mocks.switchNetwork.mockResolvedValue(undefined)
-        mocks.switchChain.mockImplementation(async ({ chainId }) => {
-            mocks.pendingChainId = Number(chainId)
-            mocks.postSwitchReads = 0
-        })
+        mocks.connector = { id: 'pistachio-local' }
+        mocks.resolveSendWallet.mockImplementation(async ({ connectedAddress, targetChain }) => ({
+            account: connectedAddress,
+            connectorId: mocks.connector.id,
+            walletClient: {
+                account: { address: connectedAddress },
+                chain: targetChain,
+            },
+        }))
+        mocks.submitSendPlan.mockResolvedValue(
+            '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        )
     })
     afterEach(() => {
         cleanup()
@@ -197,23 +176,25 @@ describe('SendAssetDialog', () => {
 
     it('reviews then sends a native value transaction only after explicit confirmation', async () => {
         const onConfirmed = vi.fn()
-        mocks.send.mockResolvedValue('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
         renderDialog({ onConfirmed })
         fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.1' } })
         fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
         fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
         await screen.findByRole('heading', { name: 'Review send' })
-        expect(mocks.send).not.toHaveBeenCalled()
+        expect(mocks.submitSendPlan).not.toHaveBeenCalled()
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
         await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
-        expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-            to: recipient,
-            value: parseEther('0.1'),
+        expect(mocks.submitSendPlan).toHaveBeenCalledWith(expect.objectContaining({
+            targetChain: expect.objectContaining({ id: 56 }),
+            plan: expect.objectContaining({
+                kind: 'native',
+                amountWei: parseEther('0.1'),
+            }),
         }))
     })
 
     it('reports wallet rejection as rejected rather than generic failure', async () => {
-        mocks.send.mockRejectedValue({ code: 4001 })
+        mocks.submitSendPlan.mockRejectedValue({ code: 4001 })
         renderDialog()
         fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.1' } })
         fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
@@ -245,7 +226,6 @@ describe('SendAssetDialog', () => {
     })
 
     it('uses the exact token selector across wallet chains and auto-switches on send', async () => {
-        mocks.send.mockResolvedValue('0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
         renderDialog({ assets: [native, polygonNative] })
 
         fireEvent.click(screen.getByRole('button', { name: /BNB/ }))
@@ -267,21 +247,20 @@ describe('SendAssetDialog', () => {
         expect(screen.getByText('Polygon')).toBeTruthy()
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
 
-        await waitFor(() => expect(mocks.switchChain).toHaveBeenCalledWith({ chainId: 137 }))
-        expect(mocks.switchNetwork).not.toHaveBeenCalled()
-        await waitFor(() => expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 })))
+        await waitFor(() => expect(mocks.resolveSendWallet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                targetChain: expect.objectContaining({ id: 137 }),
+            }),
+        ))
+        await waitFor(() => expect(mocks.submitSendPlan).toHaveBeenCalledWith(
+            expect.objectContaining({
+                targetChain: expect.objectContaining({ id: 137 }),
+                plan: expect.objectContaining({ kind: 'native' }),
+            }),
+        ))
     })
 
-    it('waits for Wagmi to reach Base before submitting an ERC-20 send', async () => {
-        const hash = '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
-        mocks.write.mockImplementation(async (request) => {
-            if (Number(mocks.wagmiChainId) !== Number(request.chainId)) {
-                throw new Error(
-                    `wallet chain ${mocks.wagmiChainId} does not match target ${request.chainId}`,
-                )
-            }
-            return hash
-        })
+    it('uses the selected Base token chain for an ERC-20 send', async () => {
         const onConfirmed = vi.fn()
         renderDialog({
             assets: [baseUsdc, baseEth],
@@ -301,17 +280,28 @@ describe('SendAssetDialog', () => {
         expect(screen.getByText('Base')).toBeTruthy()
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
 
-        await waitFor(() => expect(mocks.switchChain).toHaveBeenCalledWith({ chainId: 8453 }))
-        expect(mocks.switchNetwork).not.toHaveBeenCalled()
-        await waitFor(() => expect(mocks.write).toHaveBeenCalledOnce())
-        expect(mocks.postSwitchReads).toBeGreaterThanOrEqual(2)
-        expect(mocks.wagmiChainId).toBe(8453)
-        expect(mocks.write).toHaveBeenCalledWith(expect.objectContaining({
-            chainId: 8453,
-            address: baseUsdc.address,
-            functionName: 'transfer',
-            args: [recipient, 291426n],
-        }))
+        await waitFor(() => expect(mocks.resolveSendWallet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                connectedAddress: account,
+                targetChain: expect.objectContaining({ id: 8453 }),
+                connector: expect.objectContaining({ id: 'pistachio-local' }),
+            }),
+        ))
+        await waitFor(() => expect(mocks.submitSendPlan).toHaveBeenCalledWith(
+            expect.objectContaining({
+                targetChain: expect.objectContaining({ id: 8453 }),
+                plan: expect.objectContaining({
+                    kind: 'erc20',
+                    amountWei: 291426n,
+                    request: expect.objectContaining({
+                        chainId: 8453,
+                        address: baseUsdc.address,
+                        functionName: 'transfer',
+                        args: [recipient, 291426n],
+                    }),
+                }),
+            }),
+        ))
         await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
     })
 
@@ -332,7 +322,7 @@ describe('SendAssetDialog', () => {
         expect(confirmation).toHaveBeenCalledTimes(2)
         expect(confirmation.mock.calls[0][0]).toContain('honeypot-confirmed')
         expect(screen.queryByRole('heading', { name: 'Review send' })).toBeNull()
-        expect(mocks.send).not.toHaveBeenCalled()
+        expect(mocks.submitSendPlan).not.toHaveBeenCalled()
     })
 
     it('keeps hidden assets separate when unknown-token hiding is disabled', () => {
