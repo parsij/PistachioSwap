@@ -90,6 +90,28 @@ describe('token catalog ranking', () => {
         ).toBe(true)
     })
 
+    it('keeps every active network native token discoverable by its symbol', async () => {
+        const app = createApp()
+        for (const chain of ACTIVE_TOKEN_DISCOVERY_CHAINS) {
+            const response = await app.inject({
+                method: 'GET',
+                url: `/v1/token-catalog?chainId=${chain.chainId}&mode=all&search=${encodeURIComponent(chain.native.symbol)}&limit=20`,
+            })
+            expect(response.statusCode).toBe(200)
+            const native = response.json().tokens.find(
+                (token: { address: string }) =>
+                    token.address === '0x0000000000000000000000000000000000000000',
+            )
+            expect(native).toMatchObject({
+                chainId: chain.chainId,
+                address: '0x0000000000000000000000000000000000000000',
+                symbol: chain.native.symbol,
+                isNative: true,
+            })
+        }
+        await app.close()
+    })
+
     it('keeps Polygon POL discoverable from the active-chain registry', async () => {
         const app = createApp()
         const response = await app.inject({

@@ -16,6 +16,10 @@ import {
     getTokenLogoCandidates,
 } from '../components/tokenIconUtils.js'
 import { mergeWalletBalances } from './walletTokens.js'
+import {
+    CANONICAL_NATIVE_TOKEN_ADDRESS,
+    TOKEN_DISCOVERY_CHAINS,
+} from '../../../web3/curatedEvmChains.js'
 
 function createLocalStorage(initial = {}) {
     const values = new Map(Object.entries(initial))
@@ -516,6 +520,31 @@ describe.sequential('frontend market-token services', () => {
             token(10, { symbol: 'SAFE' }),
             token(9, { verificationStatus: 'unverified' }),
         ])).toHaveLength(1)
+    })
+
+    it('admits canonical registry-native assets on every active frontend network', () => {
+        const nativeTokens = TOKEN_DISCOVERY_CHAINS.map((chain) => ({
+            chainId: chain.id,
+            address: CANONICAL_NATIVE_TOKEN_ADDRESS,
+            isNative: true,
+            source: 'registry-native',
+            name: chain.nativeCurrency.name,
+            symbol: chain.nativeCurrency.symbol,
+            decimals: chain.nativeCurrency.decimals,
+            verificationStatus: 'established',
+            recognitionStatus: 'established',
+            verificationReasons: ['active-chain-registry-native'],
+            recognitionReasons: ['active-chain-registry-native'],
+            verifiedContract: null,
+            possibleSpam: false,
+            visibility: 'primary',
+        }))
+
+        expect(filterEligibleMarketTokens(
+            nativeTokens,
+            { requireMarketMetrics: false },
+        ).map((token) => token.chainId))
+            .toEqual(TOKEN_DISCOVERY_CHAINS.map((chain) => chain.id))
     })
 
     it('admits canonical Base ETH from the active-chain registry', () => {

@@ -48,6 +48,24 @@ async function completeMetadata(
     return metadata
 }
 
+async function completeNativeBalance(
+    inventory: WalletTokenInventory,
+    args: GetWalletTokensArgs,
+) {
+    if (inventory.nativeBalance !== null) return inventory.nativeBalance
+    const result = await alchemyRpc(
+        {
+            id: 'native-wallet-balance',
+            jsonrpc: '2.0',
+            method: 'eth_getBalance',
+            params: [args.walletAddress, 'latest'],
+        },
+        args.signal,
+        args.chainId,
+    ).catch(() => null)
+    return nativeBalance(result) ?? inventory.nativeBalance
+}
+
 function zeroPrices(addresses: Iterable<string>) {
     return new Map(
         [...addresses].flatMap((value) => {
@@ -61,9 +79,14 @@ async function scopedInventory(
     args: GetWalletTokensArgs,
 ): Promise<WalletTokenInventory> {
     if (args.inventory) {
+        const [metadata, resolvedNativeBalance] = await Promise.all([
+            completeMetadata(args.inventory, args),
+            completeNativeBalance(args.inventory, args),
+        ])
         return {
             ...args.inventory,
-            metadata: await completeMetadata(args.inventory, args),
+            nativeBalance: resolvedNativeBalance,
+            metadata,
             prices: zeroPrices(args.inventory.balances.keys()),
             nativePriceUSD: '0',
         }
