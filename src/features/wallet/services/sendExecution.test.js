@@ -44,64 +44,53 @@ function fakeClientFactory(captured) {
 }
 
 describe('selected-token Send execution', () => {
-    it('binds Pistachio Wallet directly to the selected token chain', async () => {
-        let activeChainId = 56
-        const providerRequest = vi.fn(async ({ method, params = [] }) => {
-            if (method === 'eth_chainId') return `0x${activeChainId.toString(16)}`
-            if (method === 'eth_accounts') return [account]
-            if (method === 'eth_sendTransaction') return `0x${'ab'.repeat(32)}`
-            throw new Error(`Unexpected method ${method}: ${JSON.stringify(params)}`)
-        })
+    it('keeps Pistachio Wallet on its global chain while pinning Send to the selected token chain', async () => {
+        const sendTransaction = vi.fn(async () => `0x${'ab'.repeat(32)}`)
         const manager = {
             initialize: vi.fn(async () => undefined),
             snapshot: vi.fn(() => ({
                 sessionActive: true,
                 address: null,
                 vault: { address: account },
-                chainId: activeChainId,
+                chainId: 56,
             })),
-            switchChain: vi.fn(async (chainId) => {
-                activeChainId = Number(chainId)
-            }),
-            providerRequest,
+            switchChain: vi.fn(),
+            sendTransaction,
         }
-        const captured = {}
+
         const resolved = await resolveSendWallet({
             connectedAddress: account,
             targetChain: base,
             connector: { id: 'pistachio-local' },
             manager,
-            createClient: fakeClientFactory(captured),
-            createTransport: (provider) => provider,
         })
 
-        expect(manager.switchChain).toHaveBeenCalledWith(8453)
+        expect(manager.switchChain).not.toHaveBeenCalled()
         expect(resolved.connectorId).toBe('pistachio-local')
-        expect(resolved.walletClient.chain.id).toBe(8453)
+        expect(resolved.manager).toBe(manager)
+        expect(resolved.walletClient).toBeNull()
 
         const hash = await submitSendPlan({
-            walletClient: resolved.walletClient,
+            manager: resolved.manager,
+            account: resolved.account,
             targetChain: base,
             plan: {
                 kind: 'native',
                 amountWei: 1n,
-                request: {
-                    to: recipient,
-                },
+                request: { to: recipient },
             },
         })
 
         expect(hash).toBe(`0x${'ab'.repeat(32)}`)
-        expect(providerRequest).toHaveBeenCalledWith(expect.objectContaining({
-            method: 'eth_sendTransaction',
-        }))
-        expect(providerRequest).toHaveBeenLastCalledWith(expect.objectContaining({
-            method: 'eth_sendTransaction',
-            params: [expect.objectContaining({
-                chainId: '0x2105',
+        expect(sendTransaction).toHaveBeenCalledWith(
+            expect.objectContaining({
+                chainId: 8453,
+                from: account,
                 to: recipient,
-            })],
-        }))
+                value: 1n,
+            }),
+            { requireActiveChain: false },
+        )
     })
 
     it('uses the selected token chain for an external connector without consulting swap-page chain state', async () => {
@@ -132,6 +121,47 @@ describe('selected-token Send execution', () => {
         expect(connector.switchChain).toHaveBeenCalledWith({ chainId: 8453 })
         expect(resolved.walletClient.chain.id).toBe(8453)
         expect(provider.request).toHaveBeenCalledWith({ method: 'eth_chainId' })
+    })
+
+    it('encodes Base ERC-20 transfer calldata for the local passkey signer without a network switch', async () => {
+        const sendTransaction = vi.fn(async () => `0x${'ef'.repeat(32)}`)
+        const plan = {
+            kind: 'erc20',
+            amountWei: 291426n,
+            request: {
+                address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+                abi: [{
+                    type: 'function',
+                    name: 'transfer',
+                    stateMutability: 'nonpayable',
+                    inputs: [
+                        { name: 'recipient', type: 'address' },
+                        { name: 'amount', type: 'uint256' },
+                    ],
+                    outputs: [{ name: '', type: 'bool' }],
+                }],
+                functionName: 'transfer',
+                args: [recipient, 291426n],
+            },
+        }
+
+        await expect(submitSendPlan({
+            manager: { sendTransaction },
+            account,
+            targetChain: base,
+            plan,
+        })).resolves.toBe(`0x${'ef'.repeat(32)}`)
+
+        expect(sendTransaction).toHaveBeenCalledWith(
+            expect.objectContaining({
+                chainId: 8453,
+                from: account,
+                to: plan.request.address,
+                data: expect.stringMatching(/^0xa9059cbb/u),
+                value: 0n,
+            }),
+            { requireActiveChain: false },
+        )
     })
 
     it('submits an ERC-20 transfer through the chain-bound wallet client', async () => {

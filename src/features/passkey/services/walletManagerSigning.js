@@ -438,12 +438,17 @@ export const methods = {
         this.assertSigningContext(context)
         return result.signature
     },
-    async sendTransaction(transaction) {
+    async sendTransaction(
+        transaction,
+        { requireActiveChain = true } = {},
+    ) {
         await this.ensureUnlockedForSigning()
         const requestedChainId = transaction?.chainId === undefined
             ? this.activeChainId
             : normalizeAllowedChainId(transaction.chainId)
-        const context = this.captureSigningContext(requestedChainId)
+        const context = this.captureSigningContext(requestedChainId, {
+            requireActiveChain,
+        })
         if (transaction?.from && getAddress(transaction.from) !== getAddress(context.address)) {
             throw managerError('PISTACHIO_ACCOUNT_MISMATCH', 'Transaction account mismatch.')
         }

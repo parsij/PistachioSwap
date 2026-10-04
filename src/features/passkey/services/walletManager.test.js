@@ -416,6 +416,61 @@ describe('Pistachio Wallet manager connection and vault lifecycle', () => {
         await expect(manager.switchChain(999999)).rejects.toMatchObject({ code: 'PISTACHIO_CHAIN_NOT_ALLOWED' })
     })
 
+    it('signs a selected-token-chain transaction without changing the global wallet chain', async () => {
+        const signer = new Wallet(keccak256(toUtf8Bytes('pistachio-manager-detached-chain-test')))
+        const fetchImpl = vi.fn(async (_url, options) => {
+            const request = JSON.parse(options.body)
+            const result = request.method === 'eth_chainId'
+                ? '0x2105'
+                : keccak256(request.params[0])
+            return { ok: true, json: async () => ({ jsonrpc: '2.0', id: request.id, result }) }
+        })
+        const { manager } = createHarness()
+        manager.fetch = fetchImpl
+        manager.rpcUrlForChain = vi.fn((chainId) => {
+            expect(chainId).toBe(8453)
+            return 'https://base.example.test/'
+        })
+        await manager.initialize()
+        expect(manager.snapshot().chainId).toBe(56)
+        manager.phase = 'unlocked'
+        manager.sessionActive = true
+        manager.address = signer.address
+        manager.client = {
+            request: vi.fn(async (_operation, { transaction }) => ({
+                signedTransaction: await signer.signTransaction({
+                    ...transaction,
+                    gasLimit: transaction.gas,
+                }),
+            })),
+        }
+        const transaction = {
+            chainId: 8453,
+            data: '0x',
+            gas: 21_000,
+            gasPrice: 1,
+            nonce: 0,
+            to: '0x000000000000000000000000000000000000dEaD',
+            type: 0,
+            value: 1,
+        }
+
+        const sending = manager.sendTransaction(transaction, {
+            requireActiveChain: false,
+        })
+        await vi.waitFor(() => expect(manager.reviewQueue.snapshot()).not.toBeNull())
+        expect(manager.reviewQueue.snapshot()).toMatchObject({ chainId: 8453 })
+        expect(manager.snapshot().chainId).toBe(56)
+        manager.reviewQueue.approve(manager.reviewQueue.snapshot().id)
+
+        await expect(sending).resolves.toMatch(/^0x[0-9a-f]{64}$/u)
+        expect(manager.snapshot().chainId).toBe(56)
+        expect(fetchImpl.mock.calls.map(([, options]) => JSON.parse(options.body).method)).toEqual([
+            'eth_chainId',
+            'eth_sendRawTransaction',
+        ])
+    })
+
     it('verifies the chain-specific RPC and returned signed transaction hash before accepting broadcast', async () => {
         const signer = new Wallet(keccak256(toUtf8Bytes('pistachio-manager-multichain-test')))
         const fetchImpl = vi.fn(async (_url, options) => {
