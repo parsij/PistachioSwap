@@ -1,12 +1,12 @@
 const CHAIN_STATE_TIMEOUT_MS = 10_000
 const CHAIN_STATE_POLL_MS = 100
 
-async function loadGetAccount() {
+async function loadWagmiActions() {
     const actions = await import('wagmi/actions')
     if (typeof actions.getAccount !== 'function') {
         throw new Error('Wallet account state is unavailable.')
     }
-    return actions.getAccount
+    return actions
 }
 
 export async function waitForWalletChain({
@@ -23,7 +23,7 @@ export async function waitForWalletChain({
     if (!Number.isSafeInteger(expectedChainId)) {
         throw new Error('Target network is invalid.')
     }
-    const resolveAccount = getAccountState ?? await loadGetAccount()
+    const resolveAccount = getAccountState ?? (await loadWagmiActions()).getAccount
     const deadline = now() + timeoutMs
     do {
         const account = resolveAccount(config)
@@ -37,6 +37,7 @@ export async function ensureWalletChain({
     config,
     targetChain,
     switchNetwork,
+    switchChainAction,
     timeoutMs = CHAIN_STATE_TIMEOUT_MS,
     pollMs = CHAIN_STATE_POLL_MS,
     getAccountState,
@@ -48,14 +49,23 @@ export async function ensureWalletChain({
     if (!Number.isSafeInteger(targetChainId)) {
         throw new Error('Target network is invalid.')
     }
-    if (typeof switchNetwork !== 'function') {
-        throw new Error('Wallet network switching is unavailable.')
-    }
+    const actions = (
+        getAccountState && switchChainAction
+            ? null
+            : await loadWagmiActions()
+    )
+    const resolveAccount = getAccountState ?? actions?.getAccount
+    const requestWagmiSwitch = switchChainAction ?? actions?.switchChain
 
-    const resolveAccount = getAccountState ?? await loadGetAccount()
     let account = resolveAccount(config)
     if (Number(account?.chainId) !== targetChainId) {
-        await switchNetwork(targetChain)
+        if (typeof requestWagmiSwitch === 'function') {
+            await requestWagmiSwitch(config, { chainId: targetChainId })
+        } else if (typeof switchNetwork === 'function') {
+            await switchNetwork(targetChain)
+        } else {
+            throw new Error('Wallet network switching is unavailable.')
+        }
         account = await waitForWalletChain({
             config,
             targetChainId,
