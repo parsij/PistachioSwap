@@ -303,6 +303,12 @@ describe('SendAssetDialog', () => {
             }),
         ))
         await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
+        const explorerLink = screen.getByRole('link', { name: /view on .*scan|view on explorer/i })
+        expect(explorerLink.getAttribute('href')).toContain('/tx/')
+        expect(explorerLink.getAttribute('href')).not.toContain('blockscan.com')
+        expect(explorerLink.getAttribute('href')).toContain(
+            '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        )
     })
 
     it('requires an extra acknowledgement before reviewing a blocked token', () => {

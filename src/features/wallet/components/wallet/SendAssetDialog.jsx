@@ -432,6 +432,7 @@ export default function SendAssetDialog({
                                 hash={hash}
                                 token={review?.token ?? activeSelectedToken}
                                 explorerUrl={selectedExplorerUrl}
+                                explorerName={chain?.blockExplorers?.default?.name ?? null}
                             />
                             {displayError && <p className="send-error" role="alert">{displayError}</p>}
                             {status !== 'sent' && (
