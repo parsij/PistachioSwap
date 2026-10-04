@@ -11,11 +11,8 @@ import {
     isAddress,
 } from 'viem'
 import {
-    useAppKitNetwork,
-    useConfig,
+    useConnection,
     usePublicClient,
-    useSendTransaction,
-    useWriteContract,
 } from '#wallet-runtime'
 
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
@@ -54,11 +51,14 @@ import {
     rollbackOptimisticWalletTransaction,
 } from '../../services/optimisticBalances.js'
 import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
-import { ensureWalletChain } from '../../../../web3/walletChain.js'
+import {
+    resolveSendWallet,
+    submitSendPlan,
+} from '../../services/sendExecution.js'
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 
-/** Renders wallet transfer selection/validation/review and delegates explicit submission to Wagmi. */
+/** Renders wallet transfer selection/validation/review and submits on the selected asset's chain. */
 export default function SendAssetDialog({
     open,
     onOpenChange,
@@ -71,10 +71,7 @@ export default function SendAssetDialog({
     onConfirmed,
 }) {
     const numericWalletChainId = Number(chainId)
-    const { switchNetwork } = useAppKitNetwork()
-    const wagmiConfig = useConfig()
-    const { mutateAsync: sendTransactionAsync } = useSendTransaction()
-    const { mutateAsync: writeContractAsync } = useWriteContract()
+    const connection = useConnection()
     const [selectedToken, setSelectedToken] = useState(null)
     const [showSelector, setShowSelector] = useState(false)
     const [selectorChainId, setSelectorChainId] = useState('all')
@@ -216,21 +213,25 @@ export default function SendAssetDialog({
         }
         setError(null)
         setStatus('confirming')
-        let phase = 'switch-network'
+        let phase = 'resolve-wallet'
         let transactionHash = null
         try {
-            await ensureWalletChain({
-                config: wagmiConfig,
+            // Re-simulate the exact reviewed ERC-20 call on the token's chain,
+            // then execute through a wallet client bound to that same chain.
+            if (review.plan.kind === 'erc20') {
+                await publicClient.simulateContract(review.plan.request)
+            }
+            const resolvedWallet = await resolveSendWallet({
+                connectedAddress: review.account,
                 targetChain,
-                switchNetwork,
+                connector: connection?.connector ?? null,
             })
             phase = 'send'
-            if (review.plan.kind === 'native') {
-                transactionHash = await sendTransactionAsync(review.plan.request)
-            } else {
-                const simulation = await publicClient.simulateContract(review.plan.request)
-                transactionHash = await writeContractAsync(simulation.request)
-            }
+            transactionHash = await submitSendPlan({
+                walletClient: resolvedWallet.walletClient,
+                targetChain,
+                plan: review.plan,
+            })
 
             const optimisticChanges = isNativeEvmToken(review.token)
                 ? [{
@@ -285,8 +286,8 @@ export default function SendAssetDialog({
         } catch (caught) {
             if (isTransferRejectedError(caught)) {
                 setStatus('rejected')
-                setError(phase === 'switch-network'
-                    ? `Network switch to ${targetChain.name} was cancelled.`
+                setError(phase === 'resolve-wallet'
+                    ? `Opening ${targetChain.name} in the wallet was cancelled.`
                     : 'The send was rejected in the wallet.')
             } else {
                 setStatus('failed')
