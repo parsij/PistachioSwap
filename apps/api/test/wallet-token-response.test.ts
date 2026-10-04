@@ -197,6 +197,52 @@ describe('normalized wallet token response', () => {
         })
     })
 
+    it('recovers Base ETH from RPC when Portfolio omits its native balance', async () => {
+        mocks.alchemyRpc.mockImplementation(async (request) =>
+            request.method === 'eth_getBalance'
+                ? '0x2386f26fc10000'
+                : { tokenBalances: [] },
+        )
+        mocks.getNativeBnbPrice.mockResolvedValue('2500')
+
+        const tokens = await getWalletTokens({
+            chainId: 8453,
+            walletAddress: '0x1000000000000000000000000000000000000065',
+            inventory: {
+                balances: new Map(),
+                nativeBalance: null,
+                pageCount: 1,
+                metadata: new Map(),
+                prices: new Map(),
+                nativePriceUSD: null,
+                source: 'alchemy-portfolio',
+            },
+        })
+
+        expect(mocks.alchemyRpc).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'eth_getBalance',
+                params: ['0x1000000000000000000000000000000000000065', 'latest'],
+            }),
+            undefined,
+            8453,
+        )
+        expect(tokens).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                chainId: 8453,
+                address: '0x0000000000000000000000000000000000000000',
+                isNative: true,
+                name: 'Ether',
+                symbol: 'ETH',
+                balance: '0.01',
+                rawBalance: '10000000000000000',
+                recognitionStatus: 'established',
+                visibility: 'primary',
+                includeInPortfolioValue: true,
+            }),
+        ]))
+    })
+
     it('does not fetch native prices for a zero native balance', async () => {
         const tokens = await getWalletTokens({
             chainId: 56,
@@ -301,7 +347,7 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000059',
             inventory: {
                 balances: new Map([[address, 10n ** 18n]]),
-                nativeBalance: null,
+                nativeBalance: 0n,
                 pageCount: 1,
                 metadata: new Map([[address, {
                     chainId: 56,
@@ -689,7 +735,7 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000060',
             inventory: {
                 balances: new Map([[xautAddress, 1_500_000n]]),
-                nativeBalance: null,
+                nativeBalance: 0n,
                 pageCount: 1,
                 metadata: new Map([[xautAddress, {
                     chainId: 56,
@@ -761,7 +807,7 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000061',
             inventory: {
                 balances: new Map([[xautAddress, 1_000_000n]]),
-                nativeBalance: null,
+                nativeBalance: 0n,
                 pageCount: 1,
                 metadata: new Map(),
                 prices: new Map(),

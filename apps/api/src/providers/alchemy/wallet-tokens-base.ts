@@ -837,7 +837,7 @@ export async function getWalletTokens({
         .catch(() => ({ tokens: [], priceFresh: false }))
     const [balancePage, nativeResult, catalogResult, moralisResult] = await Promise.all([
         inventory ?? getAllBalances(chainId, wallet, signal),
-        inventory
+        inventory?.nativeBalance !== null && inventory?.nativeBalance !== undefined
             ? Promise.resolve(null)
             : alchemyRpc(
                   {

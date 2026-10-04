@@ -119,6 +119,74 @@ describe('cached wallet token hydration', () => {
         }).tokens[0].rawBalance).toBe('70')
     })
 
+    it('retains a cached Base native balance when only Base fails a multi-chain refresh', async () => {
+        const baseEth = {
+            ...token('1000'),
+            chainId: 8453,
+            address: NATIVE,
+            isNative: true,
+            symbol: 'ETH',
+            name: 'Ether',
+            decimals: 18,
+            rawBalance: '1000',
+            balance: '0.000000000000001',
+            formattedBalance: '0.000000000000001',
+            recognitionStatus: 'established',
+            spamStatus: 'clean',
+            possibleSpam: false,
+            verifiedContract: null,
+            securityStatus: 'trusted',
+            visibility: 'primary',
+            classificationTier: 'core',
+            classificationReasons: ['native-token'],
+            priceConfidence: 'trusted',
+        }
+        const freshBnb = {
+            ...baseEth,
+            chainId: 56,
+            symbol: 'BNB',
+            name: 'BNB',
+            rawBalance: '2000',
+            balance: '0.000000000000002',
+            formattedBalance: '0.000000000000002',
+        }
+        writeWalletTokenCache({
+            chainId: 'all',
+            address: WALLET,
+            tokens: [baseEth],
+        })
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            address: WALLET,
+            balances: [{ chainId: 8453, address: NATIVE, rawBalance: '1000' }],
+            successfulChainIds: [8453],
+            failedChainIds: [],
+            chainErrors: {},
+            partial: false,
+        }), { status: 200 })))
+        fetchWalletTokens.mockResolvedValue({
+            tokens: [freshBnb],
+            chainErrors: { 8453: 'Balance refresh failed.' },
+            queriedChainIds: [56, 8453],
+            successfulChainIds: [56],
+            failedChainIds: [8453],
+            providerRejectedChainIds: [],
+            unsupportedChainIds: [],
+            partial: true,
+            stale: false,
+        })
+
+        const { result } = renderHook(() => useWalletTokens({
+            chainId: 'all',
+            walletAddress: WALLET,
+            enabled: true,
+        }))
+
+        await waitFor(() => expect(result.current.loading).toBe(false))
+        expect(result.current.tokens.map(({ chainId, symbol }) => [chainId, symbol]))
+            .toEqual(expect.arrayContaining([[56, 'BNB'], [8453, 'ETH']]))
+        expect(result.current.hydrationSource).toBe('last-known-good')
+    })
+
     it('removes an explicitly verified zero balance without dropping unknown results', () => {
         const other = {
             ...token('9'),

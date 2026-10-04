@@ -152,13 +152,43 @@ function normalizeWalletResult(result, chainId) {
     }
 }
 
-function shouldKeepLastKnownGood(current, responseState) {
-    if (!current.tokens.some(hasPositiveBalance)) return false
-    if (responseState.tokens.some(hasPositiveBalance)) return false
-    return responseState.partial === true ||
+function walletTokenIdentity(token) {
+    return `${Number(token?.chainId)}:${String(token?.address ?? '').toLowerCase()}`
+}
+
+function mergeLastKnownGoodForUnresolvedChains(current, responseState) {
+    if (!current.tokens.some(hasPositiveBalance)) return null
+    const degraded = responseState.partial === true ||
         responseState.stale === true ||
         responseState.failedChainIds.length > 0 ||
         responseState.providerRejectedChainIds.length > 0
+    if (!degraded) return null
+
+    const unresolvedChains = new Set([
+        ...responseState.failedChainIds,
+        ...responseState.providerRejectedChainIds,
+    ].map(Number).filter(Number.isSafeInteger))
+
+    if (unresolvedChains.size === 0) {
+        return responseState.tokens.some(hasPositiveBalance)
+            ? null
+            : current.tokens
+    }
+
+    const merged = new Map(responseState.tokens.map((token) => [
+        walletTokenIdentity(token),
+        token,
+    ]))
+    let retained = false
+    for (const token of current.tokens) {
+        if (!unresolvedChains.has(Number(token.chainId)) ||
+            !hasPositiveBalance(token)) continue
+        const identity = walletTokenIdentity(token)
+        if (merged.has(identity)) continue
+        merged.set(identity, token)
+        retained = true
+    }
+    return retained ? [...merged.values()] : null
 }
 
 /**
@@ -322,12 +352,14 @@ export function useWalletTokens({
             let retainedLastKnownGood = false
             setState((current) => {
                 if (current.requestKey !== requestKey) return current
-                if (shouldKeepLastKnownGood(current, responseState)) {
+                const retainedTokens =
+                    mergeLastKnownGoodForUnresolvedChains(current, responseState)
+                if (retainedTokens) {
                     retainedLastKnownGood = true
                     return {
                         ...current,
                         ...responseState,
-                        tokens: current.tokens,
+                        tokens: retainedTokens,
                         loading: false,
                         error: 'Some wallet balances could not be refreshed. Showing the last verified balances.',
                         stale: true,
