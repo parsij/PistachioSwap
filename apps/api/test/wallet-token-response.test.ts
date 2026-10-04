@@ -347,7 +347,7 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000059',
             inventory: {
                 balances: new Map([[address, 10n ** 18n]]),
-                nativeBalance: null,
+                nativeBalance: 0n,
                 pageCount: 1,
                 metadata: new Map([[address, {
                     chainId: 56,
@@ -735,7 +735,7 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000060',
             inventory: {
                 balances: new Map([[xautAddress, 1_500_000n]]),
-                nativeBalance: null,
+                nativeBalance: 0n,
                 pageCount: 1,
                 metadata: new Map([[xautAddress, {
                     chainId: 56,
@@ -807,7 +807,7 @@ describe('normalized wallet token response', () => {
             walletAddress: '0x1000000000000000000000000000000000000061',
             inventory: {
                 balances: new Map([[xautAddress, 1_000_000n]]),
-                nativeBalance: null,
+                nativeBalance: 0n,
                 pageCount: 1,
                 metadata: new Map(),
                 prices: new Map(),
