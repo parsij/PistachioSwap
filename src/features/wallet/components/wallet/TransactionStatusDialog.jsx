@@ -3,19 +3,27 @@ import { motion, useReducedMotion } from 'motion/react'
 
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
 
-/** Returns the multichain Blockscan URL for an EVM transaction hash. */
-export function blockscanTransactionUrl(hash) {
+/** Returns the selected chain explorer URL for an EVM transaction hash. */
+export function transactionExplorerUrl(explorerUrl, hash) {
+    const base = String(explorerUrl ?? '').trim().replace(/\/+$/u, '')
     const normalized = String(hash ?? '').trim()
-    return normalized ? `https://blockscan.com/tx/${normalized}` : null
+    return base && normalized ? `${base}/tx/${normalized}` : null
 }
 
 /** Presents wallet transfer pending/success/failure status and optional explorer link. */
-export default function TransactionStatusDialog({ status, hash, token = null }) {
+export default function TransactionStatusDialog({
+    status,
+    hash,
+    token = null,
+    explorerUrl = null,
+    explorerName = null,
+}) {
     const reducedMotion = useReducedMotion()
     if (status === 'idle' || status === 'review') return null
     const pending = status === 'confirming' || status === 'sending' || status === 'submitted'
     const failed = status === 'failed' || status === 'rejected'
-    const transactionUrl = blockscanTransactionUrl(hash)
+    const transactionUrl = transactionExplorerUrl(explorerUrl, hash)
+    const explorerLabel = String(explorerName ?? '').trim() || 'Explorer'
     return (
         <div
             className={`transaction-status transaction-status-${status}`}
@@ -35,7 +43,7 @@ export default function TransactionStatusDialog({ status, hash, token = null }) 
             }</strong>
             {transactionUrl && (
                 <a href={transactionUrl} target="_blank" rel="noreferrer">
-                    View on Blockscan <ExternalLink aria-hidden="true" />
+                    View on {explorerLabel} <ExternalLink aria-hidden="true" />
                 </a>
             )}
             {pending && (
