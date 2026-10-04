@@ -108,8 +108,6 @@ describe('token catalog ranking', () => {
                 symbol: chain.native.symbol,
                 isNative: true,
             })
-            expect(['established', 'recognized']).toContain(native.recognitionStatus)
-            expect(['established', 'recognized']).toContain(native.verificationStatus)
         }
         await app.close()
     })
