@@ -12,6 +12,7 @@ import {
 } from 'viem'
 import {
     useAppKitNetwork,
+    useConfig,
     usePublicClient,
     useSendTransaction,
     useWriteContract,
@@ -53,6 +54,7 @@ import {
     rollbackOptimisticWalletTransaction,
 } from '../../services/optimisticBalances.js'
 import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
+import { ensureWalletChain } from '../../../../web3/walletChain.js'
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 
@@ -69,7 +71,8 @@ export default function SendAssetDialog({
     onConfirmed,
 }) {
     const numericWalletChainId = Number(chainId)
-    const { chainId: connectedChainId, switchNetwork } = useAppKitNetwork()
+    const { switchNetwork } = useAppKitNetwork()
+    const wagmiConfig = useConfig()
     const { mutateAsync: sendTransactionAsync } = useSendTransaction()
     const { mutateAsync: writeContractAsync } = useWriteContract()
     const [selectedToken, setSelectedToken] = useState(null)
@@ -216,9 +219,11 @@ export default function SendAssetDialog({
         let phase = 'switch-network'
         let transactionHash = null
         try {
-            if (Number(connectedChainId) !== Number(review.chainId)) {
-                await switchNetwork(targetChain)
-            }
+            await ensureWalletChain({
+                config: wagmiConfig,
+                targetChain,
+                switchNetwork,
+            })
             phase = 'send'
             if (review.plan.kind === 'native') {
                 transactionHash = await sendTransactionAsync(review.plan.request)
