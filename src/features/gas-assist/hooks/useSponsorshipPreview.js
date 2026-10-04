@@ -84,6 +84,7 @@ export function useSponsorshipPreview({
                     quoteEndpoint,
                     request,
                     controller.signal,
+                    Number(sellToken?.chainId ?? 56),
                 )
                 if (controller.signal.aborted) return
                 setPreview(next)
@@ -101,7 +102,7 @@ export function useSponsorshipPreview({
             window.clearTimeout(timeout)
             controller.abort()
         }
-    }, [debounceMs, quoteEndpoint, refreshRevision, request, requestKey])
+    }, [debounceMs, quoteEndpoint, refreshRevision, request, requestKey, sellToken?.chainId])
 
     return { preview, status, error, refresh }
 }

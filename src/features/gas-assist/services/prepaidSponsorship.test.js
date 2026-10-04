@@ -3,35 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
     createSponsorshipOrder,
     fetchSponsorshipConfig,
-    prepareAtomicSponsorship,
     prepaidSponsorshipInternals,
-    submitAtomicSponsorship,
 } from './prepaidSponsorship.js'
-
-function particlePrepared(overrides = {}) {
-    const calls = Array.from({ length: 5 }, (_, index) => ({
-        to: `0x${String(index + 1).padStart(40, '0')}`,
-        data: index === 3 ? '0x12345678' : '0x',
-        value: '0x0',
-    }))
-    return {
-        provider: 'particle',
-        execution: 'particle-universal-7702-direct',
-        stage: 'direct',
-        paymentMode: 'sponsored',
-        paymasterApproval: 'pending',
-        orderId: 'order-1',
-        chainId: 56,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        transactions: calls,
-        ...overrides,
-    }
-}
 
 afterEach(() => {
     vi.restoreAllMocks()
     prepaidSponsorshipInternals.clearSessions()
-    prepaidSponsorshipInternals.clearDirectResults()
+    prepaidSponsorshipInternals.clearOrderPolls()
 })
 
 describe('Gas Assist frontend trust boundary', () => {
@@ -88,85 +66,10 @@ describe('Gas Assist frontend trust boundary', () => {
             })
     })
 
-    it('normalizes enabled config to the browser-direct Particle path', async () => {
-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
-            enabled: true,
-            chainId: 56,
-            atomicExecution: false,
-        }), { status: 200 }))
-
-        await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote'))
-            .resolves.toMatchObject({
-                enabled: true,
-                provider: 'particle',
-                atomicExecution: true,
-                execution: 'browser-direct',
-            })
-    })
-
-    it('accepts only an exact five-call direct Particle intent', async () => {
-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
-            JSON.stringify(particlePrepared()),
-            { status: 200 },
-        ))
-        await expect(prepareAtomicSponsorship(
-            'http://localhost:3001/v1/quote',
-            'session-token',
-            'order-1',
-        )).resolves.toMatchObject({
-            stage: 'direct',
-            execution: 'particle-universal-7702-direct',
-            transactions: expect.arrayContaining([expect.objectContaining({ value: '0x0' })]),
-        })
-
-        vi.restoreAllMocks()
-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
-            JSON.stringify(particlePrepared({ transactions: particlePrepared().transactions.slice(0, 4) })),
-            { status: 200 },
-        ))
-        await expect(prepareAtomicSponsorship(
-            'http://localhost:3001/v1/quote',
-            'session-token',
-            'order-1',
-        )).rejects.toMatchObject({ code: 'PARTICLE_DIRECT_INTENT_INVALID' })
-    })
-
-    it('backs off paymaster approval polling below the API rate limit', () => {
-        expect(prepaidSponsorshipInternals.PARTICLE_PAYMASTER_POLL_MS).toBe(2_000)
-        expect(prepaidSponsorshipInternals.PARTICLE_RATE_LIMIT_BACKOFF_MS).toBe(5_000)
-    })
-
-    it('never posts an owner signature or signed transaction to the backend', async () => {
-        const calls = []
-        const expiresAt = new Date(Date.now() + 60_000).toISOString()
-        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options = {}) => {
-            calls.push({ url: String(url), options })
-            return new Response(JSON.stringify({
-                id: 'order-1',
-                status: 'atomic-prepared',
-                expiresAt,
-                atomicExecution: {
-                    provider: 'particle',
-                    stage: 'prepared',
-                    paymasterApproval: 'approved',
-                },
-            }), { status: 200 })
-        })
-
-        await expect(submitAtomicSponsorship(
-            'http://localhost:3001/v1/quote',
-            'session-token',
-            'order-1',
-            `0x${'11'.repeat(65)}`,
-        )).resolves.toMatchObject({ atomicExecution: { paymasterApproval: 'approved' } })
-
-        expect(calls.length).toBeGreaterThan(0)
-        expect(calls.every(({ url, options }) => (
-            new URL(url).pathname.endsWith('/v1/sponsorship/orders/order-1') &&
-            String(options.method ?? 'GET').toUpperCase() === 'GET'
-        ))).toBe(true)
-        expect(JSON.stringify(calls)).not.toContain('/atomic/submit')
-        expect(JSON.stringify(calls)).not.toContain('/atomic/delegate')
-        expect(JSON.stringify(calls)).not.toContain('1111111111111111')
+    it.each([1,10,56,100,130,137,8453,34443,42161,42220,59144,80094,534352])('requests authoritative config for source chain %s', async (chainId) => {
+        const config = { enabled: true, chainId, provider: 'pistachio-paymaster-v08', execution: 'erc4337-v08-eip7702-direct' }
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(config)))
+        await expect(fetchSponsorshipConfig('http://localhost:3001/v1/quote', undefined, chainId)).resolves.toEqual(config)
+        expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('sourceChainId')).toBe(String(chainId))
     })
 })

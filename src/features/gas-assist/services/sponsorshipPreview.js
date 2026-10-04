@@ -18,6 +18,7 @@ export async function fetchSponsorshipPreview(
     quoteEndpoint,
     request,
     signal,
+    chainId = 56,
 ) {
     const allowed = new Set([
         'walletAddress',
@@ -41,7 +42,7 @@ export async function fetchSponsorshipPreview(
     let response
     try {
         response = await fetch(
-            `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/preview`,
+            `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/preview?sourceChainId=${Number(chainId)}`,
             {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },

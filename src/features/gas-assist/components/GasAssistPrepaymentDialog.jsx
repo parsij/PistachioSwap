@@ -141,11 +141,11 @@ function statusContent({ phase, order, orderExpired }) {
     }
     if (['atomic-submitting', 'atomic-submitted'].includes(order?.status) ||
         (phase === 'swap-confirming' && order?.atomicExecution)) {
-        return { title: 'Confirming your swap', detail: 'Waiting for the sponsored transaction to confirm on BNB Chain.' }
+        return { title: 'Confirming your swap', detail: 'Waiting for the sponsored transaction to confirm on the source network.' }
     }
     if (['payment-confirming', 'payment-submitting'].includes(phase) ||
         ['payment-submitting', 'payment-submitted'].includes(order?.status)) {
-        return { title: 'Starting your swap', detail: 'Confirming the Gas Assist fee on BNB Chain.' }
+        return { title: 'Starting your swap', detail: 'Confirming the Gas Assist fee on the source network.' }
     }
     if (phase === 'approval-confirming' || order?.status === 'approval-submitted') {
         return { title: 'Approving the token', detail: 'The backend is confirming the exact token allowance.' }
@@ -246,7 +246,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                     </div>
                 )}
                 <p className="gas-assist-technical-note">
-                    Pistachio Wallet signs one direct EIP-7702 BNB Chain transaction. The disclosed fee goes to PistachioSwap, the swap principal goes directly through the quoted router, and everything reverts if the swap fails.
+                    Pistachio Wallet signs one direct EIP-7702 source-chain transaction. The disclosed fee goes to PistachioSwap, the swap principal goes directly through the quoted router, and everything reverts if the swap fails.
                 </p>
             </div>
         </details>
@@ -272,6 +272,8 @@ export default function GasAssistPrepaymentDialog({
             decimals: order.paymentTokenDecimals,
         }
     }, [buyToken, order, sellToken])
+    const nativeSymbol = sponsorship?.config?.nativeSymbol ?? (Number(sellToken?.chainId ?? 56) === 56 ? 'BNB' : 'native gas')
+    const sourceNetwork = sponsorship?.config?.displayName ?? sellToken?.chainName ?? 'the source network'
     const feeBreakdown = useMemo(() => getGasAssistFeeBreakdown(order), [order])
 
     useEffect(() => setExpired(false), [order?.expiresAt, order?.id])
@@ -344,10 +346,10 @@ export default function GasAssistPrepaymentDialog({
                 <Dialog.Content className="gas-assist-dialog gas-assist-prepayment-dialog">
                     <div className="gas-assist-heading gas-assist-simple-heading">
                         <div>
-                            <div className="gas-assist-kicker"><ShieldCheck aria-hidden="true" /> No BNB needed</div>
+                            <div className="gas-assist-kicker"><ShieldCheck aria-hidden="true" /> No {nativeSymbol} needed</div>
                             <Dialog.Title>{GAS_ASSIST_REVIEW_TITLE}</Dialog.Title>
                             <Dialog.Description>{purpose === 'cross-chain-gas'
-                                ? 'PistachioSwap sponsors the exact BNB Chain source operation through its self-hosted Paymaster and deducts one clear fee from your sell token. No BNB is sent to your wallet.'
+                                ? `PistachioSwap sponsors the exact ${sourceNetwork} source operation through its self-hosted Paymaster and deducts one clear fee from your sell token. No ${nativeSymbol} is sent to your wallet.`
                                 : 'PistachioSwap covers the network fee and deducts one clear fee from your sell token.'}</Dialog.Description>
                         </div>
                         <Dialog.Close asChild>

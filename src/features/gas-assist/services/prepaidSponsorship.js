@@ -185,9 +185,9 @@ function awaitSharedRequest(promise, signal) {
     })
 }
 
-export async function fetchSponsorshipConfig(quoteEndpoint, signal) {
+export async function fetchSponsorshipConfig(quoteEndpoint, signal, chainId = 56) {
     return requestJson(
-        `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/config`,
+        `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/config?sourceChainId=${Number(chainId)}`,
         { signal },
         'config.fetch',
     )
@@ -197,10 +197,11 @@ export async function authenticateSponsorshipWallet({
     quoteEndpoint,
     walletAddress,
     walletClient,
+    chainId = walletClient?.chain?.id ?? 56,
     signal,
 }) {
     deleteExpiredSessions()
-    const key = `${getGasAssistBaseUrl(quoteEndpoint)}:${walletAddress.toLowerCase()}`
+    const key = `${getGasAssistBaseUrl(quoteEndpoint)}:${chainId}:${walletAddress.toLowerCase()}`
     const existing = sessions.get(key)
     if (existing && Date.parse(existing.expiresAt) > Date.now() + 5_000) return existing
     if (typeof walletClient?.signMessage !== 'function') {
@@ -213,9 +214,9 @@ export async function authenticateSponsorshipWallet({
 
     const challenge = await post(quoteEndpoint, '/v1/sponsorship/auth/challenge', {
         walletAddress,
-        chainId: 56,
+        chainId,
     }, { signal, stage: 'auth.challenge' })
-    if (!challenge?.challengeId || typeof challenge.message !== 'string' || !challenge.message) {
+    if (Number(challenge?.chainId ?? chainId) !== Number(chainId) || !challenge?.challengeId || typeof challenge.message !== 'string' || !challenge.message) {
         throw sponsorshipError(
             'SPONSORSHIP_INVALID_CHALLENGE',
             'Gas Assist returned an invalid authentication challenge.',
@@ -231,7 +232,7 @@ export async function authenticateSponsorshipWallet({
         challengeId: challenge.challengeId,
         signature,
     }, { signal, stage: 'auth.verify' })
-    if (!session?.sessionToken || !Number.isFinite(Date.parse(session.expiresAt))) {
+    if (Number(session?.chainId ?? chainId) !== Number(chainId) || !session?.sessionToken || !Number.isFinite(Date.parse(session.expiresAt))) {
         throw sponsorshipError(
             'SPONSORSHIP_INVALID_SESSION',
             'Gas Assist returned an invalid authenticated session.',

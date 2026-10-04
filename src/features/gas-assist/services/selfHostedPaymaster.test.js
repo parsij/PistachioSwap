@@ -98,7 +98,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             .toThrow(/five-call|does not match/iu)
         expect(() => validateSelfHostedPrepared(prepared({ transactions: [...calls.slice(0, 3), {
             ...calls[3], value: '0x1',
-        }, calls[4]] }), order, settings)).toThrow(/native BNB/iu)
+        }, calls[4]] }), order, settings)).toThrow(/native gas/iu)
         expect(() => validateSelfHostedPrepared(prepared(), { ...order, paymentAmountRaw: '11' }, settings))
             .toThrow(/payment changed/iu)
         expect(() => validateSelfHostedPrepared(prepared({ delegate: treasury }), order, settings))

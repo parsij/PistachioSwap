@@ -141,7 +141,8 @@ export function usePrepaidSponsorship({
     recoveryKind = 'same-chain',
 }) {
     const connection = useConnection()
-    const { data: walletClient } = useWalletClient({ chainId: 56 })
+    const sourceChainId = Number(sellToken?.chainId ?? 56)
+    const { data: walletClient } = useWalletClient({ chainId: sourceChainId })
     const [config, setConfig] = useState(null)
     const [configStatus, setConfigStatus] = useState('idle')
     const [configError, setConfigError] = useState(null)
@@ -271,7 +272,7 @@ export function usePrepaidSponsorship({
             quoteEndpoint,
         })
         return () => sendControllerRef.current?.abort()
-    }, [connection.connector?.id, quoteEndpoint, walletAddress])
+    }, [connection.connector?.id, quoteEndpoint, walletAddress, sourceChainId])
 
     useEffect(() => {
         if (!quoteEndpoint || !walletAddress) {
@@ -285,7 +286,7 @@ export function usePrepaidSponsorship({
         setConfigError(null)
         const walletEpoch = walletEpochRef.current
         gasAssistTrace('config.load.start', { walletAddress })
-        fetchSponsorshipConfig(quoteEndpoint, controller.signal)
+        fetchSponsorshipConfig(quoteEndpoint, controller.signal, sourceChainId)
             .then((nextConfig) => {
                 if (!controller.signal.aborted && walletEpochRef.current === walletEpoch) {
                     setConfig(nextConfig)
@@ -306,7 +307,7 @@ export function usePrepaidSponsorship({
                 }
             })
         return () => controller.abort()
-    }, [quoteEndpoint, walletAddress])
+    }, [quoteEndpoint, walletAddress, sourceChainId])
 
     const reviewOrder = useCallback((order) => {
         if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
@@ -445,6 +446,7 @@ export function usePrepaidSponsorship({
                 { walletAddress },
                 () => authenticateSponsorshipWallet({
                     quoteEndpoint,
+                    chainId: sourceChainId,
                     walletAddress,
                     walletClient,
                 }),
@@ -488,7 +490,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient, recoveryKind])
+    }, [beginOperation, buyToken, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient, recoveryKind, sourceChainId])
 
     const signPackage = useCallback(async () => {
         if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
@@ -516,6 +518,7 @@ export function usePrepaidSponsorship({
                     { walletAddress },
                     () => authenticateSponsorshipWallet({
                         quoteEndpoint,
+                        chainId: sourceChainId,
                         walletAddress,
                         walletClient,
                     }),
@@ -624,7 +627,7 @@ export function usePrepaidSponsorship({
                 // A confirmed BSC source operation is not Polygon settlement.
                 // The cross-chain route keeps polling its own destination status.
                 const sourceConfirmed = submission.status === 'source-confirmed'
-                const isCrossChain = Number(buyToken?.chainId ?? 56) !== 56
+                const isCrossChain = Number(buyToken?.chainId ?? sourceChainId) !== sourceChainId
                 const confirmed = sourceConfirmed && !isCrossChain
                 const completedOrder = {
                     ...order,
@@ -659,7 +662,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient, recoveryKind])
+    }, [beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient, recoveryKind, sourceChainId])
 
     useEffect(() => {
         if (!walletAddress || !quoteEndpoint) return undefined

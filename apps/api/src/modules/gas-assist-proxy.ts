@@ -21,6 +21,7 @@ const FORWARDED_RESPONSE_HEADERS = [
 const SAFE_PATH_SEGMENT = '[A-Za-z0-9_-]{1,160}'
 const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['GET', /^\/v1\/sponsorship\/config$/u],
+    ['GET', /^\/v1\/sponsorship\/capabilities$/u],
     ['POST', /^\/v1\/sponsorship\/preview$/u],
     ['POST', /^\/v1\/sponsorship\/auth\/(?:challenge|verify)$/u],
     ['POST', /^\/v1\/sponsorship\/orders$/u],

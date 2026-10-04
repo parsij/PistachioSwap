@@ -95,7 +95,7 @@ export function validatePublicBscRpcUrl(value = import.meta.env.VITE_BSC_PUBLIC_
     if (url.protocol !== 'https:' && !(import.meta.env.DEV && isLocalhost && url.protocol === 'http:')) {
         throw makeError('METAMASK_MULTICHAIN_PUBLIC_RPC_INVALID', 'The public BNB Chain RPC URL must use HTTPS.')
     }
-    if (url.username || url.password) {
+    if (url.username || url.password || /(?:^|\.)nodereal\.io$/iu.test(url.hostname)) {
         throw makeError(
             'METAMASK_MULTICHAIN_PRIVATE_RPC_FORBIDDEN',
             'Credential-bearing RPC URLs are not allowed in browser configuration.',
