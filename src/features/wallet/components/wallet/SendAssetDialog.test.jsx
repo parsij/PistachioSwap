@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     send: vi.fn(),
     write: vi.fn(),
     switchNetwork: vi.fn(),
+    switchChain: vi.fn(),
     runtimeChainId: 56,
     wagmiChainId: 56,
     pendingChainId: null,
@@ -43,6 +44,9 @@ vi.mock('wagmi/actions', () => ({
             }
         }
         return { chainId: mocks.wagmiChainId }
+    },
+    switchChain: async (_config, parameters) => {
+        await mocks.switchChain(parameters)
     },
 }))
 
@@ -176,9 +180,9 @@ describe('SendAssetDialog', () => {
         mocks.pendingChainId = null
         mocks.postSwitchReads = 0
         mocks.config = {}
-        mocks.switchNetwork.mockImplementation(async (targetChain) => {
-            mocks.runtimeChainId = Number(targetChain.id)
-            mocks.pendingChainId = Number(targetChain.id)
+        mocks.switchNetwork.mockResolvedValue(undefined)
+        mocks.switchChain.mockImplementation(async ({ chainId }) => {
+            mocks.pendingChainId = Number(chainId)
             mocks.postSwitchReads = 0
         })
     })
@@ -263,8 +267,8 @@ describe('SendAssetDialog', () => {
         expect(screen.getByText('Polygon')).toBeTruthy()
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
 
-        await waitFor(() => expect(mocks.switchNetwork).toHaveBeenCalledOnce())
-        expect(mocks.switchNetwork).toHaveBeenCalledWith(expect.objectContaining({ id: 137 }))
+        await waitFor(() => expect(mocks.switchChain).toHaveBeenCalledWith({ chainId: 137 }))
+        expect(mocks.switchNetwork).not.toHaveBeenCalled()
         await waitFor(() => expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 })))
     })
 
@@ -297,9 +301,8 @@ describe('SendAssetDialog', () => {
         expect(screen.getByText('Base')).toBeTruthy()
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
 
-        await waitFor(() => expect(mocks.switchNetwork).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 8453 }),
-        ))
+        await waitFor(() => expect(mocks.switchChain).toHaveBeenCalledWith({ chainId: 8453 }))
+        expect(mocks.switchNetwork).not.toHaveBeenCalled()
         await waitFor(() => expect(mocks.write).toHaveBeenCalledOnce())
         expect(mocks.postSwitchReads).toBeGreaterThanOrEqual(2)
         expect(mocks.wagmiChainId).toBe(8453)
