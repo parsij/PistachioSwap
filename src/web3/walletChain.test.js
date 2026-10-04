@@ -16,16 +16,19 @@ function fakeClock() {
 describe('wallet chain readiness', () => {
     it('does not request a switch when Wagmi already reports the target chain', async () => {
         const switchNetwork = vi.fn()
+        const switchChainAction = vi.fn()
         const account = await ensureWalletChain({
             config: {},
             targetChain: CURATED_EVM_CHAINS[0],
             switchNetwork,
+            switchChainAction,
             getAccountState: () => ({
                 chainId: CURATED_EVM_CHAINS[0].id,
             }),
         })
 
         expect(account.chainId).toBe(CURATED_EVM_CHAINS[0].id)
+        expect(switchChainAction).not.toHaveBeenCalled()
         expect(switchNetwork).not.toHaveBeenCalled()
     })
 
@@ -36,12 +39,16 @@ describe('wallet chain readiness', () => {
         let postSwitchReads = 0
         const targetChain = CURATED_EVM_CHAINS.find((chain) => chain.id === 8453)
 
+        const switchNetwork = vi.fn()
+        const switchChainAction = vi.fn(async (_config, parameters) => {
+            expect(parameters).toEqual({ chainId: targetChain.id })
+            switched = true
+        })
         const account = await ensureWalletChain({
             config: {},
             targetChain,
-            switchNetwork: async () => {
-                switched = true
-            },
+            switchNetwork,
+            switchChainAction,
             getAccountState: () => {
                 if (switched) {
                     postSwitchReads += 1
@@ -53,6 +60,8 @@ describe('wallet chain readiness', () => {
             sleep: clock.sleep,
         })
 
+        expect(switchChainAction).toHaveBeenCalledOnce()
+        expect(switchNetwork).not.toHaveBeenCalled()
         expect(postSwitchReads).toBeGreaterThanOrEqual(2)
         expect(account.chainId).toBe(8453)
     })
@@ -63,8 +72,9 @@ describe('wallet chain readiness', () => {
             let chainId = targetChain.id === 56 ? 1 : 56
             let switched = false
             let postSwitchReads = 0
-            const switchNetwork = vi.fn(async (chain) => {
-                expect(chain.id).toBe(targetChain.id)
+            const switchNetwork = vi.fn()
+            const switchChainAction = vi.fn(async (_config, parameters) => {
+                expect(parameters).toEqual({ chainId: targetChain.id })
                 switched = true
             })
 
@@ -72,6 +82,7 @@ describe('wallet chain readiness', () => {
                 config: {},
                 targetChain,
                 switchNetwork,
+                switchChainAction,
                 getAccountState: () => {
                     if (switched) {
                         postSwitchReads += 1
@@ -83,7 +94,8 @@ describe('wallet chain readiness', () => {
                 sleep: clock.sleep,
             })
 
-            expect(switchNetwork).toHaveBeenCalledOnce()
+            expect(switchChainAction).toHaveBeenCalledOnce()
+            expect(switchNetwork).not.toHaveBeenCalled()
             expect(account.chainId).toBe(targetChain.id)
         }
     })
