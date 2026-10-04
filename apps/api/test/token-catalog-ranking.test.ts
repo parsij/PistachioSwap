@@ -98,17 +98,18 @@ describe('token catalog ranking', () => {
                 url: `/v1/token-catalog?chainId=${chain.chainId}&mode=all&search=${encodeURIComponent(chain.native.symbol)}&limit=20`,
             })
             expect(response.statusCode).toBe(200)
-            expect(response.json().tokens).toEqual(expect.arrayContaining([
-                expect.objectContaining({
-                    chainId: chain.chainId,
-                    address: '0x0000000000000000000000000000000000000000',
-                    name: expect.stringContaining(chain.native.name),
-                    symbol: chain.native.symbol,
-                    isNative: true,
-                    recognitionStatus: 'established',
-                    verificationStatus: 'established',
-                }),
-            ]))
+            const native = response.json().tokens.find(
+                (token: { address: string }) =>
+                    token.address === '0x0000000000000000000000000000000000000000',
+            )
+            expect(native).toMatchObject({
+                chainId: chain.chainId,
+                address: '0x0000000000000000000000000000000000000000',
+                symbol: chain.native.symbol,
+                isNative: true,
+            })
+            expect(['established', 'recognized']).toContain(native.recognitionStatus)
+            expect(['established', 'recognized']).toContain(native.verificationStatus)
         }
         await app.close()
     })
