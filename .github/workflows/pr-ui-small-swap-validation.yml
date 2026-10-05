@@ -38,6 +38,8 @@ jobs:
         run: bash -n scripts/deploy/activate-vps-release.sh
       - name: Backend tests
         run: pnpm --filter @pistachio/api test
+      - name: Same-chain receipt lifecycle tests
+        run: pnpm exec vitest run src/features/swap/hooks/useSameChainReceiptLifecycle.test.jsx src/features/swap/hooks/useSameChainExecution.test.jsx
       - name: Gas Assist source capability tests
         run: pnpm exec vitest run src/services/swapExecutionMode.test.js src/features/gas-assist/services/capabilityRegistry.test.js src/features/wallet/services/walletHistoryMultichain.test.js src/features/gas-assist/services/selfHostedPaymaster.test.js
       - name: Build

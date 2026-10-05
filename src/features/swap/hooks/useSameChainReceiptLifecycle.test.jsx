@@ -4,25 +4,17 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const receiptState = vi.hoisted(() => ({ isSuccess: false, isError: false }))
-const optimistic = vi.hoisted(() => ({
-    begin: vi.fn(),
-    confirm: vi.fn(),
-    finish: vi.fn(),
-    rollback: vi.fn(),
-}))
 
 vi.mock('#wallet-runtime', () => ({
     useWaitForTransactionReceipt: () => receiptState,
 }))
 
-vi.mock('../../wallet/services/optimisticBalances.js', () => ({
-    beginOptimisticWalletTransaction: optimistic.begin,
-    confirmOptimisticWalletTransaction: optimistic.confirm,
-    finishOptimisticWalletTransaction: optimistic.finish,
-    rollbackOptimisticWalletTransaction: optimistic.rollback,
-}))
-
 import { useSameChainReceiptLifecycle } from './useSameChainReceiptLifecycle.js'
+import {
+    getOptimisticWalletTransactions,
+    getWalletOperationDisplayState,
+    rollbackOptimisticWalletTransaction,
+} from '../../wallet/services/optimisticBalances.js'
 
 function createConfig(overrides = {}) {
     return {
@@ -46,10 +38,6 @@ describe('useSameChainReceiptLifecycle', () => {
     beforeEach(() => {
         receiptState.isSuccess = false
         receiptState.isError = false
-        optimistic.begin.mockReset()
-        optimistic.confirm.mockReset()
-        optimistic.finish.mockReset()
-        optimistic.rollback.mockReset()
     })
 
     it('applies successful receipt side effects once and owns the confirmed status', async () => {
@@ -62,7 +50,6 @@ describe('useSameChainReceiptLifecycle', () => {
         receiptState.isSuccess = true
         rerender()
         await waitFor(() => expect(result.current.transactionStatus).toBe('confirmed'))
-        expect(optimistic.confirm).toHaveBeenCalledWith('0xabc')
         expect(config.setVisibleStatus).toHaveBeenCalledWith('Swap confirmed. Updating wallet balances…')
         expect(config.closeReview).toHaveBeenCalledTimes(1)
         expect(config.resetInputsAfterSuccess).toHaveBeenCalledTimes(1)
@@ -90,5 +77,36 @@ describe('useSameChainReceiptLifecycle', () => {
         rerender({ account: '0x2222222222222222222222222222222222222222' })
         expect(result.current.transactionHash).toBeNull()
         expect(result.current.transactionStatus).toBe('idle')
+    })
+
+    it('settles an external-wallet swap as soon as its receipt confirms, even if the screen unmounts', async () => {
+        const hash = `0x${'ab'.repeat(32)}`
+        const config = createConfig({
+            sellToken: { chainId: 56, address: '0x0000000000000000000000000000000000000000', isNative: true, symbol: 'BNB', decimals: 18 },
+            buyToken: { chainId: 56, address: '0x2222222222222222222222222222222222222222', symbol: 'TOKEN', decimals: 18 },
+            quote: { selectedQuote: { sellAmount: '1000', buyAmount: '2000' } },
+        })
+        config.resetInputsAfterSuccess.mockImplementation(() => {
+            // The form must never clear while the shared operation still says Swapping.
+            expect(getWalletOperationDisplayState(config.account)?.status).toBe('confirmed')
+        })
+        const { result, rerender, unmount } = renderHook(() => useSameChainReceiptLifecycle(config))
+        try {
+            act(() => {
+                result.current.setTransactionHash(hash)
+                result.current.setTransactionStatus('submitted')
+            })
+            expect(getWalletOperationDisplayState(config.account)?.status).toBe('pending')
+            receiptState.isSuccess = true
+            rerender()
+            expect(result.current.transactionStatus).toBe('confirmed')
+            expect(getOptimisticWalletTransactions(config.account)).toEqual([])
+            expect(getWalletOperationDisplayState(config.account)?.status).toBe('confirmed')
+            unmount()
+            expect(getOptimisticWalletTransactions(config.account)).toEqual([])
+        } finally {
+            unmount()
+            rollbackOptimisticWalletTransaction(hash)
+        }
     })
 })

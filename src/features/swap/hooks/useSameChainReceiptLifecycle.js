@@ -5,13 +5,11 @@ import { formatUnits } from 'viem'
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
 import {
     beginOptimisticWalletTransaction,
-    confirmOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
     rollbackOptimisticWalletTransaction,
 } from '../../wallet/services/optimisticBalances.js'
 
 const POST_SWAP_REFRESH_DELAYS_MS = Object.freeze([2_000, 8_000])
-const OPTIMISTIC_SETTLE_DELAY_MS = 9_000
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 function rawAmount(value) {
@@ -160,8 +158,13 @@ export function useSameChainReceiptLifecycle({
         })
 
         if (receipt.isSuccess && transactionStatus === 'submitted') {
-            confirmOptimisticWalletTransaction(transactionHash)
             setTransactionStatus('confirmed')
+            // Receipt confirmation settles the operation independently of balance refresh.
+            // A refresh timer can be cancelled when the swap screen unmounts.
+            finishOptimisticWalletTransaction(transactionHash)
+            if (optimisticHashRef.current?.toLowerCase() === transactionHash.toLowerCase()) {
+                optimisticHashRef.current = null
+            }
             setVisibleStatus('Swap confirmed. Updating wallet balances…')
             diagnostic('receipt.confirmed', { hash: transactionHash, chainId })
             recordWalletActivity({
@@ -179,14 +182,6 @@ export function useSameChainReceiptLifecycle({
             resetInputsAfterSuccess()
             invalidateQuoteAfterSuccess()
             refreshSettledWallet()
-            const timer = globalThis.setTimeout(() => {
-                refreshTimersRef.current.delete(timer)
-                finishOptimisticWalletTransaction(transactionHash)
-                if (optimisticHashRef.current?.toLowerCase() === transactionHash.toLowerCase()) {
-                    optimisticHashRef.current = null
-                }
-            }, OPTIMISTIC_SETTLE_DELAY_MS)
-            refreshTimersRef.current.add(timer)
         }
 
         if (receipt.isError && transactionStatus === 'submitted') {
