@@ -90,7 +90,8 @@ function publicRpcUrl(value, name) {
     }
     const local = ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)
     if ((parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) ||
-        parsed.username || parsed.password || parsed.search || parsed.hash) {
+        parsed.username || parsed.password || parsed.search || parsed.hash ||
+        /(?:alchemy|infura|nodereal|quiknode|quicknode)/i.test(parsed.hostname)) {
         deny('PAYMASTER_RPC_UNSAFE', `${name} must be a public HTTPS RPC URL without URL credentials or query secrets.`)
     }
     return parsed.href
