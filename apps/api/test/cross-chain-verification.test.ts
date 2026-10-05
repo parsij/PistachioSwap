@@ -94,7 +94,7 @@ describe('curated 25-chain verification', () => {
                 sameChainSwap: true,
                 crossChainSource: true,
                 crossChainDestination: true,
-                gasAssist: chain.id === 56,
+                gasAssist: false,
             })
         }
     })
@@ -112,7 +112,7 @@ describe('curated 25-chain verification', () => {
                 sameChainSwap: true,
                 crossChainSource: true,
                 crossChainDestination: true,
-                gasAssist: id === 56,
+                gasAssist: false,
             })
         }
     })
