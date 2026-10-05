@@ -27,6 +27,7 @@ export function getSwapExecutionMessage(reason) {
         'gas-assist-config-error': 'Not enough native gas for normal gas. Gas Assist availability could not be checked.',
         'gas-assist-disabled': 'Not enough native gas for normal gas. Gas Assist is currently unavailable.',
         'insufficient-native-balance': GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE,
+        'gas-assist-unsupported': 'Not enough native gas for this swap on the selected source network.',
         'native-sell-token': 'Gas Assist cannot sell the native gas token.',
     }[reason] ?? null
 }
@@ -78,7 +79,7 @@ export function deriveSwapExecution({
         requiredNativeBalance = 1n
     }
     if (nativeBalance >= requiredNativeBalance) return { mode: NORMAL_SWAP_MODE, reason: null }
-    if (gasAssistConfig?.supported === false) return { mode: null, reason: 'insufficient-native-balance' }
+    if (gasAssistConfig?.supported === false) return { mode: null, reason: 'gas-assist-unsupported' }
     if (sellToken.isNative) return { mode: null, reason: 'native-sell-token' }
 
     // Once a same-chain wallet is below the normal gas reserve, never fall
@@ -86,13 +87,13 @@ export function deriveSwapExecution({
     // sponsorship service must fail closed in the assisted lane; otherwise the
     // wallet tries to estimate/send a transaction it cannot pay gas for.
     if (gasAssistConfigStatus === 'idle' || gasAssistConfigStatus === 'loading') {
-        return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'gas-assist-config-loading' }
+        return { mode: null, reason: 'gas-assist-config-loading' }
     }
     if (gasAssistConfigStatus === 'error') {
-        return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'gas-assist-config-error' }
+        return { mode: null, reason: 'gas-assist-config-error' }
     }
     if (gasAssistConfig?.enabled !== true) {
-        return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'gas-assist-disabled' }
+        return { mode: null, reason: 'gas-assist-disabled' }
     }
     return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'insufficient-native-balance' }
 }

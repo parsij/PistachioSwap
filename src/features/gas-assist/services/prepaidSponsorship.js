@@ -1,3 +1,4 @@
+import { rememberGasAssistCapabilities } from './capabilityRegistry.js'
 import { getGasAssistBaseUrl } from './gasAssist.js'
 import { gasAssistTrace, gasAssistTraceError } from './gasAssistTrace.js'
 
@@ -186,11 +187,12 @@ function awaitSharedRequest(promise, signal) {
 }
 
 export async function fetchSponsorshipConfig(quoteEndpoint, signal, chainId = 56) {
-    return requestJson(
+    const config = await requestJson(
         `${getGasAssistBaseUrl(quoteEndpoint)}/v1/sponsorship/config?sourceChainId=${Number(chainId)}`,
         { signal },
         'config.fetch',
     )
+    return rememberGasAssistCapabilities(config)
 }
 
 export async function authenticateSponsorshipWallet({

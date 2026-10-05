@@ -1,3 +1,4 @@
+import { getGasAssistCapability } from '../features/gas-assist/services/capabilityRegistry.js'
 import {
     arbitrum,
     avalanche,
@@ -208,6 +209,6 @@ export function getChainCapabilities(chainId) {
         sameChainSwap: true,
         crossChainSource: true,
         crossChainDestination: true,
-        gasAssist: Number(chainId) === GAS_ASSIST_CHAIN_ID,
+        gasAssist: getGasAssistCapability(chainId)?.enabled === true,
     })
 }

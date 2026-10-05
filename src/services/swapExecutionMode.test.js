@@ -59,17 +59,17 @@ describe('swap execution mode', () => {
         expect(deriveSwapExecution({ ...base, sellToken: { ...sellToken, isNative: true } })).toMatchObject({ mode: null, reason: 'native-sell-token' })
     })
 
-    it('keeps low-BNB swaps in the assisted lane while sponsorship config loads, errors, or is disabled', () => {
+    it('blocks low-gas swaps until sponsorship config is available and enabled', () => {
         expect(deriveSwapExecution({ ...base, gasAssistConfigStatus: 'loading', gasAssistConfig: null })).toEqual({
-            mode: PREPAID_SPONSORSHIP_MODE,
+            mode: null,
             reason: 'gas-assist-config-loading',
         })
         expect(deriveSwapExecution({ ...base, gasAssistConfigStatus: 'error', gasAssistConfig: null })).toEqual({
-            mode: PREPAID_SPONSORSHIP_MODE,
+            mode: null,
             reason: 'gas-assist-config-error',
         })
         expect(deriveSwapExecution({ ...base, gasAssistConfig: { enabled: false } })).toEqual({
-            mode: PREPAID_SPONSORSHIP_MODE,
+            mode: null,
             reason: 'gas-assist-disabled',
         })
 

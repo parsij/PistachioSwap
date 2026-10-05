@@ -86,13 +86,13 @@ export function useCrossChainGasAssist({
             preparation?.status === 'ready' &&
             preparation?.insufficientNativeGas
         )) &&
-        sponsorshipConfig?.supported !== false && Number(sponsorshipConfig?.chainId ?? sellToken?.chainId) === Number(sellToken?.chainId) &&
+        sponsorshipConfig?.supported === true && sponsorshipConfig?.enabled === true && Number(sponsorshipConfig?.chainId ?? sellToken?.chainId) === Number(sellToken?.chainId) &&
         sellToken?.isNative !== true,
     )
     const required = Boolean(
         preparation?.status === 'ready' &&
         preparation?.insufficientNativeGas &&
-        sponsorshipConfig?.supported !== false && Number(sponsorshipConfig?.chainId ?? sellToken?.chainId) === Number(sellToken?.chainId) &&
+        sponsorshipConfig?.supported === true && sponsorshipConfig?.enabled === true && Number(sponsorshipConfig?.chainId ?? sellToken?.chainId) === Number(sellToken?.chainId) &&
         sellToken?.isNative !== true,
     )
 
