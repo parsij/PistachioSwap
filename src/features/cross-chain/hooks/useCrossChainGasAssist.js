@@ -7,6 +7,7 @@ import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
 import {
     beginOptimisticWalletTransaction,
+    confirmOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
     rollbackOptimisticWalletTransaction,
 } from '../../wallet/services/optimisticBalances.js'
@@ -166,6 +167,7 @@ export function useCrossChainGasAssist({
         const preparedRoute = preparedResponseRef.current?.preparedRoute
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ??
             optimisticTransactionRef.current ?? null
+        if (hash) confirmOptimisticWalletTransaction(hash)
         recordWalletActivity({
             walletAddress: account,
             chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId),
