@@ -1,5 +1,8 @@
+import { getGasAssistCapability } from '../../gas-assist/services/capabilityRegistry.js'
 import {
     decodeFunctionData,
+    decodeEventLog,
+    parseAbi,
     formatUnits,
     isHex,
     parseUnits,
@@ -14,7 +17,7 @@ import {
     getWrappedNativeTokenAddress,
 } from '../../../web3/curatedEvmChains.js'
 
-export const WALLET_HISTORY_CLASSIFIER_VERSION = 4
+export const WALLET_HISTORY_CLASSIFIER_VERSION = 5
 
 export const ENTRY_POINT_V08_ADDRESS =
     '0x4337084d9e255ff0702461cf8895ce9e3b5ff108'
@@ -36,6 +39,7 @@ const TRANSFER_EVENT = toEventSelector('Transfer(address,address,uint256)').toLo
 const USER_OPERATION_EVENT = toEventSelector(
     'UserOperationEvent(bytes32,address,address,uint256,bool,uint256,uint256)',
 ).toLowerCase()
+const USER_OPERATION_ABI = parseAbi(['event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)'])
 const SWAP_EVENTS = new Set([
     toEventSelector('Swap(address,uint256,uint256,uint256,uint256,address)'),
     toEventSelector('Swap(address,address,int256,int256,uint160,uint128,int24)'),
@@ -274,13 +278,15 @@ function userOperationPaymasters(value) {
     return candidates.map(normalizeAddress).filter(Boolean)
 }
 
-function configuredPistachioPaymasterAddress() {
-    return normalizeAddress(import.meta.env?.VITE_PISTACHIO_PAYMASTER_ADDRESS)
+function configuredPistachioPaymasterAddress(chainId = 56) {
+    return normalizeAddress(getGasAssistCapability(chainId)?.paymaster ?? (Number(chainId) === 56 ? import.meta.env?.VITE_PISTACHIO_PAYMASTER_ADDRESS : null))
 }
 
-function hasPistachioPaymasterUserOperation(value) {
-    const paymaster = configuredPistachioPaymasterAddress()
-    return Boolean(paymaster) && userOperationPaymasters(value).includes(paymaster)
+function hasPistachioPaymasterUserOperation(chainId, value, wallet) {
+    const paymaster = configuredPistachioPaymasterAddress(chainId)
+    return Boolean(paymaster) && Array.isArray(value.user_operations) && value.user_operations.some(operation =>
+        operation.success === true && normalizeAddress(operation.sender) === wallet &&
+        normalizeAddress(operation.paymaster) === paymaster)
 }
 
 function isKnownPistachioBscContract(value) {
@@ -480,6 +486,13 @@ export function buildReceiptHistoryRow({
         contract_interactions: [...new Set(logs
             .map(log => normalizeAddress(log.address))
             .filter(Boolean))],
+        user_operations: logs.flatMap(log => {
+            if (normalizeAddress(log.address) !== ENTRY_POINT_V08_ADDRESS) return []
+            try {
+                const { args } = decodeEventLog({ abi: USER_OPERATION_ABI, data: log.data, topics: log.topics, strict: true })
+                return [{ userOpHash: args.userOpHash, sender: args.sender, paymaster: args.paymaster, success: args.success }]
+            } catch { return [] }
+        }),
         user_operation_senders: [...new Set(logs.flatMap(log => {
             const topics = Array.isArray(log.topics) ? log.topics : []
             if (
@@ -716,10 +729,9 @@ function inferSelfHostedGasAssistSwap({
     incoming,
 }) {
     if (
-        chainId !== 56 ||
         normalizeAddress(value.to_address) !== ENTRY_POINT_V08_ADDRESS ||
         !hasWalletUserOperation(value, wallet) ||
-        !hasPistachioPaymasterUserOperation(value)
+        !hasPistachioPaymasterUserOperation(chainId, value, wallet)
     ) {
         return null
     }
@@ -809,6 +821,8 @@ export function classifyReceiptHistoryRow(chainId, walletAddress, value) {
             incoming,
         })
     }
+
+    if (!activity && to === ENTRY_POINT_V08_ADDRESS && outgoing.length && incoming.length && hasWalletUserOperation(value, wallet)) return null
 
     if (!activity && from === wallet && value.swap_evidence === true) {
         const net = netFlows(transfers)

@@ -39,7 +39,7 @@ jobs:
       - name: Backend tests
         run: pnpm --filter @pistachio/api test
       - name: Gas Assist source capability tests
-        run: pnpm exec vitest run src/services/swapExecutionMode.test.js src/features/gas-assist/services/capabilityRegistry.test.js
+        run: pnpm exec vitest run src/services/swapExecutionMode.test.js src/features/gas-assist/services/capabilityRegistry.test.js src/features/wallet/services/walletHistoryMultichain.test.js src/features/gas-assist/services/selfHostedPaymaster.test.js
       - name: Build
         env:
           NODE_OPTIONS: --max-old-space-size=8192

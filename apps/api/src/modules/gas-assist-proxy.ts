@@ -237,6 +237,27 @@ async function readBoundedResponse(response: Response, maximumBytes: number) {
     return Buffer.concat(chunks, totalBytes)
 }
 
+export async function fetchGasAssistDeploymentIdentities(): Promise<Record<number, { entryPoint: string; paymaster: string }>> {
+    try {
+        const config = readGasAssistProxyConfig()
+        if (!config) return {}
+        const target = new URL(config.baseUrl)
+        target.pathname = target.pathname.replace(/\/+$/, '') + '/v1/sponsorship/capabilities'
+        target.search = ''; target.hash = ''
+        const response = await fetch(target, { headers: { [INTERNAL_TOKEN_HEADER]: config.internalToken, accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(3000) })
+        if (!response.ok) return {}
+        const bytes = await readBoundedResponse(response, config.maximumResponseBytes)
+        const payload = JSON.parse(bytes.toString('utf8')) as { chains?: Record<string, { chainId?: number; entryPoint?: string; paymaster?: string }> }
+        const result: Record<number, { entryPoint: string; paymaster: string }> = {}
+        for (const [key, value] of Object.entries(payload.chains ?? {})) {
+            const id = Number(key)
+            if (!Number.isSafeInteger(id) || id <= 0 || value.chainId !== id || !/^0x[0-9a-f]{40}$/i.test(value.paymaster ?? '') || !/^0x[0-9a-f]{40}$/i.test(value.entryPoint ?? '')) continue
+            result[id] = { entryPoint: value.entryPoint!.toLowerCase(), paymaster: value.paymaster!.toLowerCase() }
+        }
+        return result
+    } catch { return {} }
+}
+
 export async function requestPrivateGasAssist({
     pathname,
     body,

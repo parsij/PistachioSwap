@@ -312,3 +312,163 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
         },
     )
 })
+
+describe('all approved source chains preserve browser-owned final signatures', () => {
+    it.each([1,10,56,100,130,137,8453,34443,42161,42220,59144,80094,534352])('submits exact reviewed EIP-7702 UserOperation on source chain %i', async chainId => {
+        const onChainCode = '0x', delayed = false, mode = undefined
+        const chainBackendConfig = { ...backendConfig, chainId, supported: true, publicRpc: 'https://rpc.example/rpc', publicBundlerEndpoint: 'https://bundler.example/bundler/' + chainId }
+
+            const onSubmitted = vi.fn()
+            if (delayed) vi.useFakeTimers()
+            let receiptAttempts = 0
+            const requests = []
+            let locallySignedHash
+            let estimateAttempts = 0
+            const walletClient = {
+                request: vi.fn(async ({ method, params }) => {
+                    expect(method).toBe('pistachio_signSelfHostedAuthorization')
+                    expect(params[0].data.address).toBe(delegate)
+                    const previous = params[0].data.previousDelegate
+                    if (onChainCode.toLowerCase() === `0xef0100${treasury.slice(2).toLowerCase()}`) {
+                        expect(previous).toBe(treasury)
+                    } else {
+                        expect(previous).toBeUndefined()
+                    }
+                    const authorization = await signer.signAuthorization({
+                        contractAddress: delegate,
+                        chainId,
+                        nonce: 0,
+                    })
+                    return serializeSignature(authorization)
+                }),
+                signTypedData: vi.fn(async ({ account, ...typed }) => {
+                    expect(getAddress(account)).toBe(sender)
+                    expect(typed.domain.chainId).toBe(chainId)
+                    locallySignedHash = hashTypedData(typed)
+                    return signer.signTypedData(typed)
+                }),
+            }
+            const rpcResult = (method) => {
+                switch (method) {
+                case 'eth_chainId': return numberToHex(chainId)
+                case 'eth_supportedEntryPoints': return [entryPoint]
+                case 'eth_getCode': return onChainCode
+                case 'eth_getTransactionCount': return '0x0'
+                case 'eth_call': return numberToHex(0n, { size: 32 })
+                case 'eth_gasPrice': return '0x3b9aca00'
+                case 'eth_estimateUserOperationGas':
+                    return { callGasLimit: '0x186a0', verificationGasLimit: '0x30d40', preVerificationGas: '0x11170' }
+                case 'eth_sendUserOperation': return locallySignedHash
+                case 'eth_getUserOperationReceipt':
+                    receiptAttempts += 1
+                    if (mode === 'transient' && receiptAttempts === 1) throw new Error('Temporary Bundler outage')
+                    if (delayed) return null
+                    return {
+                    success: mode !== 'reverted', receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
+                }
+                default: throw new Error(`Unexpected RPC ${method}`)
+                }
+            }
+            vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+                const body = JSON.parse(options.body)
+                requests.push({ url: String(url), body })
+                if (body.method) {
+                    if (body.method === 'eth_estimateUserOperationGas') {
+                        estimateAttempts += 1
+                        if (estimateAttempts === 1) {
+                            return new Response(JSON.stringify({
+                                jsonrpc: '2.0',
+                                id: 1,
+                                error: { code: -32098, message: 'Bundler upstream unavailable' },
+                            }), { status: 200, headers: { 'content-type': 'application/json' } })
+                        }
+                    }
+                    return new Response(JSON.stringify({
+                        jsonrpc: '2.0', id: 1, result: rpcResult(body.method),
+                    }), { status: 200 })
+                }
+                if (String(url).endsWith('/paymaster/receipt')) return new Response(JSON.stringify({
+                    ...body, sourceStatus: mode === 'reverted' ? 'reverted' : 'confirmed',
+                }))
+                const isStub = String(url).endsWith('/paymaster/stub')
+                return new Response(JSON.stringify(isStub ? {
+                    paymaster, paymasterData: `0x${'aa'.repeat(125)}`,
+                    paymasterVerificationGasLimit: '0x222e0', paymasterPostOpGasLimit: '0x0',
+                } : {
+                    paymaster, paymasterData: `0x${'bb'.repeat(125)}`,
+                    paymasterVerificationGasLimit: '0x222e0', paymasterPostOpGasLimit: '0x0',
+                    isFinal: true, validUntil: Math.floor(Date.now() / 1000) + 60,
+                }), { status: 200 })
+            }))
+            const submittedPromise = submitSelfHostedPaymasterUserOperation({
+                prepared: prepared({ chainId }), order, backendConfig: chainBackendConfig,
+                quoteEndpoint: 'http://localhost:3001/v1/quote',
+                sessionToken: 'session',
+                walletClient, authenticatedWalletAddress: sender, onSubmitted,
+            })
+            if (delayed) {
+                await vi.waitFor(() => expect(receiptAttempts).toBeGreaterThan(0))
+                await vi.runAllTimersAsync()
+            }
+            if (mode === 'reverted') {
+                await expect(submittedPromise).rejects.toMatchObject({ code: 'PAYMASTER_EXECUTION_REVERTED' })
+                expect(onSubmitted).not.toHaveBeenCalled()
+                expect(requests.filter((r) => r.body.method === 'eth_sendUserOperation')).toHaveLength(1)
+                return
+            }
+            const result = await submittedPromise
+            expect(result).toMatchObject({ status: delayed ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
+            if (delayed) {
+                expect(receiptAttempts).toBe(60)
+                await expect(submitSelfHostedPaymasterUserOperation({
+                    prepared: prepared({ chainId }), order, backendConfig: chainBackendConfig,
+                    authenticatedWalletAddress: sender,
+                })).rejects.toMatchObject({ code: 'PAYMASTER_ALREADY_SUBMITTED' })
+                const persisted = JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))[0]
+                expect(Object.keys(persisted)).toEqual(['orderId', 'userOpHash', 'walletAddress', 'chainId', 'timestamp', 'ambiguous', 'routeId'])
+                const fetchBeforeRecovery = globalThis.fetch
+                vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+                    ...persisted, chainId, transactionHash: `0x${'fa'.repeat(32)}`,
+                    sourceStatus: 'confirmed', status: 'completed',
+                }))))
+                expect(await recoverSelfHostedUserOperation({
+                    quoteEndpoint: 'http://localhost:3001/v1/quote', operation: persisted,
+                })).toMatchObject({ status: 'completed' })
+                vi.stubGlobal('fetch', fetchBeforeRecovery)
+            }
+            const stubIndex = requests.findIndex((r) => r.url.endsWith('/paymaster/stub'))
+            const estimateIndex = requests.findIndex((r) => r.body.method === 'eth_estimateUserOperationGas')
+            const sponsorIndex = requests.findIndex((r) => r.url.endsWith('/paymaster/sponsor'))
+            const sendIndex = requests.findIndex((r) => r.body.method === 'eth_sendUserOperation')
+            expect(stubIndex).toBeLessThan(estimateIndex)
+            expect(estimateAttempts).toBe(2)
+            expect(requests.filter((r) => r.body.method === 'eth_sendUserOperation')).toHaveLength(1)
+            expect(estimateIndex).toBeLessThan(sponsorIndex)
+            expect(sponsorIndex).toBeLessThan(sendIndex)
+            expect(requests[sponsorIndex].body.userOperation.signature).toBe('0x')
+            expect(requests[sponsorIndex].body.userOperation.factory).toBe(marker)
+            expect(requests[sponsorIndex].body.userOperation.eip7702Auth).toBeUndefined()
+            expect(requests[estimateIndex].body.params[0].factory).toBe('0x7702')
+            expect(requests[sendIndex].body.params[0].factory).toBe('0x7702')
+            const estimateAuth = requests[estimateIndex].body.params[0].eip7702Auth
+            const sendAuth = requests[sendIndex].body.params[0].eip7702Auth
+            expect(estimateAuth).toMatchObject({
+                chainId: numberToHex(chainId),
+                address: delegate,
+                nonce: '0x0',
+            })
+            expect(sendAuth).toEqual(estimateAuth)
+            expect(estimateAuth.r).toHaveLength(66)
+            expect(estimateAuth.s).toHaveLength(66)
+            expect(['0x0', '0x1']).toContain(estimateAuth.yParity)
+            expect(requests[sendIndex].body.params[0].signature).toHaveLength(132)
+            expect(requests[sendIndex].body.params[0].maxPriorityFeePerGas).toBe('0x3b9aca00')
+            expect(requests[sendIndex].body.params[0].maxFeePerGas).toBe('0x77359400')
+            expect(requests[sendIndex].url).toBe(`https://bundler.example/bundler/${chainId}`)
+            expect(requests.filter((r) => r.url.startsWith('http://localhost:3001')).every(
+                (r) => !JSON.stringify(r.body).includes(requests[sendIndex].body.params[0].signature) && !JSON.stringify(r.body).includes(sendAuth.r),
+            )).toBe(true)
+            expect(walletClient.request).toHaveBeenCalledTimes(1)
+
+    })
+})

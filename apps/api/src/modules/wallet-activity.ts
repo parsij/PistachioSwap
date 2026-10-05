@@ -1,5 +1,8 @@
+import { fetchGasAssistDeploymentIdentities } from './gas-assist-proxy.js'
 import {
     decodeFunctionData,
+    decodeEventLog,
+    parseAbi,
     formatUnits,
     isHex,
     zeroAddress,
@@ -130,6 +133,7 @@ const erc20ApproveAbi = [
     },
 ] as const
 
+const USER_OPERATION_ABI = parseAbi(['event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)'])
 const UINT256_MAX = (1n << 256n) - 1n
 
 function stringValue(value: unknown, maximumLength = 200) {
@@ -418,6 +422,15 @@ function decodeGasAssistActivity({
     outgoing: Transfer[]
     incoming: Transfer[]
 }): Record<string, unknown> | null {
+    if (value.gas_assist_verified === true) {
+        const net = netFlows([...outgoing, ...incoming])
+        const sell = singleTokenFlow(net.filter(item => item.direction === 'outgoing'))
+        const buy = singleTokenFlow(net.filter(item => item.direction === 'incoming'))
+        if (!sell || !buy || !differentAssets(chainId, sell.token, buy.token)) return null
+        return { id: `${chainId}:${hash}`, walletAddress: wallet, type: 'swapped', chainId, hash, timestamp,
+            sellToken: sell.token, buyToken: buy.token, sellAmount: sell.amount, buyAmount: buy.amount,
+            recipient: wallet, provider: 'pistachio-self-hosted-gas-assist' }
+    }
     if (chainId !== 56) return null
     const from = normalizeAddress(value.from_address)
     const to = normalizeAddress(value.to_address)
@@ -789,7 +802,10 @@ function normalizeMoralisActivity(chainId: number, wallet: string, value: unknow
 
 async function verifyAmbiguousSwapRows(chainId: number, wallet: string, rows: unknown[]) {
     let verificationUnavailable = false
+    const deployment = (await fetchGasAssistDeploymentIdentities())[chainId]
+    for (const row of rows.filter(isRecord)) delete row.gas_assist_verified
     const candidates = rows.filter(isRecord).filter(row => {
+        if (deployment && normalizeAddress(row.to_address) === deployment.entryPoint) return true
         if (normalizeAddress(row.from_address) !== wallet) return false
         if (normalizeMoralisActivity(chainId, wallet, row)?.type !== 'sent') return false
         const movements = [...(Array.isArray(row.erc20_transfers) ? row.erc20_transfers : []),
@@ -805,6 +821,15 @@ async function verifyAmbiguousSwapRows(chainId: number, wallet: string, rows: un
             if (response?.error || !isRecord(response?.result)) {
                 verificationUnavailable = true
                 continue
+            }
+            if (deployment && response.result.status === '0x1' && Array.isArray(response.result.logs)) {
+                row.gas_assist_verified = response.result.logs.filter(isRecord).some(log => {
+                    if (normalizeAddress(log.address) !== deployment.entryPoint) return false
+                    try {
+                        const event = decodeEventLog({ abi: USER_OPERATION_ABI, data: log.data as Hex, topics: log.topics as [Hex, ...Hex[]], strict: true })
+                        return event.args.success && normalizeAddress(event.args.sender) === wallet && normalizeAddress(event.args.paymaster) === deployment.paymaster
+                    } catch { return false }
+                })
             }
             row.swap_evidence = receiptHasSwapEvidence(response.result)
             row.receipt_status = response.result.status === '0x1' ? '1' : '0'

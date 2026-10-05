@@ -90,7 +90,8 @@ function publicRpcUrl(value, name) {
     }
     const local = ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)
     if ((parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) ||
-        parsed.username || parsed.password || parsed.search || parsed.hash) {
+        parsed.username || parsed.password || parsed.search || parsed.hash ||
+        /(?:alchemy|infura|nodereal|quiknode|quicknode)/i.test(parsed.hostname)) {
         deny('PAYMASTER_RPC_UNSAFE', `${name} must be a public HTTPS RPC URL without URL credentials or query secrets.`)
     }
     return parsed.href
@@ -350,11 +351,8 @@ export function selfHostedUserOpTypedData(operation, settings) {
         },
     }
 }
-/** BSC has a zero base fee, so EntryPoint reimburses the priority fee.
- * The Bundler must receive at least the RPC's quoted effective gas price,
- * not one tenth of it. The larger maxFee bounds replacement/headroom.
- */
-export function sponsoredBscGasFees(gasPriceHex) {
+/** Use the source RPC's full effective gas price and bounded replacement headroom. */
+export function sponsoredGasFees(gasPriceHex) {
     const gasPrice = quantity(gasPriceHex, 'gas price', UINT128_MAX / 2n)
     if (gasPrice === 0n) deny('PAYMASTER_FEE_INVALID', 'The source gas price is invalid.')
     return {
@@ -488,7 +486,7 @@ async function submitOperation({
     const nonce = decodeFunctionResult({
         abi: ENTRY_POINT_ABI, functionName: 'getNonce', data: hex(encodedNonce, 'EntryPoint nonce result'),
     })
-    const feeQuote = sponsoredBscGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal))
+    const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal))
     const operation = {
         sender,
         nonce: numberToHex(nonce),
@@ -654,3 +652,6 @@ export async function recoverSelfHostedUserOperation({ quoteEndpoint, operation,
     }
     return result
 }
+
+// Compatibility export for callers that predate multichain source selection.
+export const sponsoredBscGasFees = sponsoredGasFees
