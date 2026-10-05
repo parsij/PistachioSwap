@@ -9,6 +9,7 @@ import {
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
 import {
     beginOptimisticWalletTransaction,
+    confirmOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
     rollbackOptimisticWalletTransaction,
 } from '../../wallet/services/optimisticBalances.js'
@@ -153,6 +154,7 @@ export function useGasAssistController({
 
     const handleConfirmedSwap = useCallback(async (order) => {
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
+        if (hash) confirmOptimisticWalletTransaction(hash)
         recordWalletActivity({
             walletAddress: account,
             chainId: Number(sellToken?.chainId ?? 56),
