@@ -19,11 +19,9 @@ import { gasAssistTrace } from './gasAssistTrace.js'
 import { getGasAssistBaseUrl } from './gasAssist.js'
 
 const activeSubmissions = new Set()
-const CHAIN_ID = 56
 const ENTRY_POINT = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
 const FACTORY_MARKER = '0x7702000000000000000000000000000000000000'
 const BUNDLER_FACTORY_FLAG = '0x7702'
-const TRUSTED_DELEGATE = '0xe6Cae83BdE06E4c305530e199D7217f42808555B'
 const AUTH_METHOD = 'pistachio_signSelfHostedAuthorization'
 const HEX = /^0x(?:[0-9a-f]{2})*$/iu
 const HASH = /^0x[0-9a-f]{64}$/iu
@@ -104,21 +102,19 @@ function frontendConfig(backend) {
         backend?.execution !== 'erc4337-v08-eip7702-direct') {
         deny('SELF_HOSTED_PAYMASTER_DISABLED', 'The self-hosted Paymaster is not enabled in this browser and backend.')
     }
-    const entryPoint = address(import.meta.env.VITE_ENTRYPOINT_V08_ADDRESS, 'EntryPoint')
-    const delegate = address(import.meta.env.VITE_SIMPLE_7702_ACCOUNT_ADDRESS, 'trusted delegate')
-    const paymaster = address(import.meta.env.VITE_PISTACHIO_PAYMASTER_ADDRESS, 'Paymaster')
+    const chainId = Number(backend.chainId ?? 56)
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) deny('PAYMASTER_CHAIN_MISMATCH', 'The source network is invalid.')
+    const entryPoint = address(backend.entryPoint, 'EntryPoint')
+    const delegate = address(backend.delegate, 'trusted delegate')
+    const paymaster = address(backend.paymaster, 'Paymaster')
     if (entryPoint !== getAddress(ENTRY_POINT) ||
-        delegate !== getAddress(TRUSTED_DELEGATE) ||
-        entryPoint !== address(backend.entryPoint, 'backend EntryPoint') ||
-        delegate !== address(backend.delegate, 'backend delegate') ||
-        paymaster !== address(backend.paymaster, 'backend Paymaster') ||
         address(backend.eip7702Factory, 'factory marker') !== getAddress(FACTORY_MARKER)) {
-        deny('PAYMASTER_CONFIG_MISMATCH', 'The browser and backend disagree about the trusted ERC-4337 deployment.')
+        deny('PAYMASTER_CONFIG_MISMATCH', 'The backend did not provide the expected ERC-4337 v0.8 deployment.')
     }
     return {
-        entryPoint, delegate, paymaster,
-        publicRpc: publicRpcUrl(import.meta.env.VITE_BSC_PUBLIC_RPC_URL, 'VITE_BSC_PUBLIC_RPC_URL'),
-        bundlerRpc: publicRpcUrl(import.meta.env.VITE_BSC_BUNDLER_RPC_URL, 'VITE_BSC_BUNDLER_RPC_URL'),
+        chainId, nativeSymbol: backend.nativeSymbol ?? 'native token', entryPoint, delegate, paymaster,
+        publicRpc: publicRpcUrl(backend.publicRpc || (chainId === 56 ? import.meta.env.VITE_BSC_PUBLIC_RPC_URL : undefined), 'source public RPC'),
+        bundlerRpc: publicRpcUrl(backend.publicBundlerEndpoint || (chainId === 56 ? import.meta.env.VITE_BSC_BUNDLER_RPC_URL : undefined), 'source Bundler'),
     }
 }
 export function selfHostedFrontendEnabled(config) {
@@ -131,7 +127,7 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
     if (!prepared || prepared.provider !== 'pistachio-paymaster-v08' ||
         prepared.execution !== 'erc4337-v08-eip7702-direct' ||
         prepared.stage !== 'direct' || prepared.paymentMode !== 'sponsored' ||
-        Number(prepared.chainId) !== CHAIN_ID || prepared.orderId !== order?.id ||
+        Number(prepared.chainId) !== Number(settings.chainId ?? order?.chainId ?? 56) || prepared.orderId !== order?.id ||
         Date.parse(prepared.expiresAt) <= Date.now() ||
         !Number.isFinite(Date.parse(prepared.expiresAt)) ||
         address(prepared.entryPoint, 'prepared EntryPoint') !== settings.entryPoint ||
@@ -145,7 +141,7 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
         const to = address(call?.to, 'reviewed call target')
         const data = hex(call?.data, 'reviewed call data')
         if (quantity(call?.value ?? '0x0', 'native call value', (1n << 256n) - 1n) !== 0n) {
-            deny('PAYMASTER_NATIVE_VALUE_FORBIDDEN', 'A sponsored five-call swap must not transfer native BNB.')
+            deny('PAYMASTER_NATIVE_VALUE_FORBIDDEN', 'A sponsored five-call swap must not transfer native gas tokens.')
         }
         return { target: to, data, value: 0n }
     })
@@ -337,7 +333,7 @@ export function selfHostedUserOpTypedData(operation, settings) {
         domain: {
             name: 'ERC4337',
             version: '1',
-            chainId: CHAIN_ID,
+            chainId: Number(settings.chainId ?? 56),
             verifyingContract: settings.entryPoint,
         },
         primaryType: 'PackedUserOperation',
@@ -360,7 +356,7 @@ export function selfHostedUserOpTypedData(operation, settings) {
  */
 export function sponsoredBscGasFees(gasPriceHex) {
     const gasPrice = quantity(gasPriceHex, 'gas price', UINT128_MAX / 2n)
-    if (gasPrice === 0n) deny('PAYMASTER_FEE_INVALID', 'The BNB gas price is invalid.')
+    if (gasPrice === 0n) deny('PAYMASTER_FEE_INVALID', 'The source gas price is invalid.')
     return {
         maxPriorityFeePerGas: numberToHex(gasPrice),
         maxFeePerGas: numberToHex(gasPrice * 2n),
@@ -389,18 +385,18 @@ async function delegationState(publicRpc, sender, delegate, signal) {
     const code = await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)
     return classifyDelegationCode(code, delegate)
 }
-async function authorizationForBundler7702(walletClient, publicRpc, sender, delegate, state, signal) {
+async function authorizationForBundler7702(walletClient, publicRpc, sender, delegate, state, signal, chainId) {
     const nonce = quantity(await rpc(publicRpc, 'eth_getTransactionCount', [sender, 'latest'], signal), 'EOA authorization nonce', (1n << 64n) - 1n)
     if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EOA authorization nonce exceeds supported precision.')
     const authRequest = {
         type: 'eip7702Auth',
         data: {
-            chainId: CHAIN_ID,
+            chainId,
             address: delegate,
             nonce: Number(nonce),
             ...(state.previousDelegate ? { previousDelegate: state.previousDelegate } : {}),
         },
-        rawPayload: hashAuthorization({ contractAddress: delegate, chainId: CHAIN_ID, nonce: Number(nonce) }),
+        rawPayload: hashAuthorization({ contractAddress: delegate, chainId, nonce: Number(nonce) }),
     }
     const signature = await walletClient.request({ method: AUTH_METHOD, params: [authRequest] })
     if (!/^0x[0-9a-f]{130}$/iu.test(String(signature ?? ''))) {
@@ -418,7 +414,7 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
     }
     const parsed = parseSignature(signature)
     const signedAuthorization = {
-        chainId: CHAIN_ID,
+        chainId,
         address: delegate,
         nonce: Number(nonce),
         yParity: parsed.yParity,
@@ -435,7 +431,7 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
         deny('PISTACHIO_ACCOUNT_MISMATCH', 'The EIP-7702 authorization signer does not match the authenticated wallet.')
     }
     return {
-        chainId: numberToHex(CHAIN_ID),
+        chainId: numberToHex(chainId),
         address: delegate,
         nonce: numberToHex(nonce),
         yParity: numberToHex(parsed.yParity),
@@ -459,9 +455,9 @@ async function submitOperation({
     if (typeof walletClient?.request !== 'function' || typeof walletClient?.signTypedData !== 'function') {
         deny('PISTACHIO_WALLET_REQUIRED', 'Self-hosted Gas Assist requires the Pistachio Wallet signer.')
     }
-    if (quantity(await rpc(settings.publicRpc, 'eth_chainId', [], signal), 'chain id') !== 56n ||
-        quantity(await rpc(settings.bundlerRpc, 'eth_chainId', [], signal), 'bundler chain id') !== 56n) {
-        deny('PAYMASTER_CHAIN_MISMATCH', 'The public RPC and bundler must both use BNB Chain 56.')
+    if (quantity(await rpc(settings.publicRpc, 'eth_chainId', [], signal), 'chain id') !== BigInt(settings.chainId) ||
+        quantity(await rpc(settings.bundlerRpc, 'eth_chainId', [], signal), 'bundler chain id') !== BigInt(settings.chainId)) {
+        deny('PAYMASTER_CHAIN_MISMATCH', 'The public RPC and Bundler must both use the selected source network.')
     }
     const supported = await rpc(settings.bundlerRpc, 'eth_supportedEntryPoints', [], signal)
     if (!Array.isArray(supported) || !supported.some((candidate) =>
@@ -481,6 +477,7 @@ async function submitOperation({
         settings.delegate,
         delegation,
         signal,
+        settings.chainId,
     )
     const encodedNonce = await rpc(settings.publicRpc, 'eth_call', [{
         to: settings.entryPoint,
@@ -568,7 +565,7 @@ async function submitOperation({
     // Persist the locally expected PUBLIC hash before the ambiguous send boundary.
     // No signatures, operation body, credentials or RPC URLs are stored.
     const recovery = persistPendingUserOperation({
-        orderId: prepared.orderId, userOpHash: expectedHash, chainId: 56,
+        orderId: prepared.orderId, userOpHash: expectedHash, chainId: settings.chainId,
         walletAddress: sender, timestamp: Date.now(), routeId: order.crossChainRouteId,
         ambiguous: true,
     })
@@ -651,7 +648,7 @@ export async function recoverSelfHostedUserOperation({ quoteEndpoint, operation,
     if (!response.ok) throw new Error('Confirmation status is temporarily unavailable.')
     const result = await response.json()
     if (result.orderId !== operation.orderId || result.userOpHash?.toLowerCase() !== operation.userOpHash ||
-        result.walletAddress?.toLowerCase() !== operation.walletAddress || result.chainId !== 56 ||
+        result.walletAddress?.toLowerCase() !== operation.walletAddress || Number(result.chainId) !== Number(operation.chainId) ||
         (result.transactionHash && !HASH.test(result.transactionHash))) {
         throw new Error('Recovery identifiers did not match.')
     }

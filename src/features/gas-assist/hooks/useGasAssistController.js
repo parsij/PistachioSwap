@@ -114,13 +114,13 @@ export function useGasAssistController({
             const grossInputRaw = BigInt(order?.grossInputAmountRaw ?? activeAmountIn)
             const expectedOutputRaw = BigInt(order?.expectedOutputRaw ?? 0)
             const changes = [{
-                chainId: 56,
+                chainId: Number(sellToken?.chainId ?? 56),
                 token: sellToken,
                 deltaRaw: -grossInputRaw,
             }]
             if (expectedOutputRaw > 0n) {
                 changes.push({
-                    chainId: 56,
+                    chainId: Number(sellToken?.chainId ?? 56),
                     token: buyToken,
                     deltaRaw: expectedOutputRaw,
                 })
@@ -134,7 +134,7 @@ export function useGasAssistController({
             optimisticHashRef.current = hash
             recordWalletActivity({
                 walletAddress: account,
-                chainId: 56,
+                chainId: Number(sellToken?.chainId ?? 56),
                 type: 'swapped',
                 hash,
                 sellToken,
@@ -155,7 +155,7 @@ export function useGasAssistController({
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
         recordWalletActivity({
             walletAddress: account,
-            chainId: 56,
+            chainId: Number(sellToken?.chainId ?? 56),
             type: 'swapped',
             hash,
             sellToken,
@@ -226,7 +226,7 @@ export function useGasAssistController({
         rollbackOptimisticWalletTransaction(hash)
         recordWalletActivity({
             walletAddress: account,
-            chainId: 56,
+            chainId: Number(sellToken?.chainId ?? 56),
             type: 'swapped',
             hash,
             sellToken,
@@ -268,7 +268,7 @@ export function useGasAssistController({
         return {
             prepaidSponsorshipRequired: true,
             selectedQuote: {
-                chainId: 56,
+                chainId: Number(sellToken?.chainId ?? 56),
                 mode: 'EXACT_INPUT',
                 sellToken: sellToken.address,
                 buyToken: buyToken.isNative ? 'native' : buyToken.address,

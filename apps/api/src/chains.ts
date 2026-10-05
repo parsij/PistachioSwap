@@ -80,7 +80,8 @@ export const CURATED_EVM_CHAINS = Object.freeze(
             sameChainSwap: true,
             crossChainSource: true,
             crossChainDestination: true,
-            gasAssist: chain.id === 56,
+            // Runtime Gas Assist capabilities are fetched from the private backend.
+            gasAssist: false,
         }),
     })),
 )

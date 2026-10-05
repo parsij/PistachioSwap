@@ -86,13 +86,13 @@ export function useCrossChainGasAssist({
             preparation?.status === 'ready' &&
             preparation?.insufficientNativeGas
         )) &&
-        Number(sellToken?.chainId) === 56 &&
+        sponsorshipConfig?.supported === true && sponsorshipConfig?.enabled === true && Number(sponsorshipConfig?.chainId ?? sellToken?.chainId) === Number(sellToken?.chainId) &&
         sellToken?.isNative !== true,
     )
     const required = Boolean(
         preparation?.status === 'ready' &&
         preparation?.insufficientNativeGas &&
-        Number(sellToken?.chainId) === 56 &&
+        sponsorshipConfig?.supported === true && sponsorshipConfig?.enabled === true && Number(sponsorshipConfig?.chainId ?? sellToken?.chainId) === Number(sellToken?.chainId) &&
         sellToken?.isNative !== true,
     )
 
@@ -115,7 +115,7 @@ export function useCrossChainGasAssist({
             throw new Error('The sponsored cross-chain transaction is incomplete.')
         }
 
-        const sourceChainId = Number(preparedRoute.sourceChainId ?? sellToken?.chainId ?? 56)
+        const sourceChainId = Number(preparedRoute.sourceChainId ?? sellToken?.chainId)
         const destinationChainId = Number(
             preparedRoute.destinationChainId ?? buyToken?.chainId ?? 0,
         )
@@ -168,7 +168,7 @@ export function useCrossChainGasAssist({
             optimisticTransactionRef.current ?? null
         recordWalletActivity({
             walletAddress: account,
-            chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId ?? 56),
+            chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId),
             destinationChainId: Number(
                 preparedRoute?.destinationChainId ?? buyToken?.chainId ?? 0,
             ) || null,
@@ -236,7 +236,7 @@ export function useCrossChainGasAssist({
         const preparedRoute = preparedResponseRef.current?.preparedRoute
         recordWalletActivity({
             walletAddress: account,
-            chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId ?? 56),
+            chainId: Number(preparedRoute?.sourceChainId ?? sellToken?.chainId),
             destinationChainId: Number(
                 preparedRoute?.destinationChainId ?? buyToken?.chainId ?? 0,
             ) || null,

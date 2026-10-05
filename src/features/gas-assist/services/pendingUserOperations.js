@@ -5,10 +5,10 @@ const ADDRESS = /^0x[0-9a-f]{40}$/iu
 function normalize(value) {
     if (!value || typeof value.orderId !== 'string' || !value.orderId || value.orderId.length > 128 ||
         !HASH.test(value.userOpHash) || !ADDRESS.test(value.walletAddress) ||
-        value.chainId !== 56 || !Number.isFinite(value.timestamp)) return null
+        (!Number.isSafeInteger(value.chainId) || value.chainId <= 0) || !Number.isFinite(value.timestamp)) return null
     return {
         orderId: value.orderId, userOpHash: value.userOpHash.toLowerCase(),
-        walletAddress: value.walletAddress.toLowerCase(), chainId: 56,
+        walletAddress: value.walletAddress.toLowerCase(), chainId: value.chainId,
         timestamp: value.timestamp, ambiguous: value.ambiguous === true,
         routeId: typeof value.routeId === 'string' ? value.routeId.slice(0, 128) : null,
     }

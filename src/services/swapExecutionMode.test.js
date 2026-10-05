@@ -11,7 +11,7 @@ import {
     SAME_CHAIN_STANDARD,
 } from './swapExecutionMode.js'
 
-const sellToken = { address: '0x0000000000000000000000000000000000000001', decimals: 18, isNative: false }
+const sellToken = { chainId: 56, address: '0x0000000000000000000000000000000000000001', decimals: 18, isNative: false }
 const buyToken = { address: '0x0000000000000000000000000000000000000002', decimals: 6, isNative: false }
 const base = {
     isConnected: true,
@@ -22,7 +22,7 @@ const base = {
     sellToken,
     buyToken,
     sellAmount: '1000000',
-    gasAssistConfig: { enabled: true },
+    gasAssistConfig: { enabled: true, chainId: 56 },
     gasAssistConfigStatus: 'success',
     minimumNativeBalance: 100n,
 }
@@ -59,26 +59,26 @@ describe('swap execution mode', () => {
         expect(deriveSwapExecution({ ...base, sellToken: { ...sellToken, isNative: true } })).toMatchObject({ mode: null, reason: 'native-sell-token' })
     })
 
-    it('keeps low-BNB swaps in the assisted lane while sponsorship config loads, errors, or is disabled', () => {
+    it('blocks low-gas swaps until sponsorship config is available and enabled', () => {
         expect(deriveSwapExecution({ ...base, gasAssistConfigStatus: 'loading', gasAssistConfig: null })).toEqual({
-            mode: PREPAID_SPONSORSHIP_MODE,
+            mode: null,
             reason: 'gas-assist-config-loading',
         })
         expect(deriveSwapExecution({ ...base, gasAssistConfigStatus: 'error', gasAssistConfig: null })).toEqual({
-            mode: PREPAID_SPONSORSHIP_MODE,
+            mode: null,
             reason: 'gas-assist-config-error',
         })
         expect(deriveSwapExecution({ ...base, gasAssistConfig: { enabled: false } })).toEqual({
-            mode: PREPAID_SPONSORSHIP_MODE,
+            mode: null,
             reason: 'gas-assist-disabled',
         })
 
         expect(getSwapExecutionMessage('gas-assist-config-loading'))
-            .toBe('Not enough BNB for normal gas. Checking Gas Assist availability…')
+            .toBe('Not enough native gas for normal gas. Checking Gas Assist availability…')
         expect(getSwapExecutionMessage('gas-assist-config-error'))
-            .toBe('Not enough BNB for normal gas. Gas Assist availability could not be checked.')
+            .toBe('Not enough native gas for normal gas. Gas Assist availability could not be checked.')
         expect(getSwapExecutionMessage('gas-assist-disabled'))
-            .toBe('Not enough BNB for normal gas. Gas Assist is currently unavailable.')
+            .toBe('Not enough native gas for normal gas. Gas Assist is currently unavailable.')
     })
 
     it('accepts XAUT-like metadata without symbol or frontend allowlist checks', () => {

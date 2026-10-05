@@ -5,27 +5,27 @@ import { fetchSponsorshipConfig } from '../services/prepaidSponsorship.js'
 const cache = new Map()
 const idle = { status: 'idle', config: null, error: null }
 
-function loadConfig(quoteEndpoint) {
-    const cached = cache.get(quoteEndpoint)
+function loadConfig(quoteEndpoint, chainId) {
+    const cached = cache.get(`${quoteEndpoint}:${chainId}`)
     if (cached?.config) return Promise.resolve(cached.config)
     if (cached?.promise) return cached.promise
-    const promise = fetchSponsorshipConfig(quoteEndpoint)
+    const promise = fetchSponsorshipConfig(quoteEndpoint, undefined, chainId)
         .then((config) => {
-            cache.set(quoteEndpoint, { config })
+            cache.set(`${quoteEndpoint}:${chainId}`, { config })
             return config
         })
         .catch((error) => {
-            cache.delete(quoteEndpoint)
+            cache.delete(`${quoteEndpoint}:${chainId}`)
             throw error
         })
-    cache.set(quoteEndpoint, { promise })
+    cache.set(`${quoteEndpoint}:${chainId}`, { promise })
     return promise
 }
 
 /**
  * Loads the backend-authoritative prepaid sponsorship configuration for low-BNB routing.
  */
-export function useSponsorshipConfig({ quoteEndpoint, enabled }) {
+export function useSponsorshipConfig({ quoteEndpoint, enabled, chainId = 56 }) {
     const [refreshIndex, setRefreshIndex] = useState(0)
     const [state, setState] = useState(idle)
 
@@ -35,13 +35,13 @@ export function useSponsorshipConfig({ quoteEndpoint, enabled }) {
             return undefined
         }
         let active = true
-        const cached = cache.get(quoteEndpoint)?.config
+        const cached = cache.get(`${quoteEndpoint}:${chainId}`)?.config
         if (cached) {
             setState({ status: 'success', config: cached, error: null })
             return () => { active = false }
         }
         setState({ status: 'loading', config: null, error: null })
-        loadConfig(quoteEndpoint)
+        loadConfig(quoteEndpoint, chainId)
             .then((config) => {
                 if (active) setState({ status: 'success', config, error: null })
             })
@@ -49,12 +49,12 @@ export function useSponsorshipConfig({ quoteEndpoint, enabled }) {
                 if (active) setState({ status: 'error', config: null, error })
             })
         return () => { active = false }
-    }, [enabled, quoteEndpoint, refreshIndex])
+    }, [enabled, quoteEndpoint, chainId, refreshIndex])
 
     const refetch = useCallback(() => {
-        if (quoteEndpoint) cache.delete(quoteEndpoint)
+        if (quoteEndpoint) cache.delete(`${quoteEndpoint}:${chainId}`)
         setRefreshIndex((value) => value + 1)
-    }, [quoteEndpoint])
+    }, [quoteEndpoint, chainId])
 
     return { ...state, refetch }
 }

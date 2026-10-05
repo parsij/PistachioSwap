@@ -6,7 +6,7 @@ export const SAME_CHAIN_STANDARD = 'SAME_CHAIN_STANDARD'
 export const SAME_CHAIN_GAS_ASSIST = 'SAME_CHAIN_GAS_ASSIST'
 export const CROSS_CHAIN = 'CROSS_CHAIN'
 export const GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE =
-    'Gas Assist will be used because the wallet does not have enough BNB for normal gas.'
+    'Gas Assist will be used because the wallet does not have enough native gas for normal gas.'
 
 export function deriveRoutingMode({
     sellChainId,
@@ -21,12 +21,13 @@ export function deriveRoutingMode({
 
 export function getSwapExecutionMessage(reason) {
     return {
-        'native-balance-loading': 'Checking native BNB balance…',
-        'native-balance-error': 'Native BNB balance could not be loaded.',
-        'gas-assist-config-loading': 'Not enough BNB for normal gas. Checking Gas Assist availability…',
-        'gas-assist-config-error': 'Not enough BNB for normal gas. Gas Assist availability could not be checked.',
-        'gas-assist-disabled': 'Not enough BNB for normal gas. Gas Assist is currently unavailable.',
+        'native-balance-loading': 'Checking native gas balance…',
+        'native-balance-error': 'Native gas balance could not be loaded.',
+        'gas-assist-config-loading': 'Not enough native gas for normal gas. Checking Gas Assist availability…',
+        'gas-assist-config-error': 'Not enough native gas for normal gas. Gas Assist availability could not be checked.',
+        'gas-assist-disabled': 'Not enough native gas for normal gas. Gas Assist is currently unavailable.',
         'insufficient-native-balance': GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE,
+        'gas-assist-unsupported': 'Not enough native gas for this swap on the selected source network.',
         'native-sell-token': 'Gas Assist cannot sell the native gas token.',
     }[reason] ?? null
 }
@@ -45,7 +46,8 @@ export function deriveSwapExecution({
     minimumNativeBalance = 1n,
 }) {
     if (!isConnected || !walletAddress) return { mode: null, reason: 'wallet-unavailable' }
-    if (chainId !== 56) return { mode: null, reason: 'wrong-chain' }
+    if (Number(sellToken?.chainId ?? chainId) !== Number(chainId) ||
+        (gasAssistConfig?.chainId !== undefined && Number(gasAssistConfig.chainId) !== Number(chainId))) return { mode: null, reason: 'wrong-chain' }
     if (nativeBalanceStatus === 'idle' || nativeBalanceStatus === 'loading') {
         return { mode: null, reason: 'native-balance-loading' }
     }
@@ -77,20 +79,21 @@ export function deriveSwapExecution({
         requiredNativeBalance = 1n
     }
     if (nativeBalance >= requiredNativeBalance) return { mode: NORMAL_SWAP_MODE, reason: null }
+    if (gasAssistConfig?.supported === false) return { mode: null, reason: 'gas-assist-unsupported' }
     if (sellToken.isNative) return { mode: null, reason: 'native-sell-token' }
 
-    // Once a same-chain BSC wallet is below the normal gas reserve, never fall
+    // Once a same-chain wallet is below the normal gas reserve, never fall
     // back into an ordinary approval/swap. A disabled or temporarily unavailable
     // sponsorship service must fail closed in the assisted lane; otherwise the
     // wallet tries to estimate/send a transaction it cannot pay gas for.
     if (gasAssistConfigStatus === 'idle' || gasAssistConfigStatus === 'loading') {
-        return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'gas-assist-config-loading' }
+        return { mode: null, reason: 'gas-assist-config-loading' }
     }
     if (gasAssistConfigStatus === 'error') {
-        return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'gas-assist-config-error' }
+        return { mode: null, reason: 'gas-assist-config-error' }
     }
     if (gasAssistConfig?.enabled !== true) {
-        return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'gas-assist-disabled' }
+        return { mode: null, reason: 'gas-assist-disabled' }
     }
     return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'insufficient-native-balance' }
 }

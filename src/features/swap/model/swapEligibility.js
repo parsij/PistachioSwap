@@ -43,12 +43,13 @@ export function expectsCrossChainGasAssist({
     })()
     return routingMode === crossChainMode &&
         prepaidEnabled === true &&
-        Number(sellChainId) === 56 &&
+        Number(sellChainId) > 0 &&
         !isNativeEvmToken(sellToken) &&
         hasInsufficientNativeGas
 }
 
 export function requiresDirectCrossChainGasAssist({
+    prepaidSupported = true,
     routingMode,
     crossChainMode,
     nativeBalanceValue,
@@ -57,7 +58,8 @@ export function requiresDirectCrossChainGasAssist({
 }) {
     if (
         routingMode !== crossChainMode ||
-        Number(sellChainId) !== 56 ||
+        prepaidSupported !== true ||
+        !Number.isSafeInteger(Number(sellChainId)) ||
         isNativeEvmToken(sellToken) ||
         nativeBalanceValue === null ||
         nativeBalanceValue === undefined
@@ -71,6 +73,7 @@ export function requiresDirectCrossChainGasAssist({
 }
 
 export function getCrossChainGasAssistTier({
+    prepaidSupported = true,
     routingMode,
     crossChainMode,
     nativeBalanceValue,
@@ -83,7 +86,8 @@ export function getCrossChainGasAssistTier({
 }) {
     if (
         routingMode !== crossChainMode ||
-        Number(sellChainId) !== 56 ||
+        prepaidSupported !== true ||
+        !Number.isSafeInteger(Number(sellChainId)) ||
         isNativeEvmToken(sellToken) ||
         nativeBalanceValue === null ||
         nativeBalanceValue === undefined

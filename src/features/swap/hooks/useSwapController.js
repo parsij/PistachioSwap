@@ -271,7 +271,7 @@ export function useSwapController() {
         sellChainId: routing.sellChainId,
         sellToken: inputs.sellToken,
     })
-    const crossChainGasAssistDirect = requiresDirectCrossChainGasAssist({
+    const crossChainGasAssistDirect = routing.sponsorshipConfig.config?.supported === true && routing.sponsorshipConfig.config?.enabled === true && requiresDirectCrossChainGasAssist({
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
         nativeBalanceValue: catalog.nativeBalance.value,
