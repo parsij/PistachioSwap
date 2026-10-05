@@ -82,15 +82,15 @@
       "displayName": "BNB Chain",
       "envFlag": "BNB_GAS_ASSIST",
       "nativeSymbol": "BNB",
-      "entryPoint": "0x4337084d9e255ff0702461cf8895ce9e3b5ff108",
-      "paymaster": null,
-      "delegate": null,
+      "entryPoint": "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+      "paymaster": "0xbF7d14999219FAe39FaF7a80574dDBA39839F5C1",
+      "delegate": "0xe6Cae83BdE06E4c305530e199D7217f42808555B",
       "atomicExecutor": null,
       "crossChainExecutor": null,
       "deployments": [],
       "codeHashes": {},
       "productionEnabled": true,
-      "status": "existing-production-enabled",
+      "status": "runtime-verified-existing-production",
       "executorRequirement": "direct delegate executeBatch; separate atomic/cross-chain executor not required"
     },
     {
@@ -466,8 +466,13 @@
   ],
   "verifiedApplicationDeployment": {
     "repository": "parsij/Gas-Assist",
-    "commit": "597da7560f7269343065976bfb0c5334afa20377",
-    "runId": 37248122387,
-    "verifiedAt": "2026-10-05T00:36:58Z"
+    "commit": "dd10c0cff3e5d515b20255103ec8e4ebb2eb4e1c",
+    "runId": 37248973548,
+    "verifiedAt": "2026-10-05T00:50:41Z"
+  },
+  "publicCapabilityVerification": {
+    "url": "https://pistachioswap.com/api/v1/sponsorship/capabilities",
+    "runId": 37248973548,
+    "verifiedAt": "2026-10-05T00:50:41Z"
   }
 }
