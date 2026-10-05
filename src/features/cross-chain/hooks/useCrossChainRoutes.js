@@ -25,6 +25,7 @@ import {
 } from '../services/crossChainRoutes.js'
 import {
     beginOptimisticWalletTransaction,
+    confirmOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
     rollbackOptimisticWalletTransaction,
 } from '../../wallet/services/optimisticBalances.js'
@@ -538,6 +539,7 @@ export function useCrossChainRoutes({
             if (!transactionHash) return
             optimisticRouteTransactionsRef.current.delete(routeId)
             if (nextStatus === 'completed') {
+                confirmOptimisticWalletTransaction(transactionHash)
                 window.setTimeout(() => {
                     finishOptimisticWalletTransaction(transactionHash)
                 }, 9_000)
