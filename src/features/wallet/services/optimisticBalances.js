@@ -140,6 +140,8 @@ function normalizeStoredTransaction(value) {
         createdAt <= 0 ||
         changes.length === 0
     ) return null
+    const displayStatus = value.displayStatus === 'confirmed' ? 'confirmed' : 'pending'
+    const confirmedAt = Number(value.confirmedAt)
     return {
         walletAddress,
         transactionHash,
@@ -148,6 +150,11 @@ function normalizeStoredTransaction(value) {
         settlementMode: settlementModeForChanges(value.settlementMode, changes),
         referenceId: normalizeReferenceId(value.referenceId),
         createdAt,
+        displayStatus,
+        confirmedAt: displayStatus === 'confirmed' &&
+            Number.isFinite(confirmedAt) && confirmedAt > 0
+            ? confirmedAt
+            : null,
     }
 }
 
@@ -324,11 +331,30 @@ export function beginOptimisticWalletTransaction({
         settlementMode: settlementModeForChanges(settlementMode, normalizedChanges),
         referenceId: normalizeReferenceId(referenceId),
         createdAt: Date.now(),
+        displayStatus: 'pending',
+        confirmedAt: null,
     }
     settledOperations.delete(hash)
     pendingTransactions.set(hash, transaction)
     persistPendingTransactions()
     publishSemanticActivity(transaction, 'pending')
+    notify()
+    return true
+}
+
+export function confirmOptimisticWalletTransaction(transactionHash) {
+    const hash = normalizeHash(transactionHash)
+    if (!hash) return false
+    const transaction = pendingTransactions.get(hash)
+    if (!transaction) return false
+    if (transaction.displayStatus === 'confirmed') return true
+
+    pendingTransactions.set(hash, {
+        ...transaction,
+        displayStatus: 'confirmed',
+        confirmedAt: Date.now(),
+    })
+    persistPendingTransactions()
     notify()
     return true
 }
@@ -339,15 +365,21 @@ function settleOptimisticWalletTransaction(transactionHash, status) {
     const transaction = pendingTransactions.get(hash)
     if (!transaction || !pendingTransactions.delete(hash)) return false
 
+    const confirmationAlreadyDisplayed =
+        status === 'confirmed' && transaction.displayStatus === 'confirmed'
     persistPendingTransactions()
     publishSemanticActivity(transaction, status)
-    settledOperations.set(hash, {
-        ...transaction,
-        status,
-        settledAt: Date.now(),
-    })
+    if (!confirmationAlreadyDisplayed) {
+        settledOperations.set(hash, {
+            ...transaction,
+            status,
+            settledAt: Date.now(),
+        })
+        scheduleSettledRemoval(hash)
+    } else {
+        settledOperations.delete(hash)
+    }
     notify()
-    scheduleSettledRemoval(hash)
     return true
 }
 
@@ -406,8 +438,12 @@ export function getWalletOperationDisplayState(walletAddress) {
         .filter((transaction) => transaction.walletAddress === wallet)
         .map((transaction) => ({
             ...transaction,
-            status: 'pending',
-            displayAt: transaction.createdAt,
+            status: transaction.displayStatus === 'confirmed'
+                ? 'confirmed'
+                : 'pending',
+            displayAt: transaction.displayStatus === 'confirmed'
+                ? transaction.confirmedAt ?? transaction.createdAt
+                : transaction.createdAt,
         }))
     const settled = [...settledOperations.values()]
         .filter((transaction) => transaction.walletAddress === wallet)
