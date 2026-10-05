@@ -5,6 +5,7 @@ import { formatUnits } from 'viem'
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
 import {
     beginOptimisticWalletTransaction,
+    confirmOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
     rollbackOptimisticWalletTransaction,
 } from '../../wallet/services/optimisticBalances.js'
@@ -159,6 +160,7 @@ export function useSameChainReceiptLifecycle({
         })
 
         if (receipt.isSuccess && transactionStatus === 'submitted') {
+            confirmOptimisticWalletTransaction(transactionHash)
             setTransactionStatus('confirmed')
             setVisibleStatus('Swap confirmed. Updating wallet balances…')
             diagnostic('receipt.confirmed', { hash: transactionHash, chainId })

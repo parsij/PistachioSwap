@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
     prepaidArgs: null,
     previewArgs: null,
     recordWalletActivity: vi.fn(),
+    optimisticBegin: vi.fn(),
+    optimisticConfirm: vi.fn(),
+    optimisticFinish: vi.fn(),
+    optimisticRollback: vi.fn(),
 }))
 
 vi.mock('./usePrepaidSponsorship.js', () => ({
@@ -25,6 +29,12 @@ vi.mock('./useSponsorshipPreview.js', () => ({
 }))
 vi.mock('../../wallet/services/walletActivity.js', () => ({
     recordWalletActivity: mocks.recordWalletActivity,
+}))
+vi.mock('../../wallet/services/optimisticBalances.js', () => ({
+    beginOptimisticWalletTransaction: mocks.optimisticBegin,
+    confirmOptimisticWalletTransaction: mocks.optimisticConfirm,
+    finishOptimisticWalletTransaction: mocks.optimisticFinish,
+    rollbackOptimisticWalletTransaction: mocks.optimisticRollback,
 }))
 
 import { useGasAssistController } from './useGasAssistController.js'
@@ -86,6 +96,10 @@ describe('exact prepaid Gas Assist route ownership', () => {
         mocks.prepaidArgs = null
         mocks.previewArgs = null
         mocks.recordWalletActivity.mockReset()
+        mocks.optimisticBegin.mockReset()
+        mocks.optimisticConfirm.mockReset()
+        mocks.optimisticFinish.mockReset()
+        mocks.optimisticRollback.mockReset()
         baseProps.setBuyAmount.mockReset()
         baseProps.setVisibleStatus.mockReset()
         baseProps.onConfirmed.mockReset()
@@ -156,6 +170,7 @@ describe('exact prepaid Gas Assist route ownership', () => {
             await mocks.prepaidArgs.onConfirmed(order)
         })
 
+        expect(mocks.optimisticConfirm).toHaveBeenCalledWith(order.swapTransactionHash)
         expect(mocks.recordWalletActivity).toHaveBeenCalledWith(expect.objectContaining({
             walletAddress: baseProps.account,
             chainId: 56,

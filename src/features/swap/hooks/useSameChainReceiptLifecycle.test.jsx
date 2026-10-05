@@ -4,9 +4,22 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const receiptState = vi.hoisted(() => ({ isSuccess: false, isError: false }))
+const optimistic = vi.hoisted(() => ({
+    begin: vi.fn(),
+    confirm: vi.fn(),
+    finish: vi.fn(),
+    rollback: vi.fn(),
+}))
 
 vi.mock('#wallet-runtime', () => ({
     useWaitForTransactionReceipt: () => receiptState,
+}))
+
+vi.mock('../../wallet/services/optimisticBalances.js', () => ({
+    beginOptimisticWalletTransaction: optimistic.begin,
+    confirmOptimisticWalletTransaction: optimistic.confirm,
+    finishOptimisticWalletTransaction: optimistic.finish,
+    rollbackOptimisticWalletTransaction: optimistic.rollback,
 }))
 
 import { useSameChainReceiptLifecycle } from './useSameChainReceiptLifecycle.js'
@@ -33,6 +46,10 @@ describe('useSameChainReceiptLifecycle', () => {
     beforeEach(() => {
         receiptState.isSuccess = false
         receiptState.isError = false
+        optimistic.begin.mockReset()
+        optimistic.confirm.mockReset()
+        optimistic.finish.mockReset()
+        optimistic.rollback.mockReset()
     })
 
     it('applies successful receipt side effects once and owns the confirmed status', async () => {
@@ -45,6 +62,7 @@ describe('useSameChainReceiptLifecycle', () => {
         receiptState.isSuccess = true
         rerender()
         await waitFor(() => expect(result.current.transactionStatus).toBe('confirmed'))
+        expect(optimistic.confirm).toHaveBeenCalledWith('0xabc')
         expect(config.setVisibleStatus).toHaveBeenCalledWith('Swap confirmed. Updating wallet balances…')
         expect(config.closeReview).toHaveBeenCalledTimes(1)
         expect(config.resetInputsAfterSuccess).toHaveBeenCalledTimes(1)
