@@ -328,6 +328,7 @@ describe('all approved source chains preserve browser-owned final signatures', (
                 request: vi.fn(async ({ method, params }) => {
                     expect(method).toBe('pistachio_signSelfHostedAuthorization')
                     expect(params[0].data.address).toBe(delegate)
+                    expect(params[0].data.chainId).toBe(chainId)
                     const previous = params[0].data.previousDelegate
                     if (onChainCode.toLowerCase() === `0xef0100${treasury.slice(2).toLowerCase()}`) {
                         expect(previous).toBe(treasury)

@@ -56,7 +56,7 @@ function props(overrides = {}) {
         route: { publicRouteId: 'route-1' },
         expected: true,
         preparation: null,
-        sponsorshipConfig: { enabled: true, atomicExecution: true },
+        sponsorshipConfig: { supported: true, chainId: 56, enabled: true, atomicExecution: true },
         previewSponsorship: vi.fn().mockResolvedValue(preview()),
         authenticateSponsorship: vi.fn(),
         prepareSponsorship: vi.fn(),
@@ -95,9 +95,12 @@ describe('useCrossChainGasAssist', () => {
         expect(sponsorship.reviewOrder).toHaveBeenCalledWith(result.current.preview)
     })
 
-    it('treats the self-hosted paymaster as direct cross-chain execution even with retired atomic flag off', async () => {
+    it.each([56, 8453])('uses self-hosted direct cross-chain execution on source chain %i', async chainId => {
         const input = props({
+            sellToken: { chainId, isNative: false },
             sponsorshipConfig: {
+                supported: true,
+                chainId,
                 enabled: true,
                 atomicExecution: false,
                 provider: 'pistachio-paymaster-v08',
