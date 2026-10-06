@@ -837,6 +837,28 @@ describe('cross-chain backend', () => {
         ])
     })
 
+    it('reads Relay source and destination hashes from status hash arrays', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const sourceHash = `0x${'12'.repeat(32)}`
+        const destinationHash = `0x${'34'.repeat(32)}`
+        const adapter = createRelayAdapter(async (url) => {
+            if (url.pathname.endsWith('/intents/status/v3')) {
+                return {
+                    status: 'success',
+                    inTxHashes: [sourceHash],
+                    txHashes: [destinationHash],
+                }
+            }
+            throw new Error('Unexpected Relay request')
+        })
+
+        await expect(adapter.getStatus('relay-status')).resolves.toMatchObject({
+            status: 'completed',
+            sourceTransactionHash: sourceHash,
+            destinationTransactionHash: destinationHash,
+        })
+    })
+
     it('uses only per-chain Relay metadata and preserves ordered transactions', async () => {
         process.env.PLATFORM_FEE_BPS = '45'
         process.env.TREASURY_ADDRESS = sender
