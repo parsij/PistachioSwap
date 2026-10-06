@@ -42,6 +42,9 @@ export default function CrossChainReviewDialog({
         onStart: null,
     }
     const showGasAssistCopy = gasAssistState.required === true
+    const sourceNativeSymbol = costs.nativeSymbol ??
+        getCuratedEvmChain(route.sourceChainId)?.nativeCurrency?.symbol ??
+        'native gas'
     const portalContainer = typeof document === 'undefined'
         ? undefined
         : document.querySelector('.app-shell') ?? undefined
@@ -137,12 +140,12 @@ export default function CrossChainReviewDialog({
                             {preparation.insufficientNativeGas && (
                                 <p className="cross-chain-error" role="status">
                                     Not enough {costs.nativeSymbol} for network gas.
-                                    {gasAssistState.required && ' Gas Assist can sponsor this exact source transaction without adding BNB to your wallet.'}
+                                    {gasAssistState.required && ` Gas Assist can sponsor this exact source transaction without adding ${sourceNativeSymbol} to your wallet.`}
                                 </p>
                             )}
                             {gasAssistState.choice && (
                                 <p className="cross-chain-gas-choice" role="status">
-                                    Your BNB balance covers the current estimate, but it is below the recommended gas reserve. Use Gas Assist with its fee included in the quote, or try a normal swap and let your wallet verify the final network fee.
+                                    Your {sourceNativeSymbol} balance covers the current estimate, but it is below the recommended gas reserve. Use Gas Assist with its fee included in the quote, or try a normal swap and let your wallet verify the final network fee.
                                 </p>
                             )}
                             {routeError && <p className="cross-chain-error" role="status">{routeError}</p>}
