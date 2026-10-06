@@ -28,6 +28,19 @@ const base = {
 }
 
 describe('swap execution mode', () => {
+    it('honors force and normal preferences regardless of the gas reserve', () => {
+        expect(deriveSwapExecution({ ...base, nativeBalance: 1000n, gasAssistPreference: 'force' }))
+            .toEqual({ mode: PREPAID_SPONSORSHIP_MODE, reason: 'gas-assist-requested' })
+        expect(deriveSwapExecution({ ...base, gasAssistPreference: 'normal' }))
+            .toEqual({ mode: 'normal', reason: null })
+    })
+    it('cannot force sponsorship on disabled chains or native inputs', () => {
+        const forced = { ...base, nativeBalance: 1000n, gasAssistPreference: 'force' }
+        expect(deriveSwapExecution({ ...forced, gasAssistConfig: { enabled: false } }).mode).toBeNull()
+        expect(deriveSwapExecution({ ...forced, gasAssistConfig: { enabled: true, supported: false } }).mode).toBeNull()
+        expect(deriveSwapExecution({ ...forced, sellToken: { ...sellToken, isNative: true } }).mode).toBeNull()
+        expect(deriveSwapExecution({ ...forced, gasAssistConfigStatus: 'error' }).mode).toBeNull()
+    })
     it('selects standard, assisted, and cross-chain routing before providers run', () => {
         expect(deriveRoutingMode({ sellChainId: 1, buyChainId: 1 }))
             .toBe(SAME_CHAIN_STANDARD)

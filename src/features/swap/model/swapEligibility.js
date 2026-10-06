@@ -1,4 +1,5 @@
 import { parseEther } from 'viem'
+import { getSwapExecutionMessage } from '../../../services/swapExecutionMode.js'
 import {
     DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
     DEFAULT_NATIVE_GAS_BUFFER_BPS,
@@ -20,6 +21,7 @@ import {
 
 export function expectsCrossChainGasAssist({
     prepaidEnabled,
+    gasAssistPreference = 'auto',
     routingMode,
     crossChainMode,
     nativeBalanceValue,
@@ -45,11 +47,13 @@ export function expectsCrossChainGasAssist({
         prepaidEnabled === true &&
         Number(sellChainId) > 0 &&
         !isNativeEvmToken(sellToken) &&
-        hasInsufficientNativeGas
+        gasAssistPreference !== 'normal' &&
+        (gasAssistPreference === 'force' || hasInsufficientNativeGas)
 }
 
 export function requiresDirectCrossChainGasAssist({
     prepaidSupported = true,
+    gasAssistPreference = 'auto',
     routingMode,
     crossChainMode,
     nativeBalanceValue,
@@ -57,6 +61,7 @@ export function requiresDirectCrossChainGasAssist({
     sellToken,
 }) {
     if (
+        gasAssistPreference === 'normal' ||
         routingMode !== crossChainMode ||
         prepaidSupported !== true ||
         !Number.isSafeInteger(Number(sellChainId)) ||
@@ -66,7 +71,7 @@ export function requiresDirectCrossChainGasAssist({
     ) return false
 
     try {
-        return BigInt(nativeBalanceValue) === 0n
+        return gasAssistPreference === 'force' || BigInt(nativeBalanceValue) === 0n
     } catch {
         return false
     }
@@ -74,6 +79,7 @@ export function requiresDirectCrossChainGasAssist({
 
 export function getCrossChainGasAssistTier({
     prepaidSupported = true,
+    gasAssistPreference = 'auto',
     routingMode,
     crossChainMode,
     nativeBalanceValue,
@@ -85,6 +91,7 @@ export function getCrossChainGasAssistTier({
     sellToken,
 }) {
     if (
+        gasAssistPreference === 'normal' ||
         routingMode !== crossChainMode ||
         prepaidSupported !== true ||
         !Number.isSafeInteger(Number(sellChainId)) ||
@@ -94,6 +101,7 @@ export function getCrossChainGasAssistTier({
     ) return 'normal'
 
     try {
+        if (gasAssistPreference === 'force') return 'required'
         const balance = BigInt(nativeBalanceValue)
         if (balance === 0n) return 'required'
         let recommendedReserve = DEFAULT_NATIVE_GAS_RESERVE_WEI
@@ -322,6 +330,7 @@ export function deriveSwapEligibility(input) {
         action = {
             ...baseAction,
             label: getSwapReviewLabel({
+                gasAssistPreference: input.gasAssistPreference,
                 prepaidRequired,
                 prepaidEnabled,
                 executionMode,
@@ -351,6 +360,9 @@ export function deriveSwapEligibility(input) {
     }
     if (economicallyInvalid && !insufficientFunds) {
         action = { type: 'economically-invalid', label: 'Estimated costs are too high for this amount.', enabled: false }
+    }
+    if (input.gasAssistPreference === 'force' && input.gasAssistBlockingReason && !['connect', 'select-token', 'enter-amount', 'switch-network'].includes(baseAction.type)) {
+        action = { type: 'gas-assist-unavailable', label: getSwapExecutionMessage(input.gasAssistBlockingReason)?.replace('Not enough native gas for normal gas. ', '') ?? 'Gas Assist is unavailable for this swap.', enabled: false }
     }
     return { action, reviewEligibility, insufficientFunds, economicViability, economicallyInvalid, sellAmountForBalanceCheck }
 }

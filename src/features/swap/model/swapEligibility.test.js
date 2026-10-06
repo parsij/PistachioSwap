@@ -377,3 +377,20 @@ describe('same-chain native gas reserve', () => {
         expect(result.insufficientFunds).toBe(false)
     })
 })
+
+describe('cross-chain gas preference', () => {
+    const input = { routingMode: 'cross', crossChainMode: 'cross', prepaidSupported: true,
+        nativeBalanceValue: 1000000000000000000n, sellChainId: 56,
+        sellToken: { address: '0x0000000000000000000000000000000000000001', isNative: false } }
+    it('forces the direct sponsored route even with ample gas', () => {
+        expect(requiresDirectCrossChainGasAssist({ ...input, gasAssistPreference: 'force' })).toBe(true)
+        expect(getCrossChainGasAssistTier({ ...input, gasAssistPreference: 'force' })).toBe('required')
+    })
+    it('normal gas suppresses assistance even at zero balance', () => {
+        expect(requiresDirectCrossChainGasAssist({ ...input, nativeBalanceValue: 0n, gasAssistPreference: 'normal' })).toBe(false)
+        expect(getCrossChainGasAssistTier({ ...input, nativeBalanceValue: 0n, gasAssistPreference: 'normal' })).toBe('normal')
+    })
+    it('force cannot bypass network support', () => {
+        expect(requiresDirectCrossChainGasAssist({ ...input, prepaidSupported: false, gasAssistPreference: 'force' })).toBe(false)
+    })
+})

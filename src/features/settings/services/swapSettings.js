@@ -6,6 +6,7 @@ export const DEFAULT_SWAP_SETTINGS = Object.freeze({
     customSlippageBps: null,
     hideUnknownTokens: true,
     hideSmallBalances: false,
+    gasAssistPreference: 'auto',
 })
 
 export const MAX_CUSTOM_SLIPPAGE_BPS = 10_000
@@ -91,6 +92,8 @@ export function normalizeSwapSettings(value) {
                 ? true
                 : value.hideUnknownTokens === true,
         hideSmallBalances: value?.hideSmallBalances === true,
+        gasAssistPreference: ['force', 'normal'].includes(value?.gasAssistPreference)
+            ? value.gasAssistPreference : 'auto',
     }
 }
 

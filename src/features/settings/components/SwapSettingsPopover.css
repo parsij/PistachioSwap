@@ -860,3 +860,7 @@ prefers-reduced-motion:
         transition-duration: 0ms;
     }
 }
+
+.swap-settings-gas-assist { display: grid; gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--settings-border); }
+.swap-settings-gas-assist select { width: 100%; padding: 9px; border-radius: 10px; border: 1px solid var(--settings-border); background: var(--settings-background); color: var(--settings-text); }
+.swap-settings-gas-assist small { color: var(--settings-muted); line-height: 1.4; }

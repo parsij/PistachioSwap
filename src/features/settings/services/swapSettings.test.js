@@ -88,4 +88,14 @@ describe('swap settings', () => {
 
         expect(readSwapSettings(target)).toEqual(DEFAULT_SWAP_SETTINGS)
     })
+    it('persists gas preferences and defaults invalid values to auto', () => {
+        const target = storage()
+        for (const gasAssistPreference of ['force', 'normal', 'auto']) {
+            writeSwapSettings({ ...DEFAULT_SWAP_SETTINGS, gasAssistPreference }, target)
+            expect(readSwapSettings(target).gasAssistPreference).toBe(gasAssistPreference)
+        }
+        writeSwapSettings({ gasAssistPreference: 'invalid' }, target)
+        expect(readSwapSettings(target).gasAssistPreference).toBe('auto')
+    })
+
 })
