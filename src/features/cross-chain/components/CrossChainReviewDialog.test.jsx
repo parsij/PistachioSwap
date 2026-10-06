@@ -22,7 +22,10 @@ const route = {
     expiresAt: null,
 }
 
-function renderDialog(gasAssist) {
+function renderDialog(gasAssist, {
+    route: routeOverride = route,
+    nativeSymbol = 'BNB',
+} = {}) {
     const calls = []
     const onStart = vi.fn(() => calls.push('start'))
     const onClose = vi.fn(() => calls.push('close'))
@@ -32,12 +35,12 @@ function renderDialog(gasAssist) {
     const onConfirm = vi.fn(() => calls.push('confirm'))
     render(<CrossChainReviewDialog
         open
-        route={route}
+        route={routeOverride}
         reducedMotion
         activeAmountSide="sell"
         sellToken={{ symbol: 'SELL', decimals: 18 }}
         buyToken={{ symbol: 'BUY', decimals: 6 }}
-        costs={{ total: '$0.03', route: null, sourceGas: null, provider: null, appFee: null, nativeSymbol: 'BNB' }}
+        costs={{ total: '$0.03', route: null, sourceGas: null, provider: null, appFee: null, nativeSymbol }}
         preparation={{ status: 'ready', gasEstimateUnavailable: false, insufficientNativeGas: Boolean(gasAssist?.required) }}
         routeError={null}
         executionError={null}
@@ -101,6 +104,23 @@ describe('CrossChainReviewDialog', () => {
         expect(onConfirm).toHaveBeenCalledOnce()
         expect(onStart).not.toHaveBeenCalled()
         expect(calls).toEqual(['confirm'])
+        shell.remove()
+    })
+
+    it('uses the Base native token instead of BNB in Gas Assist gas-choice copy', () => {
+        const { shell } = renderDialog({
+            expected: true,
+            required: false,
+            choice: true,
+            available: true,
+            status: 'success',
+        }, {
+            route: { ...route, sourceChainId: 8453 },
+            nativeSymbol: 'ETH',
+        })
+
+        expect(screen.getByText(/Your ETH balance covers the current estimate/i)).toBeTruthy()
+        expect(screen.queryByText(/Your BNB balance covers the current estimate/i)).toBeNull()
         shell.remove()
     })
 
