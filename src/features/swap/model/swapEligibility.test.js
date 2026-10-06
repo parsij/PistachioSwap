@@ -394,3 +394,17 @@ describe('cross-chain gas preference', () => {
         expect(requiresDirectCrossChainGasAssist({ ...input, prepaidSupported: false, gasAssistPreference: 'force' })).toBe(false)
     })
 })
+
+describe('disabled Gas Assist networks', () => {
+    it('reports disabled sponsorship in Auto as well as Force mode', () => {
+        for (const gasAssistPreference of ['auto', 'force']) {
+            const result = crossChainEligibility({
+                routingMode: 'normal', sellChainId: 8453, buyChainId: 8453,
+                sellToken: { ...erc20Token, chainId: 8453, decimals: 6, rawBalance: '1000000' },
+                prepaidEnabled: false, crossChainGasAssistExpected: false,
+                gasAssistPreference, gasAssistBlockingReason: 'gas-assist-disabled',
+            })
+            expect(result.action).toEqual({ type: 'gas-assist-unavailable', label: 'Gas Assist is currently unavailable.', enabled: false })
+        }
+    })
+})

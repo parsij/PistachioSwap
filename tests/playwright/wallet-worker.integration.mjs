@@ -3,6 +3,8 @@ import { readFile, readdir } from 'node:fs/promises'
 import { Mnemonic, Wallet, keccak256, toUtf8Bytes } from 'ethers'
 import { chromium } from 'playwright'
 import { parseTransaction, recoverTransactionAddress } from 'viem'
+import { recoverAuthorizationAddress } from 'viem/utils'
+import { GAS_ASSIST_SOURCE_CHAIN_IDS } from '../../src/features/gas-assist/model/gasAssistChains.js'
 
 const assets = await readdir(new URL('../../dist/assets/', import.meta.url))
 const workerAsset = assets.find((name) => /^walletWorker-.*\.js$/u.test(name))
@@ -33,7 +35,7 @@ try {
     })
     const page = await context.newPage()
     await page.goto('https://wallet-worker-test.pistachioswap.com/', { waitUntil: 'domcontentloaded' })
-    const result = await page.evaluate(async ({ mnemonic, privateKey, keystore, keystorePassword }) => {
+    const result = await page.evaluate(async ({ mnemonic, privateKey, keystore, keystorePassword, gasAssistChainIds }) => {
         const b64 = (bytes) => {
             let binary = ''
             for (const byte of bytes) binary += String.fromCharCode(byte)
@@ -111,6 +113,28 @@ try {
             transaction,
             mode: 'gas-assist-authorization',
         })
+        const multichainSigned = []
+        for (const chainId of gasAssistChainIds) {
+            const scopedTransaction = {
+                ...transaction,
+                chainId,
+                authorizationList: [{ chainId, address: delegate, nonce: 2 }],
+            }
+            const scoped = await first.request('signTransaction', {
+                transaction: scopedTransaction, mode: 'gas-assist-authorization',
+            })
+            multichainSigned.push({ chainId, signedTransaction: scoped.signedTransaction })
+        }
+        for (const [chainId, authorizationChainId] of [[137, 56], [8453, 0], [43114, 43114]]) {
+            let rejected = false
+            try {
+                await first.request('signTransaction', {
+                    transaction: { ...transaction, chainId, authorizationList: [{ chainId: authorizationChainId, address: delegate, nonce: 2 }] },
+                    mode: 'gas-assist-authorization',
+                })
+            } catch { rejected = true }
+            if (!rejected) throw new Error('Worker accepted an unsupported or cross-chain authorization.')
+        }
         await first.request('destroy')
 
         const second = createClient()
@@ -137,6 +161,7 @@ try {
         try { await keystoreClient.request('unknownOperation') } catch { unknownRejected = true }
         await keystoreClient.request('destroy')
         return {
+            multichainSigned,
             address: imported.address,
             privateAddress: privateImported.address,
             keystoreAddress: keystoreImported.address,
@@ -145,7 +170,7 @@ try {
             typedSignatureLength: typedSignature.signature.length,
             unknownRejected,
         }
-    }, { mnemonic, privateKey, keystore, keystorePassword })
+    }, { mnemonic, privateKey, keystore, keystorePassword, gasAssistChainIds: GAS_ASSIST_SOURCE_CHAIN_IDS })
     if (result.privateAddress !== privateWallet.address || result.keystoreAddress !== privateWallet.address) throw new Error('Private-key or V3 keystore import address mismatch.')
     if (result.messageSignatureLength !== 132 || result.typedSignatureLength !== 132 || !result.unknownRejected) throw new Error('Worker signing or protocol rejection failed.')
     const parsed = parseTransaction(result.signedTransaction)
@@ -168,8 +193,18 @@ try {
     ) {
         throw new Error('Exact worker Gas Assist authorization validation failed.')
     }
+    for (const { chainId, signedTransaction } of result.multichainSigned) {
+        const scoped = parseTransaction(signedTransaction)
+        const auth = scoped.authorizationList?.[0]
+        if (scoped.chainId !== chainId || Number(auth?.chainId) !== chainId ||
+            Number(auth?.nonce) !== 2 || scoped.authorizationList?.length !== 1 ||
+            await recoverTransactionAddress({ serializedTransaction: signedTransaction }) !== result.address ||
+            await recoverAuthorizationAddress({ authorization: auth }) !== result.address) {
+            throw new Error(`Worker authorization scope or signer mismatch on chain ${chainId}.`)
+        }
+    }
     if (unexpectedNetworkRequests !== 0) throw new Error('Wallet worker integration attempted an unexpected network request.')
-    console.log('AUTOMATED-VERIFIED: bundled wallet worker mnemonic/private-key/V3 import, vault round trip, local signing, protocol rejection, and exact BNB Chain EIP-7702 authorization signing passed.')
+    console.log('AUTOMATED-VERIFIED: bundled wallet worker mnemonic/private-key/V3 import, vault round trip, local signing, protocol rejection, and exact EIP-7702 authorization signing on all 13 Gas Assist source chains and cross-chain/unsupported-chain rejection passed.')
 } finally {
     privateKey.fill?.(0)
     await browser?.close()

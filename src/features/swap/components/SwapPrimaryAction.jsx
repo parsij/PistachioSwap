@@ -18,9 +18,7 @@ export default function SwapPrimaryAction({ action, reducedMotion, triggerRef, o
     const automaticNetworkSwitch = action.type === 'switch-network'
     const label = action.type === 'connect' && busy
         ? 'Connecting…'
-        : action.type === 'gas-assist-unavailable'
-            ? 'No usable quote'
-            : action.label
+        : action.label
 
     useEffect(() => {
         onActionRef.current = onAction
