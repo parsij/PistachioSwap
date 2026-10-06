@@ -1504,37 +1504,40 @@ describe('cross-chain backend', () => {
         await app.close()
     })
 
-    it('passes Base source routes to multichain Gas Assist instead of rejecting them as BNB-only', async () => {
+    it.each([
+        ['across', '0x09aea4b2242abc8bb4bb78d537a67a245a7bec64'],
+        ['relay', '0x4cd00e387622c35bddb9b4c962c136462338bc31'],
+    ] as const)('previews and prepares verified Base USDC to Polygon POL through %s', async (provider, baseTarget) => {
         const baseRequest = {
             ...request,
-            sourceAsset: { ...request.sourceAsset, chainId: 8453, decimals: 6 },
-            destinationAsset: { ...request.destinationAsset, chainId: 137, decimals: 18 },
+            sourceAsset: { chainId: 8453, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', symbol: 'USDC', decimals: 6 },
+            destinationAsset: { chainId: 137, address: '0x0000000000000000000000000000000000000000', symbol: 'POL', decimals: 18 },
         }
-        const base = fixtureAdapter('across', '900')
+        const base = fixtureAdapter(provider, '900')
         const adapter = {
             ...base,
             getCapabilities: async () => ({
-                provider: 'across' as const,
+                provider,
                 available: true,
                 fetchedAt: new Date().toISOString(),
                 routes: [{
                     sourceChainId: 8453,
                     destinationChainId: 137,
-                    transactionTargets: [target],
-                    approvalSpenders: [target],
+                    transactionTargets: [baseTarget],
+                    approvalSpenders: [baseTarget],
                 }],
             }),
             getQuote: async (quoteRequest: typeof baseRequest) => {
                 const transaction = {
                     chainId: 8453,
-                    to: target,
+                    to: baseTarget,
                     data: '0x12345678',
                     value: '0',
-                    allowanceTarget: target,
+                    allowanceTarget: baseTarget,
                     gasEstimate: '180000',
                 }
                 return {
-                    provider: 'across' as const,
+                    provider,
                     quoteId: 'base-cross-chain',
                     request: quoteRequest,
                     buyAmount: '900',
@@ -1578,9 +1581,10 @@ describe('cross-chain backend', () => {
             pathname: '/internal/v1/sponsorship/cross-chain/preview',
             body: expect.objectContaining({
                 route: expect.objectContaining({
-                    sourceAsset: expect.objectContaining({ chainId: 8453 }),
-                    destinationAsset: expect.objectContaining({ chainId: 137 }),
-                    transaction: expect.objectContaining({ chainId: 8453 }),
+                    provider,
+                    sourceAsset: expect.objectContaining({ chainId: 8453, address: baseRequest.sourceAsset.address }),
+                    destinationAsset: expect.objectContaining({ chainId: 137, address: baseRequest.destinationAsset.address }),
+                    transaction: expect.objectContaining({ chainId: 8453, to: baseTarget, allowanceTarget: baseTarget, value: '0' }),
                 }),
             }),
         }))
