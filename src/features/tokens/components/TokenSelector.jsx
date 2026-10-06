@@ -124,14 +124,17 @@ function GlobalTokenSelector({
         initialScopeApplied.current = true
 
         const emptyOutputSide = side === 'buy' && !currentToken
+        const currentChainId = Number(currentToken?.chainId)
         const oppositeChainId = Number(oppositeToken?.chainId)
         const oppositeWasExplicitlySelected = oppositeToken?.uiSelectionOrigin === 'user'
         const keepEmptyOutputGlobal = emptyOutputSide && !oppositeWasExplicitlySelected
-        const preferredChainId = keepEmptyOutputGlobal
-            ? 'all'
-            : Number.isSafeInteger(oppositeChainId) && oppositeChainId > 0
-                ? oppositeChainId
-                : 'all'
+        const preferredChainId = Number.isSafeInteger(currentChainId) && currentChainId > 0
+            ? currentChainId
+            : keepEmptyOutputGlobal
+                ? 'all'
+                : Number.isSafeInteger(oppositeChainId) && oppositeChainId > 0
+                    ? oppositeChainId
+                    : 'all'
 
         if (String(chainId) === String(preferredChainId)) return
         onSearchChange('')
