@@ -135,18 +135,20 @@ const secantX = {
 }
 
 function renderDialog(overrides = {}) {
-    return render(<SendAssetDialog
-        open
-        onOpenChange={vi.fn()}
-        address={account}
-        chainId={56}
-        assets={[native]}
-        settings={{ hideUnknownTokens: true, hideSmallBalances: false }}
-        nativeBalanceWei={parseEther('1')}
-        explorerUrl="https://bscscan.com"
-        onConfirmed={vi.fn()}
-        {...overrides}
-    />)
+    const props = {
+        open: true,
+        onOpenChange: vi.fn(),
+        address: account,
+        chainId: 56,
+        assets: [native],
+        settings: { hideUnknownTokens: true, hideSmallBalances: false },
+        nativeBalanceWei: parseEther('1'),
+        explorerUrl: 'https://bscscan.com',
+        onConfirmed: vi.fn(),
+        ...overrides,
+    }
+    const view = render(<SendAssetDialog {...props} />)
+    return { ...view, setOpen: (open) => view.rerender(<SendAssetDialog {...props} open={open} />) }
 }
 
 describe('SendAssetDialog', () => {
@@ -191,6 +193,55 @@ describe('SendAssetDialog', () => {
                 amountWei: parseEther('0.1'),
             }),
         }))
+    })
+
+    it('starts a fresh send after completing and reopening the dialog', async () => {
+        const onConfirmed = vi.fn()
+        const view = renderDialog({ onConfirmed })
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.1' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        await screen.findByRole('heading', { name: 'Review send' })
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+        await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
+        expect(screen.getByText('Sent')).toBeTruthy()
+        view.setOpen(false)
+        view.setOpen(true)
+        expect(screen.queryByText('Sent')).toBeNull()
+        expect(screen.queryByText(/View on/)).toBeNull()
+        expect(screen.getByLabelText('Amount to send').value).toBe('')
+        expect(screen.getByLabelText('Send to').value).toBe('')
+        const nextRecipient = '0x0000000000000000000000000000000000000005'
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.2' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: nextRecipient } })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        await screen.findByRole('heading', { name: 'Review send' })
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+        await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(2))
+        expect(mocks.submitSendPlan).toHaveBeenLastCalledWith(expect.objectContaining({
+            plan: expect.objectContaining({ amountWei: parseEther('0.2'), request: expect.objectContaining({ to: nextRecipient }) }),
+        }))
+    })
+
+    it('does not let an older pending transfer overwrite a reopened form', async () => {
+        let resolveReceipt
+        mocks.publicClient.waitForTransactionReceipt.mockReturnValueOnce(new Promise((resolve) => { resolveReceipt = resolve }))
+        const onConfirmed = vi.fn()
+        const view = renderDialog({ onConfirmed })
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.1' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        await screen.findByRole('heading', { name: 'Review send' })
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+        await screen.findByText('Waiting for confirmation')
+        view.setOpen(false)
+        view.setOpen(true)
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.2' } })
+        resolveReceipt({ status: 'success' })
+        await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
+        expect(screen.queryByText('Sent')).toBeNull()
+        expect(screen.getByLabelText('Amount to send').value).toBe('0.2')
+        expect(screen.getByLabelText('Send to').value).toBe('')
     })
 
     it('reports wallet rejection as rejected rather than generic failure', async () => {
@@ -267,6 +318,9 @@ describe('SendAssetDialog', () => {
             onConfirmed,
         })
 
+        // Select the tested asset explicitly; portfolio ranking can prefer ETH.
+        fireEvent.click(screen.getByRole('button', { name: /ETH/ }))
+        fireEvent.click(screen.getByText('USD Coin', { selector: 'strong' }).closest('button'))
         expect(screen.getByRole('button', { name: /USDC/ })).toBeTruthy()
         fireEvent.change(screen.getByLabelText('Amount to send'), {
             target: { value: '0.291426' },
