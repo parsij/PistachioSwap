@@ -37,7 +37,7 @@ export function SwapTokenButton({ token, onClick }) {
             className="token-button selected-token-button"
             whileTap={reducedMotion ? undefined : { scale: motionConfig.tokenButton.pressedScale }}
         >
-            <TokenIcon token={token} size="button" showChainBadge={token.isNative !== true} />
+            <TokenIcon token={token} size="button" showChainBadge />
             <span>{getTokenDisplaySymbol(token)}</span>
             <ChevronDownIcon className="token-chevron" />
         </motion.button>

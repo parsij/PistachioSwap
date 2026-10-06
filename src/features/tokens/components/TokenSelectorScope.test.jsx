@@ -79,6 +79,16 @@ describe('TokenSelector opening scope', () => {
         expect(onChainChange).toHaveBeenCalledWith(137)
     })
 
+    it.each(['sell', 'buy'])('preserves selected OP ETH when reopening the %s selector with Base on the opposite side', (side) => {
+        const { onChainChange } = renderSelector({
+            side,
+            chainId: 10,
+            currentToken: { chainId: 10, address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', isNative: true },
+            oppositeToken: { chainId: 8453, address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', isNative: true },
+        })
+        expect(onChainChange).not.toHaveBeenCalled()
+    })
+
     it('defaults the sell selector to the opposite token chain when one side is already selected', () => {
         const { onChainChange } = renderSelector({
             oppositeToken: {
