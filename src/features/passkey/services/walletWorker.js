@@ -8,9 +8,9 @@ import {
 } from 'ethers'
 import { getAddress } from 'viem'
 
+import { isGasAssistSourceChainId } from '../../gas-assist/model/gasAssistChains.js'
 import { isCuratedEvmChainId } from '../../../web3/curatedEvmChains.js'
 import {
-    PISTACHIO_CHAIN_ID,
     PISTACHIO_DERIVATION_PATH,
     PISTACHIO_MAX_KEYSTORE_BYTES,
 } from './constants.js'
@@ -139,8 +139,8 @@ function normalizeTransaction(transaction, mode) {
     }
 
     const gasAssistAuthorization = mode === 'gas-assist-authorization'
-    if (gasAssistAuthorization && chainId !== PISTACHIO_CHAIN_ID) {
-        throw new TypeError('Gas Assist EIP-7702 authorization is BNB Chain-only.')
+    if (gasAssistAuthorization && !isGasAssistSourceChainId(chainId)) {
+        throw new TypeError('Gas Assist EIP-7702 authorization is unavailable on this source network.')
     }
 
     const from = transaction.from
@@ -199,8 +199,8 @@ function normalizeTransaction(transaction, mode) {
                 ? BigInt(authorization.chainId)
                 : authorization.chainId,
         )
-        if (authorizationChainId !== PISTACHIO_CHAIN_ID) {
-            throw new TypeError('Gas Assist authorization must be scoped to BNB Chain.')
+        if (authorizationChainId !== chainId) {
+            throw new TypeError('Gas Assist authorization must be scoped to the selected source network.')
         }
         normalized.maxFeePerGas = 0n
         normalized.maxPriorityFeePerGas = 0n

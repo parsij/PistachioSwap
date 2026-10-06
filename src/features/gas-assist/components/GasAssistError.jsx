@@ -51,6 +51,18 @@ const messages = {
     PAYMENT_TOKEN_EVIDENCE_STALE: 'This token cannot be safely priced right now.',
     INSUFFICIENT_TOKEN_BALANCE: 'Your current sell-token balance is lower than the amount entered. Refresh the balance or use Max and try again.',
     INSUFFICIENT_PAYMENT_TOKEN_BALANCE: 'Your token balance is too low for this swap.',
+    SELF_HOSTED_PAYMASTER_DISABLED: 'Gas Assist is disabled for this network.',
+    SELF_HOSTED_PAYMASTER_UNAVAILABLE: 'Gas Assist is unavailable for this network.',
+    PAYMASTER_CHAIN_MISMATCH: 'The Gas Assist RPC or Bundler is connected to the wrong network.',
+    PAYMASTER_RPC_UNAVAILABLE: 'The network RPC or Bundler could not be reached. Try again shortly.',
+    PAYMASTER_RPC_REJECTED: 'The network RPC or Bundler rejected this swap. Refresh the quote and try again.',
+    PAYMASTER_DEPOSIT_INSUFFICIENT: 'The sponsor needs more native gas funding. Try again after it is refilled.',
+    PAYMASTER_EXECUTOR_INSUFFICIENT: 'The Bundler needs more native gas funding. Try again after it is refilled.',
+    PAYMASTER_GAS_COST_CAP_EXCEEDED: 'This swap exceeds the sponsor’s gas budget. Try a different route.',
+    PAYMASTER_FUNDING_UNAVAILABLE: 'The sponsor’s gas funding could not be checked. Try again shortly.',
+    PISTACHIO_CHAIN_INVARIANT_FAILED: 'Switch your wallet to the selected source network and try again.',
+    PISTACHIO_SIGNING_CONTEXT_CHANGED: 'Your wallet account or network changed during signing. Start again.',
+    PISTACHIO_WALLET_WORKER_FAILED: 'The wallet could not sign this Gas Assist authorization. Refresh and try again.',
     PAYMASTER_REJECTED: 'The sponsor declined this transaction.',
     PAYMASTER_TIMEOUT: 'The sponsor service timed out. Try again.',
     PAYMASTER_UNAVAILABLE: 'The sponsor service is temporarily unavailable.',
@@ -105,6 +117,9 @@ export default function GasAssistError({ error }) {
     return (
         <div className="gas-assist-error" role="alert">
             <p>{message}</p>
+            {!import.meta.env.DEV && /^[A-Z][A-Z0-9_]{0,63}$/.test(String(code ?? '')) && (
+                <small className="gas-assist-error-reference">Error reference: {code}</small>
+            )}
             {import.meta.env.DEV && diagnostics.length > 0 && (
                 <pre className="gas-assist-error-diagnostics">{diagnostics.join('\n')}</pre>
             )}

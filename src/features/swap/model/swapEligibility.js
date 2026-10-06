@@ -361,7 +361,7 @@ export function deriveSwapEligibility(input) {
     if (economicallyInvalid && !insufficientFunds) {
         action = { type: 'economically-invalid', label: 'Estimated costs are too high for this amount.', enabled: false }
     }
-    if (input.gasAssistPreference === 'force' && input.gasAssistBlockingReason && !['connect', 'select-token', 'enter-amount', 'switch-network'].includes(baseAction.type)) {
+    if ((input.gasAssistPreference === 'force' || String(input.gasAssistBlockingReason ?? '').startsWith('gas-assist-') || input.gasAssistBlockingReason === 'native-sell-token') && input.gasAssistBlockingReason && !['connect', 'select-token', 'enter-amount', 'switch-network'].includes(baseAction.type)) {
         action = { type: 'gas-assist-unavailable', label: getSwapExecutionMessage(input.gasAssistBlockingReason)?.replace('Not enough native gas for normal gas. ', '') ?? 'Gas Assist is unavailable for this swap.', enabled: false }
     }
     return { action, reviewEligibility, insufficientFunds, economicViability, economicallyInvalid, sellAmountForBalanceCheck }
