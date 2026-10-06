@@ -339,7 +339,35 @@ describe('same-chain native gas reserve', () => {
         expect(result.insufficientFunds).toBe(false)
     })
 
-    it('caps the fixed reserve only while bootstrapping a quote', () => {
+    it('allows low-balance OP native input to reach cross-chain gas preparation', () => {
+        const result = nativeEligibility({
+            routingMode: 'cross-chain',
+            buyChainId: 8453,
+            activeAmountIn: '75000000000000',
+            sellAmount: '0.000075',
+            quote: null,
+            currentCrossChainRoute: { costs: { sourceGasNative: null } },
+        })
+        expect(result.insufficientFunds).toBe(false)
+    })
+
+    it('still blocks cross-chain input above the actual native balance', () => {
+        expect(nativeEligibility({ routingMode: 'cross-chain', quote: null,
+            activeAmountIn: '84000000000000', currentCrossChainRoute: null,
+        }).insufficientFunds).toBe(true)
+    })
+
+    it('uses the live cross-chain source fee and keeps a safety buffer', () => {
+        const input = { routingMode: 'cross-chain', quote: null, activeAmountIn: '75000000000000' }
+        expect(nativeEligibility({ ...input,
+            currentCrossChainRoute: { costs: { sourceGasNative: '0.000001' } },
+        }).insufficientFunds).toBe(false)
+        expect(nativeEligibility({ ...input,
+            currentCrossChainRoute: { costs: { sourceGasNative: '0.00001' } },
+        }).insufficientFunds).toBe(true)
+    })
+
+    it('caps the fixed reserve only while bootstrapping a quote' , () => {
         const result = nativeEligibility({
             quote: null,
             activeQuote: null,

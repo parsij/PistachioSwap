@@ -357,7 +357,9 @@ export function useSwapController() {
     const estimatedNativeFeeWei =
         isNativeEvmToken(inputs.sellToken)
             ? getQuoteEstimatedNativeFeeWei({
-                quote: quote.quote,
+                quote: routing.routingMode === routing.modes.CROSS_CHAIN
+                    ? crossChain.currentRoute
+                    : quote.quote,
                 nativeToken: nativePriceToken,
             })
             : null

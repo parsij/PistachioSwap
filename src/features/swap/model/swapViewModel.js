@@ -159,7 +159,9 @@ export function createSwapViewModel(context) {
         )
     const estimatedSwapFeeWei =
         getQuoteEstimatedNativeFeeWei({
-            quote: selectedQuote,
+            quote: routing.routingMode === routing.modes.CROSS_CHAIN
+                ? crossChain.currentRoute
+                : selectedQuote,
             nativeToken: nativePriceToken,
         })
 

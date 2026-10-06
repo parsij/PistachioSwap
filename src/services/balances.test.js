@@ -87,6 +87,13 @@ describe('exact spendable balance math', () => {
         expect(fee).toBe(1_000_000_000_000n)
     })
 
+    it('reads cross-chain source gas in native units independently of destination fees', () => {
+        expect(getQuoteEstimatedNativeFeeWei({
+            quote: { costs: { sourceGasNative: '0.000001', destinationGasUsd: '100', routeCostUsd: '999' } },
+            nativeToken: { decimals: 18 },
+        })).toBe(1_000_000_000_000n)
+    })
+
     it('prefers direct EIP-1559 gas math when maxFeePerGas is available', () => {
         const fee = getQuoteEstimatedNativeFeeWei({
             quote: {

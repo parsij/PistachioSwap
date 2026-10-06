@@ -91,6 +91,23 @@ describe('cross-chain connector execution', () => {
         expect(result.costs.totalEstimatedUsd).toBeNull()
     })
 
+    it('requires the native transaction value plus gas before confirmation', async () => {
+        const preparedRoute = {
+            sourceAsset: { chainId: 10, address: '0x0000000000000000000000000000000000000000' },
+            steps: [{ type: 'source-transaction', chainId: 10,
+                transaction: { to: TARGET, value: '75000000000000', data: '0x' } }],
+        }
+        const publicClient = {
+            estimateGas: vi.fn().mockResolvedValue(100_000n),
+            estimateFeesPerGas: vi.fn().mockResolvedValue({ maxFeePerGas: 10_000_000n }),
+        }
+        const estimate = (nativeBalanceWei) => estimatePreparedCrossChainCosts({ publicClient, preparedRoute, account: ADDRESS, nativeBalanceWei })
+        expect((await estimate(83_000_000_000_000n)).sufficientNativeGas).toBe(true)
+        const insufficient = await estimate(75_500_000_000_000n)
+        expect(insufficient.sufficientNativeGas).toBe(false)
+        expect(insufficient.totalRequiredNativeWei).toBe(76_000_000_000_000n)
+    })
+
     it('uses prepared gas metadata only when a dependent deposit cannot be simulated', async () => {
         const publicClient = {
             estimateGas: vi.fn()

@@ -241,7 +241,7 @@ export function useCrossChainController({
                     insufficientNativeGas: estimate.sufficientNativeGas === false,
                     requiredNativeGasWei: estimate.totalSourceGasWei.toString(),
                     nativeGasShortfallWei: estimate.sufficientNativeGas === false
-                        ? (estimate.totalSourceGasWei - BigInt(nativeBalance.value ?? 0)).toString()
+                        ? (estimate.totalRequiredNativeWei - BigInt(nativeBalance.value ?? 0)).toString()
                         : '0',
                     sourceGasUsd: estimate.costs.sourceGasUsd,
                 },
