@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
     fetchRoutes: vi.fn(),
     authenticate: vi.fn(),
     prepare: vi.fn(),
+    status: vi.fn(),
+    submitted: vi.fn(),
 }))
 
 vi.mock('../services/crossChainRoutes.js', async (importOriginal) => ({
@@ -15,8 +17,13 @@ vi.mock('../services/crossChainRoutes.js', async (importOriginal) => ({
     fetchCrossChainRoutes: mocks.fetchRoutes,
     authenticateCrossChainWallet: mocks.authenticate,
     prepareCrossChainRoute: mocks.prepare,
+    fetchCrossChainRouteStatus: mocks.status,
+    markCrossChainRouteSubmitted: mocks.submitted,
 }))
 
+import { getOptimisticWalletTransactions, getWalletOperationDisplayState } from '../../wallet/services/optimisticBalances.js'
+import { reconcilePendingWalletOperations } from '../../wallet/services/reconcilePendingWalletOperations.js'
+import { PUBLIC_ROUTE_STORAGE_KEY } from '../services/crossChainRoutes.js'
 import { useCrossChainRoutes } from './useCrossChainRoutes.js'
 
 const account = '0x0000000000000000000000000000000000000001'
@@ -62,6 +69,9 @@ describe('useCrossChainRoutes automatic quoting', () => {
         mocks.fetchRoutes.mockReset()
         mocks.authenticate.mockReset()
         mocks.prepare.mockReset()
+        mocks.status.mockReset().mockResolvedValue({ status: 'pending' })
+        mocks.submitted.mockReset().mockResolvedValue({})
+        localStorage.clear()
         mocks.authenticate.mockResolvedValue({
             walletAddress: account,
             chainId: 56,
@@ -181,4 +191,30 @@ describe('useCrossChainRoutes automatic quoting', () => {
         expect(result.current.preparedRoute).toBeNull()
         expect(result.current.phase).toBe('review')
     })
+    it('settles a submitted swap after reset without the global route pointer', async () => {
+        const prepared = route('submitted-route', '130')
+        prepared.sourceAsset = { ...prepared.sourceAsset, decimals: 18, symbol: 'SELL' }
+        mocks.fetchRoutes.mockResolvedValue({ routes: [prepared], selectedRoute: prepared })
+        mocks.prepare.mockResolvedValue(prepared)
+        const { result, unmount } = renderHook(() => useCrossChainRoutes({
+            endpoint: '/cross-chain', account, contextKey: 'submitted',
+            request: request(), enabled: true, debounceMs: 350, signMessage: vi.fn(),
+        }))
+        await act(() => vi.advanceTimersByTimeAsync(350))
+        await act(async () => { await result.current.prepare() })
+        const hash = `0x${'cd'.repeat(32)}`
+        await act(async () => { await result.current.markSubmitted(hash) })
+        expect(getOptimisticWalletTransactions(account)[0]).toMatchObject({
+            transactionHash: hash, settlementMode: 'external', referenceId: 'submitted-route',
+        })
+        await act(() => result.current.reset())
+        unmount()
+        // The operation must survive losing the form's singleton route state.
+        localStorage.removeItem(PUBLIC_ROUTE_STORAGE_KEY)
+        mocks.status.mockResolvedValue({ status: 'completed' })
+        await reconcilePendingWalletOperations(account)
+        expect(mocks.status).toHaveBeenLastCalledWith(expect.objectContaining({ routeId: 'submitted-route' }))
+        expect(getWalletOperationDisplayState(account)?.status).toBe('confirmed')
+    })
+
 })

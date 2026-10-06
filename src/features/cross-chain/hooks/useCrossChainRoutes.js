@@ -377,6 +377,8 @@ export function useCrossChainRoutes({
                 walletAddress,
                 transactionHash,
                 operation: 'swapping',
+                settlementMode: 'external',
+                referenceId: currentPreparedRoute.publicRouteId,
                 changes,
             })
             optimisticRouteTransactionsRef.current.set(
@@ -510,8 +512,12 @@ export function useCrossChainRoutes({
         hasClaimedRef.current = false
         setHasClaimed(false)
         setPhase('idle')
-        clearPersistedPublicRouteId()
-        setPersistedRouteId(null)
+        // Submitted operations still need their public status endpoint even
+        // when selection/account changes reset the quote context.
+        if (optimisticRouteTransactionsRef.current.size === 0) {
+            clearPersistedPublicRouteId()
+            setPersistedRouteId(null)
+        }
         sessionRef.current = null
         lastQuotedKeyRef.current = null
     }, [])
