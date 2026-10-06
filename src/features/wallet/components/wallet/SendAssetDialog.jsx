@@ -59,7 +59,13 @@ import {
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 /** Renders wallet transfer selection/validation/review and submits on the selected asset's chain. */
-export default function SendAssetDialog({
+export default function SendAssetDialog(props) {
+    // Each opening owns a fresh form. A previous transfer can still finish
+    // reconciling wallet activity without updating the next send session.
+    return props.open ? <SendAssetDialogSession {...props} /> : null
+}
+
+function SendAssetDialogSession({
     open,
     onOpenChange,
     address,
