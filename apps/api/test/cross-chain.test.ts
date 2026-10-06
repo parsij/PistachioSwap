@@ -339,6 +339,54 @@ describe('cross-chain backend', () => {
             .rejects.toThrow(/unverified BSC AllowanceHolder/iu)
     })
 
+    it('pins verified Across Base source contracts and rejects quote-selected replacements', async () => {
+        process.env.PLATFORM_FEE_BPS = '0'
+        const spokePool = '0x09aea4b2242abc8bb4bb78d537a67a245a7bec64'
+        const baseRequest = {
+            ...request,
+            sourceAsset: { ...request.sourceAsset, chainId: 8453 },
+            destinationAsset: { ...request.destinationAsset, chainId: 137 },
+        }
+        const makeAdapter = (swapTarget) => createAcrossAdapter(async (url) =>
+            url.pathname.endsWith('/swap/tokens')
+                ? [
+                      { chainId: 8453, address: sourceToken },
+                      { chainId: 137, address: destinationToken },
+                  ]
+                : {
+                      expectedOutputAmount: '900',
+                      minOutputAmount: '890',
+                      checks: {
+                          allowance: {
+                              token: sourceToken,
+                              spender: spokePool,
+                              actual: '0',
+                              expected: '1000',
+                          },
+                      },
+                      approvalTxns: [{
+                          chainId: 8453,
+                          to: sourceToken,
+                          data: approvalData(spokePool, 1000n),
+                          value: '0',
+                      }],
+                      swapTx: {
+                          chainId: 8453,
+                          to: swapTarget,
+                          data: '0x1234',
+                          value: '0',
+                      },
+                  })
+
+        const good = makeAdapter(spokePool)
+        await expect(good.getQuote(baseRequest, await good.getCapabilities()))
+            .resolves.toMatchObject({ transaction: { to: spokePool } })
+
+        const bad = makeAdapter(relaySpender)
+        await expect(bad.getQuote(baseRequest, await bad.getCapabilities()))
+            .rejects.toThrow(/capability metadata/iu)
+    })
+
     it('pins verified Across BSC source contracts and rejects quote-selected replacements', async () => {
         process.env.PLATFORM_FEE_BPS = '0'
         const spokePool = '0x4e8e101924ede233c13e2d8622dc8aed2872d505'
