@@ -255,6 +255,18 @@ export function getQuoteEstimatedNativeFeeWei({
 
     if (!selectedQuote) return null
 
+    // Cross-chain costs are source-network native units, including any
+    // provider-estimated L1 fee. Never reserve destination or bridge fees here.
+    const sourceGasNative = selectedQuote.costs?.sourceGasNative
+    if (typeof sourceGasNative === 'string' && /^\d+(?:\.\d+)?$/.test(sourceGasNative)) {
+        try {
+            const fee = parseUnits(sourceGasNative, Number(nativeToken?.decimals ?? 18))
+            if (fee > 0n) return fee
+        } catch {
+            // Keep the conservative fallback when the estimate is unusable.
+        }
+    }
+
     const transaction =
         selectedQuote.transaction ??
         {}
@@ -279,7 +291,7 @@ export function getQuoteEstimatedNativeFeeWei({
 
     return convertUsdToNativeWei({
         usdAmount:
-        selectedQuote.estimatedGasUsd,
+        selectedQuote.estimatedGasUsd ?? selectedQuote.costs?.sourceGasUsd,
 
         nativeUsdPrice:
         getTrustedTokenUsdPrice(nativeToken),

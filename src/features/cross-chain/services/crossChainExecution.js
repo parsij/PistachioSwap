@@ -99,9 +99,12 @@ export async function estimatePreparedCrossChainCosts({
         sourceGasNative,
         sourceGasUsd,
     })
+    const totalSourceValueWei = steps.reduce((sum, step) =>
+        sum + BigInt(step.transaction.value ?? 0), 0n)
+    const totalRequiredNativeWei = totalSourceGasWei + totalSourceValueWei
     const sufficientNativeGas = nativeBalanceWei === null || nativeBalanceWei === undefined
         ? null
-        : BigInt(nativeBalanceWei) >= totalSourceGasWei
+        : BigInt(nativeBalanceWei) >= totalRequiredNativeWei
     onDiagnostic?.({
         provider: preparedRoute.provider,
         routeIdSuffix: String(preparedRoute.publicRouteId ?? '').slice(-8) || null,
@@ -118,6 +121,7 @@ export async function estimatePreparedCrossChainCosts({
         totalGas,
         effectiveGasPrice: BigInt(effectiveGasPrice),
         totalSourceGasWei,
+        totalRequiredNativeWei,
         sufficientNativeGas,
         estimatedStepCount: steps.length,
         gasEstimateSources,

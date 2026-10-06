@@ -166,12 +166,10 @@ export function deriveSwapEligibility(input) {
             const estimatedFeeWei =
                 nativeEstimatedFeeWei ??
                 (
-                    routingMode !== crossChainMode
-                        ? getQuoteEstimatedNativeFeeWei({
-                            quote,
-                            nativeToken: sellToken,
-                        })
-                        : null
+                    getQuoteEstimatedNativeFeeWei({
+                        quote: routingMode === crossChainMode ? currentCrossChainRoute : quote,
+                        nativeToken: sellToken,
+                    })
                 )
 
             const effectiveFallbackReserve =
@@ -201,8 +199,11 @@ export function deriveSwapEligibility(input) {
                     DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI
             }
 
-            sourceSpendableBalance =
-                getNativeSpendableWei({
+            // Cross-chain gas is estimated from the prepared transaction in
+            // review. An arbitrary reserve must not prevent reaching review.
+            sourceSpendableBalance = routingMode === crossChainMode && estimatedFeeWei == null
+                ? BigInt(nativeBalanceValue ?? 0n)
+                : getNativeSpendableWei({
                     balanceWei:
                         nativeBalanceValue ??
                         0n,
