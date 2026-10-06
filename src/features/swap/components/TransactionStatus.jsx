@@ -3,8 +3,10 @@ import AppInfoTooltip from '../../../shared/components/AppInfoTooltip.jsx'
 import { GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE } from '../../../services/swapExecutionMode.js'
 import './TransactionStatus.css'
 
-const GAS_ASSIST_GAS_EXPLANATION =
-    "Every blockchain transaction needs gas, paid with that network's native token. On BNB Chain, gas is paid in BNB. Because this wallet is short on BNB, PistachioSwap can sponsor it; the exact Gas Assist fee is shown before you confirm."
+function gasAssistGasExplanation(nativeSymbol) {
+    const symbol = nativeSymbol || 'the native token'
+    return `Every blockchain transaction needs gas, paid with that network's native token. On this network, gas is paid in ${symbol}. Because this wallet is short on ${symbol}, PistachioSwap can sponsor it; the exact Gas Assist fee is shown before you confirm.`
+}
 
 function visibleQuoteStatusMessage(message) {
     const text = String(message ?? '').trim()
@@ -49,10 +51,10 @@ export default function TransactionStatus({
                     {showGasAssistInfo && (
                         <span className="swap-status-info-inline">
                             <AppInfoTooltip
-                                ariaLabel="Why Gas Assist needs BNB"
+                                ariaLabel={`Why Gas Assist needs ${nativeSymbol || 'native gas'}`}
                                 icon={<InfoIcon />}
                             >
-                                {GAS_ASSIST_GAS_EXPLANATION}
+                                {gasAssistGasExplanation(nativeSymbol)}
                             </AppInfoTooltip>
                         </span>
                     )}
