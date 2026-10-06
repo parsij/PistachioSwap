@@ -160,8 +160,12 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
                 provider: 'relay',
                 statusId,
                 status: mapStatus(value.status),
-                sourceTransactionHash: text(value.originTxHash ?? value.sourceTxHash),
-                destinationTransactionHash: text(value.destinationTxHash),
+                sourceTransactionHash: transactionHash(
+                    value.originTxHash ?? value.sourceTxHash ?? value.inTxHashes,
+                ),
+                destinationTransactionHash: transactionHash(
+                    value.destinationTxHash ?? value.txHashes,
+                ),
             }
         },
     }
@@ -511,6 +515,25 @@ function unavailable(reason: string): ProviderCapabilities {
 function address(value: unknown) {
     return typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value) ? value.toLowerCase() : null
 }
+function transactionHash(value: unknown): string | null {
+    if (typeof value === 'string') {
+        return /^0x[a-fA-F0-9]{64}$/.test(value) ? value.toLowerCase() : null
+    }
+    if (Array.isArray(value)) {
+        for (const candidate of value) {
+            const hash = transactionHash(candidate)
+            if (hash) return hash
+        }
+        return null
+    }
+    if (isRecord(value)) {
+        return transactionHash(
+            value.txHash ?? value.transactionHash ?? value.hash,
+        )
+    }
+    return null
+}
+
 function text(value: unknown) {
     return typeof value === 'string' && value.length <= 256 ? value : null
 }
