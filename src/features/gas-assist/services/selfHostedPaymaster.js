@@ -115,6 +115,7 @@ function frontendConfig(backend) {
     return {
         chainId, nativeSymbol: backend.nativeSymbol ?? 'native token', entryPoint, delegate, paymaster,
         publicRpc: publicRpcUrl(backend.publicRpc || (chainId === 56 ? import.meta.env.VITE_BSC_PUBLIC_RPC_URL : undefined), 'source public RPC'),
+        maximumFeePerGasWei: backend.maximumFeePerGasWei ?? UINT128_MAX.toString(),
         bundlerRpc: publicRpcUrl(backend.publicBundlerEndpoint || (chainId === 56 ? import.meta.env.VITE_BSC_BUNDLER_RPC_URL : undefined), 'source Bundler'),
     }
 }
@@ -224,16 +225,12 @@ async function rpc(url, method, params, signal) {
             if (attempt + 1 < attempts) continue
             deny('PAYMASTER_RPC_UNAVAILABLE', `${method} request failed.`)
         }
-        if (!response.ok) {
-            if (attempt + 1 < attempts && [502, 503, 504].includes(response.status)) continue
-            deny('PAYMASTER_RPC_UNAVAILABLE', `${method} failed with HTTP ${response.status}.`)
-        }
         let payload
         try {
             payload = await response.json()
         } catch {
             if (attempt + 1 < attempts) continue
-            deny('PAYMASTER_RPC_UNAVAILABLE', `${method} returned an invalid RPC response.`)
+            deny('PAYMASTER_RPC_UNAVAILABLE', `${method} returned an invalid RPC response (HTTP ${response.status}).`)
         }
         if (payload?.jsonrpc !== '2.0') {
             if (attempt + 1 < attempts) continue
@@ -245,9 +242,16 @@ async function rpc(url, method, params, signal) {
             const rpcMessage = typeof payload.error.message === 'string'
                 ? payload.error.message.trim().slice(0, 300)
                 : ''
+            if (/maxFeePerGas exceeds the cap/i.test(rpcMessage)) {
+                deny('PAYMASTER_FEE_CAP_EXCEEDED', 'The current network gas price exceeds the sponsor’s per-gas limit.')
+            }
             deny('PAYMASTER_RPC_REJECTED', rpcMessage
                 ? `${method} was rejected: ${rpcMessage}`
                 : `${method} was rejected by the RPC provider.`)
+        }
+        if (!response.ok) {
+            if (attempt + 1 < attempts && [502, 503, 504].includes(response.status)) continue
+            deny('PAYMASTER_RPC_UNAVAILABLE', `${method} failed with HTTP ${response.status}.`)
         }
         if (!('result' in payload)) {
             if (attempt + 1 < attempts) continue
@@ -352,12 +356,15 @@ export function selfHostedUserOpTypedData(operation, settings) {
     }
 }
 /** Use the source RPC's full effective gas price and bounded replacement headroom. */
-export function sponsoredGasFees(gasPriceHex) {
+export function sponsoredGasFees(gasPriceHex, maximumFeePerGasWei = UINT128_MAX) {
     const gasPrice = quantity(gasPriceHex, 'gas price', UINT128_MAX / 2n)
     if (gasPrice === 0n) deny('PAYMASTER_FEE_INVALID', 'The source gas price is invalid.')
+    const cap = BigInt(maximumFeePerGasWei)
+    if (cap <= 0n || cap > UINT128_MAX) deny('PAYMASTER_FEE_INVALID', 'The sponsor gas-price limit is invalid.')
+    if (gasPrice > cap) deny('PAYMASTER_FEE_CAP_EXCEEDED', 'The current network gas price exceeds the sponsor’s per-gas limit.')
     return {
         maxPriorityFeePerGas: numberToHex(gasPrice),
-        maxFeePerGas: numberToHex(gasPrice * 2n),
+        maxFeePerGas: numberToHex(gasPrice * 2n > cap ? cap : gasPrice * 2n),
     }
 }
 export function classifyDelegationCode(rawCode, trustedDelegate) {
@@ -462,6 +469,7 @@ async function submitOperation({
         isAddress(candidate) && getAddress(candidate) === settings.entryPoint)) {
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
+    const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), settings.maximumFeePerGasWei)
     const delegation = await delegationState(settings.publicRpc, sender, settings.delegate, signal)
     // ERC-7769/Alto requires eip7702Auth whenever the public UserOperation
     // carries factory=0x7702. That remains true when the sender is already
@@ -486,7 +494,6 @@ async function submitOperation({
     const nonce = decodeFunctionResult({
         abi: ENTRY_POINT_ABI, functionName: 'getNonce', data: hex(encodedNonce, 'EntryPoint nonce result'),
     })
-    const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal))
     const operation = {
         sender,
         nonce: numberToHex(nonce),
