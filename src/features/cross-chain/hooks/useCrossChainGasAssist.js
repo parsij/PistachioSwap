@@ -31,7 +31,7 @@ function positiveRaw(value) {
 }
 
 /**
- * Sponsors the exact BNB Chain source transaction through the direct atomic
+ * Sponsors the exact source-chain transaction through the direct atomic
  * EIP-7702 Gas Assist flow. Cross-chain route mutation authentication remains
  * scoped to the prepared route; no sequential payment/approval package is used.
  */
@@ -130,8 +130,8 @@ export function useCrossChainGasAssist({
                 deltaRaw: -sellRaw,
             })
         }
-        // The destination POL is not available until the bridge/solver fills
-        // the Polygon leg. Never add it optimistically on BSC source inclusion.
+        // Destination assets are not available until the bridge/solver fills
+        // the destination leg. Never add them optimistically on source inclusion.
         if (changes.length > 0) {
             beginOptimisticWalletTransaction({
                 walletAddress: account,

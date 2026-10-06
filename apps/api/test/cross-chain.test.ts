@@ -1456,6 +1456,100 @@ describe('cross-chain backend', () => {
         await app.close()
     })
 
+    it('passes Base source routes to multichain Gas Assist instead of rejecting them as BNB-only', async () => {
+        const baseRequest = {
+            ...request,
+            sourceAsset: { ...request.sourceAsset, chainId: 8453, decimals: 6 },
+            destinationAsset: { ...request.destinationAsset, chainId: 137, decimals: 18 },
+        }
+        const base = fixtureAdapter('across', '900')
+        const adapter = {
+            ...base,
+            getCapabilities: async () => ({
+                provider: 'across' as const,
+                available: true,
+                fetchedAt: new Date().toISOString(),
+                routes: [{
+                    sourceChainId: 8453,
+                    destinationChainId: 137,
+                    transactionTargets: [target],
+                    approvalSpenders: [target],
+                }],
+            }),
+            getQuote: async (quoteRequest: typeof baseRequest) => {
+                const transaction = {
+                    chainId: 8453,
+                    to: target,
+                    data: '0x12345678',
+                    value: '0',
+                    allowanceTarget: target,
+                    gasEstimate: '180000',
+                }
+                return {
+                    provider: 'across' as const,
+                    quoteId: 'base-cross-chain',
+                    request: quoteRequest,
+                    buyAmount: '900',
+                    minimumBuyAmount: '890',
+                    fees: [],
+                    estimatedDurationSeconds: 30,
+                    executionModel: 'evm-transaction' as const,
+                    steps: [{
+                        id: 'source',
+                        index: 0,
+                        type: 'source-transaction' as const,
+                        label: 'Submit source',
+                        chainId: 8453,
+                        status: 'ready' as const,
+                        transaction,
+                    }],
+                    transaction,
+                    deposit: null,
+                    statusId: 'base-cross-chain',
+                    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                }
+            },
+        }
+        const privateRequest = vi.fn(async ({ pathname, body }: { pathname: string; body: unknown }) => ({
+            id: pathname.endsWith('/preview') ? 'preview:base' : 'order:base',
+            isPreview: pathname.endsWith('/preview'),
+            crossChainRouteId: (body as { route: { publicRouteId: string } }).route.publicRouteId,
+        }))
+        const service = new CrossChainRouteService(
+            new CrossChainRegistry([adapter]),
+            new MemoryCrossChainRouteRepository(),
+            privateRequest,
+        )
+        const quoted = await service.quote(baseRequest)
+        const preview = await service.previewSponsorship({
+            routeId: quoted.selectedRoute.routeId,
+            clientIp: '127.0.0.1',
+        })
+        expect(preview.order).toMatchObject({ id: 'preview:base' })
+        expect(privateRequest).toHaveBeenCalledWith(expect.objectContaining({
+            pathname: '/internal/v1/sponsorship/cross-chain/preview',
+            body: expect.objectContaining({
+                route: expect.objectContaining({
+                    sourceAsset: expect.objectContaining({ chainId: 8453 }),
+                    destinationAsset: expect.objectContaining({ chainId: 137 }),
+                    transaction: expect.objectContaining({ chainId: 8453 }),
+                }),
+            }),
+        }))
+
+        privateRequest.mockClear()
+        await service.prepareSponsorship({
+            routeId: quoted.selectedRoute.routeId,
+            ownerValue: sender,
+            sourceChainId: 8453,
+            clientIp: '127.0.0.1',
+            idempotencyKey: 'base-cross-chain-order',
+        })
+        expect(privateRequest).toHaveBeenLastCalledWith(expect.objectContaining({
+            pathname: '/internal/v1/sponsorship/cross-chain/orders',
+        }))
+    })
+
     it('previews without wallet authentication, then creates the exact net route through the matching internal endpoint', async () => {
         const bscRequest = {
             ...request,
@@ -1925,7 +2019,14 @@ describe('verified sponsored source recovery', () => {
         const adapter = fixtureAdapter('across', '900')
         adapter.getStatus = async (statusId) => ({ provider: 'across', statusId,
             status: 'in-flight', sourceTransactionHash: null, destinationTransactionHash: null })
-        const route = await repository.create(fixtureQuote({ statusId: 'across-status', request: { ...request, sourceAsset: { ...request.sourceAsset, chainId: 56 } } }))
+        const route = await repository.create(fixtureQuote({
+            statusId: 'across-status',
+            request: {
+                ...request,
+                sourceAsset: { ...request.sourceAsset, chainId: 8453 },
+                destinationAsset: { ...request.destinationAsset, chainId: 137 },
+            },
+        }))
         await repository.markPrepared(route.publicRouteId, sender)
         const hash = `0x${'ab'.repeat(32)}`
         const recover = vi.fn(async () => ({ orderId: 'order123', walletAddress: sender,

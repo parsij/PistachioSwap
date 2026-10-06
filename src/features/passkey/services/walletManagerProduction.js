@@ -1,5 +1,7 @@
 import { getAddress, hexToString, isHex } from 'viem'
 
+import { isGasAssistSourceChainId } from '../../gas-assist/model/gasAssistChains.js'
+
 const HARDENED_MANAGER = Symbol.for(
     'pistachioswap.pistachio-wallet.production-hardened',
 )
@@ -151,11 +153,11 @@ function isGasAssistAuthenticationMessage(
     const expectedChain = Number(activeChainId)
     const chainLine = crossChain
         ? `Source Chain ID: ${expectedChain}`
-        : 'Chain ID: 56'
+        : `Chain ID: ${expectedChain}`
     if (
         lines[4] !== chainLine ||
         !Number.isSafeInteger(expectedChain) ||
-        (sponsorship && expectedChain !== 56)
+        (sponsorship && !isGasAssistSourceChainId(expectedChain))
     ) return false
 
     const issuedAt = Date.parse(lines[6].slice('Issued At: '.length))

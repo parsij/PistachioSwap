@@ -26,6 +26,7 @@ import '@fontsource/ubuntu/latin-400.css'
 import '@fontsource/ubuntu/latin-500.css'
 import '@fontsource/ubuntu/latin-700.css'
 import { walletUIOperations as manager } from '../../services/walletUIOperations.js'
+import { getCuratedEvmChain } from '../../../../web3/curatedEvmChains.js'
 import { ErrorNotice, shortenAddress } from './WalletPrimitives.jsx'
 
 const GUARDED_SETUP_PHASES = new Set(['passkey-ready', 'confirm-recovery', 'confirm-import', 'onboarding-ready'])
@@ -127,6 +128,7 @@ function SigningReviewDialog() {
     const hasCalldata = calldata && calldata !== '0x'
     const hasUnknownCalldata = hasCalldata && payload.calldataKnown !== true
     const packageTransactions = Array.isArray(payload.transactions) ? payload.transactions : []
+    const sponsoredNativeSymbol = getCuratedEvmChain(request?.chainId)?.nativeCurrency?.symbol ?? 'native gas'
 
     function approve() {
         if (!request || submitted) return
@@ -183,7 +185,7 @@ function SigningReviewDialog() {
                                 {hasCalldata && <div className="full"><dt>Transaction data</dt><dd><ReviewValue>{calldata}</ReviewValue></dd></div>}
                             </dl>
                             {packageTransactions.length > 0 && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>One approval and one passkey check authorize only the exact Gas Assist transactions listed above. Any mismatch, account change, nonce change, chain change, expiry, or rewritten signed transaction aborts the package.</p></div>}
-                            {payload.authorization && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>Explorers show this as To: Self because the transaction is sent to your own wallet. For this swap it temporarily runs the Gas Assist executor in your account. BNB gas is sponsored. The Gas Assist fee is already in the quote and is taken only if this swap succeeds.</p></div>}
+                            {payload.authorization && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>Explorers show this as To: Self because the transaction is sent to your own wallet. For this swap it temporarily runs the Gas Assist executor in your account. {sponsoredNativeSymbol} gas is sponsored. The Gas Assist fee is already in the quote and is taken only if this swap succeeds.</p></div>}
                             {payload.unlimitedWarning && <div className="pistachio-wallet-danger"><AlertTriangle aria-hidden="true" /><p>This request grants a spending allowance large enough to be unlimited in practice.</p></div>}
                             {hasUnknownCalldata && <div className="pistachio-wallet-warning"><ShieldAlert aria-hidden="true" /><p>This request contains contract data. Verify the destination and full transaction data before approving.</p></div>}
                             {payload.submission && <div className="pistachio-wallet-info"><ShieldCheck aria-hidden="true" /><p>{payload.submission}</p></div>}

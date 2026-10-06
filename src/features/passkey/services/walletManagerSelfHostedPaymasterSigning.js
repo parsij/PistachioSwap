@@ -2,7 +2,8 @@ import { Signature } from 'ethers'
 import { getAddress, isAddress, parseTransaction, toHex } from 'viem'
 import { hashAuthorization, recoverAuthorizationAddress } from 'viem/utils'
 
-const CHAIN_ID = 56
+import { isGasAssistSourceChainId } from '../../gas-assist/model/gasAssistChains.js'
+import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
 const HASH = /^0x[0-9a-f]{64}$/iu
 
@@ -36,10 +37,11 @@ export const selfHostedAuthorizationMethods = {
         } catch {
             deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EIP-7702 delegate address is invalid.')
         }
+        const chainId = Number(data.chainId)
         const nonce = Number(data.nonce)
-        if (delegate !== trusted || Number(data.chainId) !== CHAIN_ID ||
+        if (delegate !== trusted || !isGasAssistSourceChainId(chainId) ||
             !Number.isSafeInteger(nonce) || nonce < 0) {
-            deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EIP-7702 authorization differs from the BNB Chain trusted delegation.')
+            deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EIP-7702 authorization differs from the trusted Gas Assist delegation.')
         }
         let previousDelegate = null
         if (data.previousDelegate !== undefined) {
@@ -51,27 +53,28 @@ export const selfHostedAuthorizationMethods = {
                 deny('PAYMASTER_AUTHORIZATION_INVALID', 'The previous EIP-7702 delegate is not a distinct nonzero address.')
             }
         }
-        const digest = hashAuthorization({ contractAddress: trusted, chainId: CHAIN_ID, nonce })
+        const digest = hashAuthorization({ contractAddress: trusted, chainId, nonce })
         if (!HASH.test(String(request.rawPayload ?? '')) ||
             request.rawPayload.toLowerCase() !== digest.toLowerCase()) {
             deny('PAYMASTER_AUTHORIZATION_HASH_MISMATCH', 'The authorization hash does not match its trusted delegate and nonce.')
         }
 
         await this.ensureUnlockedForSigning()
-        const context = this.captureSigningContext(CHAIN_ID)
+        const context = this.captureSigningContext(chainId)
+        const chainName = getCuratedEvmChain(chainId)?.name ?? `Chain ${chainId}`
         await this.reviewQueue.request({
             walletAddress: context.address,
-            chainId: CHAIN_ID,
+            chainId,
             action: previousDelegate
                 ? 'Replace existing EIP-7702 wallet delegation'
                 : 'Enable self-hosted Gas Assist',
             payload: {
                 purpose: previousDelegate
                     ? 'Your wallet already delegates execution to another contract. Switching to Pistachio changes the code controlling future wallet operations. This authorization does not itself transfer tokens. Review the previous and new contract addresses carefully.'
-                    : 'Delegate this existing EOA to the trusted ERC-4337 Simple7702Account for BNB Chain. This authorization does not itself transfer tokens.',
+                    : `Delegate this existing EOA to the trusted ERC-4337 Simple7702Account for ${chainName}. This authorization does not itself transfer tokens.`,
                 ...(previousDelegate ? { previousDelegate } : {}),
                 delegate: trusted,
-                authorizationScope: 'BNB Chain (56)',
+                authorizationScope: `${chainName} (${chainId})`,
                 authorizationNonce: nonce,
             },
         })
@@ -84,7 +87,7 @@ export const selfHostedAuthorizationMethods = {
             envelope = (await this.client.request('signTransaction', {
                 mode: 'gas-assist-authorization',
                 transaction: {
-                    chainId: CHAIN_ID,
+                    chainId,
                     type: 4,
                     from: context.address,
                     to: context.address,
@@ -94,7 +97,7 @@ export const selfHostedAuthorizationMethods = {
                     maxPriorityFeePerGas: 0n,
                     value: 0n,
                     data: '0x',
-                    authorizationList: [{ chainId: CHAIN_ID, address: trusted, nonce }],
+                    authorizationList: [{ chainId, address: trusted, nonce }],
                 },
             })).signedTransaction
             this.assertSigningContext(context)
@@ -102,7 +105,7 @@ export const selfHostedAuthorizationMethods = {
             const authorization = parsed.authorizationList?.[0]
             if (!authorization || parsed.authorizationList?.length !== 1 ||
                 getAddress(authorization.address) !== trusted ||
-                Number(authorization.chainId) !== CHAIN_ID ||
+                Number(authorization.chainId) !== chainId ||
                 Number(authorization.nonce) !== nonce ||
                 BigInt(authorization.r ?? 0) === 0n ||
                 BigInt(authorization.s ?? 0) === 0n) {

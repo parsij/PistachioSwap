@@ -7,7 +7,7 @@ import {
 
 const address = '0x1111111111111111111111111111111111111111'
 
-function authenticationMessage(title) {
+function authenticationMessage(title, chainId = 56) {
     const issuedAt = new Date(Date.now() - 1_000)
     const expiresAt = new Date(Date.now() + 5 * 60_000)
     const crossChain = title === 'PistachioSwap Cross-Chain Authentication'
@@ -16,7 +16,7 @@ function authenticationMessage(title) {
         '',
         'Domain: swap.example',
         `Wallet: ${address}`,
-        crossChain ? 'Source Chain ID: 56' : 'Chain ID: 56',
+        crossChain ? `Source Chain ID: ${chainId}` : `Chain ID: ${chainId}`,
         'Nonce: abcdefghijklmnopqrstuvwxyz012345',
         `Issued At: ${issuedAt.toISOString()}`,
         `Expiration Time: ${expiresAt.toISOString()}`,
@@ -277,6 +277,21 @@ describe('production Pistachio Wallet hardening', () => {
             resumeReauthPending: true,
             sessionActive: true,
         })
+    })
+
+    it('recognizes Base Gas Assist authentication only on the matching active source chain', () => {
+        const message = authenticationMessage(
+            'PistachioSwap Gas Assist Authentication',
+            8453,
+        )
+        expect(walletManagerProductionInternals.isGasAssistAuthenticationMessage(
+            { message },
+            { walletAddress: address, activeChainId: 8453 },
+        )).toBe(true)
+        expect(walletManagerProductionInternals.isGasAssistAuthenticationMessage(
+            { message },
+            { walletAddress: address, activeChainId: 56 },
+        )).toBe(false)
     })
 
     it('treats hex-encoded personal_sign Gas Assist challenges as the same one-passkey flow', async () => {

@@ -155,7 +155,12 @@ export class CrossChainRouteService {
         routeId = requireRouteId(routeId)
         const route = await this.repository.get(routeId)
         const owner = requireOwner(body.walletAddress)
-        if (!route || route.ownerAddress !== owner || route.sourceAsset.chainId !== 56 || route.destinationAsset.chainId === 56) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
+        if (!route || route.ownerAddress !== owner ||
+            route.sourceAsset.chainId === route.destinationAsset.chainId ||
+            route.executionModel !== 'evm-transaction' ||
+            route.sourceAsset.address === '0x0000000000000000000000000000000000000000') {
+            throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
+        }
         const recovered = await this.privateGasAssistRequest({
             pathname: '/internal/v1/sponsorship/recovery', clientIp,
             idempotencyKey: `recover-${routeId}`, body,
@@ -240,14 +245,13 @@ export class CrossChainRouteService {
         }
         const originalRoute = await this.repository.get(routeId)
         if (!originalRoute) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
-        if (originalRoute.sourceAsset.chainId !== 56 ||
-            originalRoute.destinationAsset.chainId === 56 ||
+        if (originalRoute.sourceAsset.chainId === originalRoute.destinationAsset.chainId ||
             originalRoute.executionModel !== 'evm-transaction' ||
             originalRoute.sourceAsset.address ===
                 '0x0000000000000000000000000000000000000000') {
             throw routeError(
                 'CROSS_CHAIN_GAS_ASSIST_UNSUPPORTED',
-                'Gas Assist only supports exact BEP-20 source transactions from BNB Chain.',
+                'Gas Assist requires an exact ERC-20 source transaction on an enabled source network.',
             )
         }
 
@@ -434,7 +438,7 @@ function exactSponsoredRoute(
     ownerAddress: string,
 ) {
     const transaction = quote.transaction
-    if (!transaction || transaction.chainId !== 56 ||
+    if (!transaction || transaction.chainId !== route.sourceAsset.chainId ||
         transaction.value !== '0' || !transaction.allowanceTarget) {
         throw routeError(
             'CROSS_CHAIN_TRANSACTION_NOT_SPONSORABLE',
