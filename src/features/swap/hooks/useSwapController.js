@@ -100,6 +100,7 @@ export function useSwapController() {
         sellToken: inputs.sellToken,
         buyToken: inputs.buyToken,
         activeAmountIn: inputs.activeAmountIn,
+        gasAssistPreference: swapSettings.gasAssistPreference,
     })
     const configuredSlippageBps = getEffectiveSlippageBps(swapSettings, {
         recommendedSlippageBps: null,
@@ -263,6 +264,7 @@ export function useSwapController() {
         }
     }
     const crossChainGasAssistExpected = expectsCrossChainGasAssist({
+        gasAssistPreference: swapSettings.gasAssistPreference,
         prepaidEnabled: routing.sponsorshipConfig.config?.enabled,
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
@@ -272,6 +274,7 @@ export function useSwapController() {
         sellToken: inputs.sellToken,
     })
     const crossChainGasAssistDirect = routing.sponsorshipConfig.config?.supported === true && routing.sponsorshipConfig.config?.enabled === true && requiresDirectCrossChainGasAssist({
+        gasAssistPreference: swapSettings.gasAssistPreference,
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
         nativeBalanceValue: catalog.nativeBalance.value,
@@ -421,6 +424,8 @@ export function useSwapController() {
         quote.quote,
     ])
     const eligibility = deriveSwapEligibility({
+        gasAssistPreference: swapSettings.gasAssistPreference,
+        gasAssistBlockingReason: routing.preferredExecution.mode === null ? routing.preferredExecution.reason : null,
         walletState,
         walletAddress: walletState.address,
         sellToken: inputs.sellToken,
@@ -623,7 +628,13 @@ export function useSwapController() {
     ])
 
     const callbacks = {
-        onSettingsChange: setSwapSettings,
+        onSettingsChange: (nextSettings) => {
+            if (nextSettings.gasAssistPreference !== swapSettings.gasAssistPreference) {
+                resetQuoteAndReview()
+                crossChain.review.close()
+            }
+            setSwapSettings(nextSettings)
+        },
         onSellAmountChange: (event) => {
             nativeMaximumRequestedRef.current = false
             inputs.updateSellAmount(event.target.value)

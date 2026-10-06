@@ -26,6 +26,15 @@ export default function SwapSettingsPopover({ children, settings, onSettingsChan
                 else draft.autoButtonRef.current?.focus()
             }}>
                 <SlippageSettingsSection draft={draft} />
+                <label className="swap-settings-gas-assist">
+                    <span>Gas Assist</span>
+                    <select aria-label="Gas Assist preference" value={settings.gasAssistPreference ?? 'auto'} onChange={(event) => onSettingsChange({ ...settings, gasAssistPreference: event.target.value })}>
+                        <option value="auto">Auto</option>
+                        <option value="force">Force Gas Assist</option>
+                        <option value="normal">Normal gas</option>
+                    </select>
+                    <small>Auto uses Gas Assist when gas is low. Force requires an eligible token and enabled network. Normal gas uses your wallet’s native balance.</small>
+                </label>
                 <SettingsVisibilitySection settings={settings} onSettingsChange={onSettingsChange} />
             </Popover.Content>
         </Popover.Portal>

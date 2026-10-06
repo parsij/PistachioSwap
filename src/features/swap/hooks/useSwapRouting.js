@@ -26,7 +26,7 @@ function minimumNormalGasBalance() {
  * @returns {object} Routing mode, preferred execution, prepaid sponsorship config state, and chain flags.
  * @sideEffects Loads prepaid sponsorship configuration only for the eligible BSC state.
  */
-export function useSwapRouting({ quoteEndpoint, walletState, nativeBalance, sellToken, buyToken, activeAmountIn }) {
+export function useSwapRouting({ quoteEndpoint, walletState, nativeBalance, sellToken, buyToken, activeAmountIn, gasAssistPreference = 'auto' }) {
     const sellChainId = Number(sellToken?.chainId ?? walletState.expectedChainId)
     const buyChainId = Number(buyToken?.chainId ?? walletState.expectedChainId)
     const hasMixedSwapChains = Boolean(sellToken && buyToken && sellChainId !== buyChainId)
@@ -48,6 +48,7 @@ export function useSwapRouting({ quoteEndpoint, walletState, nativeBalance, sell
         gasAssistConfig: sponsorshipConfig.config,
         gasAssistConfigStatus: sponsorshipConfig.status,
         minimumNativeBalance: minimumNormalGasBalance(),
+        gasAssistPreference,
     })
     const nonBscExecution = nativeBalance.status === 'success'
         ? { mode: NORMAL_SWAP_MODE, reason: null }
@@ -55,7 +56,7 @@ export function useSwapRouting({ quoteEndpoint, walletState, nativeBalance, sell
             mode: null,
             reason: nativeBalance.status === 'error' ? 'native-balance-error' : 'native-balance-loading',
         }
-    const preferredExecution = isBscSwap && !hasMixedSwapChains ? bscExecution : nonBscExecution
+    const preferredExecution = (isBscSwap && !hasMixedSwapChains) || gasAssistPreference === 'force' ? bscExecution : nonBscExecution
     return {
         sellChainId,
         buyChainId,

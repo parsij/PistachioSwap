@@ -245,6 +245,7 @@ export function createSwapViewModel(context) {
             })
             : '0'
     const crossChainGasAssistExpected = expectsCrossChainGasAssist({
+        gasAssistPreference: swapSettings.gasAssistPreference,
         prepaidEnabled: gasAssist.prepaidSponsorship.config?.enabled,
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
@@ -321,6 +322,7 @@ export function createSwapViewModel(context) {
               'An error happened on our side. Please try again later.'
             : null
     const crossChainGasAssistTier = getCrossChainGasAssistTier({
+        gasAssistPreference: swapSettings.gasAssistPreference,
         routingMode: routing.routingMode,
         crossChainMode: routing.modes.CROSS_CHAIN,
         nativeBalanceValue: catalog.nativeBalance.value,

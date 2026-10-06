@@ -28,6 +28,7 @@ export function getSwapExecutionMessage(reason) {
         'gas-assist-disabled': 'Not enough native gas for normal gas. Gas Assist is currently unavailable.',
         'insufficient-native-balance': GAS_ASSIST_LOW_NATIVE_BALANCE_MESSAGE,
         'gas-assist-unsupported': 'Not enough native gas for this swap on the selected source network.',
+        'gas-assist-requested': 'Gas Assist selected in swap settings.',
         'native-sell-token': 'Gas Assist cannot sell the native gas token.',
     }[reason] ?? null
 }
@@ -44,6 +45,7 @@ export function deriveSwapExecution({
     gasAssistConfig,
     gasAssistConfigStatus,
     minimumNativeBalance = 1n,
+    gasAssistPreference = 'auto',
 }) {
     if (!isConnected || !walletAddress) return { mode: null, reason: 'wallet-unavailable' }
     if (Number(sellToken?.chainId ?? chainId) !== Number(chainId) ||
@@ -78,7 +80,7 @@ export function deriveSwapExecution({
     } catch {
         requiredNativeBalance = 1n
     }
-    if (nativeBalance >= requiredNativeBalance) return { mode: NORMAL_SWAP_MODE, reason: null }
+    if (gasAssistPreference === 'normal' || (gasAssistPreference !== 'force' && nativeBalance >= requiredNativeBalance)) return { mode: NORMAL_SWAP_MODE, reason: null }
     if (gasAssistConfig?.supported === false) return { mode: null, reason: 'gas-assist-unsupported' }
     if (sellToken.isNative) return { mode: null, reason: 'native-sell-token' }
 
@@ -95,5 +97,5 @@ export function deriveSwapExecution({
     if (gasAssistConfig?.enabled !== true) {
         return { mode: null, reason: 'gas-assist-disabled' }
     }
-    return { mode: PREPAID_SPONSORSHIP_MODE, reason: 'insufficient-native-balance' }
+    return { mode: PREPAID_SPONSORSHIP_MODE, reason: gasAssistPreference === 'force' ? 'gas-assist-requested' : 'insufficient-native-balance' }
 }

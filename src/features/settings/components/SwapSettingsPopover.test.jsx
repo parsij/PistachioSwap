@@ -89,4 +89,15 @@ describe('SwapSettingsPopover', () => {
         expect(screen.queryByRole('tooltip')).toBeNull()
         expect(screen.getByRole('dialog')).toBeTruthy()
     })
+    it('lets the user force Gas Assist or choose normal gas', () => {
+        render(<Harness />)
+        fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
+        const preference = screen.getByRole('combobox', { name: 'Gas Assist preference' })
+        expect(preference.value).toBe('auto')
+        fireEvent.change(preference, { target: { value: 'force' } })
+        expect(preference.value).toBe('force')
+        fireEvent.change(preference, { target: { value: 'normal' } })
+        expect(preference.value).toBe('normal')
+    })
+
 })
