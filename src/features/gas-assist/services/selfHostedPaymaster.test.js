@@ -80,6 +80,20 @@ afterEach(() => {
 })
 
 describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
+    it('keeps full Polygon gas price and bounds only replacement headroom', () => {
+        const fees = sponsoredBscGasFees(numberToHex(278_000_000_000n), 1_000_000_000_000n)
+        expect(BigInt(fees.maxPriorityFeePerGas)).toBe(278_000_000_000n)
+        expect(BigInt(fees.maxFeePerGas)).toBe(556_000_000_000n)
+        const bounded = sponsoredBscGasFees(numberToHex(600_000_000_000n), 1_000_000_000_000n)
+        expect(BigInt(bounded.maxPriorityFeePerGas)).toBe(600_000_000_000n)
+        expect(BigInt(bounded.maxFeePerGas)).toBe(1_000_000_000_000n)
+        expect(() => sponsoredBscGasFees(numberToHex(1_000_000_000_001n), 1_000_000_000_000n)).toThrow(/per-gas limit/)
+    })
+    it('preserves an explicit fee-cap rejection even when the ingress uses HTTP 400', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'maxFeePerGas exceeds the cap' } }), { status: 400 })))
+        await expect(submitSelfHostedPaymasterUserOperation({ prepared: prepared(), order, backendConfig, quoteEndpoint: 'https://api.example/v1/quote', sessionToken: 'test', walletClient: { request: vi.fn(), signTypedData: vi.fn() }, authenticatedWalletAddress: sender }))
+            .rejects.toMatchObject({ code: 'PAYMASTER_FEE_CAP_EXCEEDED' })
+    })
     it('quotes a full BSC priority fee, with separate capped max-fee headroom', () => {
         expect(sponsoredBscGasFees('0x3b9aca00')).toEqual({
             maxPriorityFeePerGas: '0x3b9aca00',
