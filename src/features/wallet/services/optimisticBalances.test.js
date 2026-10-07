@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
     beginOptimisticWalletTransaction,
@@ -8,8 +8,11 @@ import {
     getWalletOperationDisplayState,
 } from './optimisticBalances.js'
 
+afterEach(() => vi.useRealTimers())
+
 describe('optimistic wallet operation display state', () => {
-    it('shows a confirmed swap immediately while retaining optimistic deltas until final settlement', () => {
+    it('keeps confirmation visible when receipt reconciliation finishes in the same tick', () => {
+        vi.useFakeTimers()
         const walletAddress = '0x1111111111111111111111111111111111111111'
         const transactionHash = `0x${'ab'.repeat(32)}`
         const sellToken = {
@@ -53,6 +56,25 @@ describe('optimistic wallet operation display state', () => {
 
         expect(finishOptimisticWalletTransaction(transactionHash)).toBe(true)
         expect(getOptimisticWalletDeltas(walletAddress)).toHaveLength(0)
+        expect(getWalletOperationDisplayState(walletAddress)?.status).toBe('confirmed')
+        vi.advanceTimersByTime(4_999)
+        expect(getWalletOperationDisplayState(walletAddress)?.status).toBe('confirmed')
+        vi.advanceTimersByTime(1)
         expect(getWalletOperationDisplayState(walletAddress)).toBeNull()
     })
+})
+
+it('does not restart the confirmation window on delayed final settlement', () => {
+    vi.useFakeTimers()
+    const walletAddress = '0x4444444444444444444444444444444444444444'
+    const transactionHash = `0x${'ce'.repeat(32)}`
+    beginOptimisticWalletTransaction({ walletAddress, transactionHash, operation: 'swapping',
+        changes: [{ chainId: 137, tokenAddress: '0x5555555555555555555555555555555555555555', deltaRaw: -10n }] })
+    confirmOptimisticWalletTransaction(transactionHash)
+    vi.advanceTimersByTime(4_000)
+    finishOptimisticWalletTransaction(transactionHash)
+    expect(getWalletOperationDisplayState(walletAddress)?.status).toBe('confirmed')
+    vi.advanceTimersByTime(1_000)
+    expect(getWalletOperationDisplayState(walletAddress)).toBeNull()
+    expect(finishOptimisticWalletTransaction(transactionHash)).toBe(false)
 })
