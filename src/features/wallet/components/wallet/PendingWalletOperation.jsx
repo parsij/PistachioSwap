@@ -24,7 +24,7 @@ import './walletPendingOperation.css'
 const RECEIPT_POLL_MS = 4_000
 
 function operationLabel(operation, status) {
-    if (status === 'source-confirmed') return 'Source confirmed'
+    if (status === 'source-confirmed') return 'Swapped'
     if (status === 'confirmed') {
         if (operation === 'sending') return 'Sent'
         if (operation === 'swapping') return 'Swapped'
