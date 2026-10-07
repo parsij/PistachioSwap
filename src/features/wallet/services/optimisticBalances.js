@@ -4,7 +4,7 @@ import { recordWalletActivity } from './walletActivity.js'
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 const STORAGE_KEY = 'pistachioswap:pending-wallet-operations:v1'
 const MAX_PENDING_AGE_MS = 24 * 60 * 60 * 1_000
-const SETTLED_DISPLAY_MS = 2_200
+const SETTLED_DISPLAY_MS = 5_000
 const VALID_OPERATIONS = new Set(['sending', 'swapping'])
 const VALID_SETTLEMENT_MODES = new Set(['receipt', 'external'])
 
@@ -300,11 +300,11 @@ async function receiptStatus(transaction, signal) {
     return 'pending'
 }
 
-function scheduleSettledRemoval(transactionHash) {
+function scheduleSettledRemoval(transactionHash, delayMs = SETTLED_DISPLAY_MS) {
     globalThis.setTimeout(() => {
         if (!settledOperations.delete(transactionHash)) return
         notify()
-    }, SETTLED_DISPLAY_MS)
+    }, delayMs)
 }
 
 hydratePendingTransactions()
@@ -365,17 +365,22 @@ function settleOptimisticWalletTransaction(transactionHash, status) {
     const transaction = pendingTransactions.get(hash)
     if (!transaction || !pendingTransactions.delete(hash)) return false
 
-    const confirmationAlreadyDisplayed =
-        status === 'confirmed' && transaction.displayStatus === 'confirmed'
+    // Receipt reconciliation may finish immediately after the swap controller
+    // confirms. Clear balance deltas now, but preserve the remaining display
+    // window so React has time to render the result and the user can see it.
+    const settledAt = status === 'confirmed' && transaction.displayStatus === 'confirmed'
+        ? transaction.confirmedAt ?? Date.now()
+        : Date.now()
+    const remainingDisplayMs = Math.max(0, SETTLED_DISPLAY_MS - (Date.now() - settledAt))
     persistPendingTransactions()
     publishSemanticActivity(transaction, status)
-    if (!confirmationAlreadyDisplayed) {
+    if (remainingDisplayMs > 0) {
         settledOperations.set(hash, {
             ...transaction,
             status,
-            settledAt: Date.now(),
+            settledAt,
         })
-        scheduleSettledRemoval(hash)
+        scheduleSettledRemoval(hash, remainingDisplayMs)
     } else {
         settledOperations.delete(hash)
     }
