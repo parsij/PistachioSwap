@@ -18,6 +18,7 @@ import {
     getOrderedEvmSteps,
     normalizeCrossChainRoute,
     normalizeCrossChainRouteResponse,
+    normalizeCrossChainRouteStatus,
     isExecutableCrossChainRouteForRequest,
     normalizePreparedCrossChainRoute,
     markCrossChainRouteSubmitted,
@@ -516,4 +517,12 @@ describe('cross-chain route normalization', () => {
         })
         vi.unstubAllGlobals()
     })
+})
+
+it('preserves submitted and destination hashes and chain IDs for receipt reconciliation', () => {
+    const sourceTransactionHash = `0x${'aa'.repeat(32)}`
+    const destinationTransactionHash = `0x${'bb'.repeat(32)}`
+    expect(normalizeCrossChainRouteStatus({ publicRouteId: 'bsc-op', status: 'destination-confirming',
+        sourceChainId: 56, destinationChainId: 10, sourceTransactionHash, destinationTransactionHash }))
+        .toMatchObject({ sourceChainId: 56, destinationChainId: 10, sourceTransactionHash, destinationTransactionHash })
 })

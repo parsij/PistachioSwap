@@ -28,7 +28,9 @@ import {
     confirmOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
     rollbackOptimisticWalletTransaction,
+    getOptimisticWalletTransactions,
 } from '../../wallet/services/optimisticBalances.js'
+import { resolveExternalWalletOperationStatus } from '../../wallet/services/reconcilePendingWalletOperations.js'
 
 const INITIAL_POLL_MS = 3_000
 const MAX_POLL_MS = 30_000
@@ -569,11 +571,15 @@ export function useCrossChainRoutes({
                     destinationChainId: preparedRoute?.destinationChainId ?? null,
                     routeId,
                 })
-                const nextStatus = await fetchCrossChainRouteStatus({
+                let nextStatus = await fetchCrossChainRouteStatus({
                     endpoint,
                     routeId,
                     signal: requestController.signal,
                 })
+                const operation = getOptimisticWalletTransactions(account).find(transaction => transaction.referenceId === routeId)
+                if (operation) {
+                    nextStatus = { ...nextStatus, status: await resolveExternalWalletOperationStatus(operation, nextStatus, requestController.signal) }
+                }
                 if (requestController.signal.aborted) return
                 setRouteStatus(nextStatus)
                 const isUnavailable = String(nextStatus.providerErrorCode ?? '')
@@ -610,7 +616,7 @@ export function useCrossChainRoutes({
             window.clearTimeout(timeoutId)
             document.removeEventListener('visibilitychange', handleVisibilityChange)
         }
-    }, [endpoint, persistedRouteId, preparedRoute])
+    }, [account, endpoint, persistedRouteId, preparedRoute])
 
     return {
         routes: sortedRoutes,
