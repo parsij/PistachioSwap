@@ -36,6 +36,8 @@ jobs:
         run: pnpm --filter @pistachio/api typecheck
       - name: Validate deploy script syntax
         run: bash -n scripts/deploy/activate-vps-release.sh
+      - name: Contributor agreement policy regression tests
+        run: node scripts/tests/contributor-assignment.test.mjs
       - name: Backend tests
         run: pnpm --filter @pistachio/api test
       - name: Gas Assist source capability tests

@@ -26,12 +26,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_API_URL: ${{ github.api_url }}
           REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: |
           node <<'NODE'
           const token = process.env.GH_TOKEN;
           const apiUrl = process.env.GITHUB_API_URL;
           const repository = process.env.REPOSITORY;
+          const repositoryOwner = process.env.REPOSITORY_OWNER;
           const prNumber = Number(process.env.PR_NUMBER);
           const statusContext = 'CAA v1.2 / PR-author acceptance';
 
@@ -41,7 +43,7 @@ jobs:
           const commentStatement =
             'I have read and agree to the PistachioSwap Contributor Assignment Agreement Version 1.2. I am the person controlling the GitHub account that opened this pull request. By posting this comment from that authenticated GitHub account, I intend this comment to serve as my electronic signature. I confirm that I own or control the rights I am assigning, have authority to assign them, and understand that this Agreement covers my applicable existing and future PistachioSwap Contributions as described in the Agreement.';
 
-          if (!token || !apiUrl || !repository || !Number.isSafeInteger(prNumber)) {
+          if (!token || !apiUrl || !repository || !repositoryOwner || !Number.isSafeInteger(prNumber)) {
             throw new Error('Missing GitHub event context needed to verify CAA acceptance.');
           }
 
@@ -100,6 +102,16 @@ jobs:
             console.error(message);
             if (detail) console.error(detail);
             process.exit(1);
+          }
+
+          if (authorLogin === repositoryOwner) {
+            await setStatus(
+              headSha,
+              'success',
+              `CAA v1.2 not required for repository owner @${authorLogin}.`,
+            );
+            console.log(`CAA v1.2 NOT REQUIRED for repository owner @${authorLogin}.`);
+            process.exit(0);
           }
 
           const body = pr.body || '';
