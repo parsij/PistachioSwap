@@ -142,7 +142,7 @@ function normalizeStoredTransaction(value) {
         createdAt <= 0 ||
         changes.length === 0
     ) return null
-    const displayStatus = value.displayStatus === 'confirmed' ? 'confirmed' : 'pending'
+    const displayStatus = ['confirmed', 'source-confirmed'].includes(value.displayStatus) ? value.displayStatus : 'pending'
     const confirmedAt = Number(value.confirmedAt)
     return {
         walletAddress,
@@ -153,7 +153,7 @@ function normalizeStoredTransaction(value) {
         referenceId: normalizeReferenceId(value.referenceId),
         createdAt,
         displayStatus,
-        confirmedAt: displayStatus === 'confirmed' &&
+        confirmedAt: displayStatus !== 'pending' &&
             Number.isFinite(confirmedAt) && confirmedAt > 0
             ? confirmedAt
             : null,
@@ -181,6 +181,10 @@ function hydratePendingTransactions() {
             const transaction = normalizeStoredTransaction(value)
             if (!transaction || now - transaction.createdAt >= MAX_PENDING_AGE_MS) continue
             pendingTransactions.set(transaction.transactionHash, transaction)
+            if (transaction.displayStatus === 'source-confirmed') {
+                const remainingMs = SETTLED_DISPLAY_MS - (now - (transaction.confirmedAt ?? now))
+                if (remainingMs > 0) globalThis.setTimeout(notify, remainingMs)
+            }
         }
         persistPendingTransactions()
     } catch {
@@ -352,20 +356,22 @@ export function beginOptimisticWalletTransaction({
     return true
 }
 
-export function confirmOptimisticWalletTransaction(transactionHash) {
+export function confirmOptimisticWalletTransaction(transactionHash, { sourceOnly = false } = {}) {
     const hash = normalizeHash(transactionHash)
     if (!hash) return false
     const transaction = pendingTransactions.get(hash)
     if (!transaction) return false
-    if (transaction.displayStatus === 'confirmed') return true
+    const displayStatus = sourceOnly ? 'source-confirmed' : 'confirmed'
+    if (transaction.displayStatus === 'confirmed' || transaction.displayStatus === displayStatus) return true
 
     pendingTransactions.set(hash, {
         ...transaction,
-        displayStatus: 'confirmed',
+        displayStatus,
         confirmedAt: Date.now(),
     })
     persistPendingTransactions()
     notify()
+    globalThis.setTimeout(notify, SETTLED_DISPLAY_MS)
     return true
 }
 
@@ -451,12 +457,12 @@ export function getWalletOperationDisplayState(walletAddress) {
     if (!wallet) return null
     const pending = [...pendingTransactions.values()]
         .filter((transaction) => transaction.walletAddress === wallet)
+        .filter((transaction) => transaction.displayStatus === 'pending' ||
+            Date.now() - (transaction.confirmedAt ?? transaction.createdAt) < SETTLED_DISPLAY_MS)
         .map((transaction) => ({
             ...transaction,
-            status: transaction.displayStatus === 'confirmed'
-                ? 'confirmed'
-                : 'pending',
-            displayAt: transaction.displayStatus === 'confirmed'
+            status: transaction.displayStatus,
+            displayAt: transaction.displayStatus !== 'pending'
                 ? transaction.confirmedAt ?? transaction.createdAt
                 : transaction.createdAt,
         }))
@@ -475,8 +481,7 @@ export async function reconcilePersistedWalletTransactions(walletAddress, { sign
     const wallet = normalizeAddress(walletAddress)
     if (!wallet) return
     const transactions = [...pendingTransactions.values()].filter((transaction) =>
-        transaction.walletAddress === wallet &&
-        transaction.settlementMode === 'receipt')
+        transaction.walletAddress === wallet && transaction.displayStatus !== 'source-confirmed')
 
     await Promise.all(transactions.map(async (transaction) => {
         const existing = receiptChecks.get(transaction.transactionHash)
@@ -484,7 +489,11 @@ export async function reconcilePersistedWalletTransactions(walletAddress, { sign
         const check = walletTransactionReceiptStatus(transaction.transactionHash, transactionSourceChainId(transaction), { signal })
             .then((status) => {
                 if (status === 'confirmed') {
-                    finishOptimisticWalletTransaction(transaction.transactionHash)
+                    if (transaction.settlementMode === 'external') {
+                        confirmOptimisticWalletTransaction(transaction.transactionHash, { sourceOnly: true })
+                    } else {
+                        finishOptimisticWalletTransaction(transaction.transactionHash)
+                    }
                 } else if (status === 'failed') {
                     rollbackOptimisticWalletTransaction(transaction.transactionHash)
                 }

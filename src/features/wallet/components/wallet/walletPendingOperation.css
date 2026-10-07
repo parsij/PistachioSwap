@@ -47,7 +47,8 @@
     color: #fff;
 }
 
-.uni-wallet-pending-operation[data-status='confirmed'] {
+.uni-wallet-pending-operation[data-status='confirmed'],
+.uni-wallet-pending-operation[data-status='source-confirmed'] {
     border-color: rgb(155 216 135 / 36%);
 }
 
@@ -91,7 +92,8 @@
     border-radius: 50%;
 }
 
-.uni-wallet-pending-operation[data-status='confirmed'] .uni-wallet-operation-result {
+.uni-wallet-pending-operation[data-status='confirmed'] .uni-wallet-operation-result,
+.uni-wallet-pending-operation[data-status='source-confirmed'] .uni-wallet-operation-result {
     background: rgb(155 216 135 / 18%);
     color: #c9f4bb;
     box-shadow:
