@@ -9,6 +9,7 @@ import {
     reconcilePersistedWalletTransactions,
     rollbackOptimisticWalletTransaction,
     walletTransactionReceiptStatus,
+    confirmOptimisticWalletTransaction,
 } from './optimisticBalances.js'
 
 const CROSS_CHAIN_TERMINAL_FAILURES = new Set([
@@ -52,6 +53,7 @@ export async function resolveExternalWalletOperationStatus(transaction, result, 
     if (status === 'completed') return status
     try {
         const source = await walletTransactionReceiptStatus(transaction.transactionHash, sourceChainId, { signal })
+        if (source === 'confirmed') confirmOptimisticWalletTransaction(transaction.transactionHash, { sourceOnly: true })
         if (source === 'failed') return 'failed'
     } catch {
         // Missing or unreachable RPC is never evidence of success or failure.

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { CURATED_EVM_CHAIN_IDS } from '../../../web3/curatedEvmChains.js'
 
 const status = vi.hoisted(() => vi.fn())
 vi.mock('../../cross-chain/services/crossChainRoutes.js', async (original) => ({
@@ -72,21 +73,22 @@ async function checkRoute(overrides = {}, receiptStatus = '0x1', receiptHash = d
 it('completes BSC to OP from the exact destination receipt even when provider status lags', async () => {
     const { display, fetch } = await checkRoute()
     expect(display.status).toBe('confirmed')
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ method: 'eth_getTransactionReceipt', params: [destinationHash] })
-    expect(fetch.mock.calls[0][0]).toContain('optimism')
+    const destinationCall = fetch.mock.calls.find(([, options]) => JSON.parse(options.body).params[0] === destinationHash)
+    expect(JSON.parse(destinationCall[1].body)).toMatchObject({ method: 'eth_getTransactionReceipt', params: [destinationHash] })
+    expect(destinationCall[0]).toContain('optimism')
 })
 
 it('does not complete a bridge when only the BSC deposit succeeded', async () => {
     const { display } = await checkRoute({ destinationTransactionHash: null }, '0x1', hash)
-    expect(display.status).toBe('pending')
+    expect(display.status).toBe('source-confirmed')
 })
 
 it('waits for the destination receipt even if provider prematurely says completed', async () => {
     expect((await checkRoute({ status: 'completed' }, null)).display.status).toBe('pending')
 })
 
-it('rejects a receipt belonging to a different hash', async () => {
-    expect((await checkRoute({}, '0x1', hash)).display.status).toBe('pending')
+it('does not mistake a source receipt for the destination receipt', async () => {
+    expect((await checkRoute({}, '0x1', hash)).display.status).toBe('source-confirmed')
 })
 
 it('marks a reverted destination as failed', async () => {
@@ -100,7 +102,7 @@ it.each([
 ])('does not use an unrelated route or chain receipt: %j', async (overrides) => {
     const { display, fetch } = await checkRoute(overrides)
     expect(display.status).toBe('pending')
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch.mock.calls.every(([, options]) => JSON.parse(options.body).params[0] === hash)).toBe(true)
 })
 
 it('expires the pending indicator and optimistic deltas at 15 minutes without inventing success', async () => {
@@ -120,3 +122,35 @@ it('expires the pending indicator and optimistic deltas at 15 minutes without in
 it('marks a reverted submitted source hash as failed without claiming bridge completion', async () => {
     expect((await checkRoute({ destinationTransactionHash: null }, '0x0', hash)).display.status).toBe('failed')
 })
+
+it.each(CURATED_EVM_CHAIN_IDS)(
+    'verifies the submitted source hash on chain %s even when route status is unavailable', async (chainId) => {
+        vi.useFakeTimers()
+        const store = await import('./optimisticBalances.js')
+        store.beginOptimisticWalletTransaction({ walletAddress: wallet, transactionHash: hash, operation: 'swapping',
+            settlementMode: 'external', referenceId: 'all-chains', changes: [
+                { chainId, tokenAddress: '0x0000000000000000000000000000000000000000', deltaRaw: -75n },
+                { chainId: chainId === 10 ? 56 : 10, tokenAddress: '0x0000000000000000000000000000000000000000', deltaRaw: 70n },
+            ] })
+        const fetch = vi.fn(async () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1,
+            result: { status: '0x1', transactionHash: hash } })))
+        vi.stubGlobal('fetch', fetch)
+        status.mockRejectedValue(new Error('provider status unavailable'))
+        const { reconcilePendingWalletOperations } = await import('./reconcilePendingWalletOperations.js')
+        await reconcilePendingWalletOperations(wallet)
+        expect(fetch).toHaveBeenCalledTimes(1)
+        expect(JSON.parse(fetch.mock.calls[0][1].body).params).toEqual([hash])
+        expect(store.getWalletOperationDisplayState(wallet).status).toBe('source-confirmed')
+        expect(store.getOptimisticWalletTransactions(wallet)).toHaveLength(1)
+        vi.advanceTimersByTime(5_000)
+        expect(store.getWalletOperationDisplayState(wallet)).toBeNull()
+        expect(store.getOptimisticWalletTransactions(wallet)).toHaveLength(1)
+        vi.resetModules()
+        const restored = await import('./optimisticBalances.js')
+        expect(restored.getWalletOperationDisplayState(wallet)).toBeNull()
+        expect(restored.getOptimisticWalletTransactions(wallet)).toHaveLength(1)
+        restored.finishOptimisticWalletTransaction(hash)
+        expect(restored.getWalletOperationDisplayState(wallet).status).toBe('confirmed')
+        vi.advanceTimersByTime(5_000)
+    },
+)

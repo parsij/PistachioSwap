@@ -24,6 +24,7 @@ import './walletPendingOperation.css'
 const RECEIPT_POLL_MS = 4_000
 
 function operationLabel(operation, status) {
+    if (status === 'source-confirmed') return 'Source confirmed'
     if (status === 'confirmed') {
         if (operation === 'sending') return 'Sent'
         if (operation === 'swapping') return 'Swapped'
@@ -40,6 +41,7 @@ function operationLabel(operation, status) {
 }
 
 function operationTitle(status) {
+    if (status === 'source-confirmed') return 'Source transaction confirmed; destination settlement is still being tracked'
     if (status === 'confirmed') return 'Transaction confirmed'
     if (status === 'failed') return 'Transaction failed'
     return 'Transaction submitted and waiting for settlement'
@@ -72,7 +74,7 @@ function OperationMark({ status }) {
                             mass: 0.72,
                         }}
                     >
-                        {status === 'confirmed'
+                        {status !== 'failed'
                             ? <Check aria-hidden="true" />
                             : <X aria-hidden="true" />}
                     </motion.span>
