@@ -23,8 +23,12 @@ import {
 // Explicitly verified deployments. New chains must be added deliberately.
 const DLN_SOURCE_BY_EVM_CHAIN: Readonly<Record<number, string>> = {
     1: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
+    10: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
     56: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
+    137: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
     8453: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
+    42161: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
+    59144: '0xef4fb24ad0916217251f553c0596f8edc630eb66',
 }
 
 export function createDebridgeAdapter(http: HttpJson = fetchJson): CrossChainAdapter {
@@ -51,6 +55,7 @@ export function createDebridgeAdapter(http: HttpJson = fetchJson): CrossChainAda
                 const chainId = Number(chain.originalChainId ?? chain.chainId)
                 const targets = [
                     DLN_SOURCE_BY_EVM_CHAIN[chainId],
+                    ...(DLN_SOURCE_BY_EVM_CHAIN[chainId] ? ['0x663dc15d3c1ac63ff12e45ab68fea3f0a883c251'] : []),
                     chain.dlnSourceAddress,
                     chain.sourceContractAddress,
                     isRecord(chain.contracts) ? chain.contracts.dlnSource : null,
@@ -97,11 +102,12 @@ export function createDebridgeAdapter(http: HttpJson = fetchJson): CrossChainAda
                 srcChainTokenInAmount: request.amount,
                 dstChainId: route.providerDestinationChainId,
                 dstChainTokenOut: request.destinationAsset.address,
+                dstChainTokenOutAmount: 'auto',
                 dstChainTokenOutRecipient: request.recipient,
                 senderAddress: request.ownerAddress,
                 srcChainOrderAuthorityAddress: request.ownerAddress,
                 dstChainOrderAuthorityAddress: request.recipient,
-                prependOperatingExpenses: true,
+                prependOperatingExpenses: false,
                 ...(provider.referralCode ? { referralCode: provider.referralCode } : {}),
                 ...(platformFee.bps > 0
                     ? {
@@ -129,7 +135,7 @@ export function createDebridgeAdapter(http: HttpJson = fetchJson): CrossChainAda
             }
             const approval = normalizeDebridgeApproval(payload, tx, request)
             const transaction = {
-                ...validateProviderTransaction(tx, request, capabilities),
+                ...validateProviderTransaction(isRecord(tx) ? { ...tx, chainId: tx.chainId ?? request.sourceAsset.chainId } : tx, request, capabilities),
                 allowanceTarget: approval?.allowanceTarget ?? null,
             }
             const approvalSteps = approval?.transaction
@@ -227,8 +233,12 @@ function normalizeDebridgeApproval(
 ) {
     if (request.sourceAsset.address === NATIVE_TOKEN_ADDRESS) return null
     const transaction = isRecord(transactionValue) ? transactionValue : {}
-    const rawTarget = transaction.allowanceTarget ?? payload.allowanceTarget
-    const rawAmount = transaction.allowanceValue ?? payload.allowanceValue
+    const transactionTarget = normalizeAddress(transaction.to)
+    const independentlyKnownTarget = transactionTarget && DLN_SOURCE_BY_EVM_CHAIN[request.sourceAsset.chainId] &&
+        [DLN_SOURCE_BY_EVM_CHAIN[request.sourceAsset.chainId], '0x663dc15d3c1ac63ff12e45ab68fea3f0a883c251'].includes(transactionTarget)
+        ? transactionTarget : null
+    const rawTarget = transaction.allowanceTarget ?? payload.allowanceTarget ?? independentlyKnownTarget
+    const rawAmount = transaction.allowanceValue ?? payload.allowanceValue ?? (independentlyKnownTarget ? request.amount : undefined)
     const allowanceTarget = normalizeAddress(rawTarget)
     if (!allowanceTarget || allowanceTarget === NATIVE_TOKEN_ADDRESS) {
         throw new Error('deBridge returned no authoritative allowance target.')

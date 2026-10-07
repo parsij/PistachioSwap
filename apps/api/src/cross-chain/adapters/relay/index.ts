@@ -39,6 +39,7 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
         name: 'relay',
         async getCapabilities(signal) {
             if (!provider.enabled) return unavailable('disabled')
+            if (!provider.apiKey) return unavailable('not configured: Relay quote/v2 requires an API key')
             const incompatible = platformFeeIncompatibility('relay')
             if (incompatible) return unavailable(incompatible)
             const payload = await http(new URL(`${provider.baseUrl}/chains`), {

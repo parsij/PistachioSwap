@@ -47,16 +47,10 @@ export function createZeroXCrossChainAdapter(
                 new URL('/cross-chain/sources', provider.baseUrl),
                 { headers, signal, timeoutMs: config.quoteTimeoutMs },
             )
-            const chainIds = readSupportedChainIds(payload)
-            const routes = chainIds.flatMap((sourceChainId) =>
-                chainIds
-                    .filter((destinationChainId) => destinationChainId !== sourceChainId)
-                    .map((destinationChainId) => ({
-                        sourceChainId,
-                        destinationChainId,
-                        transactionTargets: [],
-                    })),
-            )
+            const routes = readSupportedChainPairs(payload).map(pair => ({
+                ...pair,
+                transactionTargets: [],
+            }))
             return {
                 provider: PROVIDER,
                 available: routes.length > 0,
@@ -78,7 +72,7 @@ export function createZeroXCrossChainAdapter(
                 destinationAddress: request.recipient,
                 slippageBps: request.slippageBps,
                 maxNumQuotes: 1,
-                sortQuotesBy: 'buyAmount',
+                sortQuotesBy: 'price',
                 ...(fee.bps > 0 ? {
                     feeBps: fee.bps,
                     feeRecipient: fee.recipient!,
@@ -127,12 +121,12 @@ export function createZeroXCrossChainAdapter(
                 ...transactionValue,
                 chainId: request.sourceAsset.chainId,
             }, request, authoritativeCapabilities)
-            const allowanceTarget = normalizeAddress(
-                quote.allowanceTarget ?? transactionValue.allowanceTarget,
-            )
             const allowanceIssue = isRecord(quote.issues) && isRecord(quote.issues.allowance)
                 ? quote.issues.allowance
                 : null
+            const allowanceTarget = normalizeAddress(
+                quote.allowanceTarget ?? transactionValue.allowanceTarget ?? allowanceIssue?.spender,
+            )
             const issueSpender = allowanceIssue
                 ? normalizeAddress(allowanceIssue.spender)
                 : null
@@ -225,16 +219,20 @@ function unavailable(reason: string): ProviderCapabilities {
     }
 }
 
-function readSupportedChainIds(payload: unknown) {
-    const value = isRecord(payload) ? payload : {}
-    const sources = Array.isArray(value.sources)
-        ? value.sources
-        : Array.isArray(value.chains) ? value.chains : []
-    return [...new Set(sources.flatMap((source) => {
-        const record = isRecord(source) ? source : {}
-        const chainId = Number(record.chainId ?? record.id)
-        return Number.isInteger(chainId) && chainId > 0 ? [chainId] : []
-    }))]
+function readSupportedChainPairs(payload: unknown) {
+    const bridges = isRecord(payload) && Array.isArray(payload.bridges) ? payload.bridges : []
+    const pairs = new Map<string, { sourceChainId: number; destinationChainId: number }>()
+    for (const bridge of bridges) {
+        if (!isRecord(bridge) || !Array.isArray(bridge.chainPairs)) continue
+        for (const pair of bridge.chainPairs) {
+            if (!isRecord(pair)) continue
+            const sourceChainId = Number(pair.originChainId)
+            const destinationChainId = Number(pair.destinationChainId)
+            if (!Number.isSafeInteger(sourceChainId) || !Number.isSafeInteger(destinationChainId) || sourceChainId <= 0 || destinationChainId <= 0 || sourceChainId === destinationChainId) continue
+            pairs.set(sourceChainId + ':' + destinationChainId, { sourceChainId, destinationChainId })
+        }
+    }
+    return [...pairs.values()]
 }
 
 function firstQuote(payload: unknown) {

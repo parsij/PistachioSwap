@@ -64,6 +64,7 @@ describe('cross-chain backend', () => {
     beforeEach(() => {
         process.env.ACROSS_API_KEY = 'test-key'
         process.env.ACROSS_INTEGRATOR_ID = '0xdead'
+        process.env.RELAY_API_KEY = 'test-key'
     })
 
     afterEach(() => {
@@ -241,7 +242,7 @@ describe('cross-chain backend', () => {
         const http: HttpJson = async (url) => {
             urls.push(url.toString())
             if (url.pathname === '/cross-chain/sources') {
-                return { sources: [{ chainId: 1 }, { chainId: 8453 }] }
+                return { bridges: [{ chainPairs: [{ originChainId: 1, destinationChainId: 8453 }] }] }
             }
             if (url.pathname === '/cross-chain/status') {
                 return { status: 'completed', destinationTxHash: destinationHash }
@@ -305,7 +306,7 @@ describe('cross-chain backend', () => {
         }
         const makeAdapter = (to) => createZeroXCrossChainAdapter(async (url) => {
             if (url.pathname === '/cross-chain/sources') {
-                return { sources: [{ chainId: 56 }, { chainId: 8453 }] }
+                return { bridges: [{ chainPairs: [{ originChainId: 56, destinationChainId: 8453 }] }] }
             }
             return {
                 quotes: [{
@@ -1385,12 +1386,12 @@ describe('cross-chain backend', () => {
         process.env.PLATFORM_FEE_BPS = '0'
         const adapter = createDebridgeAdapter(async () => ({
             chains: [
-                { chainId: 10, originalChainId: 10 },
+                { chainId: 100, originalChainId: 100 },
                 { chainId: 100000002, originalChainId: 8453 },
             ],
         }))
         const capabilities = await adapter.getCapabilities()
-        expect(capabilities.routes.some(({ sourceChainId }) => sourceChainId === 10)).toBe(false)
+        expect(capabilities.routes.some(({ sourceChainId }) => sourceChainId === 100)).toBe(false)
     })
 
     it('uses mocked Chainflip SDK discovery, quote, prepare and state mapping', async () => {
