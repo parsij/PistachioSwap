@@ -754,6 +754,10 @@ export function normalizeCrossChainRouteStatus(payload) {
         status: String(readFirst(status, ['status', 'state'], 'unknown')).toLowerCase(),
         updatedAt: readFirst(status, ['updatedAt', 'lastUpdatedAt'], null),
         providerErrorCode: status?.providerErrorCode ?? null,
+        sourceChainId: Number(status?.sourceChainId ?? status?.sourceAsset?.chainId) || null,
+        destinationChainId: Number(status?.destinationChainId ?? status?.destinationAsset?.chainId) || null,
+        sourceTransactionHash: status?.sourceTransactionHash ?? null,
+        destinationTransactionHash: status?.destinationTransactionHash ?? null,
         steps: (Array.isArray(status?.steps) ? status.steps : []).map(normalizeStep),
     }
 }

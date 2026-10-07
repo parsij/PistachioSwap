@@ -15,6 +15,8 @@ import {
     getOptimisticWalletBalanceRevision,
     getWalletOperationDisplayState,
     subscribeOptimisticWalletBalances,
+    expirePendingWalletTransactions,
+    PENDING_WALLET_OPERATION_TIMEOUT_MS,
 } from '../../services/optimisticBalances.js'
 import { reconcilePendingWalletOperations } from '../../services/reconcilePendingWalletOperations.js'
 import './walletPendingOperation.css'
@@ -88,6 +90,13 @@ export default function PendingWalletOperation({ walletAddress }) {
     )
     const operation = getWalletOperationDisplayState(walletAddress)
     void revision
+
+    useEffect(() => {
+        if (operation?.status !== 'pending') return undefined
+        const remainingMs = Math.max(0, operation.createdAt + PENDING_WALLET_OPERATION_TIMEOUT_MS - Date.now())
+        const timer = globalThis.setTimeout(expirePendingWalletTransactions, remainingMs)
+        return () => globalThis.clearTimeout(timer)
+    }, [operation?.transactionHash, operation?.createdAt, operation?.status])
 
     useEffect(() => {
         if (!walletAddress) return undefined

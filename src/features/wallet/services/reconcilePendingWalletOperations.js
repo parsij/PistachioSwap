@@ -8,6 +8,7 @@ import {
     getOptimisticWalletTransactions,
     reconcilePersistedWalletTransactions,
     rollbackOptimisticWalletTransaction,
+    walletTransactionReceiptStatus,
 } from './optimisticBalances.js'
 
 const CROSS_CHAIN_TERMINAL_FAILURES = new Set([
@@ -25,6 +26,39 @@ function readPersistedRouteId() {
     }
 }
 
+export async function resolveExternalWalletOperationStatus(transaction, result, signal) {
+    const status = String(result?.status ?? '').trim().toLowerCase()
+    if (result?.publicRouteId && transaction.referenceId && result.publicRouteId !== transaction.referenceId) return 'pending'
+    if (result?.sourceTransactionHash && String(result.sourceTransactionHash).toLowerCase() !== transaction.transactionHash.toLowerCase()) return 'pending'
+
+    const sourceChainId = transaction.changes.find(change => BigInt(change.deltaRaw) < 0n)?.chainId
+    if (result?.sourceChainId && result.sourceChainId !== sourceChainId) return 'pending'
+    if (CROSS_CHAIN_TERMINAL_FAILURES.has(status)) return status
+
+    // The source receipt confirms only the deposit. Completion needs the
+    // destination receipt bound to this route and its expected output chain.
+    const destinationChainId = transaction.changes.find(change => BigInt(change.deltaRaw) > 0n)?.chainId
+    if (result?.destinationTransactionHash && (!destinationChainId || result.destinationChainId !== destinationChainId)) return 'pending'
+    if (result?.destinationTransactionHash && destinationChainId && result.destinationChainId === destinationChainId) {
+        try {
+            const receipt = await walletTransactionReceiptStatus(result.destinationTransactionHash, destinationChainId, { signal })
+            if (receipt === 'confirmed') return 'completed'
+            if (receipt === 'failed') return 'failed'
+            return 'pending'
+        } catch {
+            return 'pending'
+        }
+    }
+    if (status === 'completed') return status
+    try {
+        const source = await walletTransactionReceiptStatus(transaction.transactionHash, sourceChainId, { signal })
+        if (source === 'failed') return 'failed'
+    } catch {
+        // Missing or unreachable RPC is never evidence of success or failure.
+    }
+    return status || 'pending'
+}
+
 async function reconcileExternalOperation(transaction, routeId, signal) {
     if (!routeId) return
     try {
@@ -33,7 +67,7 @@ async function reconcileExternalOperation(transaction, routeId, signal) {
             routeId,
             signal,
         })
-        const status = String(result?.status ?? '').trim().toLowerCase()
+        const status = await resolveExternalWalletOperationStatus(transaction, result, signal)
         if (status === 'completed') {
             finishOptimisticWalletTransaction(transaction.transactionHash)
         } else if (CROSS_CHAIN_TERMINAL_FAILURES.has(status)) {
@@ -48,7 +82,7 @@ async function reconcileExternalOperation(transaction, routeId, signal) {
 /**
  * Reconciles persisted pending UI state after a reload. Same-chain operations
  * are checked against their source-chain receipt; cross-chain operations stay
- * pending until the route itself reaches a terminal state.
+ * pending until their destination receipt or provider confirms settlement.
  */
 export async function reconcilePendingWalletOperations(walletAddress, { signal } = {}) {
     await reconcilePersistedWalletTransactions(walletAddress, { signal })

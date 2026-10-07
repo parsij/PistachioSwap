@@ -3,7 +3,9 @@ import { recordWalletActivity } from './walletActivity.js'
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
 const STORAGE_KEY = 'pistachioswap:pending-wallet-operations:v1'
-const MAX_PENDING_AGE_MS = 24 * 60 * 60 * 1_000
+// Pending UI state is bounded; expiration never publishes a successful swap.
+export const PENDING_WALLET_OPERATION_TIMEOUT_MS = 15 * 60 * 1_000
+const MAX_PENDING_AGE_MS = PENDING_WALLET_OPERATION_TIMEOUT_MS
 const SETTLED_DISPLAY_MS = 5_000
 const VALID_OPERATIONS = new Set(['sending', 'swapping'])
 const VALID_SETTLEMENT_MODES = new Set(['receipt', 'external'])
@@ -177,7 +179,7 @@ function hydratePendingTransactions() {
         const now = Date.now()
         for (const value of parsed) {
             const transaction = normalizeStoredTransaction(value)
-            if (!transaction || now - transaction.createdAt > MAX_PENDING_AGE_MS) continue
+            if (!transaction || now - transaction.createdAt >= MAX_PENDING_AGE_MS) continue
             pendingTransactions.set(transaction.transactionHash, transaction)
         }
         persistPendingTransactions()
@@ -239,7 +241,7 @@ function notify() {
 function pruneExpired(now = Date.now()) {
     let changed = false
     for (const [hash, transaction] of pendingTransactions) {
-        if (now - transaction.createdAt <= MAX_PENDING_AGE_MS) continue
+        if (now - transaction.createdAt < MAX_PENDING_AGE_MS) continue
         pendingTransactions.delete(hash)
         changed = true
     }
@@ -273,8 +275,13 @@ function configuredRpcUrl(chainId) {
     return chain?.rpcUrls?.default?.http?.[0] ?? null
 }
 
-async function receiptStatus(transaction, signal) {
-    const chainId = transactionSourceChainId(transaction)
+export function expirePendingWalletTransactions() {
+    pruneExpired()
+}
+
+export async function walletTransactionReceiptStatus(transactionHash, chainId, { signal } = {}) {
+    const hash = normalizeHash(transactionHash)
+    if (!hash) return 'pending'
     const rpcUrl = configuredRpcUrl(chainId)
     if (!rpcUrl) return 'pending'
     const response = await fetch(rpcUrl, {
@@ -286,14 +293,17 @@ async function receiptStatus(transaction, signal) {
         },
         body: JSON.stringify({
             jsonrpc: '2.0',
-            id: `pending-wallet:${transaction.transactionHash}`,
+            id: `pending-wallet:${hash}`,
             method: 'eth_getTransactionReceipt',
-            params: [transaction.transactionHash],
+            params: [hash],
         }),
-        signal,
+        signal: signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(12_000)])
+            : AbortSignal.timeout(12_000),
     })
     if (!response.ok) return 'pending'
     const payload = await response.json().catch(() => null)
+    if (payload?.error || normalizeHash(payload?.result?.transactionHash) !== hash) return 'pending'
     const status = String(payload?.result?.status ?? '').toLowerCase()
     if (status === '0x1' || status === '1') return 'confirmed'
     if (status === '0x0' || status === '0') return 'failed'
@@ -471,7 +481,7 @@ export async function reconcilePersistedWalletTransactions(walletAddress, { sign
     await Promise.all(transactions.map(async (transaction) => {
         const existing = receiptChecks.get(transaction.transactionHash)
         if (existing) return existing
-        const check = receiptStatus(transaction, signal)
+        const check = walletTransactionReceiptStatus(transaction.transactionHash, transactionSourceChainId(transaction), { signal })
             .then((status) => {
                 if (status === 'confirmed') {
                     finishOptimisticWalletTransaction(transaction.transactionHash)
