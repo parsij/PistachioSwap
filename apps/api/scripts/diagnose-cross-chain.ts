@@ -130,7 +130,7 @@ try {
     } else {
         quoteFailure = {
             code: 'QUOTE_DIAGNOSTIC_FAILED',
-            message: error instanceof Error ? error.message : 'Quote diagnostic failed.',
+            message: 'Quote diagnostic failed; upstream details withheld.',
         }
     }
 }
