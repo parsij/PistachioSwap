@@ -55,6 +55,7 @@ const messages = {
     SELF_HOSTED_PAYMASTER_UNAVAILABLE: 'Gas Assist is unavailable for this network.',
     PAYMASTER_CHAIN_MISMATCH: 'The Gas Assist RPC or Bundler is connected to the wrong network.',
     PAYMASTER_RPC_UNAVAILABLE: 'The network RPC or Bundler could not be reached. Try again shortly.',
+    PAYMASTER_NOT_SUBMITTED: 'The sponsored transaction was not included before its authorization expired. Create a fresh quote to try again.',
     PAYMASTER_FEE_CAP_EXCEEDED: 'Network gas prices exceed the sponsor’s limit. Try again when gas prices fall.',
     PAYMASTER_RPC_REJECTED: 'The network RPC or Bundler rejected this swap. Refresh the quote and try again.',
     PAYMASTER_DEPOSIT_INSUFFICIENT: 'The sponsor needs more native gas funding. Try again after it is refilled.',
