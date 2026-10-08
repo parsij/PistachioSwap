@@ -263,11 +263,13 @@ export async function requestPrivateGasAssist({
     body,
     clientIp,
     idempotencyKey,
+    signal,
 }: {
     pathname: string
     body: unknown
     clientIp: string
     idempotencyKey: string
+    signal?: AbortSignal
 }) {
     if (!/^\/internal\/v1\/[a-z0-9_\-/]+$/u.test(pathname)) {
         throw new Error('Invalid private Gas Assist path.')
@@ -288,6 +290,9 @@ export async function requestPrivateGasAssist({
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), config.timeoutMs)
     timeout.unref()
+    const onAbort = () => controller.abort(signal?.reason)
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener('abort', onAbort, { once: true })
     try {
         const response = await fetch(target, {
             method: 'POST',
@@ -342,6 +347,7 @@ export async function requestPrivateGasAssist({
         )
     } finally {
         clearTimeout(timeout)
+        signal?.removeEventListener('abort', onAbort)
     }
 }
 

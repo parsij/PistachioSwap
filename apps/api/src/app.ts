@@ -135,7 +135,9 @@ export function createApp() {
     const config = validateStartupConfig()
     const app = Fastify({
         bodyLimit: 512 * 1024,
-        connectionTimeout: 15_000,
+        // Sponsored cross-chain previews can require multiple provider requotes.
+        // Keep the upstream socket open beyond their bounded 45s deadline.
+        connectionTimeout: 60_000,
         logController: new LogController({ disableRequestLogging: true }),
         routerOptions: {
             maxParamLength: 160,

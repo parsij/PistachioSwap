@@ -29,6 +29,7 @@ export class CrossChainRouteService {
             createCrossChainRouteRepository(),
         private readonly privateGasAssistRequest: PrivateGasAssistRequest =
             requestPrivateGasAssist,
+        private readonly previewDeadlineMs = 45_000,
     ) {}
 
     providerNames() {
@@ -301,6 +302,7 @@ export class CrossChainRouteService {
                         ? '/internal/v1/sponsorship/cross-chain/preview'
                         : '/internal/v1/sponsorship/cross-chain/orders',
                     clientIp,
+                    signal,
                     idempotencyKey,
                     body: {
                         walletAddress: ownerAddress,
@@ -375,16 +377,44 @@ export class CrossChainRouteService {
         routeId = requireRouteId(routeId)
         const route = await this.repository.get(routeId)
         if (!route) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
-        return this.prepareSponsorship({
-            routeId,
-            ownerValue: route.ownerAddress,
-            sourceChainId: route.sourceAsset.chainId,
-            clientIp,
-            idempotencyKey: `preview:${routeId}`,
-            signal,
-            preview: true,
-            authenticated: false,
+        // Bound the whole quote/estimate/requote sequence. Fastify and nginx must
+        // receive a JSON response before their upstream connection can time out.
+        const deadline = AbortSignal.timeout(this.previewDeadlineMs)
+        const previewSignal = signal
+            ? AbortSignal.any([signal, deadline])
+            : deadline
+        const timeoutError = () => routeError(
+            'CROSS_CHAIN_GATEWAY_TIMEOUT',
+            'Gas Assist took too long to confirm this route. Try again.',
+            504,
+        )
+        let removeTimeoutListener: (() => void) | undefined
+        const timeoutResult = new Promise<never>((_resolve, reject) => {
+            const onTimeout = () => reject(timeoutError())
+            deadline.addEventListener('abort', onTimeout, { once: true })
+            removeTimeoutListener = () =>
+                deadline.removeEventListener('abort', onTimeout)
         })
+        try {
+            return await Promise.race([
+                this.prepareSponsorship({
+                    routeId,
+                    ownerValue: route.ownerAddress,
+                    sourceChainId: route.sourceAsset.chainId,
+                    clientIp,
+                    idempotencyKey: `preview:${routeId}`,
+                    signal: previewSignal,
+                    preview: true,
+                    authenticated: false,
+                }),
+                timeoutResult,
+            ])
+        } catch (error) {
+            if (deadline.aborted) throw timeoutError()
+            throw error
+        } finally {
+            removeTimeoutListener?.()
+        }
     }
 
     private async requireAuthenticationScope(

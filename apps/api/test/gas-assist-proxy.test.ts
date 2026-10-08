@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
     gasAssistProxyRoutes,
     readGasAssistProxyConfig,
+    requestPrivateGasAssist,
 } from '../src/modules/gas-assist-proxy.js'
 
 const TOKEN = 'public-proxy-private-token-32-characters'
@@ -213,6 +214,36 @@ describe('private Gas Assist proxy', () => {
         } finally {
             await app.close()
         }
+    })
+
+    it('cancels internal Gas Assist fetches when the sponsorship caller aborts', async () => {
+        process.env.GAS_ASSIST_SERVICE_ENABLED = 'true'
+        process.env.GAS_ASSIST_SERVICE_URL = 'http://127.0.0.1:3002'
+        process.env.GAS_ASSIST_INTERNAL_TOKEN = TOKEN
+        const controller = new AbortController()
+        const fetchMock = vi.fn((_url: URL, init: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+                const signal = init.signal as AbortSignal
+                signal.addEventListener('abort', () =>
+                    reject(signal.reason), { once: true })
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const pending = requestPrivateGasAssist({
+            pathname: '/internal/v1/sponsorship/cross-chain/preview',
+            body: { test: true },
+            clientIp: '127.0.0.1',
+            idempotencyKey: 'test-cancel-preview',
+            signal: controller.signal,
+        })
+        controller.abort()
+        await expect(pending).rejects.toMatchObject({
+            code: 'GAS_ASSIST_UNAVAILABLE',
+            statusCode: 503,
+        })
+        expect(fetchMock).toHaveBeenCalledOnce()
+        expect((fetchMock.mock.calls[0][1].signal as AbortSignal).aborted).toBe(true)
     })
 
     it('returns a generic unavailable response when the private service fails', async () => {

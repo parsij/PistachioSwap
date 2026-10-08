@@ -1940,6 +1940,34 @@ describe('cross-chain backend', () => {
         expect(privateRequest).toHaveBeenCalledTimes(3)
     })
 
+    it('returns a bounded JSON timeout when cross-chain sponsorship preview stalls', async () => {
+        const adapter = fixtureAdapter('across', '900')
+        const privateRequest = vi.fn(({ signal }: { signal?: AbortSignal }) =>
+            new Promise<never>((_resolve, reject) => {
+                if (!signal) return reject(new Error('Missing preview abort signal.'))
+                signal.addEventListener('abort', () =>
+                    reject(signal.reason), { once: true })
+            }),
+        )
+        const service = new CrossChainRouteService(
+            new CrossChainRegistry([adapter]),
+            new MemoryCrossChainRouteRepository(),
+            privateRequest,
+            25,
+        )
+        const quoted = await service.quote(request)
+        await expect(service.previewSponsorship({
+            routeId: quoted.selectedRoute.routeId,
+            clientIp: '127.0.0.1',
+        })).rejects.toMatchObject({
+            code: 'CROSS_CHAIN_GATEWAY_TIMEOUT',
+            statusCode: 504,
+        })
+        expect(privateRequest).toHaveBeenCalledWith(expect.objectContaining({
+            signal: expect.any(AbortSignal),
+        }))
+    })
+
     it('prefers the lower-gas route when destination output is equal', async () => {
         const across = fixtureAdapter('across', '900')
         const relay = fixtureAdapter('relay', '900')
