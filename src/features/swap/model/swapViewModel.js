@@ -441,6 +441,7 @@ export function createSwapViewModel(context) {
                 buyPanel: {
                     side: 'buy',
                     label: copy.buy,
+                    quoteReady: activeQuoteStatus === 'success' && Boolean(activeQuote),
                     token: buyToken,
                     chainId: routing.buyChainId,
                     amount: {

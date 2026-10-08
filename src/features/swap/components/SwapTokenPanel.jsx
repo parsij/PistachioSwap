@@ -16,6 +16,7 @@ export default function SwapTokenPanel(props) {
         side, label, token, chainId, amount, secondaryValue, layoutIdentity,
         motionConfig, onOpenTokenSelector, onToggleDenomination, loading = false,
         quickAmounts, balance, highlighted = false, invalid = false,
+        quoteReady = false,
     } = props
     const isSell = side === 'sell'
     const panelClassName = [
@@ -49,6 +50,7 @@ export default function SwapTokenPanel(props) {
             }}
             onBlurCapture={quickAmounts?.onBlur}
             data-highlighted={highlighted || undefined}
+            data-quote-ready={!isSell && quoteReady ? 'true' : undefined}
         >
             <span className={`panel-label ${side}-label`}>{label}</span>
             {isSell && quickAmounts && (
