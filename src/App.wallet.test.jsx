@@ -367,6 +367,7 @@ describe('App wallet integration', () => {
         mocks.sendPreparedCrossChainTransaction.mockResolvedValue(`0x${'12'.repeat(32)}`)
         mocks.waitForCrossChainApproval.mockResolvedValue({ status: 'success' })
         window.localStorage.clear()
+        window.history.replaceState(null, '', '/swap/')
         mocks.marketTokens = []
         mocks.useWalletTokens.mockReturnValue({
             tokens: [],
@@ -1628,6 +1629,33 @@ describe('App wallet integration', () => {
         // CSS selector evaluation for detached synthetic Radix nodes is not a
         // reliable JSDOM signal. The open state above exercises the real portal.
         style.remove()
+    })
+
+    it.each(['sell', 'buy'])('clears the previous submitted transaction when a new %s token is selected', async (side) => {
+        configureSameChainQuoteToken()
+        mocks.marketTokens.push({
+            ...mocks.marketTokens[0],
+            address: '0x0000000000000000000000000000000000000099',
+            symbol: 'NEXT',
+            name: 'Next selected token',
+        })
+        mocks.fetchSwapQuote.mockResolvedValue(sameChainExecutableQuote())
+        mocks.sendTransaction.mockResolvedValue(`0x${'33'.repeat(32)}`)
+        const view = render(<App />)
+        selectQtknToBnb(view.container, view.getAllByText)
+        fireEvent.change(view.getByRole('textbox', { name: 'Sell amount' }), { target: { value: '0.001' } })
+        await waitFor(() => expect(view.getByRole('button', { name: 'Review swap' })).toBeTruthy())
+        fireEvent.click(view.getByRole('button', { name: 'Review swap' }))
+        fireEvent.click(view.getByRole('button', { name: 'Confirm swap' }))
+        await waitFor(() => expect(view.container.querySelector('.primary-action').textContent).toBe('Transaction submitted'))
+        expect(mocks.sendTransaction).toHaveBeenCalledOnce()
+        fireEvent.click(view.container.querySelector(`.${side}-token-position button`))
+        fireEvent.click(findTokenRowByText('NEXT'))
+
+        await waitFor(() => expect(view.container.querySelector('.primary-action').textContent).not.toBe('Transaction submitted'))
+        expect(view.queryByText('Transaction submitted. Waiting for confirmation.')).toBeNull()
+        expect(view.container.querySelector(`.${side}-token-position`).textContent).toContain('NEXT')
+        expect(mocks.sendTransaction).toHaveBeenCalledOnce()
     })
 
     it('keeps review open across unrelated wallet and token-data rerenders', async () => {

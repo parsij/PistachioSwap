@@ -564,11 +564,17 @@ export function useSwapController() {
     }, [crossChain.requestKey, crossChain.routes.phase, gasAssist.activeQuoteStatus, quote.quoteStatus,
         quote.snapshot?.requestKey, routing.buyChainId, routing.modes, routing.routingMode, routing.sellChainId])
 
+    const { resetQuote } = quote
+    const { cancelSameChainExecution } = execution
+    const { closeReview } = review
+    const { resetReceiptLifecycle } = receipt
     const resetQuoteAndReview = useCallback(() => {
-        quote.resetQuote()
-        execution.cancelSameChainExecution()
-        review.closeReview()
-    }, [execution.cancelSameChainExecution, quote.resetQuote, review.closeReview])
+        resetQuote()
+        cancelSameChainExecution()
+        closeReview()
+        resetReceiptLifecycle()
+        setStatusMessage(null)
+    }, [cancelSameChainExecution, closeReview, resetQuote, resetReceiptLifecycle])
     const handleSameChainReviewOpenChange = useCallback((open) => {
         if (!open) execution.cancelSameChainExecution()
         review.handleOpenChange(open)

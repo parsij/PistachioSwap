@@ -42,6 +42,10 @@ jobs:
         run: pnpm --filter @pistachio/api test
       - name: Gas Assist source capability tests
         run: pnpm exec vitest run src/features/passkey/services/walletWorker.gasAssist.test.js src/features/passkey/services/walletManagerSelfHostedPaymasterSigning.test.js src/services/swapExecutionMode.test.js src/features/gas-assist/services/capabilityRegistry.test.js src/features/wallet/services/walletHistoryMultichain.test.js src/features/gas-assist/services/selfHostedPaymaster.test.js
+      - name: Wallet import and receipt reset regressions
+        run: pnpm exec vitest run src/features/passkey/components src/features/passkey/services/walletManagerImport.test.js src/features/swap/hooks/useSameChainReceiptLifecycle.test.jsx
+      - name: New token transaction state regressions
+        run: pnpm exec vitest run src/App.wallet.test.jsx -t 'clears the previous submitted transaction'
       - name: Build
         env:
           NODE_OPTIONS: --max-old-space-size=8192
