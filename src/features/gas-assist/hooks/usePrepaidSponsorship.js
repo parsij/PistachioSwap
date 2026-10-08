@@ -720,7 +720,11 @@ export function usePrepaidSponsorship({
                     swapTransactionHash: recovered.transactionHash, atomicTransactionHash: recovered.transactionHash,
                     atomicExecution: true, crossChainRouteId: operation.routeId }
                 setState((current) => ({ ...current, order: { ...current.order, ...order }, phase,
-                    error: phase === 'failed' ? flowError('PAYMASTER_EXECUTION_REVERTED', 'The sponsored operation could not complete.') : null,
+                    error: phase === 'failed'
+                        ? recovered.failureCode === 'PAYMASTER_NOT_SUBMITTED'
+                            ? flowError('PAYMASTER_NOT_SUBMITTED', 'The sponsored operation was not confirmed on-chain before its authorization expired.')
+                            : flowError('PAYMASTER_EXECUTION_REVERTED', 'The sponsored operation could not complete.')
+                        : null,
                     lastPollError: null }))
                 if (terminal || recovered.sourceStatus === 'reverted') {
                     removePendingUserOperation(operation.orderId)
