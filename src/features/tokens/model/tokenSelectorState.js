@@ -136,7 +136,7 @@ function compareCanonicalIdentity(left, right) {
 
 function walletTrustTier(token) {
     if (token?.classificationTier === 'core') return 0
-    if (token?.classificationTier === 'established') return 1
+    if (token?.classificationTier === 'established') return 0
     if (token?.isNative === true || token?.officialAsset === true) return 0
     const reasons = Array.isArray(token?.recognitionReasons)
         ? token.recognitionReasons
@@ -148,9 +148,9 @@ function walletTrustTier(token) {
 }
 
 /**
- * Sorts wallet records by identity confidence, trusted USD value, balance, and
- * deterministic identity. Curated/native assets cannot be displaced by an
- * implausibly priced merely-recognized token.
+ * Sorts trusted wallet assets by USD value, balance, and deterministic identity.
+ * Core and established assets share the same priority; hidden or unverified
+ * records stay after trusted holdings.
  */
 export function sortWalletTokens(tokens) {
     return tokens.toSorted((left, right) => {

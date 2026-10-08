@@ -1,3 +1,5 @@
+import { resolveWalletUsdValue } from './walletTokens.js'
+
 function parseDecimal(value) {
     const match = /^(\d+)(?:\.(\d+))?$/.exec(String(value ?? '').trim())
     if (!match) return null
@@ -133,18 +135,20 @@ export function getUnverifiedPortfolioTokens(tokens) {
 
 /** Sorts a copy of wallet assets by trusted USD value and deterministic token fallback keys. */
 export function sortWalletAssetsByValue(tokens) {
-    const tierRank = { core: 0, established: 1, hidden: 2, blocked: 3 }
+    const tierRank = { core: 0, established: 0, hidden: 1, blocked: 2 }
+    // Resolve once per asset so verified RPC balances with valueUSD cleared
+    // sort by the same balance × trusted price shown in the UI.
+    const values = new Map(tokens.map(token => [token, resolveWalletUsdValue(token)]))
     return tokens.toSorted((left, right) => {
         const leftTier = resolvePortfolioTier(left)
         const rightTier = resolvePortfolioTier(right)
-        if (leftTier !== rightTier) {
-            return (tierRank[leftTier] ?? 4) -
-                (tierRank[rightTier] ?? 4)
-        }
-        if (left.valueUSD == null && right.valueUSD == null) return 0
-        if (left.valueUSD == null) return 1
-        if (right.valueUSD == null) return -1
-        return -(compareDecimalStrings(left.valueUSD, right.valueUSD) ?? 0) ||
+        const tierDifference = (tierRank[leftTier] ?? 4) - (tierRank[rightTier] ?? 4)
+        if (tierDifference !== 0) return tierDifference
+        const leftValue = values.get(left)
+        const rightValue = values.get(right)
+        if (leftValue == null && rightValue != null) return 1
+        if (rightValue == null && leftValue != null) return -1
+        return -(compareDecimalStrings(leftValue, rightValue) ?? 0) ||
             compareDecimalStrings(right.balance, left.balance) ||
             getAssetIdentity(left).localeCompare(getAssetIdentity(right))
     })
