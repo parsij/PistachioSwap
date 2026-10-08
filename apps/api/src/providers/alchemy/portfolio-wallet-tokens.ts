@@ -191,12 +191,14 @@ export async function getAlchemyPortfolioWalletTokens({
     walletAddress,
     chainIds,
     includeZero = false,
+    refresh = false,
     signal,
     fetchImpl = fetch,
 }: {
     walletAddress: string
     chainIds: readonly number[]
     includeZero?: boolean
+    refresh?: boolean
     signal?: AbortSignal
     fetchImpl?: typeof fetch
 }): Promise<PortfolioWalletTokenResult> {
@@ -212,7 +214,7 @@ export async function getAlchemyPortfolioWalletTokens({
         ? cacheCandidate
         : undefined
     if (cacheCandidate && !cached) cache.delete(key)
-    if (cached && cached.expiresAt > now) {
+    if (!refresh && cached && cached.expiresAt > now) {
         touch(key, cached)
         return resultFromCache(cached, 'hit', false)
     }

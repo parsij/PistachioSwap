@@ -67,6 +67,15 @@ describe('Alchemy Portfolio wallet cache', () => {
         expect(fetchImpl).toHaveBeenCalledTimes(1)
     })
 
+    it('bypasses a still-valid portfolio cache after a confirmed transfer', async () => {
+        const fetchImpl = vi.fn(async () => providerResponse(walletA))
+        const request = { walletAddress: walletA, chainIds: [56], fetchImpl }
+        await getAlchemyPortfolioWalletTokens(request)
+        expect((await getAlchemyPortfolioWalletTokens(request)).diagnostics.cacheStatus).toBe('hit')
+        await getAlchemyPortfolioWalletTokens({ ...request, refresh: true })
+        expect(fetchImpl).toHaveBeenCalledTimes(2)
+    })
+
     it('never shares cache entries between wallet addresses', async () => {
         const fetchImpl = vi.fn(async (url, options) => {
             const body = JSON.parse(String(options?.body))

@@ -39,6 +39,27 @@ function pairId(pair: DexPair) {
     return `${pair.chainId}:${pair.pairAddress}`
 }
 
+// DexScreener's USD price is for the base asset; priceNative is its
+// quote-asset price. Dividing the two prices gives the quote asset's USD
+// price, including stablecoin depegs. Keep decimal precision through bigint.
+function quoteUsdPrice(pair: DexPair) {
+    const decimal = (value: unknown) => {
+        if (typeof value !== 'string' || value.length > 160 ||
+            !/^\d+(?:\.\d+)?$/.test(value)) return null
+        const [whole, fraction = ''] = value.split('.')
+        return { units: BigInt(whole + fraction), scale: fraction.length }
+    }
+    const usd = decimal(pair.priceUsd)
+    const quote = decimal(pair.priceNative)
+    if (!usd || !quote || usd.units <= 0n || quote.units <= 0n) return null
+    const scale = 18
+    const units = usd.units * 10n ** BigInt(quote.scale + scale) /
+        (quote.units * 10n ** BigInt(usd.scale))
+    if (units <= 0n) return null
+    const digits = units.toString().padStart(scale + 1, '0')
+    return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`.replace(/\.?0+$/, '')
+}
+
 /**
  * Each distinct pair contributes half its 24-hour volume to each token side.
  * This is the catalog's per-token volume policy: a pair discovered for both
@@ -121,12 +142,15 @@ export function aggregateTokenMarkets(
                 }
             }
 
+            const priceUSD = address === normalizeAddress(pair.baseToken.address)
+                ? pair.priceUsd
+                : quoteUsdPrice(pair)
             if (
-                address === normalizeAddress(pair.baseToken.address) &&
-                pair.priceUsd &&
+                priceUSD &&
+                pair.liquidityUsd > 0 &&
                 pair.liquidityUsd > existing.priceLiquidityUsd
             ) {
-                existing.priceUSD = pair.priceUsd
+                existing.priceUSD = priceUSD
                 existing.priceLiquidityUsd = pair.liquidityUsd
             }
 

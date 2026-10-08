@@ -11,6 +11,7 @@ import { fetchWalletTokens } from '../services/walletTokens.js'
 import {
     fetchKnownWalletTokenBalances,
     mergeKnownWalletTokenBalances,
+    mergeDiscoveredWalletTokenBalances,
     readWalletTokenCache,
     walletTokenCacheKey,
     writeWalletTokenCache,
@@ -21,6 +22,9 @@ import {
     getOptimisticWalletDeltas,
     subscribeOptimisticWalletBalances,
 } from '../../wallet/services/optimisticBalances.js'
+
+import { subscribeWalletBalanceRefresh } from '../../wallet/services/walletBalanceRefresh.js'
+import { subscribeWalletActivity } from '../../wallet/services/walletActivity.js'
 
 const SECURITY_REFRESH_DELAY_MS = 5_000
 const WALLET_REFRESH_DELAY_MS = 30_000
@@ -239,6 +243,18 @@ export function useWalletTokens({
     }, [optimisticRevision, refetch])
 
     useEffect(() => {
+        if (!requestKey) return undefined
+        const unsubscribeHistory = subscribeWalletBalanceRefresh(address => {
+            if (address === normalizedAddress) refetch()
+        })
+        const unsubscribeLocal = subscribeWalletActivity(refetch)
+        return () => {
+            unsubscribeHistory()
+            unsubscribeLocal()
+        }
+    }, [normalizedAddress, refetch, requestKey])
+
+    useEffect(() => {
         const sequence = ++requestSequence.current
         if (!requestKey) {
             requestInFlight.current = false
@@ -277,7 +293,7 @@ export function useWalletTokens({
                 }
                 return
             }
-            scheduleRefresh()
+            refetch()
         }
         document.addEventListener('visibilitychange', visibilityHandler)
 
@@ -340,8 +356,9 @@ export function useWalletTokens({
         fetchWalletTokens({
             chainId,
             address: normalizedAddress,
+            refresh: refreshIndex > 0,
             signal: controller.signal,
-        }).then((result) => {
+        }).then(async (result) => {
             fullRequestFinished = true
             if (
                 controller.signal.aborted ||
@@ -349,6 +366,19 @@ export function useWalletTokens({
             ) return
 
             const responseState = normalizeWalletResult(result, chainId)
+            // Indexers and server caches can lag after a receipt. Verify the
+            // discovered/current token identities, never a history amount.
+            const known = new Map([...(cached?.tokens ?? []), ...responseState.tokens]
+                .map(token => [walletTokenIdentity(token), token]))
+            const verified = await fetchKnownWalletTokenBalances({
+                address: normalizedAddress,
+                tokens: [...known.values()],
+                signal: controller.signal,
+            }).catch(() => null)
+            if (controller.signal.aborted || sequence !== requestSequence.current) return
+            responseState.tokens = mergeDiscoveredWalletTokenBalances(
+                responseState.tokens, cached?.tokens, verified,
+            )
             let retainedLastKnownGood = false
             setState((current) => {
                 if (current.requestKey !== requestKey) return current
@@ -430,6 +460,9 @@ export function useWalletTokens({
             if (refreshQueued.current) {
                 refreshQueued.current = false
                 setRefreshIndex((value) => value + 1)
+            } else {
+                automaticRefreshDelay = WALLET_REFRESH_DELAY_MS
+                scheduleRefresh()
             }
         })
 
@@ -445,6 +478,7 @@ export function useWalletTokens({
         normalizedAddress,
         refreshIndex,
         requestKey,
+        refetch,
     ])
 
     const visibleState = requestKey && state.requestKey === requestKey

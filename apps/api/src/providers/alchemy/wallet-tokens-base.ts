@@ -807,12 +807,14 @@ export async function getWalletTokens({
     chainId,
     walletAddress,
     includeZero = false,
+    refresh = false,
     signal,
     inventory,
 }: {
     chainId: number
     walletAddress: string
     includeZero?: boolean
+    refresh?: boolean
     signal?: AbortSignal
     inventory?: WalletTokenInventory
 }): Promise<WalletToken[]> {
@@ -821,7 +823,7 @@ export async function getWalletTokens({
     const chain = requireActiveTokenDiscoveryChain(chainId)
 
     const cacheKey = walletCacheKey(chainId, wallet, includeZero)
-    const cached = inventory ? null : cache.get(cacheKey)
+    const cached = inventory || refresh ? null : cache.get(cacheKey)
     if (
         cached &&
         cached.expiresAt > Date.now() &&

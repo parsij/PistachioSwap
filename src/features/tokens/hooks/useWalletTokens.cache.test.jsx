@@ -66,7 +66,7 @@ describe('cached wallet token hydration', () => {
         localStorage.clear()
     })
 
-    it('shows cached assets immediately, verifies them, then applies full discovery', async () => {
+    it('keeps verified RPC balances when later discovery returns an older balance', async () => {
         writeWalletTokenCache({
             chainId: 'all',
             address: WALLET,
@@ -111,12 +111,12 @@ describe('cached wallet token hydration', () => {
             resolveDiscovery(fullResult([token('70')]))
         })
         await waitFor(() => expect(result.current.loading).toBe(false))
-        expect(result.current.tokens[0].rawBalance).toBe('70')
+        expect(result.current.tokens[0].rawBalance).toBe('56')
         expect(result.current.hydrationSource).toBe('discovery')
         expect(readWalletTokenCache({
             chainId: 'all',
             address: WALLET,
-        }).tokens[0].rawBalance).toBe('70')
+        }).tokens[0].rawBalance).toBe('56')
     })
 
     it('retains a cached Base native balance when only Base fails a multi-chain refresh', async () => {
@@ -184,7 +184,17 @@ describe('cached wallet token hydration', () => {
         await waitFor(() => expect(result.current.loading).toBe(false))
         expect(result.current.tokens.map(({ chainId, symbol }) => [chainId, symbol]))
             .toEqual(expect.arrayContaining([[56, 'BNB'], [8453, 'ETH']]))
-        expect(result.current.hydrationSource).toBe('last-known-good')
+        expect(result.current.hydrationSource).toBe('discovery')
+    })
+
+    it('verifies newly discovered received tokens even when the cache has no tokens', async () => {
+        fetchWalletTokens.mockResolvedValue(fullResult([token('0')]))
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            address: WALLET, balances: [{ chainId: 56, address: XAUT, rawBalance: '20000000' }],
+        }))))
+        const { result } = renderHook(() => useWalletTokens({ chainId: 'all', walletAddress: WALLET }))
+        await waitFor(() => expect(result.current.loading).toBe(false))
+        expect(result.current.tokens[0]).toMatchObject({ rawBalance: '20000000', balance: '20' })
     })
 
     it('removes an explicitly verified zero balance without dropping unknown results', () => {

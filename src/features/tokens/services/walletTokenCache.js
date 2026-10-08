@@ -146,6 +146,8 @@ export function writeWalletTokenCache({
 function knownTokenRequest(tokens) {
     return tokens
         .filter(isCurrentWalletTokenRecord)
+        .toSorted((left, right) =>
+            Number(right.visibility === 'primary') - Number(left.visibility === 'primary'))
         .slice(0, MAX_FAST_BALANCE_TOKENS)
         .map((token) => ({
             chainId: Number(token.chainId),
@@ -224,6 +226,20 @@ export function mergeKnownWalletTokenBalances(tokens, payload) {
             valueUSD: null,
         }]
     })
+}
+
+export function mergeDiscoveredWalletTokenBalances(discovered, cached, payload) {
+    if (!payload?.balances) return discovered
+    const verified = new Set(payload.balances.map(balance =>
+        `${Number(balance.chainId)}:${String(balance.address).toLowerCase()}`))
+    const tokens = new Map(discovered.map(token => [
+        `${Number(token.chainId)}:${String(token.address).toLowerCase()}`, token,
+    ]))
+    for (const token of cached ?? []) {
+        const identity = `${Number(token.chainId)}:${String(token.address).toLowerCase()}`
+        if (!tokens.has(identity) && verified.has(identity)) tokens.set(identity, token)
+    }
+    return mergeKnownWalletTokenBalances([...tokens.values()], payload)
 }
 
 export const walletTokenCacheInternals = {

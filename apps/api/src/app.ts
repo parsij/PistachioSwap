@@ -236,7 +236,7 @@ export function createApp() {
         if (!Array.isArray(response.tokens)) return payload
         const tokens = response.tokens as WalletToken[]
         const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 3_000)
+        const timeout = setTimeout(() => controller.abort(), 10_000)
         timeout.unref()
         try {
             const pricedTokens = await dexScreenerWalletPriceCache.enrichWalletTokens(
