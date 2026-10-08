@@ -46,3 +46,16 @@
     box-shadow: none !important;
     border-color: transparent !important;
 }
+
+/* A confirmed quote should read as primary content, not muted placeholder text. */
+.buy-panel[data-quote-ready='true'] .buy-amount-input,
+.buy-panel[data-quote-ready='true'] .amount-input-prefix,
+.buy-panel[data-quote-ready='true'] .buy-fiat-value {
+    color: #fff;
+}
+
+/* Keep an empty input's placeholder muted even when a prior quote existed. */
+.buy-panel[data-quote-ready='true'] .buy-amount-input::placeholder {
+    color: var(--color-amount-muted);
+    opacity: 1;
+}

@@ -43,3 +43,9 @@
         height: 15px;
     }
 }
+
+/* The rate and fee estimate only appear with a quote, so keep them legible. */
+.swap-compact-details > summary .swap-compact-rate,
+.swap-compact-details > summary .swap-compact-gas {
+    color: #fff;
+}
