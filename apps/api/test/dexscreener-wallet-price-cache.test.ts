@@ -4,6 +4,9 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { aggregateTokenMarkets } from '../src/providers/dexscreener/token-markets.js'
+import { normalizeDexPair } from '../src/providers/dexscreener/dexscreener-client.js'
+
 import type { WalletToken } from '../src/providers/alchemy/wallet-tokens.js'
 import {
     createDexScreenerWalletPriceCache,
@@ -165,6 +168,28 @@ describe('DexScreener ShapeShift wallet price cache', () => {
             },
         }
     }
+
+    it('turns a quote-side stablecoin price into the correct wallet USD value', async () => {
+        const { cache, fetchMarkets } = await setup()
+        const normalized = normalizeDexPair({
+            chainId: 'bsc', pairAddress: wallet,
+            baseToken: { address: unknownAddress, name: 'Wrapped BNB', symbol: 'WBNB' },
+            quoteToken: { address: listedAddress, name: 'USD Coin', symbol: 'USDC' },
+            priceUsd: '2492.5', priceNative: '2500', liquidity: { usd: 1000000 },
+        })!
+        fetchMarkets.mockResolvedValue({
+            markets: aggregateTokenMarkets([normalized]), partial: false,
+            successfulBatches: 1, failedBatches: 0,
+        })
+        const [result] = await cache.enrichWalletTokens([{
+            ...walletToken(listedAddress), rawBalance: '20000000000000000000',
+            balance: '20', formattedBalance: '20',
+        }])
+        expect(result).toMatchObject({
+            priceUSD: '0.997', trustedPriceUSD: '0.997', valueUSD: '19.94',
+            priceConfidence: 'trusted', includeInPortfolioValue: true,
+        })
+    })
 
     it('prices only exact ShapeShift contracts and strips unknown token prices', async () => {
         const setupResult = await setup()

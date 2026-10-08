@@ -142,6 +142,7 @@ export function formatWalletUsdValue(token) {
 async function fetchWalletTokensForChain({
     chainId,
     address,
+    refresh = false,
     signal,
     apiBaseUrl,
 }) {
@@ -151,6 +152,7 @@ async function fetchWalletTokensForChain({
     )
     url.searchParams.set('chainId', String(chainId))
     url.searchParams.set('address', address)
+    if (refresh) url.searchParams.set('refresh', 'true')
 
     const response = await fetch(url, {
         cache: 'no-store',
@@ -279,6 +281,7 @@ export async function fetchWalletTokens({
     chainId = 56,
     chainIds = TOKEN_DISCOVERY_CHAIN_IDS,
     address,
+    refresh = false,
     signal,
     apiBaseUrl = defaultApiBaseUrl,
 } = {}) {
@@ -298,6 +301,7 @@ export async function fetchWalletTokens({
         return fetchWalletTokensForChain({
             chainId: numericChainId,
             address,
+            refresh,
             signal,
             apiBaseUrl,
         })
@@ -316,6 +320,7 @@ export async function fetchWalletTokens({
     )
     url.searchParams.set('chainId', 'all')
     url.searchParams.set('address', address)
+    if (refresh) url.searchParams.set('refresh', 'true')
     const requestKey = url.toString()
     let request = walletTokenRequests.get(requestKey)
     if (!request) {

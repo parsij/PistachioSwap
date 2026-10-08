@@ -17,6 +17,7 @@ import {
     readCachedWalletHistory,
 } from '../services/walletHistory.js'
 import { mergeWalletActivity } from '../services/mergeWalletActivity.js'
+import { requestWalletBalanceRefresh } from '../services/walletBalanceRefresh.js'
 
 function configuredHistoryChainIds() {
     const configured = String(
@@ -103,6 +104,7 @@ export function useWalletActivity({
     const [error, setError] = useState(null)
     const [revision, setRevision] = useState(0)
     const appliedRevision = useRef(0)
+    const confirmedHistory = useRef(null)
     const refetch = useCallback(() => setRevision(value => value + 1), [])
     const batches = useMemo(historyBatches, [])
 
@@ -177,6 +179,19 @@ export function useWalletActivity({
         return mergeWalletActivity(localItems, remoteItems, limit)
             .filter(item => item.walletAddress.toLowerCase() === String(walletAddress).toLowerCase())
     }, [limit, localItems, remoteItems, walletAddress])
+
+    useEffect(() => {
+        if (!enabled) return
+        const confirmed = items.filter(item => item.status === 'confirmed' &&
+            ['received', 'sent', 'swapped'].includes(item.type))
+        if (confirmed.length === 0) return
+        const signature = `${String(walletAddress).toLowerCase()}:${confirmed
+            .map(item => `${item.chainId}:${item.hash ?? item.id}:${item.type}`)
+            .sort().join('|')}`
+        if (confirmedHistory.current === signature) return
+        confirmedHistory.current = signature
+        requestWalletBalanceRefresh(walletAddress)
+    }, [enabled, items, walletAddress])
 
     return {
         items,

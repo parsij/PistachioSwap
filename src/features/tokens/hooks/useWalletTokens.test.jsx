@@ -2,11 +2,13 @@
 
 import {
     act,
+    cleanup,
     renderHook,
     waitFor,
 } from '@testing-library/react'
 import {
     beforeEach,
+    afterEach,
     describe,
     expect,
     it,
@@ -22,7 +24,10 @@ import {
 vi.mock('../services/walletTokens.js', () => ({
     fetchWalletTokens: vi.fn(),
     WALLET_TOKEN_CACHE_NAMESPACE: 'pistachioswap:wallet-tokens:v5:',
+    isCurrentWalletTokenRecord: () => false,
 }))
+
+import { requestWalletBalanceRefresh } from '../../wallet/services/walletBalanceRefresh.js'
 
 const ADDRESS_A =
     '0x0000000000000000000000000000000000000001'
@@ -30,8 +35,10 @@ const ADDRESS_B =
     '0x0000000000000000000000000000000000000002'
 
 describe('useWalletTokens', () => {
+    afterEach(() => { cleanup(); localStorage.clear(); vi.useRealTimers() })
     beforeEach(() => {
-        vi.clearAllMocks()
+        vi.resetAllMocks()
+        localStorage.clear()
     })
 
     it('passes the connected address and clears immediately on disconnect', async () => {
@@ -160,7 +167,7 @@ describe('useWalletTokens', () => {
         }))
     })
 
-    it('does not automatically refresh a complete portfolio every 30 seconds', async () => {
+    it('refreshes a complete portfolio at the bounded three-minute cadence', async () => {
         vi.useFakeTimers()
         try {
             Object.defineProperty(document, 'hidden', {
@@ -199,7 +206,7 @@ describe('useWalletTokens', () => {
                     ALL_CHAIN_WALLET_REFRESH_DELAY_MS - 30_000,
                 )
             })
-            expect(fetchWalletTokens).toHaveBeenCalledTimes(1)
+            expect(fetchWalletTokens).toHaveBeenCalledTimes(2)
         } finally {
             vi.useRealTimers()
         }
@@ -237,6 +244,36 @@ describe('useWalletTokens', () => {
         expect(result.current.partial).toBe(true)
         expect(result.current.stale).toBe(true)
         expect(result.current.error).not.toContain('429')
+    })
+
+    it('refreshes discovery immediately for confirmed history on the connected wallet', async () => {
+        fetchWalletTokens.mockResolvedValueOnce([]).mockResolvedValue([{ chainId: 1, address: ADDRESS_B, balance: '20' }])
+        const { result } = renderHook(() => useWalletTokens({ chainId: 'all', walletAddress: ADDRESS_A }))
+        await waitFor(() => expect(result.current.loading).toBe(false))
+        act(() => requestWalletBalanceRefresh(ADDRESS_B))
+        expect(fetchWalletTokens).toHaveBeenCalledTimes(1)
+        act(() => requestWalletBalanceRefresh(ADDRESS_A))
+        await waitFor(() => expect(result.current.tokens[0]?.balance).toBe('20'))
+        expect(fetchWalletTokens.mock.calls.at(-1)[0].refresh).toBe(true)
+    })
+
+    it('retries failed portfolio discovery and refreshes on returning to the tab', async () => {
+        vi.useFakeTimers()
+        const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+        try {
+            fetchWalletTokens.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([])
+            const { result } = renderHook(() => useWalletTokens({ chainId: 'all', walletAddress: ADDRESS_A }))
+            await act(async () => Promise.resolve())
+            expect(result.current.error).toBe('Wallet balances could not be refreshed.')
+            await act(async () => vi.advanceTimersByTimeAsync(30_000))
+            expect(fetchWalletTokens).toHaveBeenCalledTimes(2)
+            hidden.mockReturnValue(true)
+            act(() => document.dispatchEvent(new Event('visibilitychange')))
+            hidden.mockReturnValue(false)
+            await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+            expect(fetchWalletTokens).toHaveBeenCalledTimes(3)
+            expect(fetchWalletTokens.mock.calls.at(-1)[0].refresh).toBe(true)
+        } finally { hidden.mockRestore(); vi.useRealTimers() }
     })
 
     it('queues one refresh instead of overlapping an in-flight request', async () => {

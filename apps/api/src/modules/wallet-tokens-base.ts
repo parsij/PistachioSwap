@@ -32,6 +32,7 @@ type WalletTokenQuery = {
     chainId?: string
     address?: string
     includeZero?: string
+    refresh?: string
 }
 
 type WalletProviderName = 'unchained' | 'alchemy-portfolio' | 'legacy'
@@ -286,11 +287,13 @@ async function legacyWalletTokens({
     chainIds,
     address,
     includeZero,
+    refresh,
     signal,
 }: {
     chainIds: readonly number[]
     address: string
     includeZero: boolean
+    refresh: boolean
     signal: AbortSignal
 }): Promise<WalletTokenResult> {
     const tokens: WalletToken[] = []
@@ -309,6 +312,7 @@ async function legacyWalletTokens({
                         chainId,
                         walletAddress: address,
                         includeZero,
+                        refresh,
                         signal,
                     })
                     tokens.push(...chainTokens)
@@ -387,6 +391,10 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                             type: 'string',
                             pattern: '^0x[0-9a-fA-F]{40}$',
                         },
+                        refresh: {
+                            type: 'string',
+                            enum: ['true', 'false'],
+                        },
                         includeZero: {
                             type: 'string',
                             enum: ['true', 'false'],
@@ -402,7 +410,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
             const startedAt = Date.now()
             const config = getApiConfig()
             const unsupportedParameters = Object.keys(request.query)
-                .filter((key) => !['chainId', 'address', 'includeZero'].includes(key))
+                .filter((key) => !['chainId', 'address', 'includeZero', 'refresh'].includes(key))
             if (unsupportedParameters.length > 0) {
                 return reply.code(400).send({
                     error: {
@@ -448,6 +456,14 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                 })
             }
 
+            if (request.query.refresh !== undefined &&
+                !['true', 'false'].includes(request.query.refresh)) {
+                return reply.code(400).send({ error: {
+                    code: 'INVALID_REFRESH',
+                    message: 'refresh must be true or false.',
+                } })
+            }
+            const refresh = request.query.refresh === 'true'
             const includeZero = request.query.includeZero === 'true'
             const requestedChainIds = allChains
                 ? ACTIVE_TOKEN_DISCOVERY_CHAINS.map((chain) => chain.chainId)
@@ -487,6 +503,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                                 walletAddress: address,
                                 chainIds: unchainedChainIds,
                                 includeZero,
+                                refresh,
                                 signal: controller.signal,
                             }),
                         })
@@ -523,6 +540,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                                 walletAddress: address,
                                 chainIds: alchemySupportedChainIds,
                                 includeZero,
+                                refresh,
                                 signal: controller.signal,
                             }),
                         })
@@ -562,6 +580,7 @@ export const walletTokenRoutes: FastifyPluginAsync = async (app) => {
                                 chainIds: remainingForLegacy,
                                 address,
                                 includeZero,
+                                refresh,
                                 signal: controller.signal,
                             }),
                         })

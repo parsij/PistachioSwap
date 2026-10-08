@@ -87,6 +87,19 @@ describe('wallet-token route', () => {
         }
     })
 
+    it('passes explicit refresh to the selected wallet provider', async () => {
+        process.env.ALCHEMY_PORTFOLIO_ENABLED = 'false'
+        mocks.getWalletTokens.mockResolvedValue([legacyToken()])
+        const app = await createApp()
+        try {
+            const response = await app.inject(`/v1/wallet-tokens?chainId=56&address=${wallet}&refresh=true`)
+            expect(response.statusCode).toBe(200)
+            expect(mocks.getWalletTokens).toHaveBeenCalledWith(expect.objectContaining({ refresh: true }))
+            const invalid = await app.inject(`/v1/wallet-tokens?chainId=56&address=${wallet}&refresh=garbage`)
+            expect(invalid.statusCode).toBe(400)
+        } finally { await app.close() }
+    })
+
     it('returns normalized security fields without provider secrets', async () => {
         process.env.ALCHEMY_PORTFOLIO_ENABLED = 'false'
         mocks.getWalletTokens.mockResolvedValue([{

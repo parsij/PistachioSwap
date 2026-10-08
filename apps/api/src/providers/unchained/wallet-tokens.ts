@@ -570,17 +570,19 @@ async function loadChainTokens({
     endpoint,
     walletAddress,
     includeZero,
+    refresh,
     signal,
 }: {
     chainId: number
     endpoint: string
     walletAddress: string
     includeZero: boolean
+    refresh: boolean
     signal?: AbortSignal
 }) {
     const key = `${chainId}:${endpoint}:${walletAddress}:${includeZero}`
     const cached = cache.get(key)
-    if (cached && cached.expiresAt > Date.now()) {
+    if (!refresh && cached && cached.expiresAt > Date.now()) {
         return { tokens: cached.tokens, cacheStatus: 'hit' as const }
     }
     const open = circuitOpen(chainId)
@@ -623,11 +625,13 @@ export async function getUnchainedWalletTokens({
     walletAddress,
     chainIds,
     includeZero = false,
+    refresh = false,
     signal,
 }: {
     walletAddress: string
     chainIds: readonly number[]
     includeZero?: boolean
+    refresh?: boolean
     signal?: AbortSignal
 }): Promise<UnchainedWalletTokenResult> {
     const wallet = normalizeAddress(walletAddress)
@@ -669,6 +673,7 @@ export async function getUnchainedWalletTokens({
                     endpoint: endpoints.get(chainId)!,
                     walletAddress: wallet,
                     includeZero,
+                    refresh,
                     signal,
                 })
                 tokens.push(...result.tokens)

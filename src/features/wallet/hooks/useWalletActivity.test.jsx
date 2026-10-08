@@ -21,6 +21,8 @@ vi.mock('../services/walletHistory.js', () => ({
     readCachedWalletHistory: mocks.readCachedWalletHistory,
 }))
 
+import { subscribeWalletBalanceRefresh } from '../services/walletBalanceRefresh.js'
+
 import {
     REMOTE_WALLET_HISTORY_CHAIN_IDS,
     useWalletActivity,
@@ -131,6 +133,23 @@ describe('useWalletActivity direct browser history', () => {
         const { result } = renderHook(() => useWalletActivity({ walletAddress, chainId: 56 }))
         await waitFor(() => expect(result.current.loading).toBe(false))
         expect(result.current.error).toBe('Some wallet history could not be loaded.')
+    })
+
+    it('notifies balances when a confirmed receive appears and deduplicates unchanged history', async () => {
+        const refresh = vi.fn()
+        const unsubscribe = subscribeWalletBalanceRefresh(refresh)
+        mocks.fetchWalletHistory.mockResolvedValue({ items: [{
+            walletAddress, id: 'received-usdc', chainId: 1, type: 'received', status: 'confirmed',
+            amount: '20', timestamp: '2026-10-08T12:45:00.000Z',
+        }], partial: false })
+        const { result } = renderHook(() => useWalletActivity({ walletAddress }))
+        try {
+            await waitFor(() => expect(result.current.loading).toBe(false))
+            expect(refresh).toHaveBeenCalledExactlyOnceWith(walletAddress)
+            act(() => result.current.refetch())
+            await waitFor(() => expect(result.current.loading).toBe(false))
+            expect(refresh).toHaveBeenCalledTimes(1)
+        } finally { unsubscribe() }
     })
 
     it('clears the previous wallet while the new direct request is pending', async () => {

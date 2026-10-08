@@ -16,6 +16,7 @@ export type DexPair = {
     baseToken: DexToken
     quoteToken: DexToken
     priceUsd: string | null
+    priceNative?: string | null
     volume24hUsd: number
     transactions24h: number
     liquidityUsd: number
@@ -63,6 +64,11 @@ export function normalizeDexPair(value: unknown): DexPair | null {
             typeof value.priceUsd === 'string' &&
             /^\d+(?:\.\d+)?$/.test(value.priceUsd)
                 ? value.priceUsd
+                : null,
+        priceNative:
+            typeof value.priceNative === 'string' &&
+            /^\d+(?:\.\d+)?$/.test(value.priceNative) && value.priceNative.length <= 160
+                ? value.priceNative
                 : null,
         volume24hUsd:
             Number.isFinite(volume) && volume >= 0 ? volume : 0,
