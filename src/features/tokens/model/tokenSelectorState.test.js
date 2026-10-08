@@ -59,7 +59,13 @@ const hiddenFakeValue = {
 describe('token selector state helpers', () => {
     it('keeps core and established wallet assets ahead of fake-valued hidden tokens', () => {
         expect(sortWalletTokens([hiddenFakeValue, establishedToken, coreBnb]))
-            .toEqual([coreBnb, establishedToken, hiddenFakeValue])
+            .toEqual([establishedToken, coreBnb, hiddenFakeValue])
+    })
+
+    it('puts received USDC above native dust using its verified balance and trusted price', () => {
+        const usdc = { ...establishedToken, chainId: 1, symbol: 'USDC', balance: '20', valueUSD: null, trustedPriceUSD: '1' }
+        const dust = { ...coreBnb, balance: '0.0001', valueUSD: '0.06' }
+        expect(sortWalletTokens([dust, usdc])).toEqual([usdc, dust])
     })
 
     it('persists hidden recent-search records as untrusted diagnostics', () => {

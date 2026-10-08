@@ -5,6 +5,7 @@ import {
     getHiddenPortfolioTokens,
     getUnverifiedPortfolioTokens,
     isTrustedWalletToken,
+    sortWalletAssetsByValue,
 } from './portfolio.js'
 
 const recognized = {
@@ -60,6 +61,17 @@ const secantX = {
 }
 
 describe('portfolio presentation filters', () => {
+    it('sorts trusted holdings by USD value across native and ERC-20 assets', () => {
+        const usdc = { ...recognized, chainId: 1, symbol: 'USDC', classificationTier: 'established', balance: '20', valueUSD: null, trustedPriceUSD: '1' }
+        const pol = { ...recognized, chainId: 137, symbol: 'POL', classificationTier: 'core', balance: '100', valueUSD: '10' }
+        const eth = { ...recognized, chainId: 10, symbol: 'ETH', classificationTier: 'core', balance: '0.1', valueUSD: '300' }
+        const dust = { ...pol, address: missingPrice.address, balance: '0.1', valueUSD: '0.01' }
+        const tokens = [dust, pol, usdc, eth, secantX]
+        expect(sortWalletAssetsByValue(tokens)).toEqual([eth, usdc, pol, dust, secantX])
+        expect(tokens).toEqual([dust, pol, usdc, eth, secantX])
+        expect(filterPortfolioTokens(tokens)).toEqual([eth, usdc, pol, dust])
+    })
+
     it('removes hidden unknown assets from presentation without mutating wallet data', () => {
         const data = [recognized, unverified, risky]
         expect(filterPortfolioTokens(data, { hideUnknownTokens: true })).toEqual([recognized])
