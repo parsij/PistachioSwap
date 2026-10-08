@@ -2,7 +2,13 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createHash } from 'node:crypto'
+import { sha256 } from 'ethers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Node's Buffer and jsdom's Uint8Array belong to different realms. Return the
+// browser realm's bytes so ethers checksum validation behaves as it does in Chromium.
+sha256.register((bytes) => Uint8Array.from(createHash('sha256').update(bytes).digest()))
 
 const mocks = vi.hoisted(() => {
     const state = { listener: null, reviewListener: null, snapshot: null }
@@ -102,6 +108,12 @@ const savedVault = {
     sourceType: 'generated-mnemonic',
     updatedAt: '2026-01-01T00:00:00.000Z',
     vaultId: '10000000-0000-4000-8000-000000000001',
+}
+
+// Public BIP-39 test vector; never use this wallet for funds.
+const importTestPhrase = `${'abandon '.repeat(11)}about`
+function pasteImportPhrase(phrase = importTestPhrase) {
+    fireEvent.paste(screen.getByLabelText('Word 1'), { clipboardData: { getData: () => phrase } })
 }
 
 const savedVaultSnapshot = {
@@ -516,7 +528,7 @@ describe('Pistachio Wallet entry and modal behavior', () => {
 
         await openImportRisk(user)
         await completeImportPasskeyStep(user)
-        expect(await screen.findByLabelText('Recovery phrase')).toBeTruthy()
+        expect(await screen.findByLabelText('Word 1')).toBeTruthy()
 
         await user.click(screen.getByRole('button', { name: 'Back' }))
         expect(screen.getByRole('heading', { name: 'Import an existing wallet' })).toBeTruthy()
@@ -538,7 +550,8 @@ describe('Pistachio Wallet entry and modal behavior', () => {
 
         await openImportRisk(user)
         await completeImportPasskeyStep(user)
-        await user.type(await screen.findByLabelText('Recovery phrase'), 'test phrase')
+        await screen.findByLabelText('Word 1')
+        pasteImportPhrase()
         await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
         expect(await screen.findByRole('heading', { name: 'Confirm wallet address' })).toBeTruthy()
 
@@ -550,36 +563,90 @@ describe('Pistachio Wallet entry and modal behavior', () => {
         expect(await screen.findByLabelText('Private key')).toBeTruthy()
     })
 
-    it('associates readable mnemonic errors and clears the secret input after failure', async () => {
+    it('keeps the phrase and passkey ready after failure so the same import can be retried', async () => {
         const user = userEvent.setup()
         mocks.manager.beginPasskeySetup.mockImplementation(async () => mocks.publish({ phase: 'passkey-ready' }))
         mocks.manager.importMnemonic.mockRejectedValueOnce(new TypeError('The recovery phrase has invalid words or checksum.'))
         render(<PistachioWalletController />)
         await openImportRisk(user)
         await completeImportPasskeyStep(user)
-        const input = screen.getByLabelText('Recovery phrase')
-        await user.type(input, 'fake invalid words')
+        const input = screen.getByLabelText('Word 1')
+        pasteImportPhrase()
+        expect(input.type).toBe('password')
+        await user.click(screen.getByRole('button', { name: 'Reveal recovery phrase' }))
         await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
 
         expect((await screen.findByRole('alert')).textContent).toContain('invalid word or checksum')
-        expect(input.value).toBe('')
+        expect(input.value).toBe('abandon')
+        expect(input.type).toBe('password')
+        expect(screen.getByLabelText('Word 12').value).toBe('about')
         expect(input.getAttribute('aria-describedby')).toBe('pistachio-wallet-error')
+        expect(mocks.manager.cancelSetup).not.toHaveBeenCalled()
+        expect(mocks.manager.beginPasskeySetup).toHaveBeenCalledOnce()
+        await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
+        expect(mocks.manager.importMnemonic).toHaveBeenCalledTimes(2)
+        expect(mocks.manager.importMnemonic).toHaveBeenLastCalledWith(importTestPhrase)
+        expect(input.value).toBe('')
     })
 
-    it('shows readable private-key validation and clears the secret input', async () => {
+    it('shows private-key errors immediately and keeps the entry without calling the worker', async () => {
         const user = userEvent.setup()
         mocks.manager.beginPasskeySetup.mockImplementation(async () => mocks.publish({ phase: 'passkey-ready' }))
-        mocks.manager.importPrivateKey.mockRejectedValueOnce(new TypeError('Private key must be exactly 32 bytes.'))
         render(<PistachioWalletController />)
         await openImportRisk(user, /^Private key/)
         await completeImportPasskeyStep(user)
         const input = screen.getByLabelText('Private key')
         await user.type(input, '1234')
         await user.click(screen.getByRole('checkbox'))
-        await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
+        expect(screen.getByRole('alert').textContent).toContain('exactly 64 hexadecimal characters')
+        expect(input.value).toBe('1234')
+        expect(input.type).toBe('password')
+        expect(screen.getByRole('button', { name: 'Review imported wallet' }).disabled).toBe(true)
+        expect(mocks.manager.importPrivateKey).not.toHaveBeenCalled()
+        expect(mocks.manager.cancelSetup).not.toHaveBeenCalled()
+    })
 
-        expect((await screen.findByRole('alert')).textContent).toContain('exactly 64 hexadecimal characters')
+    it('keeps a private key after a worker failure and clears it only after successful review', async () => {
+        const user = userEvent.setup()
+        const key = `0x${'11'.repeat(32)}`
+        mocks.manager.beginPasskeySetup.mockImplementation(async () => mocks.publish({ phase: 'passkey-ready' }))
+        mocks.manager.importPrivateKey.mockRejectedValueOnce(new Error('test-only import failure'))
+        render(<PistachioWalletController />)
+        await openImportRisk(user, /^Private key/)
+        await completeImportPasskeyStep(user)
+        const input = screen.getByLabelText('Private key')
+        fireEvent.change(input, { target: { value: key } })
+        await user.click(screen.getByRole('checkbox'))
+        await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
+        expect(await screen.findByRole('alert')).toBeTruthy()
+        expect(input.value).toBe(key)
+        expect(mocks.manager.cancelSetup).not.toHaveBeenCalled()
+        await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
+        expect(mocks.manager.importPrivateKey).toHaveBeenCalledTimes(2)
+        expect(mocks.manager.importPrivateKey).toHaveBeenLastCalledWith(key)
         expect(input.value).toBe('')
+        expect(mocks.manager.beginPasskeySetup).toHaveBeenCalledOnce()
+    })
+
+    it('flags a wrong recovery word as it is entered and enables review after correction', async () => {
+        const user = userEvent.setup()
+        mocks.manager.beginPasskeySetup.mockImplementation(async () => mocks.publish({ phase: 'passkey-ready' }))
+        render(<PistachioWalletController />)
+        await openImportRisk(user)
+        await completeImportPasskeyStep(user)
+        pasteImportPhrase()
+        const word = screen.getByLabelText('Word 12')
+        fireEvent.change(word, { target: { value: 'misspelledword' } })
+        expect(screen.getByRole('alert').textContent).toBe('Invalid word')
+        expect(word.getAttribute('aria-invalid')).toBe('true')
+        expect(word.value).toBe('misspelledword')
+        expect(screen.getByRole('button', { name: 'Review imported wallet' }).disabled).toBe(true)
+        expect(mocks.manager.importMnemonic).not.toHaveBeenCalled()
+        fireEvent.change(word, { target: { value: 'about' } })
+        expect(screen.queryByRole('alert')).toBeNull()
+        expect(screen.getByRole('button', { name: 'Review imported wallet' }).disabled).toBe(false)
+        await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
+        expect(mocks.manager.importMnemonic).toHaveBeenCalledWith(importTestPhrase)
     })
 
     it('shows a safe keystore error and clears the file and password values', async () => {

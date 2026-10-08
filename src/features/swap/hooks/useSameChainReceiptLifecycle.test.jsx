@@ -72,6 +72,23 @@ describe('useSameChainReceiptLifecycle', () => {
         expect(config.refreshWalletBalances).toHaveBeenCalledTimes(1)
     })
 
+    it('does not apply an old receipt to the new form after its transaction state is reset', () => {
+        const config = createConfig()
+        const { result, rerender } = renderHook(() => useSameChainReceiptLifecycle(config))
+        act(() => {
+            result.current.setTransactionHash('0xabc')
+            result.current.setTransactionStatus('submitted')
+        })
+        act(() => result.current.resetReceiptLifecycle())
+        receiptState.isSuccess = true
+        rerender()
+        expect(result.current.transactionHash).toBeNull()
+        expect(result.current.transactionStatus).toBe('idle')
+        expect(config.resetInputsAfterSuccess).not.toHaveBeenCalled()
+        expect(config.invalidateQuoteAfterSuccess).not.toHaveBeenCalled()
+        expect(optimistic.confirm).not.toHaveBeenCalled()
+    })
+
     it('keeps receipt failure visible and resets pending state when wallet identity changes', async () => {
         const config = createConfig()
         const { result, rerender } = renderHook(

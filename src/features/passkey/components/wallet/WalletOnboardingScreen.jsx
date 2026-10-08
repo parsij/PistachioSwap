@@ -26,6 +26,8 @@ import '@fontsource/ubuntu/latin-700.css'
 import { walletUIOperations as manager } from '../../services/walletUIOperations.js'
 import { ErrorNotice, LoadingState, WalletRiskNotice, ScreenIntro, BackButton } from './WalletPrimitives.jsx'
 import { WalletEntryMenu, ImportChooser, ImportRiskIntro, RestoreBackupContent, IMPORT_COPY } from './WalletSetupScreen.jsx'
+import { WalletSecretImport } from './WalletSecretImport.jsx'
+import { normalizeRecoveryWord, validatePrivateKey, validateRecoveryWords } from './walletImportValidation.js'
 const GUARDED_SETUP_PHASES = new Set(['passkey-ready', 'confirm-recovery', 'confirm-import', 'onboarding-ready'])
 const LAST_USED_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
     day: 'numeric',
@@ -91,6 +93,8 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
     const [phraseCopied, setPhraseCopied] = useState(false)
     const [importMode, setImportMode] = useState(initialImportMode)
     const [secretInput, setSecretInput] = useState('')
+    const [importWords, setImportWords] = useState(() => Array(12).fill(''))
+    const [importPasteError, setImportPasteError] = useState(false)
     const [keystorePassword, setKeystorePassword] = useState('')
     const [keystoreFileName, setKeystoreFileName] = useState('')
     const [backupAcknowledged, setBackupAcknowledged] = useState(false)
@@ -128,6 +132,8 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
 
     function resetImportFields() {
         setSecretInput('')
+        setImportWords(Array(12).fill(''))
+        setImportPasteError(false)
         setKeystorePassword('')
         setKeystoreFileName('')
         setBackupAcknowledged(false)
@@ -166,14 +172,20 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
         setDerivedAddress(result.address)
     }
     async function importWallet() {
+        if (importMode !== 'keystore' && (!importValidation.valid || importPasteError)) return
         try {
             let result
-            if (importMode === 'mnemonic') result = await run(() => manager.importMnemonic(secretInput))
-            else if (importMode === 'private-key') result = await run(() => manager.importPrivateKey(secretInput))
+            if (importMode === 'mnemonic') result = await run(() => manager.importMnemonic(importWords.map(normalizeRecoveryWord).join(' ')))
+            else if (importMode === 'private-key') result = await run(() => manager.importPrivateKey(secretInput.trim().replace(/^0x/iu, '0x')))
             else result = await run(() => manager.importKeystore(secretInput, keystorePassword))
-            if (result) setDerivedAddress(result.address)
+            if (result) {
+                setDerivedAddress(result.address)
+                setSecretInput('')
+                setImportWords(Array(12).fill(''))
+            }
         } finally {
-            setSecretInput('')
+            // Keep editable phrase/key input after failure; keystore credentials retain their existing cleanup.
+            if (importMode === 'keystore') setSecretInput('')
             setKeystorePassword('')
             setKeystoreFileName('')
         }
@@ -196,6 +208,7 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
     const phraseConfirmed = words.length === 12 && positions.every((position) => confirmations[position]?.trim().toLowerCase() === words[position])
     const importBackupReady = importMode === 'mnemonic' || backupAcknowledged
     const importContext = importMode === 'keystore' ? 'keystore' : 'wallet'
+    const importValidation = importMode === 'mnemonic' ? validateRecoveryWords(importWords) : importMode === 'private-key' ? validatePrivateKey(secretInput) : { valid: true, error: '' }
     async function persistGeneratedWallet() {
         const stored = await run(() => manager.persistPendingWallet())
         if (stored) {
@@ -287,14 +300,10 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
                         <p className="pistachio-wallet-note" id="pistachio-keystore-help">The password is not stored in the JSON file. It is used locally to decrypt the keystore and is then cleared.</p>
                     </>
                 ) : (
-                    <>
-                        <label htmlFor="pistachio-wallet-secret">{importMode === 'mnemonic' ? 'Recovery phrase' : 'Private key'}</label>
-                        <textarea id="pistachio-wallet-secret" value={secretInput} autoComplete="off" spellCheck="false" aria-invalid={Boolean(error)} aria-describedby={error ? 'pistachio-wallet-error' : 'pistachio-import-help'} onChange={(event) => setSecretInput(event.target.value)} />
-                        <p className="pistachio-wallet-note" id="pistachio-import-help">{importMode === 'mnemonic' ? 'Enter 12, 15, 18, 21, or 24 words separated by spaces. Extra BIP-39 passphrases are not supported.' : 'Enter exactly 64 hexadecimal characters, with or without 0x. This wallet will not have a recovery phrase.'}</p>
-                    </>
+                    <WalletSecretImport key={importMode} mode={importMode} words={importWords} onWordsChange={(next) => { setError(null); setImportWords(next) }} value={secretInput} onChange={(next) => { setError(null); setSecretInput(next) }} validation={importValidation} error={error} disabled={busy} onPasteError={setImportPasteError} />
                 )}
                 {importMode !== 'mnemonic' && <label className="pistachio-wallet-check"><input type="checkbox" checked={backupAcknowledged} onChange={(event) => setBackupAcknowledged(event.target.checked)} /> I will keep and test an independent encrypted backup or offline copy of the private key.</label>}
-                <button className="pistachio-wallet-primary" type="button" disabled={busy || !secretInput || !importBackupReady || (importMode === 'keystore' && !keystorePassword)} onClick={importWallet}>{busy ? 'Checking wallet…' : importMode === 'keystore' ? 'Unlock keystore and review' : 'Review imported wallet'}</button>
+                <button className="pistachio-wallet-primary" type="button" disabled={busy || !importBackupReady || importPasteError || (importMode === 'keystore' ? !secretInput || !keystorePassword : !importValidation.valid)} onClick={importWallet}>{busy ? 'Checking wallet…' : importMode === 'keystore' ? 'Unlock keystore and review' : 'Review imported wallet'}</button>
                 <ErrorNotice error={error} context={importContext} />
             </div>
         )
