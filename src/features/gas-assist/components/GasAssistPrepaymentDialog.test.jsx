@@ -414,6 +414,19 @@ describe('submitted operation UX', () => {
         expect(screen.queryByText('Swap complete')).toBeNull()
         expect(screen.queryByText('Confirming your swap')).toBeNull()
     })
+    it('shows a definitive failed status when an unsubmitted UserOperation expires', () => {
+        const flow = sponsorship({ phase: 'failed' })
+        flow.order = {
+            ...flow.order, status: 'failed', sourceStatus: 'not-submitted',
+            failureCode: 'PAYMASTER_NOT_SUBMITTED',
+            userOpHash: `0x${'ab'.repeat(32)}`,
+        }
+        render(<GasAssistPrepaymentDialog sponsorship={flow} sellToken={sellToken} buyToken={buyToken} />)
+        expect(screen.getByText('Swap failed')).toBeTruthy()
+        expect(screen.getByText(/not included before its authorization expired/i)).toBeTruthy()
+        expect(screen.queryByText('Source confirmed')).toBeNull()
+    })
+
     it('shows verified source failure without destination waiting', () => {
         const flow = sponsorship({ phase: 'failed' })
         flow.order = { ...flow.order, status: 'failed', sourceStatus: 'reverted', userOpHash: `0x${'ab'.repeat(32)}` }

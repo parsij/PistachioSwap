@@ -105,6 +105,9 @@ function packageExecutionInFlight(phase, order) {
 }
 
 function statusContent({ phase, order, orderExpired }) {
+    if (phase === 'failed' && order?.failureCode === 'PAYMASTER_NOT_SUBMITTED') {
+        return { tone: 'error', title: 'Swap failed', detail: 'The sponsored transaction was not included before its authorization expired. No source swap was confirmed. Create a new quote to try again.' }
+    }
     if (phase === 'completed' || order?.status === 'completed') {
         return { tone: 'success', title: 'Swap complete', detail: 'Your sponsored swap was confirmed.' }
     }
