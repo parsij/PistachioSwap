@@ -1,3 +1,4 @@
+import { readLastSwapInput } from '../services/lastSwapInput.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
 import {
@@ -64,7 +65,8 @@ import {
  */
 export function useSwapController() {
     const config = swapUiConfig
-    const { chain, crossChain: crossChainConfig, quote: quoteConfig, tokens: tokensConfig, wallet: walletConfig, tabs } = config
+    const { chain, crossChain: crossChainConfig, quote: quoteConfig, tokens: defaultTokensConfig, wallet: walletConfig, tabs } = config
+    const [tokensConfig] = useState(() => ({ ...defaultTokensConfig, initialSellToken: readLastSwapInput() ?? defaultTokensConfig.initialSellToken }))
     const layoutStyle = useMemo(() => createCssVariables(), [])
     const reducedMotion = useReducedMotion()
     const [swapChainId, setSwapChainId] = useState(Number(tokensConfig.initialSellToken?.chainId ?? chain.id))

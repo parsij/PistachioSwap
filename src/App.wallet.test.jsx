@@ -389,6 +389,20 @@ describe('App wallet integration', () => {
         cleanup()
     })
 
+    it('restores the last input token and chain without restoring amounts or cached balances', () => {
+        window.localStorage.setItem('pistachio:last-swap-input:v1', JSON.stringify({
+            chainId: 8453, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', symbol: 'USDC', name: 'USD Coin', decimals: 6,
+            balance: '1000', priceUSD: '500', sellAmount: '5',
+        }))
+        const { container } = render(<App />)
+        expect(container.querySelector('.sell-token-position button').textContent).toContain('USDC')
+        expect(container.querySelector('.sell-panel input').value).toBe('')
+        const persisted = JSON.parse(window.localStorage.getItem('pistachio:last-swap-input:v1'))
+        expect(persisted.chainId).toBe(8453)
+        expect(persisted.balance).toBeUndefined()
+        expect(persisted.priceUSD).toBeUndefined()
+    })
+
     it('opens the Sell token selector on touch without quick-amount hover rerender stealing the tap', () => {
         const { container, getByRole, queryByRole } = render(<App />)
         const sellPanel = container.querySelector('.sell-panel')

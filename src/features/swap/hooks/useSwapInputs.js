@@ -1,3 +1,4 @@
+import { rememberSwapInput } from '../services/lastSwapInput.js'
 import { useEffect, useMemo, useState } from 'react'
 import { formatUnits } from 'viem'
 import { resolveSelectedToken } from '../../tokens/services/walletTokens.js'
@@ -22,7 +23,7 @@ export const USD_DENOMINATION = 'USD'
  *
  * @param {object} config Input configuration and token catalog.
  * @returns {object} Input state, normalized raw intent, display values, and semantic mutation operations.
- * @sideEffects Updates React state and existing input diagnostics; performs no HTTP, RPC, wallet, or storage calls.
+ * @sideEffects Updates React state and existing input diagnostics; remembers public token selection; performs no HTTP, RPC, or wallet calls.
  * @security Raw-unit conversion is exact and rejects precision beyond token decimals.
  */
 export function useSwapInputs({
@@ -44,6 +45,7 @@ export function useSwapInputs({
 
     const [activeTab, setActiveTab] = useState(tabs[0])
     const [selectedSellToken, setSelectedSellToken] = useState(initialSellToken)
+    useEffect(() => { if (selectedSellToken) rememberSwapInput(selectedSellToken) }, [selectedSellToken])
     const [selectedBuyToken, setSelectedBuyToken] = useState(initialBuyToken)
     const [sellAmount, setSellAmount] = useState('')
     const [buyAmount, setBuyAmount] = useState('0')

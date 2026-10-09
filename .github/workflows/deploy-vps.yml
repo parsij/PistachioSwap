@@ -142,10 +142,10 @@ jobs:
         run: pnpm exec vitest run src/features/settings src/features/swap/services/networkFees.test.js src/features/swap/hooks/useNetworkFees.test.jsx src/features/swap/components/NetworkFeeControl.test.jsx src/features/swap/components/SwapDetails.test.jsx src/features/swap/hooks/useSameChainExecution.test.jsx src/features/swap/model/swapViewModel.test.js src/features/cross-chain/services/crossChainExecution.test.js src/features/tokens/services/walletTokens.test.js src/features/tokens/services/walletTokenCache.test.js src/features/tokens/services/portfolio.test.js src/features/tokens/model/tokenSelectorState.test.js
 
       - name: Custom network fee app integration
-        run: pnpm exec vitest run src/App.wallet.test.jsx -t 'applies custom network fees from settings|isolates quote info tooltips|clears the previous submitted transaction|refreshes every wallet chain'
+        run: pnpm exec vitest run src/App.wallet.test.jsx -t 'restores the last input token and chain|applies custom network fees from settings|isolates quote info tooltips|clears the previous submitted transaction|refreshes every wallet chain'
 
       - name: Send amount and wallet transfer regressions
-        run: pnpm exec vitest run src/features/wallet/components/wallet/SendAssetDialog.test.jsx src/features/wallet/services/sendExecution.test.js src/features/wallet/services/sendNetworkFees.test.js src/features/swap/components/NetworkFeeControl.test.jsx src/services/transfers.test.js src/services/balances.test.js
+        run: pnpm exec vitest run src/features/wallet/components/wallet/SendAssetDialog.test.jsx src/features/wallet/services/sendExecution.test.js src/features/wallet/services/sendNetworkFees.test.js src/features/wallet/hooks/useSendGasEstimate.test.jsx src/features/swap/services/lastSwapInput.test.js src/features/swap/hooks/useSwapInputs.selection.test.jsx src/features/swap/components/NetworkFeeControl.test.jsx src/services/transfers.test.js src/services/balances.test.js
 
       - name: Post-swap balance race regressions
         run: pnpm exec vitest run src/features/tokens/hooks/useWalletTokens.test.jsx src/features/tokens/hooks/useWalletTokens.cache.test.jsx src/features/tokens/hooks/useNativeBalance.test.jsx src/features/wallet/services/optimisticBalances.test.js src/features/wallet/services/reconcilePendingWalletOperations.test.js src/features/swap/hooks/useSameChainReceiptLifecycle.test.jsx src/features/cross-chain/hooks/useCrossChainRoutes.test.jsx
