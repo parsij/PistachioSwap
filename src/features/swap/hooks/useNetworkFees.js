@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchNetworkFees, fetchPendingNonce, networkFeeCap, prepareNetworkFeeTransaction, resolveNetworkFeeSelection } from '../services/networkFees.js'
+import { fetchNetworkFees, fetchPendingNonce, networkFeeCap, networkFeeWarning, prepareNetworkFeeTransaction, resolveNetworkFeeSelection } from '../services/networkFees.js'
 
 /** Wallet/source-chain-scoped choices; manual nonces are session-only. */
 export function useNetworkFees({ publicClient, chainId, automatic = true, enabled = true, gasEstimate = null, account }) {
@@ -83,5 +83,6 @@ export function useNetworkFees({ publicClient, chainId, automatic = true, enable
     return { account, pendingNonce: nonceInfo?.value, nonceLoading: nonceInfo?.loading, nonceError: nonceInfo?.error,
         refreshNonce, clearNonce, snapshot, selection, fields, automatic, select, refresh, prepareTransaction,
         gasEstimate: gas, maximumNativeFeeWei, error: validationError ?? state.error,
+        warning: automatic ? null : networkFeeWarning(snapshot, fields),
         loading: state.loading, chainId: Number(chainId) }
 }

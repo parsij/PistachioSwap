@@ -1780,7 +1780,8 @@ describe('App wallet integration', () => {
         await waitFor(() => expect(view.getByRole('button', { name: /^Custom/ }).disabled).toBe(false))
         fireEvent.click(view.getByRole('button', { name: /^Custom/ }))
         fireEvent.change(view.getByLabelText('Priority fee in Gwei'), { target: { value: '0.1' } })
-        fireEvent.change(view.getByLabelText('Max fee in Gwei'), { target: { value: '2.2' } })
+        fireEvent.change(view.getByLabelText('Max fee in Gwei'), { target: { value: '0.9' } })
+        expect(view.getByRole('dialog').textContent).toContain('below the current base fee')
         await waitFor(() => expect(view.getByText('Next pending nonce: 7')).toBeTruthy())
         fireEvent.change(view.getByLabelText('Transaction nonce'), { target: { value: '7' } })
         fireEvent.click(view.getByRole('button', { name: 'Confirm network cost' }))
@@ -1789,7 +1790,7 @@ describe('App wallet integration', () => {
         fireEvent.click(view.getByRole('button', { name: 'Review swap' }))
         fireEvent.click(view.getByRole('button', { name: 'Confirm swap' }))
         await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({
-            chainId: 56, maxFeePerGas: 2_200_000_000n, maxPriorityFeePerGas: 100_000_000n,
+            chainId: 56, maxFeePerGas: 900_000_000n, maxPriorityFeePerGas: 100_000_000n,
             gas: 125000n, data: '0x1234', nonce: 7,
         })))
         await waitFor(() => expect(view.queryByText('Custom fees · Nonce 7')).toBeNull())

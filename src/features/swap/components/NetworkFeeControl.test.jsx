@@ -48,6 +48,19 @@ describe('native network cost controls', () => {
         expect(screen.getByLabelText('Gas price in Gwei')).toBeTruthy()
         expect(screen.queryByLabelText('Priority fee in Gwei')).toBeNull()
     })
+    it('lets the user confirm the screenshot cheaper cap with a cost preview and a non-blocking warning', () => {
+        const { onSelect } = setup({ chainId: 1, destinationChainId: 8453,
+            snapshot: { ...snapshot, chainId: 1, baseFeePerGas: 128105061n } })
+        fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+        fireEvent.change(screen.getByLabelText('Priority fee in Gwei'), { target: { value: '0.01' } })
+        fireEvent.change(screen.getByLabelText('Max fee in Gwei'), { target: { value: '0.102553251' } })
+        expect(screen.getByRole('status').textContent).toContain('below the current base fee')
+        expect(within(screen.getByLabelText('Custom network cost estimate')).getByText('≈$0.02')).toBeTruthy()
+        expect(screen.queryByRole('alert')).toBeNull()
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm network cost' }))
+        expect(onSelect).toHaveBeenCalledWith('custom', { maxFeePerGas: 102553251n, maxPriorityFeePerGas: 10000000n })
+        expect(screen.queryByRole('dialog')).toBeNull()
+    })
     it('keeps automatic and sponsored controls separate and handles missing estimates', () => {
         setup({ automatic: true })
         expect(screen.getByText(/Turn off Auto network cost/)).toBeTruthy()

@@ -15,6 +15,7 @@
 .network-fee-options > button:disabled, .network-fee-icon-button:disabled { opacity: .45; cursor: default; }
 .network-fee-note, .network-fee-base { margin: 12px 0 0; color: var(--color-muted, #a6a6af); font-size: 11px; line-height: 1.5; }
 .network-fee-error { margin: 10px 0 0; color: #ff9797; font-size: 12px; line-height: 1.5; }
+.network-fee-warning { margin: 10px 0 0; color: #f3c97b; font-size: 12px; line-height: 1.5; }
 .network-fee-overlay { position: fixed; inset: 0; z-index: 1140; background: #0009; backdrop-filter: blur(7px); }
 .network-fee-dialog { position: fixed; z-index: 1150; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; box-sizing: border-box; padding: 24px; border: 1px solid #ffffff1a; border-radius: 24px; color: #fff; background: #15151b; box-shadow: 0 24px 100px #0008; font-family: inherit; }
 .network-fee-dialog-heading { justify-content: space-between; }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CURATED_EVM_CHAINS } from '../../../web3/curatedEvmChains.js'
-import { fetchNetworkFees, fetchPendingNonce, parseTransactionNonce, parseGwei, prepareNetworkFeeTransaction, resolveNetworkFeeSelection } from './networkFees.js'
+import { fetchNetworkFees, fetchPendingNonce, networkFeeWarning, parseTransactionNonce, parseGwei, prepareNetworkFeeTransaction, resolveNetworkFeeSelection } from './networkFees.js'
 
 function client(chainId = 10, legacy = false) {
     return { chain: { id: chainId }, getChainId: vi.fn().mockResolvedValue(chainId),
@@ -57,15 +57,36 @@ describe('live native network fees', () => {
             expect(() => parseGwei(invalid)).toThrow()
         }
     })
-    it('validates chain, staleness, priority/max relationship and current base fee', async () => {
+    it('validates chain, staleness and priority/max relationship without requiring the full tip', async () => {
         const snapshot = await fetchNetworkFees(client(), 10, () => 1000)
         const fields = { maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }
         expect(() => resolveNetworkFeeSelection(snapshot, select(10, fields), 8453, 1000)).toThrow('expired')
         expect(() => resolveNetworkFeeSelection(snapshot, select(10, fields), 10, 46001)).toThrow('expired')
         expect(() => resolveNetworkFeeSelection(snapshot, select(8453, fields), 10, 1000)).toThrow('sell network')
         expect(() => resolveNetworkFeeSelection(snapshot, select(10, { maxFeePerGas: 150n, maxPriorityFeePerGas: 151n }), 10, 1000)).toThrow('cannot exceed')
-        expect(() => resolveNetworkFeeSelection(snapshot, select(10, { maxFeePerGas: 101n, maxPriorityFeePerGas: 2n }), 10, 1000)).toThrow('current base fee')
+        const clipped = { maxFeePerGas: 101n, maxPriorityFeePerGas: 2n }
+        expect(resolveNetworkFeeSelection(snapshot, select(10, clipped), 10, 1000)).toEqual(clipped)
+        expect(networkFeeWarning(snapshot, clipped)).toContain('reduce the priority fee')
         expect(() => resolveNetworkFeeSelection(snapshot, select(10, { ...fields, gasPrice: 1n }), 10, 1000)).toThrow('valid maximum')
+    })
+    it('accepts the screenshot low cap exactly, warns about inclusion and estimates without underpriced fees', async () => {
+        const rpc = client(1)
+        rpc.getBlock.mockResolvedValue({ number: 100n, baseFeePerGas: parseGwei('0.128105061') })
+        const snapshot = await fetchNetworkFees(rpc, 1)
+        const fields = { maxFeePerGas: parseGwei('0.102553251'), maxPriorityFeePerGas: parseGwei('0.01') }
+        expect(resolveNetworkFeeSelection(snapshot, select(1, fields), 1)).toEqual(fields)
+        expect(networkFeeWarning(snapshot, fields)).toContain('below the current base fee')
+        expect(networkFeeWarning({ ...snapshot, type: 'legacy' }, { gasPrice: 1n })).toBeNull()
+        rpc.estimateGas.mockImplementation(async request => {
+            if (request.maxFeePerGas < snapshot.baseFeePerGas) throw new Error('max fee less than block base fee')
+            return 100n
+        })
+        const transaction = { to: '0x0000000000000000000000000000000000000001', data: '0x1234', value: 8n,
+            maxFeePerGas: 999n, maxPriorityFeePerGas: 1n, gasPrice: 999n }
+        const result = await prepareNetworkFeeTransaction({ publicClient: rpc, transaction, account: transaction.to,
+            snapshot, selection: select(1, fields), chainId: 1 })
+        expect(rpc.estimateGas).toHaveBeenCalledWith({ to: transaction.to, data: '0x1234', value: 8n, account: transaction.to })
+        expect(result).toEqual({ to: transaction.to, data: '0x1234', value: 8n, gas: 120n, ...fields })
     })
     it('uses only validated custom fields, preserves simulated gas and checks native affordability', async () => {
         const rpc = client()

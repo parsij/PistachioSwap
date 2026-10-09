@@ -37,14 +37,19 @@ describe('source network fee lifecycle', () => {
         expect(result.current.snapshot.chainId).toBe(8453)
         await expect(result.current.prepareTransaction({ gas: 100n, value: 0n }, 10)).rejects.toThrow('do not match')
     })
-    it('refreshes the base fee before sending and rejects newly underpriced custom fees', async () => {
+    it('refreshes the base fee before sending without raising or blocking the selected low cap', async () => {
         const rpc = client(10)
         const { result } = renderHook(() => useNetworkFees({ publicClient: rpc, chainId: 10, account, automatic: false }))
         await waitFor(() => expect(result.current.snapshot).toBeTruthy())
         act(() => result.current.select('custom', { maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }))
         rpc.getBlock.mockResolvedValue({ number: 101n, baseFeePerGas: 200n })
-        await expect(result.current.prepareTransaction({ gas: 100n, value: 0n })).rejects.toThrow('current base fee')
+        await expect(result.current.prepareTransaction({ gas: 100n, value: 0n })).resolves.toEqual({
+            gas: 100n, value: 0n, maxFeePerGas: 150n, maxPriorityFeePerGas: 2n,
+        })
         expect(rpc.getChainId).toHaveBeenCalledTimes(2)
+        await act(async () => result.current.refresh())
+        expect(result.current.error).toBeNull()
+        expect(result.current.warning).toContain('below the current base fee')
     })
     it('blocks changes during the final balance check', async () => {
         const rpc = client(10)

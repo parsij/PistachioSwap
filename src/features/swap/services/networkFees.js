@@ -95,10 +95,19 @@ export function resolveNetworkFeeSelection(snapshot, selection, chainId, now = D
     if (!quantity(fields.maxPriorityFeePerGas) || !quantity(fields.maxFeePerGas) || fields.maxFeePerGas === 0n ||
         fields.gasPrice !== undefined) throw new Error('Enter valid maximum and priority fees.')
     if (fields.maxPriorityFeePerGas > fields.maxFeePerGas) throw new Error('Priority fee cannot exceed the maximum fee.')
-    if (fields.maxFeePerGas < snapshot.baseFeePerGas + fields.maxPriorityFeePerGas) {
-        throw new Error('Maximum fee must cover the current base fee plus the priority fee.')
-    }
     return { maxFeePerGas: fields.maxFeePerGas, maxPriorityFeePerGas: fields.maxPriorityFeePerGas }
+}
+
+/** A low cap affects inclusion, not the validity of the user's fee choice. */
+export function networkFeeWarning(snapshot, fields) {
+    if (snapshot?.type !== 'eip1559' || !fields) return null
+    if (fields.maxFeePerGas < snapshot.baseFeePerGas) {
+        return 'Your cap is below the current base fee. The transaction may wait for gas prices to fall or be rejected by your wallet or RPC. A swap quote can expire while waiting.'
+    }
+    if (fields.maxFeePerGas < snapshot.baseFeePerGas + fields.maxPriorityFeePerGas) {
+        return 'The network will reduce the priority fee to stay within your maximum fee.'
+    }
+    return null
 }
 
 export function networkFeeCap(fields) {
@@ -117,7 +126,10 @@ export async function prepareNetworkFeeTransaction({ publicClient, transaction, 
         if (nonce < latest) throw new Error(`Nonce ${nonce} has already been used. Choose ${latest} or higher, or leave it automatic.`)
         request.nonce = nonce
     }
-    const gas = request.gas ?? ceil(await publicClient.estimateGas({ ...request, ...fields, account }), 120n)
+    // A below-base cap cannot execute in the current block. Estimate execution
+    // with RPC-default fees, then keep the user's exact cap for signing/sending.
+    const estimateFields = snapshot.type === 'eip1559' && fields.maxFeePerGas < snapshot.baseFeePerGas ? {} : fields
+    const gas = request.gas ?? ceil(await publicClient.estimateGas({ ...request, ...estimateFields, account }), 120n)
     if (!quantity(gas) || gas === 0n) throw new Error('Transaction gas estimate is unavailable.')
     const balance = await publicClient.getBalance({ address: account })
     if (balance < BigInt(request.value ?? 0n) + gas * networkFeeCap(fields)) {

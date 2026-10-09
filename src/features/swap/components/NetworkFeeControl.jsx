@@ -5,7 +5,7 @@ import { formatUnits } from 'viem'
 import { getCuratedEvmChain, getCuratedEvmChainLogoUri } from '../../../web3/curatedEvmChains.js'
 import { multiplyUsdAmount } from '../../../services/fiatValue.js'
 import { formatNetworkCostUsd } from '../model/swapDisplay.js'
-import { formatGwei, networkFeeCap, parseGwei, parseTransactionNonce, resolveNetworkFeeSelection } from '../services/networkFees.js'
+import { formatGwei, networkFeeCap, networkFeeWarning, parseGwei, parseTransactionNonce, resolveNetworkFeeSelection } from '../services/networkFees.js'
 import SwapInfoTooltip from './SwapInfoTooltip.jsx'
 import './NetworkFeeControl.css'
 
@@ -40,6 +40,7 @@ function CustomFeeDialog({ fees, chain, destinationChain, nativePriceUsd, onSele
         }
         resolveNetworkFeeSelection(fees.snapshot, { chainId: fees.chainId, mode: 'custom', fields: previewFields }, fees.chainId)
     } catch { previewFields = null }
+    const warning = networkFeeWarning(fees.snapshot, previewFields)
     function confirm(event) {
         event.preventDefault()
         try {
@@ -78,6 +79,7 @@ function CustomFeeDialog({ fees, chain, destinationChain, nativePriceUsd, onSele
                             onChange={event => { setMaximum(event.target.value); setError(null) }} />
                     </label>
                     {!legacy && <p className="network-fee-base">Current base fee: {formatGwei(fees.snapshot.baseFeePerGas)} Gwei</p>}
+                    {warning && <p className="network-fee-warning" role="status">{warning}</p>}
                     <div className="network-fee-custom-estimate" aria-label="Custom network cost estimate">
                         <span>Estimated maximum network cost</span>
                         <FeeAmount fields={previewFields} fees={fees} chain={chain} nativePriceUsd={nativePriceUsd} />
@@ -132,6 +134,7 @@ export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, spon
                 </button>
             </div>}
             {fees.error && <p className="network-fee-error" role="alert">{fees.error}</p>}
+            {fees.warning && <p className="network-fee-warning" role="status">{fees.warning}</p>}
             <p className="network-fee-note">{fees.automatic ? 'Turn off Auto network cost in settings to customize.' : 'Live source-network estimates. Lower fees may take longer. Custom fees apply to the swap transaction.'}</p>
             {!fees.automatic && customScope?.chainId === fees.chainId && customScope.account === fees.account && fees.snapshot && <CustomFeeDialog key={`${fees.chainId}:${fees.account}:${fees.snapshot.type}`} fees={fees} chain={chain} destinationChain={destinationChain} nativePriceUsd={nativePriceUsd} onSelect={onSelect} onClose={() => setCustomScope(null)} />}
         </>}
