@@ -44,6 +44,17 @@ describe('SwapSettingsPopover', () => {
             .toBeTruthy()
     })
 
+    it('explains and switches automatic network cost off', () => {
+        render(<Harness />)
+        fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
+        const control = screen.getByRole('switch', { name: 'Auto network cost' })
+        expect(control.getAttribute('aria-checked')).toBe('true')
+        fireEvent.click(control)
+        expect(control.getAttribute('aria-checked')).toBe('false')
+        fireEvent.click(screen.getByRole('button', { name: /Turn this off to choose Less/ }))
+        expect(screen.getByRole('tooltip').textContent).toContain('custom native gas fees')
+    })
+
     it('accepts custom slippage and rejects malformed input', () => {
         render(<Harness />)
         fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))

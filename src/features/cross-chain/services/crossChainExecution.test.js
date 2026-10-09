@@ -59,6 +59,19 @@ describe('cross-chain connector execution', () => {
         expect(publicClient.getGasPrice).not.toHaveBeenCalled()
     })
 
+    it('uses selected source fee caps and buffered gas in the cross-chain review cost', async () => {
+        const publicClient = { estimateGas: vi.fn().mockResolvedValue(100n), estimateFeesPerGas: vi.fn() }
+        const result = await estimatePreparedCrossChainCosts({ publicClient, account: ADDRESS,
+            nativeBalanceWei: 2000n, networkFeeFields: { gasPrice: 20n },
+            preparedRoute: { sourceAsset: { chainId: 56, address: TARGET },
+                steps: [{ type: 'source-transaction', chainId: 56, transaction: { to: TARGET, data: '0x1234', value: '5' } }] } })
+        expect(result.totalGas).toBe(120n)
+        expect(result.totalSourceGasWei).toBe(2400n)
+        expect(result.totalRequiredNativeWei).toBe(2405n)
+        expect(result.sufficientNativeGas).toBe(false)
+        expect(publicClient.estimateFeesPerGas).not.toHaveBeenCalled()
+    })
+
     it('skips approval gas for native input and reports insufficient native balance', async () => {
         const publicClient = {
             estimateGas: vi.fn().mockResolvedValue(100_000n),
@@ -239,6 +252,26 @@ describe('cross-chain connector execution', () => {
             value: 0n,
             gas: 21_000n,
         })
+    })
+
+    it('applies selected fees to source steps and revalidates the route after asynchronous fee preparation', async () => {
+        const chain = getCuratedEvmChain(10)
+        const walletClient = { account: { address: ADDRESS }, chain }
+        const send = vi.fn(async () => `0x${'12'.repeat(32)}`)
+        const validateRoute = vi.fn()
+        const prepareTransactionFees = vi.fn(async request => ({ ...request, maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }))
+        await sendPreparedCrossChainTransaction({ walletClient, connectedAddress: ADDRESS, sourceChain: chain,
+            destinationChainId: 56, step: { type: 'source-transaction', chainId: 10, transaction: { to: TARGET, data: '0x1234', value: '5' } },
+            validateRoute, prepareTransactionFees, send })
+        expect(prepareTransactionFees).toHaveBeenCalledWith(expect.objectContaining({ chain, value: 5n, data: '0x1234' }), 10)
+        expect(send).toHaveBeenCalledWith(walletClient, expect.objectContaining({ chain, maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }))
+        expect(validateRoute).toHaveBeenCalledTimes(2)
+        send.mockClear()
+        validateRoute.mockImplementationOnce(() => {}).mockImplementationOnce(() => { throw new Error('Route changed') })
+        await expect(sendPreparedCrossChainTransaction({ walletClient, connectedAddress: ADDRESS, sourceChain: chain,
+            step: { type: 'source-transaction', chainId: 10, transaction: { to: TARGET, data: '0x1234', value: '5' } },
+            validateRoute, prepareTransactionFees, send })).rejects.toThrow()
+        expect(send).not.toHaveBeenCalled()
     })
 
     it('stops after approval rejection and never opens the deposit', async () => {

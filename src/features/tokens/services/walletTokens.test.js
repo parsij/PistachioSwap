@@ -81,6 +81,27 @@ describe('wallet token presentation data', () => {
         })
     })
 
+    it('recovers a missing USDC valuation from a safe exact-contract catalog price', () => {
+        const usdc = {
+            classificationVersion: 6, chainId: 1, address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+            recognitionStatus: 'recognized', recognitionReasons: ['shapeshift-asset-catalog'],
+            verificationStatus: 'recognized', verificationReasons: ['shapeshift-asset-catalog'],
+            spamStatus: 'clean', possibleSpam: false, verifiedContract: true,
+            securityStatus: 'trusted', visibility: 'primary', classificationTier: 'established', classificationReasons: [],
+            priceConfidence: 'unknown', priceUSD: null, trustedPriceUSD: null, marketPriceUSD: null,
+            includeInPortfolioValue: false, valueUSD: null, formattedBalance: '20', balance: '20',
+        }
+        const catalog = { ...usdc, source: 'shapeshift-local', name: 'USDC', symbol: 'USDC', decimals: 6,
+            priceUSD: '0.997', marketPriceUSD: '0.997', priceConfidence: 'market' }
+        const [merged] = mergeWalletBalances([catalog], [usdc])
+        expect(formatWalletUsdValue(merged)).toBe('$19.94')
+        expect(merged.includeInPortfolioValue).toBe(true)
+        for (const unsafe of [{ securityStatus: 'blocked' }, { possibleSpam: true }, { recognitionStatus: 'unverified' }, { priceConfidence: 'untrusted' }]) {
+            expect(resolveWalletUsdValue(mergeWalletBalances([catalog], [{ ...usdc, ...unsafe }])[0])).toBeNull()
+        }
+        expect(resolveWalletUsdValue(mergeWalletBalances([{ ...catalog, chainId: 8453 }], [usdc])[1])).toBeNull()
+    })
+
     it('does not inherit a catalog valuation when the backend did not trust it', () => {
         const [merged] = mergeWalletBalances(
             [{ chainId: 56, address, priceUSD: '4', balance: '0' }],

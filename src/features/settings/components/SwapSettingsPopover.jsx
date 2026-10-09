@@ -1,6 +1,7 @@
 import * as Popover from '@radix-ui/react-popover'
 
 import SlippageSettingsSection from './SlippageSettingsSection.jsx'
+import SettingsToggleRow from './SettingsToggleRow.jsx'
 import SettingsVisibilitySection from './SettingsVisibilitySection.jsx'
 import { useSwapSettingsPopover } from '../hooks/useSwapSettingsPopover.js'
 import './SwapSettingsPopover.css'
@@ -35,6 +36,10 @@ export default function SwapSettingsPopover({ children, settings, onSettingsChan
                     </select>
                     <small>Auto uses Gas Assist when gas is low. Force requires an eligible token and enabled network. Normal gas uses your wallet’s native balance.</small>
                 </label>
+                <SettingsToggleRow label="Auto network cost"
+                    tooltip="Turn this off to choose Less, Standard, High, or custom native gas fees in the expanded swap details. Automatic fees follow the network and your wallet. Gas Assist fees are managed separately."
+                    checked={settings.autoNetworkCost !== false}
+                    onCheckedChange={(autoNetworkCost) => onSettingsChange({ ...settings, autoNetworkCost })} />
                 <SettingsVisibilitySection settings={settings} onSettingsChange={onSettingsChange} />
             </Popover.Content>
         </Popover.Portal>

@@ -31,6 +31,7 @@ export async function estimatePreparedCrossChainCosts({
     nativeBalanceWei,
     nativePriceUsd,
     nativeDecimals = 18,
+    networkFeeFields,
     now = Date.now,
     onDiagnostic,
 }) {
@@ -75,15 +76,21 @@ export async function estimatePreparedCrossChainCosts({
             throw error
         }
     }))
-    const gasEstimates = gasResults.map(({ gas }) => gas)
+    const gasEstimates = gasResults.map(({ gas }, index) => networkFeeFields
+        ? steps[index].transaction.gas != null
+            ? BigInt(steps[index].transaction.gas)
+            : (BigInt(gas) * 120n + 99n) / 100n
+        : gas)
     const gasEstimateSources = gasResults.map(({ source }) => source)
     const totalGas = gasEstimates.reduce((sum, gas) => sum + BigInt(gas), 0n)
-    let effectiveGasPrice
-    try {
-        const fees = await publicClient.estimateFeesPerGas()
-        effectiveGasPrice = fees.maxFeePerGas ?? fees.gasPrice ?? null
-    } catch {
-        effectiveGasPrice = null
+    let effectiveGasPrice = networkFeeFields?.maxFeePerGas ?? networkFeeFields?.gasPrice ?? null
+    if (effectiveGasPrice === null) {
+        try {
+            const fees = await publicClient.estimateFeesPerGas()
+            effectiveGasPrice = fees.maxFeePerGas ?? fees.gasPrice ?? null
+        } catch {
+            effectiveGasPrice = null
+        }
     }
     if (effectiveGasPrice === null || effectiveGasPrice === undefined) {
         effectiveGasPrice = await publicClient.getGasPrice()
@@ -313,6 +320,7 @@ export async function sendPreparedCrossChainTransaction({
     validateRoute,
     onPhase,
     send = sendTransaction,
+    prepareTransactionFees,
 }) {
     const phase = step.type === 'approval' ? 'send-approval' : 'send-deposit'
     const metadata = {
@@ -354,7 +362,9 @@ export async function sendPreparedCrossChainTransaction({
             request.gas = gas
         }
         onPhase?.(phase, metadata)
-        return await send(walletClient, request)
+        const prepared = prepareTransactionFees ? await prepareTransactionFees(request, sourceChain.id) : request
+        validateRoute?.()
+        return await send(walletClient, prepared)
     } catch (error) {
         throw executionError(
             phase,

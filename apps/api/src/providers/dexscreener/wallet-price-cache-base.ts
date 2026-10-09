@@ -104,7 +104,7 @@ function configuredNegativePriceTtlMs(override?: number) {
 }
 
 function validPrice(value: unknown): value is string {
-    return typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value)
+    return typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value) && /[1-9]/.test(value)
 }
 
 function validLiquidity(value: unknown): value is number {
@@ -416,6 +416,13 @@ export function createDexScreenerWalletPriceCache(
             const liquidityUsd = validLiquidity(market?.liquidityUsd)
                 ? market.liquidityUsd
                 : null
+            const previous = entries.get(trusted.identity)
+            // Empty/missing market data must not erase a measured price. Retry
+            // after the negative TTL while retaining its original observation time.
+            if (!priceUSD && previous?.priceUSD) {
+                setEntry({ ...previous, expiresAt: refreshedAt + negativePriceTtlMs })
+                continue
+            }
             setEntry({
                 chainId,
                 address: trusted.token.address,

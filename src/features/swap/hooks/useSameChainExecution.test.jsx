@@ -53,6 +53,34 @@ function setup(overrides = {}) {
 describe('same-chain execution orchestration with mocked approval, quote, simulation, and wallet dependencies', () => {
     beforeEach(() => simulation.mockReset().mockResolvedValue(undefined))
 
+    it('applies custom fees after simulation without losing the buffered gas or refreshed calldata', async () => {
+        simulation.mockResolvedValue({ to: ROUTER, data: '0xabcd', value: 0n, gas: 250000n, chainId: 56 })
+        const prepareTransactionFees = vi.fn(async transaction => ({ ...transaction, maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }))
+        const { result, dependencies } = setup({ prepareTransactionFees })
+        await act(() => result.current.confirmSameChainSwap())
+        expect(prepareTransactionFees).toHaveBeenCalledWith(expect.objectContaining({ gas: 250000n }), 56)
+        expect(dependencies.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: 250000n, data: '0xabcd', maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }))
+    })
+
+    it('does not send a quote that expires during the final network fee read', async () => {
+        const reviewed = quote()
+        const prepareTransactionFees = vi.fn(async transaction => {
+            reviewed.selectedQuote.expiresAt = '2000-01-01T00:00:00.000Z'
+            return transaction
+        })
+        const { result, dependencies } = setup({ quote: reviewed, prepareTransactionFees })
+        await act(() => result.current.confirmSameChainSwap())
+        expect(dependencies.sendTransaction).not.toHaveBeenCalled()
+        expect(dependencies.setReviewError).toHaveBeenCalledWith(expect.stringContaining('expired'))
+    })
+
+    it('does not send when custom fee validation fails', async () => {
+        const { result, dependencies } = setup({ prepareTransactionFees: vi.fn().mockRejectedValue(new Error('Maximum fee must cover the current base fee.')) })
+        await act(() => result.current.confirmSameChainSwap())
+        expect(dependencies.sendTransaction).not.toHaveBeenCalled()
+        expect(dependencies.setReviewError).toHaveBeenCalledWith(expect.stringContaining('Maximum fee'))
+    })
+
     it('prevents duplicate confirmation and clears pending state after submission', async () => {
         let release
         const prepareSwapApproval = vi.fn(() => new Promise((resolve) => { release = resolve }))

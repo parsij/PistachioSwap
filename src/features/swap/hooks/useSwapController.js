@@ -8,6 +8,7 @@ import {
     useSendTransaction,
 } from '#wallet-runtime'
 import { formatUnits, parseEther } from 'viem'
+import { useNetworkFees } from './useNetworkFees.js'
 import { useSwapSettings } from '../../settings/hooks/useSwapSettings.js'
 import { useWalletState } from '../../wallet/hooks/useWalletState.js'
 import { useTokenCatalogController } from '../../tokens/hooks/useTokenCatalogController.js'
@@ -133,6 +134,12 @@ export function useSwapController() {
         setVisibleStatus: setStatusMessage,
         diagnostic: logSwapDiagnostic,
     })
+    const networkFees = useNetworkFees({
+        publicClient, chainId: swapChainId, account: walletState.address,
+        automatic: swapSettings.autoNetworkCost !== false,
+        enabled: quoteDetailsOpen || swapSettings.autoNetworkCost === false,
+        gasEstimate: quote.quote?.selectedQuote?.transaction?.gas ?? null,
+    })
     const effectiveSlippageBps = getEffectiveSlippageBps(swapSettings, {
         recommendedSlippageBps: quote.providerRecommendedSlippageBps,
         defaultSlippageBps: quoteConfig.defaultSlippageBps,
@@ -251,6 +258,8 @@ export function useSwapController() {
         switchNetwork,
         nativeBalance: catalog.nativeBalance,
         nativeToken,
+        prepareTransactionFees: networkFees.prepareTransaction,
+        networkFeeFields: swapSettings.autoNetworkCost === false ? networkFees.fields : null,
     })
     async function handleCrossChainGasAssistConfirmed() {
         try {
@@ -357,7 +366,7 @@ export function useSwapController() {
                 ? inputs.sellToken
                 : null
         )
-    const estimatedNativeFeeWei =
+    const quotedNativeFeeWei =
         isNativeEvmToken(inputs.sellToken)
             ? getQuoteEstimatedNativeFeeWei({
                 quote: routing.routingMode === routing.modes.CROSS_CHAIN
@@ -366,6 +375,10 @@ export function useSwapController() {
                 nativeToken: nativePriceToken,
             })
             : null
+    const selectedNativeFeeWei = swapSettings.autoNetworkCost === false && routing.routingMode !== routing.modes.CROSS_CHAIN
+        ? networkFees.maximumNativeFeeWei : null
+    const estimatedNativeFeeWei = selectedNativeFeeWei != null && (quotedNativeFeeWei == null || selectedNativeFeeWei > quotedNativeFeeWei)
+        ? selectedNativeFeeWei : quotedNativeFeeWei
     const effectiveFallbackNativeReserveWei =
         quote.quote?.selectedQuote
             ? configuredNativeReserveWei
@@ -484,6 +497,7 @@ export function useSwapController() {
         applyRefreshedQuote: quote.applyRefreshedQuote,
         publicClient,
         sendTransaction,
+        prepareTransactionFees: networkFees.prepareTransaction,
         transactionStatus: receipt.transactionStatus,
         reviewOperation: review.reviewOperation,
         setReviewOperation: review.setReviewOperation,
@@ -634,9 +648,20 @@ export function useSwapController() {
     ])
 
     const callbacks = {
+        onNetworkFeeSelect: (mode, fields) => {
+            execution.cancelSameChainExecution()
+            review.closeReview()
+            crossChain.review.close()
+            networkFees.select(mode, fields)
+        },
         onSettingsChange: (nextSettings) => {
             if (nextSettings.gasAssistPreference !== swapSettings.gasAssistPreference) {
                 resetQuoteAndReview()
+                crossChain.review.close()
+            } else if (nextSettings.autoNetworkCost !== swapSettings.autoNetworkCost) {
+                // Network fee changes do not alter the quote request/output.
+                execution.cancelSameChainExecution()
+                review.closeReview()
                 crossChain.review.close()
             }
             setSwapSettings(nextSettings)
@@ -751,6 +776,7 @@ export function useSwapController() {
         review,
         execution,
         effectiveSlippageBps,
+        networkFees,
         statusMessage,
         quoteDetailsOpen,
         setQuoteDetailsOpen,

@@ -62,6 +62,8 @@ export function useCrossChainController({
     switchNetwork,
     nativeBalance,
     nativeToken,
+    prepareTransactionFees,
+    networkFeeFields,
 }) {
     const [executionError, setExecutionError] = useState(null)
     const [reviewRoute, setReviewRoute] = useState(null)
@@ -226,6 +228,7 @@ export function useCrossChainController({
                 preparedRoute: route,
                 account,
                 nativeBalanceWei: nativeBalance.value,
+                networkFeeFields,
                 nativePriceUsd: getDisplayTokenPrice(nativeToken),
                 nativeDecimals: getCuratedEvmChain(sellChainId)?.nativeCurrency.decimals ?? 18,
                 onDiagnostic: import.meta.env.DEV
@@ -237,6 +240,7 @@ export function useCrossChainController({
                 route: { ...route, costs: estimate.costs },
                 preparation: {
                     status: 'ready',
+                    sourceGasEstimate: estimate.totalGas.toString(),
                     gasEstimateUnavailable: false,
                     insufficientNativeGas: estimate.sufficientNativeGas === false,
                     requiredNativeGasWei: estimate.totalSourceGasWei.toString(),
@@ -340,6 +344,7 @@ export function useCrossChainController({
             destinationChainId: executionRoute?.destinationChainId,
             step,
             routeId: executionRoute?.publicRouteId,
+            prepareTransactionFees,
             validateRoute: () => {
                 const error = routeBindingError(executionRoute)
                 if (error) throw new Error(error)

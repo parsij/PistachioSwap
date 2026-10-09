@@ -278,6 +278,23 @@ describe('DexScreener ShapeShift wallet price cache', () => {
         expect(setupResult.fetchMarkets).toHaveBeenCalledTimes(3)
     })
 
+    it('does not erase a measured stablecoin price when a successful market batch omits pricing', async () => {
+        const { cache, fetchMarkets, advance } = await setup()
+        const token = walletToken(listedAddress)
+        fetchMarkets.mockResolvedValueOnce(marketResult('0.997'))
+        await cache.enrichWalletTokens([token])
+        advance(31 * 60_000)
+        fetchMarkets.mockResolvedValueOnce({ markets: new Map(), partial: false, successfulBatches: 1, failedBatches: 0 })
+        const [retained] = await cache.enrichWalletTokens([token])
+        expect(retained.priceUSD).toBe('0.997')
+        expect(retained.valueUSD).toBe('1.994')
+        advance(6 * 60_000)
+        fetchMarkets.mockResolvedValueOnce(marketResult('0.985'))
+        const [updated] = await cache.enrichWalletTokens([token])
+        expect(updated.priceUSD).toBe('0.985')
+        expect(updated.valueUSD).toBe('1.97')
+    })
+
     it('does not let a stale unlisted token retain a provider-supplied price', async () => {
         const setupResult = await setup()
         const result = await setupResult.cache.enrichWalletTokens([

@@ -1,0 +1,29 @@
+.network-fee-panel { margin-top: 12px; padding: 14px; border: 1px solid #ffffff12; border-radius: 18px; background: #ffffff04; }
+.network-fee-heading, .network-fee-heading > span, .network-fee-summary, .network-fee-dialog-heading { display: flex; align-items: center; gap: 7px; }
+.network-fee-heading { justify-content: space-between; flex-wrap: wrap; font-size: 13px; font-weight: 600; }
+.network-fee-chain { color: var(--color-muted, #a6a6af); font-size: 11px; font-weight: 400; }
+.network-fee-chain img { width: 15px; height: 15px; border-radius: 50%; }
+.network-fee-summary { margin: 13px 0 5px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.network-fee-summary > span:nth-child(2) { margin-left: auto; }
+.network-fee-icon-button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 9px; color: inherit; background: #ffffff08; cursor: pointer; }
+.network-fee-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+.network-fee-options > button { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; min-width: 0; padding: 12px 9px; border: 1px solid #ffffff16; border-radius: 13px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.network-fee-options > button > span:first-child { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+.network-fee-options strong { font-size: 11px; }
+.network-fee-options small, .network-fee-options > button > span:not(:first-child) { font-size: 10px; color: var(--color-muted, #a6a6af); overflow-wrap: anywhere; }
+.network-fee-options > button[aria-pressed="true"] { border-color: #bcf58b; background: #bcf58b0c; }
+.network-fee-options > button:disabled, .network-fee-icon-button:disabled { opacity: .45; cursor: default; }
+.network-fee-note, .network-fee-base { margin: 12px 0 0; color: var(--color-muted, #a6a6af); font-size: 11px; line-height: 1.5; }
+.network-fee-error { margin: 10px 0 0; color: #ff9797; font-size: 12px; line-height: 1.5; }
+.network-fee-overlay { position: fixed; inset: 0; z-index: 1140; background: #0009; backdrop-filter: blur(7px); }
+.network-fee-dialog { position: fixed; z-index: 1150; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; box-sizing: border-box; padding: 24px; border: 1px solid #ffffff1a; border-radius: 24px; color: #fff; background: #15151b; box-shadow: 0 24px 100px #0008; font-family: inherit; }
+.network-fee-dialog-heading { justify-content: space-between; }
+.network-fee-dialog h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.network-fee-dialog-heading + p { margin: 12px 0 22px; color: #a6a6af; font-size: 13px; line-height: 1.5; }
+.network-fee-field { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; font-size: 14px; }
+.network-fee-field > span { display: flex; justify-content: space-between; }
+.network-fee-field small { color: #a6a6af; font-size: 11px; }
+.network-fee-field input { width: 100%; box-sizing: border-box; padding: 14px; border: 1px solid #ffffff1a; border-radius: 12px; background: #ffffff05; color: #fff; font: inherit; font-variant-numeric: tabular-nums; }
+.network-fee-confirm { margin-top: 20px; width: 100%; padding: 14px; border: 0; border-radius: 14px; background: #bcf58b; color: #142309; font: inherit; font-weight: 600; cursor: pointer; }
+.network-fee-panel button:focus-visible, .network-fee-dialog button:focus-visible, .network-fee-field input:focus-visible { outline: 2px solid #bcf58b; outline-offset: 3px; }
+@media (max-width: 420px) { .network-fee-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } .network-fee-dialog { padding: 20px; } }

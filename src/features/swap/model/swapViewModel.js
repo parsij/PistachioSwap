@@ -1,4 +1,5 @@
-import { parseEther } from 'viem'
+import { formatUnits, parseEther } from 'viem'
+import { multiplyUsdAmount } from '../../../services/fiatValue.js'
 import {
     DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
     DEFAULT_NATIVE_GAS_BUFFER_BPS,
@@ -265,7 +266,13 @@ export function createSwapViewModel(context) {
     const estimatedTotalCost = formatCostUsd(crossChainCosts?.totalEstimatedUsd, true)
     const estimatedRouteCost = formatCostUsd(crossChainCosts?.routeCostUsd, true)
     const sourceGasCost = formatCostUsd(crossChainCosts?.sourceGasUsd, true)
-    const sameChainNetworkCost = activeQuote?.selectedQuote?.estimatedGasUsd
+    const customNetworkCostNative = context.networkFees?.automatic === false && context.networkFees.maximumNativeFeeWei != null
+        ? formatUnits(context.networkFees.maximumNativeFeeWei, getCuratedEvmChain(context.swapChainId)?.nativeCurrency.decimals ?? 18) : null
+    const customNetworkCostUsd = customNetworkCostNative && (nativeToken?.trustedPriceUSD ?? nativeToken?.priceUSD)
+        ? multiplyUsdAmount(customNetworkCostNative, nativeToken.trustedPriceUSD ?? nativeToken.priceUSD) : null
+    const sameChainNetworkCost = customNetworkCostNative
+        ? `${customNetworkCostUsd ? formatCostUsd(customNetworkCostUsd) : `${customNetworkCostNative} ${nativeSymbol}`} max`
+        : activeQuote?.selectedQuote?.estimatedGasUsd
         ? formatCostUsd(activeQuote.selectedQuote.estimatedGasUsd)
         : activeQuote?.selectedQuote ? 'Included' : null
     const sameChainGasAssistFee = gasAssistFeeView(gasAssist.preview, sellToken)
@@ -464,6 +471,15 @@ export function createSwapViewModel(context) {
                     onAction: callbacks.onPrimaryAction,
                 },
                 details: {
+                    networkFees: context.networkFees ? {
+                        fees: { ...context.networkFees,
+                            gasEstimate: routing.routingMode === routing.modes.CROSS_CHAIN
+                                ? crossChain.review.preparation.sourceGasEstimate ? BigInt(crossChain.review.preparation.sourceGasEstimate) : null
+                                : context.networkFees.gasEstimate },
+                        nativePriceUsd: nativeToken?.trustedPriceUSD ?? nativeToken?.priceUSD,
+                        onSelect: callbacks.onNetworkFeeSelect,
+                        sponsored: Boolean(sameChainGasAssistFee || crossChainGasAssistFee || routing.routingMode === routing.modes.SAME_CHAIN_GAS_ASSIST || crossChainGasAssistDirect),
+                    } : null,
                     open: quoteDetailsOpen,
                     onOpenChange: setQuoteDetailsOpen,
                     rate: compactRate,

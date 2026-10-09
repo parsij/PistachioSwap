@@ -60,6 +60,10 @@ const mocks = vi.hoisted(() => ({
     marketTokens: [],
     nativeBalance: 5_349_631_675_469_080n,
     publicClient: {
+        chain: { id: 56 },
+        getChainId: vi.fn(),
+        getBlock: vi.fn(),
+        getBalance: vi.fn(),
         estimateGas: vi.fn(),
         estimateFeesPerGas: vi.fn(),
         getGasPrice: vi.fn(),
@@ -322,9 +326,12 @@ describe('App wallet integration', () => {
             approvalTransactionSubmitted: false,
         }
         mocks.nativeBalance = 5_349_631_675_469_080n
+        mocks.publicClient.getChainId.mockReset().mockResolvedValue(56)
+        mocks.publicClient.getBlock.mockReset().mockResolvedValue({ number: 100n, baseFeePerGas: 1_000_000_000n })
+        mocks.publicClient.getBalance.mockReset().mockResolvedValue(10n ** 18n)
         mocks.publicClient.estimateGas.mockReset().mockResolvedValue(100_000n)
         mocks.publicClient.estimateFeesPerGas.mockReset()
-            .mockResolvedValue({ maxFeePerGas: 2_000_000_000n })
+            .mockResolvedValue({ maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n })
         mocks.publicClient.getGasPrice.mockReset().mockResolvedValue(2_000_000_000n)
         mocks.publicClient.call.mockReset().mockResolvedValue('0x')
         mocks.gasAssistConfig = {
@@ -1757,6 +1764,31 @@ describe('App wallet integration', () => {
         errorSpy.mockRestore()
     })
 
+    it('applies custom network fees from settings to the submitted swap', async () => {
+        configureSameChainQuoteToken()
+        mocks.fetchSwapQuote.mockResolvedValue(sameChainExecutableQuote())
+        mocks.sendTransaction.mockResolvedValue(`0x${'11'.repeat(32)}`)
+        const view = render(<App />)
+        selectQtknToBnb(view.container, view.getAllByText)
+        fireEvent.change(view.getByRole('textbox', { name: 'Sell amount' }), { target: { value: '0.001' } })
+        await waitFor(() => expect(view.getByRole('button', { name: 'Review swap' })).toBeTruthy())
+        fireEvent.click(view.getByRole('button', { name: 'Swap settings' }))
+        fireEvent.click(view.getByRole('switch', { name: 'Auto network cost' }))
+        fireEvent.click(view.getByRole('button', { name: 'Swap settings' }))
+        await waitFor(() => expect(view.getByRole('button', { name: /^Custom/ }).disabled).toBe(false))
+        fireEvent.click(view.getByRole('button', { name: /^Custom/ }))
+        fireEvent.change(view.getByLabelText('Priority fee in Gwei'), { target: { value: '0.1' } })
+        fireEvent.change(view.getByLabelText('Max fee in Gwei'), { target: { value: '2.2' } })
+        fireEvent.click(view.getByRole('button', { name: 'Confirm network cost' }))
+        await waitFor(() => expect(view.getByRole('button', { name: 'Review swap' })).toBeTruthy())
+        fireEvent.click(view.getByRole('button', { name: 'Review swap' }))
+        fireEvent.click(view.getByRole('button', { name: 'Confirm swap' }))
+        await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            chainId: 56, maxFeePerGas: 2_200_000_000n, maxPriorityFeePerGas: 100_000_000n,
+            gas: 125000n, data: '0x1234',
+        })))
+    })
+
     it('isolates quote info tooltips from the settings trigger', async () => {
         const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
         configureSameChainQuoteToken()
@@ -1768,10 +1800,9 @@ describe('App wallet integration', () => {
         await waitFor(() => expect(view.getByRole('button', { name: 'Review swap' })).toBeTruthy())
 
         const tooltipCases = [
-            ['Explain fee', 'Provider and PistachioSwap fees included in this quote.'],
-            ['Explain network cost', 'Estimated source-network transaction cost.'],
+            ['Explain estimated fee', 'One compact estimate covering the swap fee and source-network cost.'],
+            ['Explain network cost', 'Fees are paid in BNB on BNB Smart Chain.'],
             ['Explain max slippage', 'Maximum allowed price movement before the transaction is cancelled.'],
-            ['Explain route', 'Provider selected for the best executable outcome.'],
         ]
         for (const [name, text] of tooltipCases) {
             const trigger = view.getByRole('button', { name })

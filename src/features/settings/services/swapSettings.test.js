@@ -88,6 +88,14 @@ describe('swap settings', () => {
 
         expect(readSwapSettings(target)).toEqual(DEFAULT_SWAP_SETTINGS)
     })
+    it('defaults network cost to auto and persists an explicit off selection', () => {
+        const target = storage()
+        writeSwapSettings({ ...DEFAULT_SWAP_SETTINGS, autoNetworkCost: false }, target)
+        expect(readSwapSettings(target).autoNetworkCost).toBe(false)
+        writeSwapSettings({ autoNetworkCost: 'invalid' }, target)
+        expect(readSwapSettings(target).autoNetworkCost).toBe(true)
+    })
+
     it('persists gas preferences and defaults invalid values to auto', () => {
         const target = storage()
         for (const gasAssistPreference of ['force', 'normal', 'auto']) {

@@ -1,4 +1,5 @@
 import { ChevronDownIcon, GasPumpIcon } from '../../../shared/components/AppIcons.jsx'
+import NetworkFeeControl from './NetworkFeeControl.jsx'
 import SwapInfoTooltip from './SwapInfoTooltip.jsx'
 import './SwapDetails.css'
 
@@ -56,7 +57,7 @@ function compactFeeSummary({ isCrossChain, sameChain, crossChain }) {
  * Fee accounting stays intentionally compact: one fee row is shown instead of separate provider,
  * network, routing, destination, impact, application, or sponsorship rows.
  */
-export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain, crossChain, slippage, exactOutputMaximum }) {
+export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain, crossChain, slippage, exactOutputMaximum, networkFees }) {
     if (!sameChain.visible && !crossChain?.route) return null
     const isCrossChain = mode === 'cross-chain'
     const feeSummary = compactFeeSummary({ isCrossChain, sameChain, crossChain })
@@ -120,6 +121,7 @@ export default function SwapDetails({ open, onOpenChange, rate, mode, sameChain,
                     <DetailRow label="Maximum sold" ariaLabel="Explain maximum sold" help="Maximum input allowed for this exact-output quote." value={exactOutputMaximum} />
                 )}
             </dl>
+            {networkFees && <NetworkFeeControl {...networkFees} />}
         </details>
     )
 }

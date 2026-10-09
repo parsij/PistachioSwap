@@ -56,6 +56,7 @@ export function useSameChainExecution({
                                           simulateTransaction =
                                           runReadOnlySwapSimulation,
                                           sendTransaction,
+                                          prepareTransactionFees,
                                           transactionStatus,
                                           reviewOperation,
                                           setReviewOperation,
@@ -824,6 +825,18 @@ export function useSameChainExecution({
                     )
                 }
 
+                if (prepareTransactionFees) {
+                    transaction = await prepareTransactionFees(transaction, chainId)
+                    throwIfConfirmationCancelled(signal)
+                    // RPC fee/balance reads can outlast the reviewed quote.
+                    getValidatedExecutableTransaction({
+                        quoteResponse: executionQuote,
+                        expectedChainId: chainId,
+                        expectedSellToken: sellToken.address,
+                        expectedBuyToken: buyToken.address,
+                        expectedAccount: account,
+                    })
+                }
                 setReviewOperation(
                     'submitting',
                 )
@@ -1017,6 +1030,7 @@ export function useSameChainExecution({
             reviewOperation,
             sellToken,
             sendTransaction,
+            prepareTransactionFees,
             setReviewError,
             setReviewOperation,
             setTransactionHash,

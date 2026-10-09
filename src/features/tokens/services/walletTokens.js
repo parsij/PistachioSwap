@@ -3,6 +3,7 @@ import { apiBaseUrl as defaultApiBaseUrl } from '../../../lib/apiBaseUrl.js'
 import {
     getCanonicalTokenIdentity,
     mergeCanonicalTokenRecords,
+    getMarketTokenExclusionReason,
 } from './marketTokens.js'
 import {
     isTokenDiscoveryChainId,
@@ -85,7 +86,7 @@ export function formatWalletTokenAmount(value) {
         : groupedInteger(decimal.whole)
 }
 
-function formatUsdDecimal(value) {
+export function formatUsdDecimal(value) {
     const decimal = normalizedDecimal(value)
     if (!decimal) return '—'
     const digits = `${decimal.whole}${decimal.fraction}`
@@ -390,7 +391,24 @@ export function mergeWalletBalances(
         const metadata = walletHasFallbackMetadata && existing.name
             ? existing
             : walletToken
-        const priceUSD = walletToken.priceUSD ?? null
+        // A missing price is not a failed contract/security check. Recover only
+        // an exact-chain/address catalog price for an independently trusted wallet asset.
+        const catalogPriceAllowed = currentRecord &&
+            ['core', 'established'].includes(walletToken.classificationTier) &&
+            ['established', 'recognized'].includes(recognitionStatus) &&
+            visibility === 'primary' && walletToken.possibleSpam !== true &&
+            !['high', 'blocked', 'unknown'].includes(securityStatus) &&
+            walletToken.priceConfidence === 'unknown' &&
+            !['high', 'blocked'].includes(existing.securityStatus) &&
+            existing.priceConfidence !== 'untrusted' &&
+            getMarketTokenExclusionReason(existing, { requireMarketMetrics: false }) === null
+        const catalogPrice = catalogPriceAllowed
+            ? existing.trustedPriceUSD ?? existing.marketPriceUSD ?? existing.priceUSD
+            : null
+        const fallbackPrice = normalizedDecimal(catalogPrice) !== null && /[1-9]/.test(String(catalogPrice))
+            ? String(catalogPrice) : null
+        const recoveredPrice = walletToken.priceUSD == null && fallbackPrice !== null
+        const priceUSD = walletToken.priceUSD ?? (recoveredPrice ? fallbackPrice : null)
         const catalogMarketPriceUSD =
             normalizedDecimal(existing.marketPriceUSD) !== null
                 ? String(existing.marketPriceUSD)
@@ -403,7 +421,9 @@ export function mergeWalletBalances(
         const trustedPriceUSD = currentRecord
             ? walletToken.trustedPriceUSD ?? null
             : null
-        const valueUSD = currentRecord ? walletToken.valueUSD ?? null : null
+        const valueUSD = recoveredPrice
+            ? multiplyUsdAmount(walletBalance, fallbackPrice)
+            : currentRecord ? walletToken.valueUSD ?? null : null
         const logoCandidates = [
             ...(walletToken.logoCandidates ?? []),
             walletToken.logoURI,
@@ -427,10 +447,11 @@ export function mergeWalletBalances(
             formattedBalance: walletBalance,
             rawBalance: walletToken.rawBalance ?? existing.rawBalance,
             valueUSD,
+            ...(recoveredPrice ? { includeInPortfolioValue: true } : {}),
             priceUSD,
             trustedPriceUSD,
-            marketPriceUSD,
-            priceConfidence: currentRecord
+            marketPriceUSD: recoveredPrice ? fallbackPrice : marketPriceUSD,
+            priceConfidence: recoveredPrice ? 'market' : currentRecord
                 ? walletToken.priceConfidence === 'unknown' &&
                   walletToken.marketPriceUSD == null &&
                   marketPriceUSD !== null
