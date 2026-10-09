@@ -1,25 +1,42 @@
-import { Eye, EyeOff } from 'lucide-react'
+import { ClipboardPaste, Eye, EyeOff } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { isRecoveryWord, RECOVERY_WORD_COUNTS } from './walletImportValidation.js'
 
 export function WalletSecretImport({ mode, words, onWordsChange, value, onChange, validation, error, disabled, onPasteError }) {
     const [revealed, setRevealed] = useState(false)
     const [pasteError, setPasteError] = useState('')
+    const [pasting, setPasting] = useState(false)
+    const clipboardRequest = useRef(0)
     const inputs = useRef([])
     const mnemonic = mode === 'mnemonic'
     const label = mnemonic ? 'recovery phrase' : 'private key'
     useEffect(() => {
         const hideWhenAway = () => { if (document.hidden) setRevealed(false) }
         document.addEventListener('visibilitychange', hideWhenAway)
-        return () => document.removeEventListener('visibilitychange', hideWhenAway)
+        return () => {
+            document.removeEventListener('visibilitychange', hideWhenAway)
+            clipboardRequest.current += 1
+        }
     }, [])
-    useEffect(() => { if (disabled) setRevealed(false) }, [disabled])
+    useEffect(() => {
+        if (disabled) {
+            setRevealed(false)
+            setPasting(false)
+            clipboardRequest.current += 1
+        }
+    }, [disabled])
+
+    function showPasteError(message) {
+        setPasteError(message)
+        onPasteError?.(true)
+    }
 
     function changeWord(index, text) {
+        clipboardRequest.current += 1
+        setPasting(false)
         const entered = text.normalize('NFKD').trim().toLowerCase().split(/\s+/u).filter(Boolean)
         if (entered.length > 24 || (entered.length > 1 && !RECOVERY_WORD_COUNTS.includes(entered.length) && index + entered.length > 24)) {
-            setPasteError('A recovery phrase must contain 12, 15, 18, 21, or 24 words. Nothing was replaced.')
-            onPasteError?.(true)
+            showPasteError('A recovery phrase must contain 12, 15, 18, 21, or 24 words. Nothing was replaced.')
             return
         }
         setPasteError('')
@@ -37,11 +54,41 @@ export function WalletSecretImport({ mode, words, onWordsChange, value, onChange
         onWordsChange(next)
     }
 
+    async function pasteRecoveryPhrase() {
+        if (disabled || pasting) return
+        if (typeof navigator.clipboard?.readText !== 'function') {
+            showPasteError('Clipboard access is unavailable. Paste your phrase into any word field instead.')
+            return
+        }
+        const request = ++clipboardRequest.current
+        setPasting(true)
+        try {
+            const text = await navigator.clipboard.readText()
+            // Do not replace newer edits or a different import screen after a delayed clipboard prompt.
+            if (request !== clipboardRequest.current) return
+            const count = text.trim().split(/\s+/u).filter(Boolean).length
+            if (!RECOVERY_WORD_COUNTS.includes(count)) {
+                showPasteError('Copy your complete 12, 15, 18, 21, or 24-word recovery phrase, then paste again. Nothing was replaced.')
+                return
+            }
+            setRevealed(false)
+            changeWord(0, text)
+            inputs.current[0]?.focus()
+        } catch {
+            if (request === clipboardRequest.current) {
+                showPasteError('Clipboard access was blocked. Paste your phrase into any word field instead.')
+            }
+        } finally {
+            if (request === clipboardRequest.current) setPasting(false)
+        }
+    }
+
     return (
         <div className="pistachio-secret-import">
             <div className="pistachio-secret-heading">
                 {mnemonic ? <label htmlFor="pistachio-import-word-count">Phrase length</label> : <label htmlFor="pistachio-wallet-secret">Private key</label>}
-                <button className="pistachio-secret-reveal" type="button" aria-pressed={revealed} disabled={disabled} onClick={() => setRevealed((current) => !current)}>
+                {mnemonic && <button className="pistachio-import-reveal" type="button" disabled={disabled || pasting} onClick={() => void pasteRecoveryPhrase()}><ClipboardPaste aria-hidden="true" /> {pasting ? 'Pasting…' : 'Paste recovery phrase'}</button>}
+                <button className="pistachio-import-reveal" type="button" aria-pressed={revealed} disabled={disabled} onClick={() => setRevealed((current) => !current)}>
                     {revealed ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                     {revealed ? 'Hide' : 'Reveal'} {label}
                 </button>
@@ -50,6 +97,8 @@ export function WalletSecretImport({ mode, words, onWordsChange, value, onChange
                 <>
                     <select id="pistachio-import-word-count" value={words.length} disabled={disabled} onChange={(event) => {
                         const count = Number(event.target.value)
+                        clipboardRequest.current += 1
+                        setPasting(false)
                         setPasteError('')
                         onPasteError?.(false)
                         onWordsChange(Array.from({ length: count }, (_, index) => words[index] ?? ''))
@@ -68,8 +117,11 @@ export function WalletSecretImport({ mode, words, onWordsChange, value, onChange
                                         <span className="pistachio-sr-only">Word {index + 1}</span>
                                     </label>
                                     <input id={`pistachio-import-word-${index}`} aria-label={`Word ${index + 1}`} ref={(element) => { inputs.current[index] = element }} type={revealed ? 'text' : 'password'} value={word} disabled={disabled} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck="false" data-1p-ignore="true" data-lpignore="true" aria-invalid={invalid} aria-describedby={invalid ? errorId : validation.error || pasteError ? 'pistachio-import-validation' : error ? 'pistachio-wallet-error' : 'pistachio-import-help'} onChange={(event) => changeWord(index, event.target.value)} onPaste={(event) => {
+                                        if (disabled) return
+                                        const text = event.clipboardData.getData('text/plain') || event.clipboardData.getData('text')
+                                        if (!text.trim()) return
                                         event.preventDefault()
-                                        changeWord(index, event.clipboardData.getData('text'))
+                                        changeWord(index, text)
                                     }} onKeyDown={(event) => {
                                         if ((event.key === ' ' || event.key === 'Enter') && word) {
                                             event.preventDefault()
