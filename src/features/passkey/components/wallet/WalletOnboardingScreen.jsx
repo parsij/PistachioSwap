@@ -26,6 +26,7 @@ import '@fontsource/ubuntu/latin-700.css'
 import { walletUIOperations as manager } from '../../services/walletUIOperations.js'
 import { ErrorNotice, LoadingState, WalletRiskNotice, ScreenIntro, BackButton } from './WalletPrimitives.jsx'
 import { WalletEntryMenu, ImportChooser, ImportRiskIntro, RestoreBackupContent, IMPORT_COPY } from './WalletSetupScreen.jsx'
+import ImportAccountChooser from './ImportAccountChooser.jsx'
 import { WalletSecretImport } from './WalletSecretImport.jsx'
 import { normalizeRecoveryWord, validatePrivateKey, validateRecoveryWords } from './walletImportValidation.js'
 const GUARDED_SETUP_PHASES = new Set(['passkey-ready', 'confirm-recovery', 'confirm-import', 'onboarding-ready'])
@@ -99,6 +100,7 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
     const [keystoreFileName, setKeystoreFileName] = useState('')
     const [backupAcknowledged, setBackupAcknowledged] = useState(false)
     const [derivedAddress, setDerivedAddress] = useState(null)
+    const [importAccounts, setImportAccounts] = useState([])
     const [addressConfirmed, setAddressConfirmed] = useState(false)
     useEffect(() => {
         const sensitive = GUARDED_SETUP_PHASES.has(snapshot.phase)
@@ -138,6 +140,7 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
         setKeystoreFileName('')
         setBackupAcknowledged(false)
         setDerivedAddress(null)
+        setImportAccounts([])
         setAddressConfirmed(false)
     }
 
@@ -180,6 +183,8 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
             else result = await run(() => manager.importKeystore(secretInput, keystorePassword))
             if (result) {
                 setDerivedAddress(result.address)
+                setImportAccounts(result.accounts ?? [])
+                setAddressConfirmed(false)
                 setSecretInput('')
                 setImportWords(Array(12).fill(''))
             }
@@ -348,6 +353,23 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
             <div className="pistachio-wallet-stack">
                 <BackButton onClick={() => void returnToImportMethods()} />
                 <ScreenIntro title="Confirm wallet address">Make sure this is the EVM wallet address you expect before saving the encrypted wallet.</ScreenIntro>
+                {importMode === 'mnemonic' && importAccounts.length > 0 && <ImportAccountChooser
+                    accounts={importAccounts} selectedAddress={derivedAddress} busy={busy}
+                    onSelect={async (index) => {
+                        setAddressConfirmed(false)
+                        const result = await run(() => manager.selectPendingAccount(index))
+                        if (result) setDerivedAddress(result.address)
+                    }}
+                    onMore={async (count) => {
+                        const result = await run(() => manager.listPendingAccounts(count))
+                        if (result) setImportAccounts(result.accounts)
+                    }}
+                    onFind={async (address) => {
+                        setAddressConfirmed(false)
+                        const result = await run(() => manager.findPendingAccount(address))
+                        if (result) { setDerivedAddress(result.address); setImportAccounts(result.accounts) }
+                    }}
+                />}
                 <div className="pistachio-wallet-field-group"><span>Wallet address</span><code className="pistachio-wallet-address">{derivedAddress}</code></div>
                 <label className="pistachio-wallet-check"><input type="checkbox" checked={addressConfirmed} onChange={(event) => setAddressConfirmed(event.target.checked)} /> I confirm that this is the wallet address I intend to import.</label>
                 <button className="pistachio-wallet-primary" type="button" disabled={!addressConfirmed || busy} onClick={() => run(() => manager.persistPendingWallet())}>{busy ? 'Encrypting wallet…' : 'Encrypt and save wallet'}</button>

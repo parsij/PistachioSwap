@@ -181,12 +181,14 @@ export const methods = {
             sessionActive: this.sessionActive,
             resumeReauthPending: this.resumeReauthPending,
             vault: this.vault ? structuredClone(this.vault) : null,
-            vaults: this.vaults.map((vault) => {
+            vaults: [...this.vaults].sort((a, b) => (Date.parse(a.createdAt) - Date.parse(b.createdAt)) || a.vaultId.localeCompare(b.vaultId)).map((vault, index) => {
                 const preference = this.vaultPreferences[vault.vaultId] ?? {}
                 return {
                     vaultId: vault.vaultId,
-                    name: preference.label || vault.name,
+                    name: preference.label && preference.label !== 'Pistachio Wallet' ? preference.label : `Pistachio Wallet ${index + 1}`,
                     address: vault.address,
+                    selectedAddress: vaultAccounts(vault)[this.selectedAccountIndex(vault)]?.address ?? vault.address,
+                    selectedAccountIndex: this.selectedAccountIndex(vault),
                     accounts: structuredClone(vaultAccounts(vault)),
                     sourceType: vault.sourceType,
                     createdAt: vault.createdAt,

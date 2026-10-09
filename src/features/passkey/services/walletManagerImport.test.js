@@ -79,3 +79,25 @@ describe('wallet import and passkey failure recovery', () => {
         expect([...new Uint8Array(prfOutput)]).toEqual(Array(32).fill(0))
     })
 })
+
+describe('imported account selection persistence', () => {
+    it('saves the selected account index and publishes that address after verification', async () => {
+        const { manager, storage } = await createHarness()
+        await manager.prepareNewWallet()
+        const second = '0x0000000000000000000000000000000000000002'
+        const stored = { ...savedVault, accounts: [{ index: 0, address: savedVault.address }, { index: 1, address: second }] }
+        manager.pendingVaultId = stored.vaultId
+        manager.phase = 'confirm-import'
+        manager.client = { request: vi.fn(async (operation) => {
+            if (operation === 'selectPendingAccount') return { index: 1, address: second }
+            if (operation === 'encryptVault') return { vault: stored }
+            if (operation === 'verifyPersistedVault') return { address: second, verified: true }
+        }), lock: vi.fn() }
+        storage.saveAndReadBackVault.mockResolvedValue(stored)
+        storage.listVaults.mockResolvedValue([stored])
+        await manager.selectPendingAccount(1)
+        await manager.persistPendingWallet()
+        expect(storage.writePreference).toHaveBeenCalledWith('selectedAccountIndices', { [stored.vaultId]: 1 })
+        expect(manager.snapshot()).toMatchObject({ phase: 'onboarding-ready', address: second, selectedAddress: second, selectedAccountIndex: 1 })
+    })
+})

@@ -30,7 +30,7 @@ export default function WalletAccountPicker({ onAddWallet, manager = getPistachi
     const activeIndex = snapshot.selectedAccountIndex ?? 0
     return <Dialog.Root open={open} onOpenChange={(next) => { if (!busy) { setError(null); setOpen(next) } }}>
         <Dialog.Trigger className="pistachio-account-picker-trigger" aria-label="Switch wallet">
-            <span>{activeVault?.name ?? 'Pistachio Wallet'}{activeIndex > 0 ? ` · Wallet ${activeIndex + 1}` : ''}</span>
+            <span>Pistachio Wallet {activeIndex + 1}</span>
             <ChevronDown size={16} aria-hidden="true" />
         </Dialog.Trigger>
         <Dialog.Portal>
@@ -43,12 +43,12 @@ export default function WalletAccountPicker({ onAddWallet, manager = getPistachi
                 <Dialog.Description className="pistachio-account-picker-description">Choose a wallet or create another with the same recovery phrase.</Dialog.Description>
                 <div className="pistachio-account-picker-list">
                     {snapshot.vaults.map((vault) => <div key={vault.vaultId} className="pistachio-account-picker-group">
-                        <p>{vault.name}<span>{vault.sourceType.endsWith('mnemonic') ? 'Recovery phrase' : 'Private key'}</span></p>
+                        <p>{vault.name}</p>
                         {(vault.accounts ?? [{ index: 0, address: vault.address }]).map((account) => {
                             const active = vault.vaultId === snapshot.selectedVaultId && account.index === activeIndex
                             return <button key={account.index} type="button" className="pistachio-account-picker-row" aria-pressed={active} disabled={busy} onClick={() => run(() => manager.selectAccount(vault.vaultId, account.index))}>
                                 <WalletAvatar address={account.address} size="md" />
-                                <span><strong>Wallet {account.index + 1}</strong><small>{shortAddress(account.address)}</small></span>
+                                <span><strong>Pistachio Wallet {account.index + 1}</strong><small>{shortAddress(account.address)}</small></span>
                                 {active && <Check size={20} aria-label="Selected wallet" />}
                             </button>
                         })}

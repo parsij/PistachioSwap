@@ -186,6 +186,7 @@ export class PistachioWalletManager {
         this.signingContextGeneration = 0
         this.error = null
         this.view = null
+        this.pendingAccountIndex = 0
         this.pendingVaultId = null
         this.pendingKeyWrap = null
         this.connectionBridge = new WalletConnectionBridge()

@@ -90,13 +90,15 @@ function safeErrorMessage(error, context = 'wallet') {
 
 
 function WalletIdentity({ selected = false, vault }) {
+    const accountIndex = vault.selectedAccountIndex ?? 0
+    const name = accountIndex > 0 && /^Pistachio Wallet(?: \d+)?$/u.test(vault.name) ? `Pistachio Wallet ${accountIndex + 1}` : vault.name
     return (
         <div className="pistachio-wallet-identity">
             <span className="pistachio-wallet-identity-icon"><WalletIcon aria-hidden="true" /></span>
             <div>
-                <strong>{vault.name}</strong>
-                <code>{shortenAddress(vault.address)}</code>
-                <span>{sourceTypeLabel(vault.sourceType)} · Last used {formatLastUsed(vault.lastUsedAt ?? vault.updatedAt)}</span>
+                <strong>{name}</strong>
+                <code>{shortenAddress(vault.selectedAddress ?? vault.address)}</code>
+                <span>Last used {formatLastUsed(vault.lastUsedAt ?? vault.updatedAt)}</span>
             </div>
             {selected && <span className="pistachio-wallet-selected"><Check aria-hidden="true" /> Selected</span>}
         </div>
@@ -212,7 +214,7 @@ function InaccessibleWalletContent({ onRestore, onSensitiveChange, onStart, snap
     return (
         <div className="pistachio-wallet-stack">
             <div className="pistachio-wallet-warning"><ShieldAlert aria-hidden="true" /><div><strong>{signingOnly ? 'Passkey unavailable for signing' : 'Passkey unavailable'}</strong><p>{signingOnly ? 'You can still view this public wallet address and balances. Sending, swapping, signing, and secret recovery require its passkey.' : 'This wallet is saved in this browser, but its passkey is unavailable.'}</p></div></div>
-            <WalletIdentity selected vault={{ ...vault, lastUsedAt: vault.updatedAt }} />
+            <WalletIdentity selected vault={{ ...vault, selectedAddress: snapshot.selectedAddress, selectedAccountIndex: snapshot.selectedAccountIndex, lastUsedAt: vault.updatedAt }} />
             {signingOnly && <button className="pistachio-wallet-primary" type="button" disabled={busy} onClick={continueReadOnly}><WalletCards aria-hidden="true" /> {busy ? 'Opening wallet…' : 'Continue in view-only mode'}</button>}
             <button className={signingOnly ? '' : 'pistachio-wallet-primary'} type="button" disabled={busy} onClick={tryAgain}><KeyRound aria-hidden="true" /> {busy ? 'Requesting passkey…' : 'Try passkey again'}</button>
             <div className="pistachio-wallet-entry-actions">
@@ -273,6 +275,8 @@ function SavedWalletEntry({ onAnother, onChoose, onRestore, onSensitiveChange, o
             <ScreenIntro title={signingOnly ? 'Pistachio Wallet ready' : 'Previous Pistachio Wallet detected'}>{signingOnly ? 'Continue without a passkey to view balances and history. A passkey is requested only for signing and sensitive security actions.' : 'Unlock your saved wallet or use a different one.'}</ScreenIntro>
             <WalletIdentity selected vault={{
                 ...snapshot.vault,
+                selectedAddress: snapshot.selectedAddress,
+                selectedAccountIndex: snapshot.selectedAccountIndex,
                 lastUsedAt: snapshot.vaults.find((candidate) => candidate.vaultId === snapshot.vault.vaultId)?.lastUsedAt,
                 name: snapshot.vaults.find((candidate) => candidate.vaultId === snapshot.vault.vaultId)?.name ?? snapshot.vault.name,
             }} />

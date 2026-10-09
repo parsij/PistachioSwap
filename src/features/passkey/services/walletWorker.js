@@ -37,6 +37,7 @@ let dek = null
 let activeVault = null
 let setupPasskey = null
 let setupPrf = null
+let pendingAccountIndex = 0
 
 function clearSecrets() {
     wipeBytes(dek)
@@ -47,6 +48,7 @@ function clearSecrets() {
     activeVault = null
     setupPasskey = null
     setupPrf = null
+    pendingAccountIndex = 0
 }
 
 function requireWallet() {
@@ -61,6 +63,7 @@ function requireSetupPrf() {
 }
 
 function setMnemonicWallet(entropy, sourceType) {
+    pendingAccountIndex = 0
     const entropyBytes = Uint8Array.from(entropy)
     const mnemonic = Mnemonic.fromEntropy(entropyBytes)
     wallet = HDNodeWallet.fromMnemonic(mnemonic, PISTACHIO_DERIVATION_PATH)
@@ -76,6 +79,7 @@ function setMnemonicWallet(entropy, sourceType) {
 }
 
 function setPrivateKeyWallet(privateKey, sourceType) {
+    pendingAccountIndex = 0
     const candidate = new Wallet(privateKey)
     const privateKeyBytes = getBytes(candidate.privateKey)
     wallet = candidate
@@ -130,6 +134,18 @@ function restoreWallet(decryptedPayload, accountIndex = 0) {
     }
     payload = decryptedPayload
     return getAddress(wallet.address)
+}
+
+function pendingMnemonicAccounts(count) {
+    requireSetupPrf()
+    requireWallet()
+    if (payload.kind !== 'mnemonic') throw new TypeError('This wallet has no recovery phrase.')
+    if (!Number.isSafeInteger(count) || count < 1 || count > MAX_DERIVED_ACCOUNTS) throw new TypeError('Invalid account count.')
+    const entropy = mnemonicEntropy(payload.entropy)
+    try {
+        const parent = HDNodeWallet.fromMnemonic(Mnemonic.fromEntropy(entropy), PISTACHIO_DERIVATION_PATH.slice(0, -2))
+        return Array.from({ length: count }, (_, index) => ({ index, address: getAddress(parent.deriveChild(index).address) }))
+    } finally { entropy.fill(0) }
 }
 
 function parseQuantity(value, name, defaultValue) {
@@ -281,7 +297,8 @@ async function handle(operation, message) {
         requireSetupPrf()
         const phrase = String(message.mnemonic ?? '').trim().toLowerCase().replace(/\s+/gu, ' ')
         if (!Mnemonic.isValidMnemonic(phrase)) throw new TypeError('The recovery phrase has invalid words or checksum.')
-        return setMnemonicWallet(getBytes(Mnemonic.fromPhrase(phrase).entropy), 'imported-mnemonic')
+        const result = setMnemonicWallet(getBytes(Mnemonic.fromPhrase(phrase).entropy), 'imported-mnemonic')
+        return { address: result.address, accounts: pendingMnemonicAccounts(10) }
     }
     if (operation === 'importPrivateKey') {
         requireSetupPrf()
@@ -305,6 +322,21 @@ async function handle(operation, message) {
         const imported = await Wallet.fromEncryptedJson(json, String(message.password ?? ''))
         return setPrivateKeyWallet(imported.privateKey, 'imported-keystore')
     }
+    if (operation === 'listPendingAccounts') return { accounts: pendingMnemonicAccounts(message.count) }
+    if (operation === 'selectPendingAccount') {
+        accountDerivationPath(message.index)
+        const accounts = pendingMnemonicAccounts(message.index + 1)
+        pendingAccountIndex = message.index
+        return accounts[message.index]
+    }
+    if (operation === 'findPendingAccount') {
+        const address = getAddress(String(message.address ?? '').trim())
+        const accounts = pendingMnemonicAccounts(MAX_DERIVED_ACCOUNTS)
+        const found = accounts.find((account) => account.address === address)
+        if (!found) throw new TypeError('Address not found in the first 100 standard Ethereum accounts. Check the phrase and the original wallet’s derivation path or extra passphrase.')
+        pendingAccountIndex = found.index
+        return { ...found, accounts: accounts.slice(0, Math.max(10, found.index + 1)) }
+    }
     if (operation === 'clearPendingWallet') {
         requireSetupPrf()
         wallet = null
@@ -312,6 +344,7 @@ async function handle(operation, message) {
         wipeBytes(dek)
         dek = null
         activeVault = null
+        pendingAccountIndex = 0
         return { ready: true }
     }
     if (operation === 'encryptVault') {
@@ -320,6 +353,7 @@ async function handle(operation, message) {
         const result = await createEncryptedVault({
             vaultId: message.vaultId,
             address: activeWallet.address,
+            ...(payload.sourceType === 'imported-mnemonic' ? { accounts: pendingMnemonicAccounts(pendingAccountIndex + 1) } : {}),
             rpId: setupPasskey.rpId,
             sourceType: payload.sourceType,
             derivationPath: payload.kind === 'mnemonic' ? PISTACHIO_DERIVATION_PATH : null,
@@ -342,7 +376,8 @@ async function handle(operation, message) {
             activeVault = vault
             wipeBytes(dek)
             dek = result.dek.slice()
-            return { verified: true, address }
+            const selected = selectWorkerAccount(vault, result.payload, pendingAccountIndex)
+            return { verified: true, address: selected }
         } finally {
             wipeBytes(result.dek)
             wipeBytes(setupPrf)

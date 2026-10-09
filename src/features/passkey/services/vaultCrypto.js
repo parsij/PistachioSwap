@@ -158,6 +158,7 @@ export async function unwrapDek({ vault, keyWrap, prfOutput, cryptoImpl = global
 export async function createEncryptedVault({
     vaultId,
     address,
+    accounts,
     rpId,
     sourceType,
     derivationPath,
@@ -173,6 +174,7 @@ export async function createEncryptedVault({
         vaultId,
         name: PISTACHIO_WALLET_NAME,
         address: getAddress(address),
+        ...(accounts ? { accounts } : {}),
         chainId: PISTACHIO_CHAIN_ID,
         rpId,
         sourceType,

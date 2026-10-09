@@ -152,6 +152,7 @@ export const methods = {
         this.phase = 'registering-passkey'
         this.error = null
         this.notify()
+        this.pendingAccountIndex = 0
         this.pendingVaultId = crypto.randomUUID()
         try {
             const registration = await registerPrfPasskey({
@@ -185,6 +186,7 @@ export const methods = {
     },
     async createMnemonicWallet() {
         if (this.phase !== 'passkey-ready') throw managerError('PISTACHIO_PASSKEY_REQUIRED', 'Create and verify a PRF-capable passkey first.')
+        this.pendingAccountIndex = 0
         const result = await this.client.request('createMnemonicWallet')
         this.phase = 'confirm-recovery'
         this.notify()
@@ -193,13 +195,31 @@ export const methods = {
     async importMnemonic(mnemonic) {
         if (!this.flags.walletImportEnabled || this.phase !== 'passkey-ready') throw managerError('PISTACHIO_WALLET_IMPORT_DISABLED', 'Wallet import is disabled.')
         const result = await this.client.request('importMnemonic', { mnemonic })
+        this.pendingAccountIndex = 0
         this.phase = 'confirm-import'
         this.notify()
+        return result
+    },
+    async listPendingAccounts(count) {
+        if (this.phase !== 'confirm-import' || !this.client) throw new TypeError('Review a recovery phrase first.')
+        return this.client.request('listPendingAccounts', { count })
+    },
+    async selectPendingAccount(index) {
+        if (this.phase !== 'confirm-import' || !this.client) throw new TypeError('Review a recovery phrase first.')
+        const result = await this.client.request('selectPendingAccount', { index })
+        this.pendingAccountIndex = result.index
+        return result
+    },
+    async findPendingAccount(address) {
+        if (this.phase !== 'confirm-import' || !this.client) throw new TypeError('Review a recovery phrase first.')
+        const result = await this.client.request('findPendingAccount', { address })
+        this.pendingAccountIndex = result.index
         return result
     },
     async importPrivateKey(privateKey) {
         if (!this.flags.walletImportEnabled || this.phase !== 'passkey-ready') throw managerError('PISTACHIO_WALLET_IMPORT_DISABLED', 'Wallet import is disabled.')
         const result = await this.client.request('importPrivateKey', { privateKey })
+        this.pendingAccountIndex = 0
         this.phase = 'confirm-import'
         this.notify()
         return result
@@ -208,6 +228,7 @@ export const methods = {
         if (!this.flags.keystoreImportEnabled || this.phase !== 'passkey-ready') throw managerError('PISTACHIO_KEYSTORE_IMPORT_DISABLED', 'Keystore import is disabled.')
         if (new TextEncoder().encode(String(json ?? '')).byteLength > PISTACHIO_MAX_KEYSTORE_BYTES) throw new TypeError('Keystore exceeds 1 MiB.')
         const result = await this.client.request('importKeystore', { json, password })
+        this.pendingAccountIndex = 0
         this.phase = 'confirm-import'
         this.notify()
         return result
@@ -217,6 +238,7 @@ export const methods = {
             throw managerError('PISTACHIO_WALLET_SETUP_INCOMPLETE', 'Wallet setup is incomplete.')
         }
         await this.client.request('clearPendingWallet')
+        this.pendingAccountIndex = 0
         this.phase = 'passkey-ready'
         this.error = null
         this.notify()
@@ -255,10 +277,15 @@ export const methods = {
         try {
             const encrypted = await this.client.request('encryptVault', { vaultId: this.pendingVaultId })
             const stored = await this.storage.saveAndReadBackVault(encrypted.vault)
-            await this.client.request('verifyPersistedVault', { vault: stored })
+            const verified = await this.client.request('verifyPersistedVault', { vault: stored })
+            const selectedAddress = stored.accounts?.[this.pendingAccountIndex]?.address ?? stored.address
+            if ((this.pendingAccountIndex > 0 && !stored.accounts?.[this.pendingAccountIndex]) || verified.address !== selectedAddress) throw new Error('Imported account verification failed.')
+            const preferences = { ...this.selectedAccountIndices, [stored.vaultId]: this.pendingAccountIndex }
+            await this.storage.writePreference('selectedAccountIndices', preferences)
+            this.selectedAccountIndices = preferences
             this.vault = stored
             await this.refreshVaults()
-            this.address = stored.address
+            this.address = selectedAddress
             this.pendingVaultId = null
             this.pendingKeyWrap = null
             this.setupPreviousVaultId = null

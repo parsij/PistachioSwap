@@ -57,8 +57,11 @@ and decrypted/verified before selection. Account selection and reconnect state
 are committed together in IndexedDB. Switching cancels signing reviews, invalidates
 in-flight signatures and unlocks, discards the worker, and emits the selected
 account through the connector. The next protected action requires a passkey.
-Encrypted backups retain the account list. Restoring only a phrase starts at
-account zero; Create wallet recreates its later accounts in the same order.
+Encrypted backups retain the account list. Phrase import previews its standard Ethereum accounts before saving. Choose an
+address from the list or use Find wallet to search the first 100 accounts by full
+address. The chosen index and preceding accounts are saved in the encrypted vault;
+Create wallet continues that sequence. Other derivation paths and extra BIP-39
+passphrases are not supported by this importer.
 
 Implementation references reviewed (the implementation here uses the existing
 Pistachio vault and UI, rather than importing their code):

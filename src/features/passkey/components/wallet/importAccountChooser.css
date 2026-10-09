@@ -1,0 +1,14 @@
+.pistachio-import-accounts { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pistachio-import-account-search { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pistachio-import-account-search label { width: 100%; font-size: 13px; }
+.pistachio-import-account-search input { flex: 1; min-width: 160px; width: 0; }
+.pistachio-import-account-search button { padding: 10px 12px; border: 1px solid #ffffff24; border-radius: 12px; background: #ffffff08; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.pistachio-import-account-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-height: 240px; overflow-y: auto; margin: 0; padding: 0; border: 0; }
+.pistachio-import-account-list legend { margin-bottom: 8px; font-size: 13px; }
+.pistachio-import-account-option { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px; border: 1px solid #ffffff16; border-radius: 16px; cursor: pointer; }
+.pistachio-import-account-option:has(input:checked) { border-color: #99c776; background: #99c7760e; }
+.pistachio-import-account-option input { flex: 0 0 18px; width: 18px; height: 18px; padding: 0; accent-color: #99c776; }
+.pistachio-import-account-option span { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; }
+.pistachio-import-account-option strong { font-size: 14px; font-weight: 500; }
+.pistachio-import-account-option code { font-size: 12px; line-height: 18px; overflow-wrap: anywhere; color: #b8babf; }
+.pistachio-import-account-search button:disabled { opacity: .5; cursor: default; }
