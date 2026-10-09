@@ -11,7 +11,7 @@ const snapshot = { chainId: 10, type: 'eip1559', baseFeePerGas: 100n, observedAt
 function setup(overrides = {}) {
     const onSelect = vi.fn()
     const fees = { chainId: 10, automatic: false, selection: { mode: 'standard', chainId: 10 }, snapshot,
-        fields: snapshot.presets.standard, gasEstimate: 100000n, refresh: vi.fn(), ...overrides }
+        pendingNonce: 7, refreshNonce: vi.fn(), fields: snapshot.presets.standard, gasEstimate: 100000n, refresh: vi.fn(), ...overrides }
     render(<NetworkFeeControl fees={fees} nativePriceUsd="2000" onSelect={onSelect} sponsored={overrides.sponsored} />)
     return { fees, onSelect }
 }
@@ -59,4 +59,33 @@ describe('native network cost controls', () => {
         expect(screen.getByRole('alert').textContent).toBe('RPC unavailable')
         expect(screen.getByRole('button', { name: /Custom/ }).disabled).toBe(true)
     })
+    it('defaults to automatic, selects a pending nonce, validates integers and accepts zero', () => {
+        const { onSelect, fees } = setup()
+        fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+        const input = screen.getByLabelText('Transaction nonce')
+        expect(input.value).toBe('')
+        expect(fees.refreshNonce).toHaveBeenCalledOnce()
+        expect(screen.getByText('Next pending nonce: 7')).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Use pending nonce 7' }))
+        expect(input.value).toBe('7')
+        fireEvent.click(screen.getByRole('button', { name: 'Use automatic nonce' }))
+        expect(input.value).toBe('')
+        fireEvent.change(input, { target: { value: '1.5' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm network cost' }))
+        expect(screen.getByRole('alert').textContent).toContain('whole-number nonce')
+        expect(onSelect).not.toHaveBeenCalled()
+        fireEvent.change(input, { target: { value: '0' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm network cost' }))
+        expect(onSelect).toHaveBeenCalledWith('custom', { ...snapshot.presets.standard, nonce: 0 })
+    })
+    it('also supports custom nonces on legacy-fee networks', () => {
+        const { onSelect } = setup({ chainId: 25, snapshot: { ...snapshot, chainId: 25, type: 'legacy', presets: {
+            less: { gasPrice: 1n }, standard: { gasPrice: 2n }, high: { gasPrice: 3n },
+        } } })
+        fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+        fireEvent.change(screen.getByLabelText('Transaction nonce'), { target: { value: '9' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm network cost' }))
+        expect(onSelect).toHaveBeenCalledWith('custom', { gasPrice: 2n, nonce: 9 })
+    })
+
 })

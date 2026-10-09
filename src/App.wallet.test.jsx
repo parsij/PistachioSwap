@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => ({
     publicClient: {
         chain: { id: 56 },
         getChainId: vi.fn(),
+        getTransactionCount: vi.fn(),
         getBlock: vi.fn(),
         getBalance: vi.fn(),
         estimateGas: vi.fn(),
@@ -326,6 +327,7 @@ describe('App wallet integration', () => {
             approvalTransactionSubmitted: false,
         }
         mocks.nativeBalance = 5_349_631_675_469_080n
+        mocks.publicClient.getTransactionCount.mockReset().mockResolvedValue(7)
         mocks.publicClient.getChainId.mockReset().mockResolvedValue(56)
         mocks.publicClient.getBlock.mockReset().mockResolvedValue({ number: 100n, baseFeePerGas: 1_000_000_000n })
         mocks.publicClient.getBalance.mockReset().mockResolvedValue(10n ** 18n)
@@ -1779,14 +1781,19 @@ describe('App wallet integration', () => {
         fireEvent.click(view.getByRole('button', { name: /^Custom/ }))
         fireEvent.change(view.getByLabelText('Priority fee in Gwei'), { target: { value: '0.1' } })
         fireEvent.change(view.getByLabelText('Max fee in Gwei'), { target: { value: '2.2' } })
+        await waitFor(() => expect(view.getByText('Next pending nonce: 7')).toBeTruthy())
+        fireEvent.change(view.getByLabelText('Transaction nonce'), { target: { value: '7' } })
         fireEvent.click(view.getByRole('button', { name: 'Confirm network cost' }))
+        expect(view.getByText('Custom fees · Nonce 7')).toBeTruthy()
         await waitFor(() => expect(view.getByRole('button', { name: 'Review swap' })).toBeTruthy())
         fireEvent.click(view.getByRole('button', { name: 'Review swap' }))
         fireEvent.click(view.getByRole('button', { name: 'Confirm swap' }))
         await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({
             chainId: 56, maxFeePerGas: 2_200_000_000n, maxPriorityFeePerGas: 100_000_000n,
-            gas: 125000n, data: '0x1234',
+            gas: 125000n, data: '0x1234', nonce: 7,
         })))
+        await waitFor(() => expect(view.queryByText('Custom fees · Nonce 7')).toBeNull())
+
     })
 
     it('isolates quote info tooltips from the settings trigger', async () => {

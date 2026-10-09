@@ -8,6 +8,7 @@ function client(chainId) {
         getBlock: vi.fn().mockResolvedValue({ number: 100n, baseFeePerGas: 100n }),
         estimateFeesPerGas: vi.fn().mockResolvedValue({ maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }),
         getFeeHistory: vi.fn().mockResolvedValue({ reward: [] }),
+        getTransactionCount: vi.fn().mockResolvedValue(0),
         getBalance: vi.fn().mockResolvedValue(100000000n),
     }
 }
@@ -28,7 +29,7 @@ describe('source network fee lifecycle', () => {
         op.getBlock.mockReturnValue(new Promise(resolve => { release = resolve }))
         const { result, rerender } = renderHook(props => useNetworkFees({ ...props, account, automatic: false }), { initialProps: { publicClient: op, chainId: 10 } })
         await waitFor(() => expect(op.getBlock).toHaveBeenCalled())
-        act(() => result.current.select('custom', { maxFeePerGas: 500n, maxPriorityFeePerGas: 2n }))
+        act(() => result.current.select('custom', { maxFeePerGas: 500n, maxPriorityFeePerGas: 2n, nonce: 7 }))
         rerender({ publicClient: base, chainId: 8453 })
         await waitFor(() => expect(result.current.snapshot?.chainId).toBe(8453))
         expect(result.current.selection).toEqual({ chainId: 8453, mode: 'standard' })
@@ -57,4 +58,36 @@ describe('source network fee lifecycle', () => {
         act(() => result.current.select('high'))
         await act(async () => { release(100000000n); await expect(pending).rejects.toThrow('selection changed') })
     })
+    it('clears the manual nonce on wallet changes and ignores the previous wallet pending nonce', async () => {
+        const rpc = client(10)
+        let release
+        rpc.getTransactionCount.mockReturnValueOnce(new Promise(resolve => { release = resolve })).mockResolvedValue(3)
+        const other = '0x0000000000000000000000000000000000000002'
+        const { result, rerender } = renderHook(props => useNetworkFees({ publicClient: rpc, chainId: 10, automatic: false, ...props }),
+            { initialProps: { account } })
+        await waitFor(() => expect(result.current.snapshot).toBeTruthy())
+        act(() => { result.current.select('custom', { maxFeePerGas: 500n, maxPriorityFeePerGas: 2n, nonce: 7 }); void result.current.refreshNonce() })
+        await waitFor(() => expect(rpc.getTransactionCount).toHaveBeenCalled())
+        const oldPreparation = result.current.prepareTransaction
+        rerender({ account: other })
+        await expect(oldPreparation({ gas: 100n })).rejects.toThrow('selection changed')
+        expect(result.current.selection.mode).toBe('standard')
+        expect(result.current.pendingNonce).toBeUndefined()
+        await act(async () => result.current.refreshNonce())
+        expect(result.current.pendingNonce).toBe(3)
+        await act(async () => release(99))
+        expect(result.current.pendingNonce).toBe(3)
+    })
+    it('passes a manual nonce to the swap, skips it for approvals, and consumes it after submission', async () => {
+        const rpc = client(10)
+        const { result } = renderHook(() => useNetworkFees({ publicClient: rpc, chainId: 10, account, automatic: false }))
+        await waitFor(() => expect(result.current.snapshot).toBeTruthy())
+        act(() => result.current.select('custom', { maxFeePerGas: 500n, maxPriorityFeePerGas: 2n, nonce: 0 }))
+        expect(await result.current.prepareTransaction({ gas: 100n })).toHaveProperty('nonce', 0)
+        expect(await result.current.prepareTransaction({ gas: 100n }, 10, { applyNonce: false })).not.toHaveProperty('nonce')
+        act(() => result.current.clearNonce())
+        expect(result.current.selection.fields).toEqual({ maxFeePerGas: 500n, maxPriorityFeePerGas: 2n })
+        expect(await result.current.prepareTransaction({ gas: 100n })).not.toHaveProperty('nonce')
+    })
+
 })

@@ -17,6 +17,26 @@ export function parseGwei(value, { allowZero = false } = {}) {
     return wei
 }
 
+/** Blank leaves nonce selection to the wallet. Never round an integer nonce. */
+export function parseTransactionNonce(value) {
+    const text = String(value ?? '').trim()
+    if (!text) return undefined
+    if (text.length > 16 || !/^\d+$/.test(text) || BigInt(text) > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error('Enter a whole-number nonce from 0 to 9007199254740991, or leave it automatic.')
+    }
+    return Number(text)
+}
+
+export async function fetchPendingNonce(publicClient, chainId, account) {
+    if (!account || Number(publicClient?.chain?.id) !== Number(chainId) ||
+        Number(await publicClient.getChainId()) !== Number(chainId)) {
+        throw new Error('Connect the selected wallet on the sell network to load its nonce.')
+    }
+    const nonce = await publicClient.getTransactionCount({ address: account, blockTag: 'pending' })
+    if (!Number.isSafeInteger(nonce) || nonce < 0) throw new Error('The pending nonce is unavailable.')
+    return nonce
+}
+
 export const formatGwei = (wei) => formatUnits(wei, 9)
 
 /** Reads the selected source RPC, honoring viem's chain-specific fee estimator. */
@@ -85,11 +105,18 @@ export function networkFeeCap(fields) {
     return fields?.maxFeePerGas ?? fields?.gasPrice ?? null
 }
 
-/** Applies only the whitelisted fee fields after simulation, keeping calldata and value intact. */
-export async function prepareNetworkFeeTransaction({ publicClient, transaction, account, snapshot, selection, chainId }) {
+/** Applies validated fees and an optional nonce after simulation, keeping calldata and value intact. */
+export async function prepareNetworkFeeTransaction({ publicClient, transaction, account, snapshot, selection, chainId, applyNonce = true }) {
     const fields = resolveNetworkFeeSelection(snapshot, selection, chainId)
     if (Number(transaction.chainId ?? chainId) !== Number(chainId)) throw new Error('Transaction fee network changed.')
     const { gasPrice: _gasPrice, maxFeePerGas: _maxFee, maxPriorityFeePerGas: _tip, ...request } = transaction
+    const nonce = applyNonce && selection.mode === 'custom' ? parseTransactionNonce(selection.fields?.nonce) : undefined
+    if (nonce !== undefined) {
+        const latest = await publicClient.getTransactionCount({ address: account, blockTag: 'latest' })
+        if (!Number.isSafeInteger(latest) || latest < 0) throw new Error('Cannot verify the selected transaction nonce. Retry.')
+        if (nonce < latest) throw new Error(`Nonce ${nonce} has already been used. Choose ${latest} or higher, or leave it automatic.`)
+        request.nonce = nonce
+    }
     const gas = request.gas ?? ceil(await publicClient.estimateGas({ ...request, ...fields, account }), 120n)
     if (!quantity(gas) || gas === 0n) throw new Error('Transaction gas estimate is unavailable.')
     const balance = await publicClient.getBalance({ address: account })

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CURATED_EVM_CHAINS } from '../../../web3/curatedEvmChains.js'
-import { fetchNetworkFees, parseGwei, prepareNetworkFeeTransaction, resolveNetworkFeeSelection } from './networkFees.js'
+import { fetchNetworkFees, fetchPendingNonce, parseTransactionNonce, parseGwei, prepareNetworkFeeTransaction, resolveNetworkFeeSelection } from './networkFees.js'
 
 function client(chainId = 10, legacy = false) {
     return { chain: { id: chainId }, getChainId: vi.fn().mockResolvedValue(chainId),
@@ -8,6 +8,7 @@ function client(chainId = 10, legacy = false) {
         estimateFeesPerGas: vi.fn().mockResolvedValue(legacy ? { gasPrice: 7n } : { maxFeePerGas: 122n, maxPriorityFeePerGas: 2n }),
         getFeeHistory: vi.fn().mockResolvedValue({ reward: [[1n, 3n, 8n], [1n, 3n, 8n], [1n, 3n, 8n]] }),
         getGasPrice: vi.fn().mockResolvedValue(7n), estimateGas: vi.fn().mockResolvedValue(100n),
+        getTransactionCount: vi.fn().mockResolvedValue(0),
         getBalance: vi.fn().mockResolvedValue(10n ** 20n),
     }
 }
@@ -77,4 +78,51 @@ describe('live native network fees', () => {
         rpc.getBalance.mockResolvedValue(15007n)
         await expect(prepareNetworkFeeTransaction({ publicClient: rpc, transaction, account: transaction.to, snapshot, selection: select(10, fields), chainId: 10 })).rejects.toThrow('Insufficient native balance')
     })
+    it('accepts automatic and nonce zero without rounding invalid input', () => {
+        expect(parseTransactionNonce('')).toBeUndefined()
+        expect(parseTransactionNonce('  ')).toBeUndefined()
+        expect(parseTransactionNonce('0')).toBe(0)
+        expect(parseTransactionNonce('42')).toBe(42)
+        expect(parseTransactionNonce('9007199254740991')).toBe(Number.MAX_SAFE_INTEGER)
+        for (const value of ['-1', '1.5', '1e3', 'NaN', '0x10', '9007199254740992', '9'.repeat(100)]) {
+            expect(() => parseTransactionNonce(value)).toThrow('whole-number nonce')
+        }
+    })
+    it('reads the pending nonce from the selected account and rejects a different RPC chain', async () => {
+        const rpc = client(10)
+        const account = '0x0000000000000000000000000000000000000001'
+        rpc.getTransactionCount.mockResolvedValue(7)
+        expect(await fetchPendingNonce(rpc, 10, account)).toBe(7)
+        expect(rpc.getTransactionCount).toHaveBeenCalledWith({ address: account, blockTag: 'pending' })
+        rpc.getChainId.mockResolvedValue(8453)
+        await expect(fetchPendingNonce(rpc, 10, account)).rejects.toThrow('sell network')
+        expect(rpc.getTransactionCount).toHaveBeenCalledTimes(1)
+    })
+    it.each([0, 7, 10])('submits explicit nonce %s, including replacements and queued transactions', async nonce => {
+        const rpc = client(10)
+        rpc.getTransactionCount.mockResolvedValue(0)
+        const snapshot = await fetchNetworkFees(rpc, 10)
+        const result = await prepareNetworkFeeTransaction({ publicClient: rpc, chainId: 10, account: 'wallet',
+            transaction: { gas: 100n, data: '0x1234' }, snapshot,
+            selection: select(10, { ...snapshot.presets.standard, nonce }) })
+        expect(result.nonce).toBe(nonce)
+        expect(result.data).toBe('0x1234')
+        expect(rpc.getTransactionCount).toHaveBeenCalledWith({ address: 'wallet', blockTag: 'latest' })
+    })
+    it('rejects mined nonces and leaves approvals or blank nonces automatic', async () => {
+        const rpc = client(10)
+        rpc.getTransactionCount.mockResolvedValue(8)
+        const snapshot = await fetchNetworkFees(rpc, 10)
+        const options = { publicClient: rpc, chainId: 10, account: 'wallet', transaction: { gas: 100n }, snapshot,
+            selection: select(10, { ...snapshot.presets.standard, nonce: 7 }) }
+        await expect(prepareNetworkFeeTransaction(options)).rejects.toThrow('already been used')
+        const approval = await prepareNetworkFeeTransaction({ ...options, applyNonce: false })
+        expect(approval).not.toHaveProperty('nonce')
+        const automatic = await prepareNetworkFeeTransaction({ ...options, selection: select(10, snapshot.presets.standard) })
+        expect(automatic).not.toHaveProperty('nonce')
+        expect(rpc.getTransactionCount).toHaveBeenCalledTimes(1)
+        rpc.getTransactionCount.mockResolvedValue(undefined)
+        await expect(prepareNetworkFeeTransaction(options)).rejects.toThrow('Cannot verify')
+    })
+
 })

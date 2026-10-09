@@ -362,7 +362,7 @@ export async function sendPreparedCrossChainTransaction({
             request.gas = gas
         }
         onPhase?.(phase, metadata)
-        const prepared = prepareTransactionFees ? await prepareTransactionFees(request, sourceChain.id) : request
+        const prepared = prepareTransactionFees ? await prepareTransactionFees(request, sourceChain.id, { applyNonce: step.type === 'source-transaction' }) : request
         validateRoute?.()
         return await send(walletClient, prepared)
     } catch (error) {

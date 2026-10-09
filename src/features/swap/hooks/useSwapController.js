@@ -231,6 +231,11 @@ export function useSwapController() {
         setReviewOperation: review.setReviewOperation,
         diagnostic: logSwapDiagnostic,
     })
+    // Consume a manual nonce only after a swap has actually been broadcast.
+    const { clearNonce } = networkFees
+    useEffect(() => {
+        if (receipt.transactionStatus === 'submitted' || receipt.transactionStatus === 'confirmed') clearNonce()
+    }, [receipt.transactionStatus, clearNonce])
     const nativeToken = catalog.walletTokens.find((token) => token.isNative === true && Number(token.chainId) === swapChainId) ?? null
     const crossChain = useCrossChainController({
         enabledMode: routing.modes.CROSS_CHAIN,

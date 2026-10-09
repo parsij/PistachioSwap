@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Pencil, X, RefreshCw } from 'lucide-react'
 import { formatUnits } from 'viem'
 import { getCuratedEvmChain, getCuratedEvmChainLogoUri } from '../../../web3/curatedEvmChains.js'
 import { multiplyUsdAmount } from '../../../services/fiatValue.js'
 import { formatUsdDecimal } from '../../tokens/services/walletTokens.js'
-import { formatGwei, networkFeeCap, parseGwei, resolveNetworkFeeSelection } from '../services/networkFees.js'
+import { formatGwei, networkFeeCap, parseGwei, parseTransactionNonce, resolveNetworkFeeSelection } from '../services/networkFees.js'
 import SwapInfoTooltip from './SwapInfoTooltip.jsx'
 import './NetworkFeeControl.css'
 
@@ -27,6 +27,9 @@ function CustomFeeDialog({ fees, chain, onSelect, onClose }) {
     const legacy = fees.snapshot.type === 'legacy'
     const [priority, setPriority] = useState(legacy ? '' : formatGwei(initial.maxPriorityFeePerGas))
     const [maximum, setMaximum] = useState(formatGwei(networkFeeCap(initial)))
+    const [nonce, setNonce] = useState(initial.nonce === undefined ? '' : String(initial.nonce))
+    const { refreshNonce } = fees
+    useEffect(() => { void refreshNonce?.() }, [refreshNonce])
     const [error, setError] = useState(null)
     function confirm(event) {
         event.preventDefault()
@@ -35,6 +38,8 @@ function CustomFeeDialog({ fees, chain, onSelect, onClose }) {
                 maxPriorityFeePerGas: parseGwei(priority, { allowZero: true }),
                 maxFeePerGas: parseGwei(maximum),
             }
+            const parsedNonce = parseTransactionNonce(nonce)
+            if (parsedNonce !== undefined) fields.nonce = parsedNonce
             resolveNetworkFeeSelection(fees.snapshot, { chainId: fees.chainId, mode: 'custom', fields }, fees.chainId)
             onSelect('custom', fields)
             onClose()
@@ -63,6 +68,17 @@ function CustomFeeDialog({ fees, chain, onSelect, onClose }) {
                             onChange={event => { setMaximum(event.target.value); setError(null) }} />
                     </label>
                     {!legacy && <p className="network-fee-base">Current base fee: {formatGwei(fees.snapshot.baseFeePerGas)} Gwei</p>}
+                    <label className="network-fee-field">
+                        <span>Transaction nonce <small>Optional</small></span>
+                        <small>{fees.nonceLoading ? 'Loading pending nonce…' : fees.pendingNonce !== undefined ? `Next pending nonce: ${fees.pendingNonce}` : fees.nonceError ?? 'Automatic: your wallet chooses the nonce.'}</small>
+                        <input aria-label="Transaction nonce" inputMode="numeric" autoComplete="off" placeholder="Automatic" value={nonce}
+                            onChange={event => { setNonce(event.target.value); setError(null) }} />
+                    </label>
+                    <div className="network-fee-nonce-actions">
+                        <button type="button" onClick={() => { setNonce(''); setError(null) }}>Use automatic nonce</button>
+                        {fees.pendingNonce !== undefined && <button type="button" onClick={() => { setNonce(String(fees.pendingNonce)); setError(null) }}>Use pending nonce {fees.pendingNonce}</button>}
+                    </div>
+                    <p className="network-fee-note">Applies to this swap; approvals use automatic nonces. Using an existing pending nonce can replace that transaction. A higher nonce waits for earlier transactions. Leave blank for automatic.</p>
                     {error && <p className="network-fee-error" role="alert">{error}</p>}
                     <button className="network-fee-confirm" type="submit">Confirm network cost</button>
                 </form>
@@ -73,7 +89,8 @@ function CustomFeeDialog({ fees, chain, onSelect, onClose }) {
 
 /** Displays source-chain fee options without changing the gas token or gas limit. */
 export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, sponsored = false }) {
-    const [customChainId, setCustomChainId] = useState(null)
+    const [customScope, setCustomScope] = useState(null)
+    useEffect(() => { setCustomScope(null) }, [fees.chainId, fees.account, fees.automatic])
     const chain = getCuratedEvmChain(fees.chainId)
     if (!chain) return null
     return <section className="network-fee-panel" aria-label="Network cost">
@@ -83,7 +100,7 @@ export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, spon
         </div>
         {sponsored ? <p className="network-fee-note">Gas Assist manages this transaction’s network cost.</p> : <>
             <div className="network-fee-summary">
-                <span>{fees.automatic ? 'Automatic' : fees.selection.mode === 'custom' ? 'Custom fees' : `${fees.selection.mode[0].toUpperCase()}${fees.selection.mode.slice(1)} fees`}</span>
+                <span>{fees.automatic ? 'Automatic' : fees.selection.mode === 'custom' ? `Custom fees${fees.selection.fields?.nonce !== undefined ? ` · Nonce ${fees.selection.fields.nonce}` : ''}` : `${fees.selection.mode[0].toUpperCase()}${fees.selection.mode.slice(1)} fees`}</span>
                 <span>{fees.fields ? `${formatGwei(networkFeeCap(fees.fields))} Gwei` : fees.loading ? 'Loading live fees…' : 'Estimate unavailable'}</span>
                 <button className="network-fee-icon-button" type="button" aria-label="Refresh network fees" onClick={() => void fees.refresh()} disabled={fees.loading}><RefreshCw size={15} /></button>
             </div>
@@ -93,14 +110,14 @@ export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, spon
                     <span>{mode[0].toUpperCase()}{mode.slice(1)}</span>
                     <FeeAmount fields={fees.snapshot?.presets[mode]} fees={fees} chain={chain} nativePriceUsd={nativePriceUsd} />
                 </button>)}
-                <button type="button" aria-pressed={fees.selection.mode === 'custom'} disabled={!fees.snapshot} onClick={() => setCustomChainId(fees.chainId)}>
+                <button type="button" aria-pressed={fees.selection.mode === 'custom'} disabled={!fees.snapshot} onClick={() => setCustomScope({ chainId: fees.chainId, account: fees.account })}>
                     <span>Custom <Pencil size={13} /></span>
                     {fees.selection.mode === 'custom' ? <FeeAmount fields={fees.fields} fees={fees} chain={chain} nativePriceUsd={nativePriceUsd} /> : <small>Set your fees</small>}
                 </button>
             </div>}
             {fees.error && <p className="network-fee-error" role="alert">{fees.error}</p>}
             <p className="network-fee-note">{fees.automatic ? 'Turn off Auto network cost in settings to customize.' : 'Live source-network estimates. Lower fees may take longer. Custom fees apply to the swap transaction.'}</p>
-            {!fees.automatic && customChainId === fees.chainId && fees.snapshot && <CustomFeeDialog key={`${fees.chainId}:${fees.snapshot.type}`} fees={fees} chain={chain} onSelect={onSelect} onClose={() => setCustomChainId(null)} />}
+            {!fees.automatic && customScope?.chainId === fees.chainId && customScope.account === fees.account && fees.snapshot && <CustomFeeDialog key={`${fees.chainId}:${fees.account}:${fees.snapshot.type}`} fees={fees} chain={chain} onSelect={onSelect} onClose={() => setCustomScope(null)} />}
         </>}
     </section>
 }

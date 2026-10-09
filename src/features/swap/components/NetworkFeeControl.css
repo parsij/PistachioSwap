@@ -27,3 +27,6 @@
 .network-fee-confirm { margin-top: 20px; width: 100%; padding: 14px; border: 0; border-radius: 14px; background: #bcf58b; color: #142309; font: inherit; font-weight: 600; cursor: pointer; }
 .network-fee-panel button:focus-visible, .network-fee-dialog button:focus-visible, .network-fee-field input:focus-visible { outline: 2px solid #bcf58b; outline-offset: 3px; }
 @media (max-width: 420px) { .network-fee-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } .network-fee-dialog { padding: 20px; } }
+
+.network-fee-nonce-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.network-fee-nonce-actions button { padding: 8px 10px; border: 1px solid #ffffff1a; border-radius: 9px; background: #ffffff05; color: #bcf58b; font: inherit; font-size: 11px; cursor: pointer; }

@@ -263,7 +263,7 @@ describe('cross-chain connector execution', () => {
         await sendPreparedCrossChainTransaction({ walletClient, connectedAddress: ADDRESS, sourceChain: chain,
             destinationChainId: 56, step: { type: 'source-transaction', chainId: 10, transaction: { to: TARGET, data: '0x1234', value: '5' } },
             validateRoute, prepareTransactionFees, send })
-        expect(prepareTransactionFees).toHaveBeenCalledWith(expect.objectContaining({ chain, value: 5n, data: '0x1234' }), 10)
+        expect(prepareTransactionFees).toHaveBeenCalledWith(expect.objectContaining({ chain, value: 5n, data: '0x1234' }), 10, { applyNonce: true })
         expect(send).toHaveBeenCalledWith(walletClient, expect.objectContaining({ chain, maxFeePerGas: 150n, maxPriorityFeePerGas: 2n }))
         expect(validateRoute).toHaveBeenCalledTimes(2)
         send.mockClear()
@@ -272,6 +272,22 @@ describe('cross-chain connector execution', () => {
             step: { type: 'source-transaction', chainId: 10, transaction: { to: TARGET, data: '0x1234', value: '5' } },
             validateRoute, prepareTransactionFees, send })).rejects.toThrow()
         expect(send).not.toHaveBeenCalled()
+    })
+
+    it('does not reuse a custom swap nonce for the approval step', async () => {
+        const chain = getCuratedEvmChain(10)
+        const walletClient = { account: { address: ADDRESS }, chain }
+        const send = vi.fn().mockResolvedValue(`0x${'12'.repeat(32)}`)
+        const prepareTransactionFees = vi.fn(async (request, _chainId, { applyNonce }) => ({
+            ...request, maxFeePerGas: 150n, ...(applyNonce ? { nonce: 7 } : {}),
+        }))
+        for (const type of ['approval', 'source-transaction']) {
+            await sendPreparedCrossChainTransaction({ walletClient, connectedAddress: ADDRESS, sourceChain: chain,
+                step: { type, chainId: 10, transaction: { to: TARGET, data: '0x1234' } }, prepareTransactionFees, send })
+        }
+        expect(prepareTransactionFees.mock.calls[0][2]).toEqual({ applyNonce: false })
+        expect(send.mock.calls[0][1]).not.toHaveProperty('nonce')
+        expect(send.mock.calls[1][1]).toHaveProperty('nonce', 7)
     })
 
     it('stops after approval rejection and never opens the deposit', async () => {
