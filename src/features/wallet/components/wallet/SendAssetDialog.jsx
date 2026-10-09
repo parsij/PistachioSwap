@@ -1,3 +1,4 @@
+import { useSendGasEstimate } from '../../hooks/useSendGasEstimate.js'
 import '../../../settings/components/SwapSettingsPopover.css'
 import NetworkFeeControl from '../../../swap/components/NetworkFeeControl.jsx'
 import { useNetworkFees } from '../../../swap/hooks/useNetworkFees.js'
@@ -102,7 +103,6 @@ function SendAssetDialogSession({
     const [status, setStatus] = useState('idle')
     const [reviewLoading, setReviewLoading] = useState(false)
     const [review, setReview] = useState(null)
-    const [estimatedSendGas, setEstimatedSendGas] = useState(null)
     const [automaticFees, setAutomaticFees] = useState(true)
     const [hash, setHash] = useState(null)
     const heldAssets = assets.filter(isPositiveWalletBalance)
@@ -141,12 +141,13 @@ function SendAssetDialogSession({
         : numericChainId === numericWalletChainId
             ? BigInt(nativeBalanceWei ?? 0)
             : 0n
+    const gasPreview = useSendGasEstimate({ publicClient, chainId: numericChainId, account: address, token: activeSelectedToken,
+        amount: tokenAmount, recipient, enabled: !['confirming', 'submitted', 'sent'].includes(status) })
     const networkFees = useNetworkFees({ publicClient, chainId: numericChainId, account: address,
-        automatic: automaticFees, enabled: !automaticFees && status !== 'confirming' && status !== 'submitted', gasEstimate: review?.gas ?? estimatedSendGas })
+        automatic: automaticFees, enabled: Boolean(publicClient?.getChainId) && !['confirming', 'submitted', 'sent'].includes(status), gasEstimate: review?.gas ?? gasPreview.gas })
     const currentIntent = `${address}:${numericChainId}:${activeSelectedToken?.address}:${tokenAmount}:${recipient}:${automaticFees}`
     const intentRef = useRef(currentIntent)
     intentRef.current = currentIntent
-    useEffect(() => { setEstimatedSendGas(null) }, [address, numericChainId, activeSelectedToken?.address, tokenAmount, recipient])
     function changeFees(mode, fields) {
         networkFees.select(mode, fields)
         setReview(null)
@@ -264,7 +265,6 @@ function SendAssetDialogSession({
                 estimatedFeeWei: feeWei,
             })
             if (intentRef.current !== reviewedIntent) throw new Error('Send details changed. Review the send again.')
-            setEstimatedSendGas(gas)
             setReview({
                 account: address,
                 chainId: numericChainId,
@@ -551,6 +551,9 @@ function SendAssetDialogSession({
                                     onCheckedChange={(value) => { setAutomaticFees(value); setReview(null); setMode('edit'); setStatus('idle'); setError(null) }} />
                                 <NetworkFeeControl fees={review ? { ...networkFees, fields: review.manualFees ? review.plan.request : { gasPrice: review.gasPrice } } : networkFees}
                                     nativePriceUsd={getDisplayTokenPrice(selectedNativeAsset)} transactionLabel="send" onSelect={changeFees} />
+                                {!review && <p className="network-fee-note" role="status">{gasPreview.preliminary
+                                    ? 'Preliminary cost. Enter an amount and recipient for a transfer-specific estimate.'
+                                    : gasPreview.error ?? (gasPreview.loading ? 'Estimating transfer cost…' : 'Transfer-specific estimate. Your wallet confirms the final charge.')}</p>}
                             </fieldset>}
                             <TransactionStatusDialog
                                 status={status}

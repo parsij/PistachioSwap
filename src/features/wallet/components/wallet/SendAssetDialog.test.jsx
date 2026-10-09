@@ -619,3 +619,20 @@ describe('Send network cost chooser', () => {
         expect(mocks.submitSendPlan).not.toHaveBeenCalled()
     })
 })
+
+
+it('shows live cost in the initial Send form before reviewing or requesting a wallet signature', async () => {
+    Object.assign(mocks.publicClient, {
+        chain: { id: 56 }, getChainId: vi.fn(async () => 56),
+        getBlock: vi.fn(async () => ({ number: 10n, baseFeePerGas: null })),
+        estimateFeesPerGas: vi.fn(async () => ({ gasPrice: 3_000_000_000n })),
+    })
+    mocks.publicClient.estimateGas.mockResolvedValue(21_000n)
+    renderDialog()
+    await waitFor(() => expect(screen.getByLabelText('Network cost').textContent).toContain('≈$0.05'))
+    expect(screen.queryByRole('heading', { name: 'Review send' })).toBeNull()
+    expect(screen.getByText(/Preliminary cost/)).toBeTruthy()
+    expect(mocks.submitSendPlan).not.toHaveBeenCalled()
+    cleanup()
+    vi.clearAllMocks()
+})

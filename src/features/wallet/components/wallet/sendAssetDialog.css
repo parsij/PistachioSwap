@@ -16,7 +16,10 @@
 
     width: min(500px, calc(100vw - 28px));
     max-height: min(760px, calc(100dvh - 28px));
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
     border: 1px solid var(--send-border);
     border-radius: 28px;
     background:
@@ -464,4 +467,21 @@
     .wallet-send-dialog .send-primary-button[aria-busy='true']::after {
         animation: none;
     }
+}
+
+/* Send owns its scroll and switch colors; other wallet dialogs are unchanged. */
+.wallet-send-dialog > * { flex-shrink: 0; }
+.wallet-send-dialog .send-network-fees { margin: 0 18px 12px !important; }
+.wallet-send-dialog .uniswap-toggle-thumb { color: var(--send-accent); }
+.wallet-send-dialog .uniswap-toggle {
+    border: 1px solid var(--send-accent);
+    background: #344b2e;
+}
+.wallet-send-dialog .uniswap-toggle:hover { background: #425e39; }
+.wallet-send-dialog .uniswap-toggle[data-state="checked"] { background: var(--send-accent); }
+.wallet-send-dialog .uniswap-toggle[data-state="checked"]:hover { background: #b4eca1; }
+.wallet-send-dialog .uniswap-toggle:focus-visible { outline: 2px solid var(--send-accent); outline-offset: 3px; }
+@media (max-width: 640px) {
+    .wallet-dialog.wallet-send-dialog { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    .wallet-send-dialog .send-network-fees { margin-right: 12px !important; margin-left: 12px !important; }
 }
