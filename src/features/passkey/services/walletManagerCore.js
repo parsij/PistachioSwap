@@ -31,6 +31,7 @@ import {
     readWalletBootstrapState,
     saveAndReadBackVault,
     selectActiveVault,
+    selectWalletAccount,
     writePreference,
 } from './vaultStorage.js'
 import { WalletConnectionBridge, connectionError } from './walletConnectionBridge.js'
@@ -156,6 +157,7 @@ export class PistachioWalletManager {
             readWalletBootstrapState,
             saveAndReadBackVault,
             selectActiveVault,
+            selectWalletAccount,
             writePreference,
         },
         windowImpl = globalThis.window,
@@ -172,6 +174,8 @@ export class PistachioWalletManager {
         this.vault = null
         this.vaults = []
         this.vaultPreferences = {}
+        this.selectedAccountIndices = {}
+        this.accountChangePending = false
         this.phase = 'initializing'
         this.address = null
         this.sessionActive = false
@@ -201,6 +205,7 @@ export class PistachioWalletManager {
 
 }
 
+import { methods as accountMethods } from './walletManagerAccounts.js'
 import { methods as lifecycleMethods } from './walletManagerLifecycle.js'
 import { methods as setupMethods } from './walletManagerSetup.js'
 import { methods as sessionMethods } from './walletManagerSession.js'
@@ -208,6 +213,7 @@ import { methods as signingMethods } from './walletManagerSigning.js'
 Object.assign(
     PistachioWalletManager.prototype,
     lifecycleMethods,
+    accountMethods,
     setupMethods,
     sessionMethods,
     signingMethods,

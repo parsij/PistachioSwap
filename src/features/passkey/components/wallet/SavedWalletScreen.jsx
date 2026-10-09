@@ -135,7 +135,7 @@ function DeleteLocalVaultConfirmation({ onCancel, onDeleted, onSensitiveChange, 
                 <AlertTriangle aria-hidden="true" />
                 <div>
                     <h3>Remove wallet from this browser</h3>
-                    <p>This removes only the encrypted local copy. It does not delete the wallet or funds on any network.</p>
+                    <p>This removes only the encrypted local copy{vault.accounts?.length > 1 ? ` and all ${vault.accounts.length} wallets sharing its recovery phrase` : ''}. It does not delete the wallet or funds on any network.</p>
                 </div>
             </div>
             <div className="pistachio-wallet-field-group"><span>Wallet address</span><code className="pistachio-wallet-address">{vault.address}</code></div>

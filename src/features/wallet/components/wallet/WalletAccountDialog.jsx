@@ -22,6 +22,7 @@ import { useDisconnect } from '#wallet-runtime'
 
 import ReceiveDialog from './ReceiveDialog.jsx'
 import SendAssetDialog from './SendAssetDialog.jsx'
+import WalletAccountPicker from '../../../passkey/components/wallet/WalletAccountPicker.jsx'
 import { WalletAvatar } from './WalletAccountButton.jsx'
 import TokenIcon from '../../../tokens/components/TokenIcon.jsx'
 import { shortenAddress } from '../../../../services/address.js'
@@ -320,6 +321,7 @@ export default function WalletAccountDialog({
     explorerUrl,
     onRefetch,
     requestedAction = null,
+    isLocalWallet = false,
 }) {
     const { mutateAsync: disconnect } = useDisconnect()
     const [receiveOpen, setReceiveOpen] = useState(false)
@@ -399,6 +401,9 @@ export default function WalletAccountDialog({
 
     useEffect(() => {
         setView('overview')
+        setSendOpen(false)
+        setReceiveOpen(false)
+        setCopied(false)
     }, [address])
 
     useEffect(() => {
@@ -524,6 +529,7 @@ export default function WalletAccountDialog({
                         </div>
                     </div>
 
+                    {isLocalWallet && <WalletAccountPicker onAddWallet={() => onOpenChange(false)} />}
                     <button
                         type="button"
                         className="uni-wallet-address"

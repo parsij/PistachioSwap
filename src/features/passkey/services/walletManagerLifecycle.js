@@ -1,5 +1,6 @@
 /* oxlint-disable no-unused-vars -- shared imports support methods installed on the manager prototype. */
 /* Internal manager method cluster; methods run with the manager instance as `this`. */
+import { vaultAccounts } from './derivedAccounts.js'
 import { getBytes, toUtf8String } from 'ethers'
 import { getAddress } from 'viem'
 
@@ -173,6 +174,8 @@ export const methods = {
             flags: this.flags,
             phase: this.phase,
             address: this.address,
+            selectedAddress: this.selectedAccountAddress(),
+            selectedAccountIndex: this.selectedAccountIndex(),
             chainId: this.activeChainId,
             chainName: getCuratedEvmChain(this.activeChainId)?.name ?? null,
             sessionActive: this.sessionActive,
@@ -184,6 +187,7 @@ export const methods = {
                     vaultId: vault.vaultId,
                     name: preference.label || vault.name,
                     address: vault.address,
+                    accounts: structuredClone(vaultAccounts(vault)),
                     sourceType: vault.sourceType,
                     createdAt: vault.createdAt,
                     lastUsedAt: preference.lastUsedAt || vault.updatedAt,
@@ -226,6 +230,8 @@ export const methods = {
                     this.vault = await this.storage.selectActiveVault(this.vaults[0].vaultId)
                 }
                 this.vaultPreferences = normalizeVaultPreferences(await preference('vaultPreferences'))
+                const selectedIndices = await preference('selectedAccountIndices')
+                this.selectedAccountIndices = selectedIndices && typeof selectedIndices === 'object' && !Array.isArray(selectedIndices) ? selectedIndices : {}
                 this.lastUnlockByWrap = await preference('lastUnlockByWrap') ?? {}
                 this.recoveryBackupConfirmed = await preference('recoveryBackupConfirmed') === true
                 const activeSessionVaultId = await preference(ACTIVE_SESSION_VAULT_PREFERENCE)
@@ -351,6 +357,8 @@ export const methods = {
     },
     async prepareNewWallet() {
         await this.initialize()
+        if (this.accountChangePending) throw managerError('PISTACHIO_ACCOUNT_CHANGE_ACTIVE', 'Finish the current wallet change first.')
+        this.interactionGeneration += 1
         if (this.client) await this.lock('wallet-switch')
         await this.clearActiveSession()
         this.setupPreviousVaultId = this.vault?.vaultId ?? null
@@ -362,9 +370,11 @@ export const methods = {
     },
     async selectVault(vaultId) {
         await this.initialize()
+        if (this.accountChangePending) throw managerError('PISTACHIO_ACCOUNT_CHANGE_ACTIVE', 'Finish the current wallet change first.')
+        this.interactionGeneration += 1
         const selected = this.vaults.find((candidate) => candidate.vaultId === vaultId)
         if (!selected) throw managerError('PISTACHIO_VAULT_NOT_FOUND', 'The selected Pistachio Wallet does not exist.')
-        if (this.client && this.vault?.vaultId !== selected.vaultId) await this.lock('wallet-switch')
+        if (this.client) await this.lock('wallet-switch')
         if (this.vault?.vaultId !== selected.vaultId) await this.clearActiveSession()
         this.vault = await this.storage.selectActiveVault(selected.vaultId)
         this.address = null

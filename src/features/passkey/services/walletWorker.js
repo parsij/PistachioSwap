@@ -18,8 +18,10 @@ import {
     addEncryptedKeyWrap,
     createEncryptedVault,
     decryptEncryptedVault,
+    decryptPayload,
     encryptPayload,
 } from './vaultCrypto.js'
+import { accountDerivationPath, MAX_DERIVED_ACCOUNTS, vaultAccounts } from './derivedAccounts.js'
 import { bytesToBase64Url, base64UrlToBytes, wipeBytes } from './passkeyEncoding.js'
 import { pistachioError } from './passkeyErrors.js'
 import { validatePistachioVault } from './vaultSchema.js'
@@ -86,19 +88,37 @@ function setPrivateKeyWallet(privateKey, sourceType) {
     return { address: getAddress(wallet.address) }
 }
 
-function restoreWallet(decryptedPayload) {
+function mnemonicEntropy(encoded) {
+    const entropy = base64UrlToBytes(encoded)
+    if (![16, 20, 24, 28, 32].includes(entropy.length)) {
+        entropy.fill(0)
+        throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
+    }
+    return entropy
+}
+function selectWorkerAccount(vault, decrypted, index = 0) {
+    accountDerivationPath(index)
+    const account = vaultAccounts(vault)[index]
+    if (!account || restoreWallet(decrypted, index) !== account.address) {
+        throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
+    }
+    return account.address
+}
+
+function restoreWallet(decryptedPayload, accountIndex = 0) {
     if (decryptedPayload?.kind === 'mnemonic') {
         if (decryptedPayload.language !== 'en' || decryptedPayload.derivationPath !== PISTACHIO_DERIVATION_PATH) {
             throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
         }
-        const entropy = base64UrlToBytes(decryptedPayload.entropy, 16)
+        const entropy = mnemonicEntropy(decryptedPayload.entropy)
         try {
             const mnemonic = Mnemonic.fromEntropy(entropy)
-            wallet = HDNodeWallet.fromMnemonic(mnemonic, PISTACHIO_DERIVATION_PATH)
+            wallet = HDNodeWallet.fromMnemonic(mnemonic, accountDerivationPath(accountIndex))
         } finally {
             entropy.fill(0)
         }
     } else if (decryptedPayload?.kind === 'private-key') {
+        if (accountIndex !== 0) throw new TypeError('Private-key wallets cannot create additional accounts.')
         const privateKey = base64UrlToBytes(decryptedPayload.privateKey, 32)
         try {
             wallet = new Wallet(hexlify(privateKey))
@@ -341,13 +361,44 @@ async function handle(operation, message) {
                 wipeBytes(dek)
                 dek = result.dek.slice()
                 activeVault = vault
-                return { address, verified: true }
+                const selectedAddress = selectWorkerAccount(vault, result.payload, message.accountIndex ?? 0)
+                return { address: selectedAddress, verified: true }
             } finally {
                 wipeBytes(result.dek)
             }
         } finally {
             wipeBytes(prf)
         }
+    }
+    if (operation === 'createDerivedAccount') {
+        requireWallet()
+        if (!activeVault || !dek || payload.kind !== 'mnemonic') {
+            throw new TypeError('A recovery phrase is required to create another wallet.')
+        }
+        const accounts = vaultAccounts(activeVault)
+        const index = accounts.length
+        if (index >= MAX_DERIVED_ACCOUNTS) throw new TypeError('This recovery phrase has reached its wallet limit.')
+        // Stage encrypted metadata only. Keep the existing signer until the
+        // main thread has persisted and read back the candidate vault.
+        const entropy = mnemonicEntropy(payload.entropy)
+        let address
+        try {
+            address = getAddress(HDNodeWallet.fromMnemonic(Mnemonic.fromEntropy(entropy), accountDerivationPath(index)).address)
+        } finally { entropy.fill(0) }
+        const candidate = { ...activeVault, accounts: [...accounts, { index, address }], updatedAt: new Date().toISOString() }
+        candidate.encryptedPayload = await encryptPayload({ vault: candidate, payload, dek })
+        return { vault: validatePistachioVault(candidate), index, address }
+    }
+    if (operation === 'adoptDerivedAccounts') {
+        requireWallet()
+        const candidate = validatePistachioVault(message.vault)
+        if (!dek || candidate.vaultId !== activeVault?.vaultId || candidate.address !== activeVault.address) {
+            throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
+        }
+        const decrypted = await decryptPayload({ vault: candidate, dek })
+        const address = selectWorkerAccount(candidate, decrypted, message.accountIndex)
+        activeVault = candidate
+        return { address, verified: true }
     }
     if (operation === 'getAddress') return { address: getAddress(requireWallet().address) }
     if (operation === 'signMessage') {
@@ -371,6 +422,7 @@ async function handle(operation, message) {
         if (!activeVault || !dek) throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
         const prf = new Uint8Array(message.prfOutput)
         try {
+            const selectedIndex = vaultAccounts(activeVault).findIndex((account) => account.address === getAddress(wallet.address))
             activeVault = await addEncryptedKeyWrap({ vault: activeVault, payload, dek, keyWrap: message.keyWrap, prfOutput: prf })
             const verification = await decryptEncryptedVault({
                 vault: activeVault,
@@ -381,6 +433,7 @@ async function handle(operation, message) {
                 if (restoreWallet(verification.payload) !== activeVault.address) {
                     throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
                 }
+                selectWorkerAccount(activeVault, verification.payload, selectedIndex)
             } finally {
                 wipeBytes(verification.dek)
             }
@@ -425,7 +478,7 @@ async function handle(operation, message) {
     }
     if (operation === 'revealRecoveryPhrase') {
         if (payload?.kind !== 'mnemonic') throw new TypeError('This wallet has no recovery phrase.')
-        const entropy = base64UrlToBytes(payload.entropy, 16)
+        const entropy = mnemonicEntropy(payload.entropy)
         try {
             return { recoveryPhrase: Mnemonic.fromEntropy(entropy).phrase }
         } finally {

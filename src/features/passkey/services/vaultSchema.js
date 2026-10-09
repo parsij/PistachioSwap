@@ -7,6 +7,7 @@ import {
     PISTACHIO_VAULT_SCHEMA_VERSION,
     PISTACHIO_WALLET_NAME,
 } from './constants.js'
+import { MAX_DERIVED_ACCOUNTS } from './derivedAccounts.js'
 import { base64UrlToBytes } from './passkeyEncoding.js'
 
 const VAULT_KEYS = new Set([
@@ -50,13 +51,22 @@ function validateKeyWrap(value) {
 
 /** Validates and returns the canonical encrypted vault schema, rejecting malformed or unsupported versions. */
 export function validatePistachioVault(value) {
-    if (!exactKeys(value, VAULT_KEYS)) throw new TypeError('Invalid Pistachio Wallet vault.')
+    if (!exactKeys(value, VAULT_KEYS) && !exactKeys(value, new Set([...VAULT_KEYS, 'accounts']))) throw new TypeError('Invalid Pistachio Wallet vault.')
     if (value.schemaVersion !== PISTACHIO_VAULT_SCHEMA_VERSION) throw new TypeError('Unsupported Pistachio Wallet vault schema.')
     if (!uuid(value.vaultId) || value.name !== PISTACHIO_WALLET_NAME || value.chainId !== PISTACHIO_CHAIN_ID) throw new TypeError('Invalid Pistachio Wallet metadata.')
     if (!isAddress(value.address) || getAddress(value.address) !== value.address) throw new TypeError('Invalid Pistachio Wallet address.')
     if (typeof value.rpId !== 'string' || !value.rpId || !PISTACHIO_SOURCE_TYPES.includes(value.sourceType)) throw new TypeError('Invalid Pistachio Wallet source.')
     const mnemonic = value.sourceType.endsWith('mnemonic')
     if (value.derivationPath !== (mnemonic ? PISTACHIO_DERIVATION_PATH : null)) throw new TypeError('Invalid Pistachio Wallet derivation path.')
+    if ('accounts' in value) {
+        const accounts = value.accounts
+        if (!mnemonic || !Array.isArray(accounts) || !accounts.length || accounts.length > MAX_DERIVED_ACCOUNTS ||
+            accounts.some((account, index) => !exactKeys(account, new Set(['index', 'address'])) ||
+                account.index !== index || !isAddress(account.address) || getAddress(account.address) !== account.address) ||
+            accounts[0].address !== value.address || new Set(accounts.map((account) => account.address)).size !== accounts.length) {
+            throw new TypeError('Invalid Pistachio Wallet accounts.')
+        }
+    }
     if (!isoDate(value.createdAt) || !isoDate(value.updatedAt)) throw new TypeError('Invalid Pistachio Wallet timestamps.')
     if (!exactKeys(value.encryptedPayload, new Set(['algorithm', 'iv', 'ciphertext'])) || value.encryptedPayload.algorithm !== 'AES-256-GCM') throw new TypeError('Invalid encrypted wallet payload.')
     try {

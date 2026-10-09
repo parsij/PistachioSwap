@@ -13,6 +13,7 @@ import {
     readWalletBootstrapState,
     saveAndReadBackVault,
     selectActiveVault,
+    selectWalletAccount,
     writePreference,
 } from './vaultStorage.js'
 
@@ -102,6 +103,27 @@ describe('Pistachio IndexedDB vault storage', () => {
         expect((await listVaults(indexedDb)).map((vault) => vault.vaultId)).toEqual([second.vaultId])
         expect(await readActiveVault(indexedDb)).toBeNull()
         expect(await selectActiveVault(second.vaultId, indexedDb)).toEqual(second)
+    })
+
+    it('rejects stale account writes without overwriting a newer vault', async () => {
+        const first = await fixture()
+        await saveAndReadBackVault(first, indexedDb)
+        const newer = { ...first, updatedAt: '2026-01-02T00:00:00.000Z' }
+        await saveAndReadBackVault(newer, indexedDb, { expectedVault: first })
+        await expect(saveAndReadBackVault(first, indexedDb, { expectedVault: first })).rejects.toMatchObject({ code: 'PISTACHIO_VAULT_CHANGED' })
+        expect(await readVault(first.vaultId, indexedDb)).toEqual(newer)
+    })
+
+    it('atomically persists account selection, active vault and reconnect state, rejecting wrong addresses', async () => {
+        const vault = await fixture()
+        await saveAndReadBackVault(vault, indexedDb)
+        const result = await selectWalletAccount({ vaultId: vault.vaultId, index: 0, address: vault.address }, indexedDb)
+        expect(result.vault).toEqual(vault)
+        const before = await readWalletBootstrapState(indexedDb)
+        expect(before.preferences.selectedAccountIndices[vault.vaultId]).toBe(0)
+        expect(before.preferences.activeSessionVaultId).toBe(vault.vaultId)
+        await expect(selectWalletAccount({ vaultId: vault.vaultId, index: 1, address: vault.address }, indexedDb)).rejects.toThrow()
+        expect(await readWalletBootstrapState(indexedDb)).toEqual(before)
     })
 
     it('preserves the actual IndexedDB vault when the connector lifecycle disconnects', async () => {

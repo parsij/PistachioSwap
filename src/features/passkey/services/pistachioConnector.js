@@ -8,7 +8,7 @@ const SELF_HOSTED_AUTH_SIGN_METHOD = 'pistachio_signSelfHostedAuthorization'
 
 function snapshotAccount(snapshot) {
     if (snapshot.phase === 'unlocked' && snapshot.address) return snapshot.address
-    if (snapshot.sessionActive && snapshot.vault?.address) return snapshot.vault.address
+    if (snapshot.sessionActive && snapshot.vault?.address) return snapshot.selectedAddress ?? snapshot.vault.address
     return null
 }
 

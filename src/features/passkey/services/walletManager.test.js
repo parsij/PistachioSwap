@@ -412,7 +412,7 @@ describe('Pistachio Wallet manager connection and vault lifecycle', () => {
         expect(manager.snapshot()).toMatchObject({ chainId: 8453, chainName: 'Base' })
         await expect(manager.providerRequest({ method: 'eth_chainId' })).resolves.toBe('0x2105')
         expect(manager.client.request).not.toHaveBeenCalled()
-        await expect(manager.providerRequest({ method: 'eth_signTransaction', params: [{}] })).rejects.toMatchObject({ code: 'PISTACHIO_CHAIN_INVARIANT_FAILED' })
+        await expect(manager.providerRequest({ method: 'eth_signTransaction', params: [{}] })).rejects.toMatchObject({ code: 4200 })
         await expect(manager.switchChain(999999)).rejects.toMatchObject({ code: 'PISTACHIO_CHAIN_NOT_ALLOWED' })
     })
 

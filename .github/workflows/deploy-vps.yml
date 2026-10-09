@@ -135,6 +135,9 @@ jobs:
       - name: Wallet import regression tests
         run: pnpm exec vitest run src/features/passkey/components src/features/passkey/services/walletManagerImport.test.js
 
+      - name: Derived wallet and account switching regressions
+        run: pnpm exec vitest run src/features/passkey/services/walletWorker.accounts.test.js src/features/passkey/services/walletManagerAccounts.test.js src/features/passkey/services/walletManager.test.js src/features/passkey/services/walletManagerProduction.test.js src/features/passkey/services/pistachioConnector.test.js src/features/passkey/services/vaultCrypto.test.js src/features/passkey/services/vaultStorage.test.js src/features/passkey/services/walletWorker.gasAssist.test.js src/features/wallet/components/wallet/WalletAccountDialog.test.jsx
+
       - name: Network fee and wallet pricing regressions
         run: pnpm exec vitest run src/features/settings src/features/swap/services/networkFees.test.js src/features/swap/hooks/useNetworkFees.test.jsx src/features/swap/components/NetworkFeeControl.test.jsx src/features/swap/components/SwapDetails.test.jsx src/features/swap/hooks/useSameChainExecution.test.jsx src/features/swap/model/swapViewModel.test.js src/features/cross-chain/services/crossChainExecution.test.js src/features/tokens/services/walletTokens.test.js src/features/tokens/services/walletTokenCache.test.js src/features/tokens/services/portfolio.test.js src/features/tokens/model/tokenSelectorState.test.js
 

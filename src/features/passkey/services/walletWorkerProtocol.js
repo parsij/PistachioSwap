@@ -9,6 +9,8 @@ export const WALLET_WORKER_OPERATIONS = Object.freeze([
     'verifyPersistedVault',
     'unlockVault',
     'verifyExistingPasskey',
+    'createDerivedAccount',
+    'adoptDerivedAccounts',
     'getAddress',
     'signMessage',
     'signTypedData',

@@ -1,0 +1,23 @@
+.pistachio-account-picker-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 8px 0 0; padding: 4px 0; border: 0; background: transparent; color: var(--text-primary, #f5f5f5); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; }
+.pistachio-account-picker-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pistachio-account-picker-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); z-index: 1200; }
+.pistachio-account-picker { position: fixed; z-index: 1201; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(392px, calc(100vw - 32px)); max-height: min(680px, calc(100dvh - 48px)); display: flex; flex-direction: column; gap: 12px; padding: 20px; box-sizing: border-box; background: var(--surface-elevated, #191b21); color: var(--text-primary, #f5f5f5); border: 1px solid var(--border-color, #33363e); border-radius: 24px; box-shadow: 0 16px 64px #0006; font-family: inherit; }
+.pistachio-account-picker-heading { display: flex; align-items: center; justify-content: space-between; }
+.pistachio-account-picker-heading h2 { margin: 0; font-size: 20px; line-height: 28px; }
+.pistachio-account-picker-heading button { display: grid; place-items: center; padding: 4px; border: 0; color: inherit; background: transparent; cursor: pointer; }
+.pistachio-account-picker-description { margin: 0; color: var(--text-secondary, #a4a7b0); font-size: 13px; line-height: 19px; }
+.pistachio-account-picker-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.pistachio-account-picker-group > p { margin: 12px 4px 8px; font-size: 12px; color: var(--text-secondary, #a4a7b0); display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.pistachio-account-picker-row { width: 100%; min-height: 64px; display: flex; align-items: center; gap: 8px; padding: 12px; margin: 4px 0; border: 1px solid transparent; border-radius: 16px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.pistachio-account-picker-row[aria-pressed="true"] { background: var(--surface-hover, #24272e); border-color: var(--accent-color, #76be82); }
+.pistachio-account-picker-row:hover { background: var(--surface-hover, #24272e); }
+.pistachio-account-picker-row > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pistachio-account-picker-row strong { font-size: 15px; line-height: 20px; font-weight: 500; }
+.pistachio-account-picker-row small { color: var(--text-secondary, #a4a7b0); font-size: 12px; line-height: 16px; }
+.pistachio-account-picker-row .wallet-avatar { width: 40px; height: 40px; flex-shrink: 0; }
+.pistachio-account-picker-actions { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border-color, #33363e); }
+.pistachio-account-picker-actions button { display: flex; justify-content: center; align-items: center; gap: 8px; border: 0; border-radius: 16px; padding: 12px; background: var(--surface-hover, #24272e); color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.pistachio-account-picker-actions small { color: var(--text-secondary, #a4a7b0); text-align: center; font-size: 11px; line-height: 16px; }
+.pistachio-account-picker button:disabled { cursor: default; opacity: .5; }
+.pistachio-account-picker button:focus-visible, .pistachio-account-picker-trigger:focus-visible { outline: 2px solid var(--accent-color, #76be82); outline-offset: 2px; }
+.pistachio-account-picker-error { margin: 0; color: #f39797; font-size: 13px; }

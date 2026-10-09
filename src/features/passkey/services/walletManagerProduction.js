@@ -100,7 +100,7 @@ async function persistReadOnlySession(manager) {
 
 function readOnlyAccount(manager) {
     if (manager.phase === 'unlocked' && manager.address) return manager.address
-    if (manager.sessionActive && manager.vault?.address) return manager.vault.address
+    if (manager.sessionActive && manager.vault?.address) return manager.selectedAccountAddress?.() ?? manager.vault.address
     return null
 }
 
@@ -213,6 +213,7 @@ export function hardenPistachioWalletManager(manager) {
     const originalSensitiveMethods = new Map(
         [
             'addBackupPasskey',
+            'createAccount',
             'exportEncryptedBackup',
             'exportKeystore',
             'removePasskey',
@@ -366,10 +367,10 @@ export function hardenPistachioWalletManager(manager) {
         this.phase = 'locked'
         this.error = null
         await persistReadOnlySession(this)
-        this.connectionBridge?.resolve?.(this.vault.address)
+        this.connectionBridge?.resolve?.(readOnlyAccount(this))
         this.view = null
         this.notify()
-        return this.vault.address
+        return readOnlyAccount(this)
     }
 
     manager.requestConnection = async function requestConnection() {

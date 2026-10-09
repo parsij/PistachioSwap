@@ -40,6 +40,7 @@ export function vaultPayloadAad(vault) {
         updatedAt: vault.updatedAt,
         encryptionAlgorithm: vault.encryptedPayload?.algorithm ?? 'AES-256-GCM',
         keyWraps: vault.keyWraps,
+        ...(vault.accounts ? { accounts: vault.accounts } : {}),
     }))
 }
 

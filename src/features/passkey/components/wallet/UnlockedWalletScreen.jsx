@@ -43,7 +43,7 @@ function UnlockedContent({ onClose, onSensitiveChange, snapshot }) {
     const [keystoreBackupConfirmation, setKeystoreBackupConfirmation] = useState('')
     const clearTimer = useRef(null)
     const readOnlyView = snapshot.phase !== 'unlocked'
-    const displayAddress = snapshot.address ?? snapshot.vault?.address ?? ''
+    const displayAddress = snapshot.address ?? snapshot.selectedAddress ?? snapshot.vault?.address ?? ''
 
     useEffect(() => {
         onSensitiveChange(Boolean(busyAction || secretKind))

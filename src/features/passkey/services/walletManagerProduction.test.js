@@ -59,6 +59,13 @@ function createManager({ withVault = true, window = null } = {}) {
         connectionBridge: {
             resolve: vi.fn(() => true),
         },
+        createAccount: vi.fn(async function createAccount() {
+            await this.reauthenticate()
+            const selected = '0x2222222222222222222222222222222222222222'
+            this.selectedAccountAddress = () => selected
+            this.address = selected
+            return selected
+        }),
         ensureUnlockedForSigning: vi.fn(),
         error: null,
         initialize: vi.fn(async () => undefined),
@@ -495,5 +502,20 @@ describe('production Pistachio Wallet hardening', () => {
             .rejects.toMatchObject({
                 code: 'PISTACHIO_SENSITIVE_ACTION_RATE_LIMITED',
             })
+    })
+})
+
+describe('derived account production hardening', () => {
+    it('requires a fresh passkey to create an account and discards the signer while keeping the selected account', async () => {
+        const manager = createManager()
+        const originalUnlock = manager.unlock
+        hardenPistachioWalletManager(manager)
+        await manager.activateReadOnlySession()
+        expect(await manager.createAccount()).toBe('0x2222222222222222222222222222222222222222')
+        expect(originalUnlock).toHaveBeenCalledOnce()
+        expect(manager.client).toBeNull()
+        expect(manager.address).toBeNull()
+        expect(manager.sessionActive).toBe(true)
+        expect(await manager.providerRequest({ method: 'eth_accounts' })).toEqual(['0x2222222222222222222222222222222222222222'])
     })
 })

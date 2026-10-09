@@ -1,3 +1,4 @@
+import { useConnection } from '#wallet-runtime'
 import { useEffect, useRef, useState } from 'react'
 
 import WalletAccountButton from './wallet/WalletAccountButton.jsx'
@@ -24,6 +25,7 @@ export default function WalletConnectionButton({
     explorerUrl,
     onRefetch,
 }) {
+    const connection = useConnection()
     const [accountOpen, setAccountOpen] = useState(false)
     const [requestedAction, setRequestedAction] = useState(null)
     const requestSequence = useRef(0)
@@ -65,6 +67,7 @@ export default function WalletConnectionButton({
             />
             {walletState.isConnected && (
                 <WalletAccountDialog
+                    isLocalWallet={connection?.connector?.id === 'pistachio-local'}
                     open={accountOpen}
                     onOpenChange={handleAccountOpenChange}
                     onReturnFocus={() => accountControl.current?.querySelector('.wallet-account-button')?.focus()}

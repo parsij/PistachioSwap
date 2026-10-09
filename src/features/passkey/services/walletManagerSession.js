@@ -159,19 +159,22 @@ export const methods = {
                 if (interactionGeneration !== this.interactionGeneration) {
                     throw connectionError('PISTACHIO_CONNECTION_CANCELLED', 'Pistachio Wallet unlock was cancelled.')
                 }
-                result = await this.freshClient().transferPrf('unlockVault', { vault: this.vault, keyWrapId }, prfOutput)
+                result = await this.freshClient().transferPrf('unlockVault', { vault: this.vault, keyWrapId, accountIndex: this.selectedAccountIndex() }, prfOutput)
                 if (prfOutput.byteLength !== 0) throw new TypeError('PRF transfer did not detach the main-thread buffer.')
             } finally {
                 wipeBytes(prfOutput)
             }
-            if (getAddress(result.address) !== this.vault.address) throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
+            if (interactionGeneration !== this.interactionGeneration) throw connectionError('PISTACHIO_CONNECTION_CANCELLED', 'Wallet selection changed during unlock.')
+            if (getAddress(result.address) !== this.selectedAccountAddress()) throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
             this.signingContextGeneration += 1
             this.address = result.address
             this.phase = 'unlocked'
             await this.markUnlocked(keyWrapId)
+            if (interactionGeneration !== this.interactionGeneration) throw connectionError('PISTACHIO_CONNECTION_CANCELLED', 'Wallet selection changed during unlock.')
             this.resolveConnection()
             return result.address
         } catch (error) {
+            if (interactionGeneration !== this.interactionGeneration) throw error
             this.client?.terminate()
             this.client = null
             this.address = null

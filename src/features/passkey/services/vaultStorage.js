@@ -4,12 +4,15 @@ import {
     PISTACHIO_VAULT_DB_VERSION,
     PISTACHIO_VAULT_STORE,
 } from './constants.js'
+import { canonicalJson } from './passkeyEncoding.js'
+import { vaultAccounts } from './derivedAccounts.js'
 import { pistachioError } from './passkeyErrors.js'
 import { validatePistachioVault } from './vaultSchema.js'
 
 const WALLET_BOOTSTRAP_PREFERENCE_KEYS = Object.freeze([
     'activeVaultId',
     'vaultPreferences',
+    'selectedAccountIndices',
     'lastUnlockByWrap',
     'recoveryBackupConfirmed',
     'activeSessionVaultId',
@@ -53,7 +56,7 @@ export async function openPistachioWalletDatabase(indexedDb = globalThis.indexed
 }
 
 /** Atomically stores a validated encrypted vault and reads it back for persistence verification. */
-export async function saveAndReadBackVault(vault, indexedDb = globalThis.indexedDB) {
+export async function saveAndReadBackVault(vault, indexedDb = globalThis.indexedDB, { expectedVault = null } = {}) {
     const validated = validatePistachioVault(vault)
     const database = await openPistachioWalletDatabase(indexedDb)
     try {
@@ -61,14 +64,22 @@ export async function saveAndReadBackVault(vault, indexedDb = globalThis.indexed
             [PISTACHIO_VAULT_STORE, PISTACHIO_PREFERENCES_STORE],
             'readwrite',
         )
-        transaction.objectStore(PISTACHIO_VAULT_STORE).put(validated)
-        transaction.objectStore(PISTACHIO_PREFERENCES_STORE).put({ key: 'activeVaultId', value: validated.vaultId })
+        const vaultStore = transaction.objectStore(PISTACHIO_VAULT_STORE)
+        if (expectedVault) {
+            const current = await requestResult(vaultStore.get(validated.vaultId))
+            if (!current || canonicalJson(current) !== canonicalJson(expectedVault)) {
+                throw Object.assign(new Error('This wallet changed in another tab. Refresh before creating another wallet.'), { code: 'PISTACHIO_VAULT_CHANGED' })
+            }
+        }
+        vaultStore.put(validated)
+        if (!expectedVault) transaction.objectStore(PISTACHIO_PREFERENCES_STORE).put({ key: 'activeVaultId', value: validated.vaultId })
         await transactionDone(transaction)
         const readTransaction = database.transaction(PISTACHIO_VAULT_STORE, 'readonly')
         const stored = await requestResult(readTransaction.objectStore(PISTACHIO_VAULT_STORE).get(validated.vaultId))
         await transactionDone(readTransaction)
         return validatePistachioVault(stored)
     } catch (error) {
+        if (error.code === 'PISTACHIO_VAULT_CHANGED') throw error
         throw pistachioError('PISTACHIO_WALLET_STORAGE_FAILED', undefined, error)
     } finally {
         database.close()
@@ -241,4 +252,25 @@ export const vaultStorageInternals = {
     requestResult,
     transactionDone,
     WALLET_BOOTSTRAP_PREFERENCE_KEYS,
+}
+
+/** Commits account selection and reconnect state together; no partial selection on storage failure. */
+export async function selectWalletAccount({ vaultId, index, address }, indexedDb = globalThis.indexedDB) {
+    const database = await openPistachioWalletDatabase(indexedDb)
+    try {
+        const transaction = database.transaction([PISTACHIO_VAULT_STORE, PISTACHIO_PREFERENCES_STORE], 'readwrite')
+        const stored = await requestResult(transaction.objectStore(PISTACHIO_VAULT_STORE).get(vaultId))
+        const vault = validatePistachioVault(stored)
+        if (!Number.isSafeInteger(index) || vaultAccounts(vault)[index]?.address !== address) {
+            throw new Error('Wallet changed. Refresh before selecting it.')
+        }
+        const store = transaction.objectStore(PISTACHIO_PREFERENCES_STORE)
+        const previous = (await requestResult(store.get('selectedAccountIndices')))?.value ?? {}
+        const indices = { ...previous, [vaultId]: index }
+        store.put({ key: 'selectedAccountIndices', value: indices })
+        store.put({ key: 'activeVaultId', value: vaultId })
+        store.put({ key: 'activeSessionVaultId', value: vaultId })
+        await transactionDone(transaction)
+        return { vault, indices }
+    } finally { database.close() }
 }

@@ -317,15 +317,20 @@ function normalizeVaultPreferences(value) {
 export const methods = {
     async reauthenticate(keyWrapId = this.vault?.keyWraps[0]?.id) {
         this.requireUnlocked()
+        const context = this.captureSigningContext()
+        const client = this.client
         const prfOutput = await getPrfForVaultWrap({ vault: this.vault, keyWrapId, windowImpl: this.window })
         let result
         try {
-            result = await this.client.transferPrf('verifyExistingPasskey', { vault: this.vault, keyWrapId }, prfOutput)
+            this.assertSigningContext(context)
+            result = await client.transferPrf('verifyExistingPasskey', { vault: this.vault, keyWrapId, accountIndex: this.selectedAccountIndex() }, prfOutput)
+            this.assertSigningContext(context)
             if (prfOutput.byteLength !== 0 || result.address !== this.address) throw pistachioError('PISTACHIO_WALLET_UNLOCK_FAILED')
         } finally {
             wipeBytes(prfOutput)
         }
         await this.markUnlocked(keyWrapId)
+        this.assertSigningContext(context)
         return true
     },
     async addBackupPasskey(label) {
@@ -414,6 +419,7 @@ export const methods = {
         } else {
             context = await this.review('Sign message', { chainId: this.activeChainId, completeMessage: display, purpose: 'Wallet authentication or application request' })
         }
+        this.assertSigningContext(context)
         const result = await this.client.request('signMessage', messageBytes
             ? { messageBytes: bytesToBase64Url(getBytes(messageBytes)) }
             : { message })
@@ -430,6 +436,7 @@ export const methods = {
             primaryType: normalized.primaryType,
             fields: normalized.message,
         })
+        this.assertSigningContext(context)
         const result = await this.client.request('signTypedData', {
             domain: normalized.domain,
             types: normalized.types,
@@ -469,6 +476,7 @@ export const methods = {
             signedTransaction = (await this.client.request('signTransaction', { transaction: request, mode: 'normal' })).signedTransaction
             this.assertSigningContext(context)
             await validateLocallySignedTransaction({ signedTransaction, request, walletAddress: context.address, mode: 'normal' })
+            this.assertSigningContext(context)
             const transactionHash = await this.rpcRequest(context.chainId, 'eth_sendRawTransaction', [signedTransaction], rpcUrl)
             this.assertSigningContext(context)
             if (!/^0x[0-9a-f]{64}$/iu.test(transactionHash ?? '')) throw managerError('PISTACHIO_TRANSACTION_BROADCAST_FAILED', 'The public RPC returned an invalid transaction hash.')
@@ -483,7 +491,7 @@ export const methods = {
         if (method === 'net_version') return String(this.activeChainId)
         if (method === 'eth_accounts') {
             if (this.phase === 'unlocked' && this.address) return [this.address]
-            if (this.sessionActive && this.vault?.address) return [this.vault.address]
+            if (this.sessionActive && this.vault?.address) return [this.selectedAccountAddress()]
             return []
         }
         if (method === 'eth_requestAccounts') return [await this.requestConnection()]
