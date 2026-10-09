@@ -2003,6 +2003,24 @@ describe('cross-chain backend', () => {
         expect(result.selectedQuote.transaction?.gasEstimate).toBe('180000')
     })
 
+    it('exposes quote gas metadata for fee display without exposing executable transactions', async () => {
+        const adapter = fixtureAdapter('relay', '900')
+        const original = adapter.getQuote.bind(adapter)
+        adapter.getQuote = async (...args) => {
+            const quote = await original(...args)
+            return { ...quote, transaction: { ...quote.transaction!, gasEstimate: '180000' } }
+        }
+        const service = new CrossChainRouteService(new CrossChainRegistry([adapter]), new MemoryCrossChainRouteRepository())
+        const quoted = await service.quote(request)
+        expect(quoted.selectedRoute.sourceGasEstimate).toBe('180000')
+        expect(quoted.routes[0].sourceGasEstimate).toBe('180000')
+        expect(quoted.selectedRoute).not.toHaveProperty('transaction')
+        expect(quoted.selectedRoute.steps.every(step => step.transaction === null)).toBe(true)
+        expect(quoted.selectedRoute).not.toHaveProperty('ownerAddress')
+        const withoutGas = new CrossChainRouteService(new CrossChainRegistry([fixtureAdapter('relay', '900')]), new MemoryCrossChainRouteRepository())
+        expect((await withoutGas.quote(request)).selectedRoute.sourceGasEstimate).toBeNull()
+    })
+
     it('returns 200 from routes when one eligible provider succeeds', async () => {
         const across = fixtureAdapter('across', '900')
         const relay = fixtureAdapter('relay', '900')

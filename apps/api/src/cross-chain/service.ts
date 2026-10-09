@@ -1,5 +1,5 @@
 import { normalizeAddress } from '../lib/address.js'
-import { CrossChainRegistry } from './registry.js'
+import { CrossChainRegistry, crossChainQuoteRanking } from './registry.js'
 import {
     createCrossChainRouteRepository,
     type CrossChainRouteRepository,
@@ -64,12 +64,15 @@ export class CrossChainRouteService {
         const routes = await Promise.all(result.quotes.map((quote) =>
             this.repository.create(quote),
         ))
-        const selected = routes.find((route) =>
-            route.quoteId === result.selectedQuote.quoteId,
-        )!
+        // Expose display-only gas metadata before authenticated preparation.
+        // Calldata/transactions remain private and this is never a submitted gas limit.
+        const publicRoutes = routes.map((route, index) => ({
+            ...routeResponse(route),
+            sourceGasEstimate: crossChainQuoteRanking.sourceGasEstimate(result.quotes[index])?.toString() ?? null,
+        }))
         return {
-            selectedRoute: routeResponse(selected),
-            routes: routes.map(routeResponse),
+            selectedRoute: publicRoutes[routes.findIndex((route) => route.quoteId === result.selectedQuote.quoteId)],
+            routes: publicRoutes,
             failures: result.failures.map((failure) => ({
                 ...failure,
             })),

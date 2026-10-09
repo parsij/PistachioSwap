@@ -256,6 +256,8 @@ export function normalizeCrossChainRoute(route) {
         ], null)),
         feeIncluded: readFirst(route, ['feeIncluded', 'fees.includedInOutput'], null) === true,
         costs: normalizeCrossChainCosts(route?.costs),
+        sourceGasEstimate: /^[1-9]\d*$/.test(String(route?.sourceGasEstimate ?? ''))
+            ? String(route.sourceGasEstimate) : null,
         costBreakdownAvailable: route?.costBreakdownAvailable === true ||
             hasAvailableCrossChainCosts(route?.costs),
         durationSeconds: toInteger(readFirst(route, [

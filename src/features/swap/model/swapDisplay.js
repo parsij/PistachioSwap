@@ -1,4 +1,4 @@
-import { formatUsdAmount } from '../../../services/fiatValue.js'
+import { formatUsdAmount, multiplyUsdAmount } from '../../../services/fiatValue.js'
 import { getTokenDisplaySymbol } from '../../tokens/services/tokenDisplay.js'
 import { formatWalletTokenAmount } from '../../tokens/services/walletTokens.js'
 
@@ -81,4 +81,22 @@ export function formatCostUsd(value, approximate = false) {
     if (value === null || value === undefined) return null
     const formatted = formatUsdAmount(value, '1')
     return approximate ? `~${formatted}` : formatted
+}
+
+/** Formats small native-network costs in US cents without floating-point rounding. */
+export function formatNetworkCostUsd(value, approximate = false) {
+    if (value === null || value === undefined) return null
+    const text = String(value).trim()
+    if (!/^\d+(?:\.\d+)?$/.test(text)) return null
+    let label
+    if (BigInt(text.split('.')[0]) >= 1n) {
+        label = formatCostUsd(text)
+    } else {
+        const cents = multiplyUsdAmount(text, '100')
+        const rounded = formatCompactAmountInput(cents, 2)
+        const [whole, fraction = ''] = cents.split('.')
+        label = whole === '0' && fraction.padEnd(2, '0').slice(0, 2) === '00' && /[1-9]/.test(cents)
+            ? '<0.01¢' : `${rounded}¢`
+    }
+    return approximate ? `~${label}` : label
 }

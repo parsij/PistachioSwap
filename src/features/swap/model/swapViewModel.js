@@ -17,11 +17,12 @@ import {
     getProviderDisplayName,
 } from '../../cross-chain/services/crossChainRoutes.js'
 import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
-import { formatCompactRate, formatCostUsd } from './swapDisplay.js'
+import { formatCompactRate, formatCostUsd, formatNetworkCostUsd } from './swapDisplay.js'
 import {
     expectsCrossChainGasAssist,
     getCrossChainGasAssistTier,
 } from './swapEligibility.js'
+import { getDisplayTokenPrice } from '../../tokens/services/tokenPrices.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
 
 function formatUsdMicros(value) {
@@ -121,6 +122,27 @@ export function formatTokenDisplayAmount(amount, token) {
     const value = String(amount ?? '').trim()
     if (!value || !token) return null
     return `${value} ${getTokenDisplaySymbol(token)}`
+}
+
+/** Uses only the source-chain native price and the current route's gas metadata. */
+export function getNetworkFeeDisplayData({ chainId, gasEstimate, route, reviewedRoute, preparation, nativeToken, availableTokens = [], sellToken, buyToken, isCrossChain }) {
+    let nativePriceUsd = null
+    for (const token of [nativeToken, sellToken, buyToken, ...availableTokens]) {
+        if (!token || !isNativeEvmToken(token) || Number(token.chainId) !== Number(chainId)) continue
+        nativePriceUsd = getDisplayTokenPrice(token)
+        if (nativePriceUsd !== null) break
+    }
+    let rawGas = gasEstimate
+    if (isCrossChain) {
+        const matches = Number(route?.sourceChainId) === Number(chainId)
+        const prepared = matches && reviewedRoute?.publicRouteId === route?.publicRouteId && preparation?.sourceGasEstimate
+        // Use the provider's quote estimate before review; preparation replaces it with an RPC estimate.
+        rawGas = prepared ? preparation.sourceGasEstimate : matches && /^[1-9]\d*$/.test(String(route?.sourceGasEstimate ?? ''))
+            ? (BigInt(route.sourceGasEstimate) * 120n + 99n) / 100n : null
+    }
+    let gas = null
+    try { if (rawGas != null && BigInt(rawGas) > 0n) gas = BigInt(rawGas) } catch { /* No usable estimate. */ }
+    return { nativePriceUsd, gasEstimate: gas }
 }
 
 /**
@@ -265,15 +287,19 @@ export function createSwapViewModel(context) {
     const crossChainCosts = crossChainDisplayRoute?.costs ?? null
     const estimatedTotalCost = formatCostUsd(crossChainCosts?.totalEstimatedUsd, true)
     const estimatedRouteCost = formatCostUsd(crossChainCosts?.routeCostUsd, true)
-    const sourceGasCost = formatCostUsd(crossChainCosts?.sourceGasUsd, true)
+    const networkFeeDisplay = getNetworkFeeDisplayData({ chainId: context.swapChainId,
+        gasEstimate: context.networkFees?.gasEstimate, route: crossChainDisplayRoute, reviewedRoute: crossChain.review.route,
+        preparation: crossChain.review.preparation, nativeToken, availableTokens: catalog.availableTokens,
+        sellToken, buyToken, isCrossChain: routing.routingMode === routing.modes.CROSS_CHAIN })
+    const sourceGasCost = formatNetworkCostUsd(crossChainCosts?.sourceGasUsd, true)
     const customNetworkCostNative = context.networkFees?.automatic === false && context.networkFees.maximumNativeFeeWei != null
         ? formatUnits(context.networkFees.maximumNativeFeeWei, getCuratedEvmChain(context.swapChainId)?.nativeCurrency.decimals ?? 18) : null
-    const customNetworkCostUsd = customNetworkCostNative && (nativeToken?.trustedPriceUSD ?? nativeToken?.priceUSD)
-        ? multiplyUsdAmount(customNetworkCostNative, nativeToken.trustedPriceUSD ?? nativeToken.priceUSD) : null
+    const customNetworkCostUsd = customNetworkCostNative && networkFeeDisplay.nativePriceUsd
+        ? multiplyUsdAmount(customNetworkCostNative, networkFeeDisplay.nativePriceUsd) : null
     const sameChainNetworkCost = customNetworkCostNative
-        ? `${customNetworkCostUsd ? formatCostUsd(customNetworkCostUsd) : `${customNetworkCostNative} ${nativeSymbol}`} max`
+        ? `${customNetworkCostUsd ? formatNetworkCostUsd(customNetworkCostUsd) : `${customNetworkCostNative} ${nativeSymbol}`} max`
         : activeQuote?.selectedQuote?.estimatedGasUsd
-        ? formatCostUsd(activeQuote.selectedQuote.estimatedGasUsd)
+        ? formatNetworkCostUsd(activeQuote.selectedQuote.estimatedGasUsd)
         : activeQuote?.selectedQuote ? 'Included' : null
     const sameChainGasAssistFee = gasAssistFeeView(gasAssist.preview, sellToken)
     const crossChainGasAssistFee = gasAssistFeeView(crossChainGasAssist?.preview, sellToken)
@@ -315,7 +341,7 @@ export function createSwapViewModel(context) {
     const reviewTotalCost = formatCostUsd(reviewCosts?.totalEstimatedUsd, true)
     const reviewRouteCost = formatCostUsd(reviewCosts?.routeCostUsd, true)
     const reviewNativeSymbol = getCuratedEvmChain(crossChain.review.route?.sourceChainId)?.nativeCurrency.symbol ?? nativeSymbol
-    const reviewSourceGas = formatCostUsd(reviewCosts?.sourceGasUsd, true) ??
+    const reviewSourceGas = formatNetworkCostUsd(reviewCosts?.sourceGasUsd, true) ??
         (reviewCosts?.sourceGasNative ? `~${reviewCosts.sourceGasNative} ${reviewNativeSymbol}` : null)
     const reviewAppFee = reviewCosts?.appFeeUsd === '0' ? 'Free' : formatCostUsd(reviewCosts?.appFeeUsd)
     const primaryActionPresentation = getPrimaryActionPresentation({
@@ -473,10 +499,9 @@ export function createSwapViewModel(context) {
                 details: {
                     networkFees: context.networkFees ? {
                         fees: { ...context.networkFees,
-                            gasEstimate: routing.routingMode === routing.modes.CROSS_CHAIN
-                                ? crossChain.review.preparation.sourceGasEstimate ? BigInt(crossChain.review.preparation.sourceGasEstimate) : null
-                                : context.networkFees.gasEstimate },
-                        nativePriceUsd: nativeToken?.trustedPriceUSD ?? nativeToken?.priceUSD,
+                            gasEstimate: networkFeeDisplay.gasEstimate },
+                        nativePriceUsd: networkFeeDisplay.nativePriceUsd,
+                        destinationChainId: routing.routingMode === routing.modes.CROSS_CHAIN ? routing.buyChainId : null,
                         onSelect: callbacks.onNetworkFeeSelect,
                         sponsored: Boolean(sameChainGasAssistFee || crossChainGasAssistFee || routing.routingMode === routing.modes.SAME_CHAIN_GAS_ASSIST || crossChainGasAssistDirect),
                     } : null,

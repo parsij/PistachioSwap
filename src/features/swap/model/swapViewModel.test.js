@@ -1,9 +1,11 @@
+import { normalizeCrossChainRoute } from '../../cross-chain/services/crossChainRoutes.js'
 import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
 import {
     formatTokenDisplayAmount,
+    getNetworkFeeDisplayData,
     getPrimaryActionPresentation,
     getWalletBalanceNotice,
 } from './swapViewModel.js'
@@ -122,5 +124,33 @@ describe('retired Gas Assist surface', () => {
         expect(viewModelSource).not.toContain('gasAssist.gasAssist')
         expect(dialogsSource).not.toContain('GasAssistApprovalDialog')
         expect(dialogsSource).toContain('GasAssistPrepaymentDialog')
+    })
+})
+
+
+describe('network cost quote display data', () => {
+    const native = { chainId: 1, address: '0x0000000000000000000000000000000000000000', isNative: true, priceUSD: null }
+    const route = normalizeCrossChainRoute({ publicRouteId: 'route-1', sourceChainId: 1, destinationChainId: 8453, sourceGasEstimate: '180000' })
+    it('uses quote gas before review and finds source native pricing when the wallet fallback has none', () => {
+        const result = getNetworkFeeDisplayData({ chainId: 1, isCrossChain: true, route, nativeToken: native,
+            availableTokens: [{ ...native, marketPriceUSD: '2600' }, { ...native, chainId: 8453, priceUSD: '9999' }] })
+        expect(result).toEqual({ gasEstimate: 216000n, nativePriceUsd: '2600' })
+    })
+    it('replaces quote metadata with the current prepared RPC estimate, never another route estimate', () => {
+        const options = { chainId: 1, isCrossChain: true, route, nativeToken: native,
+            reviewedRoute: route, preparation: { sourceGasEstimate: '190000' } }
+        expect(getNetworkFeeDisplayData(options).gasEstimate).toBe(190000n)
+        expect(getNetworkFeeDisplayData({ ...options, reviewedRoute: { publicRouteId: 'old-route' } }).gasEstimate).toBe(216000n)
+    })
+    it('does not borrow a destination-native price or a different source-chain estimate', () => {
+        expect(getNetworkFeeDisplayData({ chainId: 10, isCrossChain: true, route,
+            nativeToken: native, buyToken: { ...native, chainId: 8453, priceUSD: '2600' } }))
+            .toEqual({ gasEstimate: null, nativePriceUsd: null })
+        expect(normalizeCrossChainRoute({ publicRouteId: 'route-1', sourceChainId: 1, destinationChainId: 8453, sourceGasEstimate: '-1' }).sourceGasEstimate).toBeNull()
+    })
+    it('preserves same-chain quote gas and rejects malformed gas instead of fabricating a cost', () => {
+        expect(getNetworkFeeDisplayData({ chainId: 1, nativeToken: { ...native, priceUSD: '2600' }, gasEstimate: 100000n }))
+            .toEqual({ gasEstimate: 100000n, nativePriceUsd: '2600' })
+        expect(getNetworkFeeDisplayData({ chainId: 1, gasEstimate: 'invalid' }).gasEstimate).toBeNull()
     })
 })

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import NetworkFeeControl from './NetworkFeeControl.jsx'
+import { formatNetworkCostUsd } from '../model/swapDisplay.js'
 
 const snapshot = { chainId: 10, type: 'eip1559', baseFeePerGas: 100n, observedAt: Date.now(), presets: {
     less: { maxFeePerGas: 150n, maxPriorityFeePerGas: 2n },
@@ -12,7 +13,7 @@ function setup(overrides = {}) {
     const onSelect = vi.fn()
     const fees = { chainId: 10, automatic: false, selection: { mode: 'standard', chainId: 10 }, snapshot,
         pendingNonce: 7, refreshNonce: vi.fn(), fields: snapshot.presets.standard, gasEstimate: 100000n, refresh: vi.fn(), ...overrides }
-    render(<NetworkFeeControl fees={fees} nativePriceUsd="2000" onSelect={onSelect} sponsored={overrides.sponsored} />)
+    render(<NetworkFeeControl fees={fees} nativePriceUsd="2000" onSelect={onSelect} sponsored={overrides.sponsored} destinationChainId={overrides.destinationChainId} />)
     return { fees, onSelect }
 }
 afterEach(cleanup)
@@ -20,7 +21,7 @@ describe('native network cost controls', () => {
     it('uses the source network and offers fee cards without a Pay with section', () => {
         const { onSelect } = setup()
         expect(screen.getByText('OP Mainnet')).toBeTruthy()
-        expect(screen.getAllByText(/ETH max/).length).toBe(3)
+        expect(within(screen.getByRole('group', { name: 'Choose network cost' })).getAllByText(/ETH max/).length).toBe(3)
         expect(screen.queryByText(/Pay with/)).toBeNull()
         fireEvent.click(screen.getByRole('button', { name: /High/ }))
         expect(onSelect).toHaveBeenCalledWith('high')
@@ -41,7 +42,7 @@ describe('native network cost controls', () => {
     })
     it('renders a legacy gas price editor and the chain native token', () => {
         setup({ chainId: 25, snapshot: { ...snapshot, chainId: 25, type: 'legacy', presets: { less: { gasPrice: 1n }, standard: { gasPrice: 2n }, high: { gasPrice: 3n } } } })
-        expect(screen.getAllByText(/CRO max/).length).toBe(3)
+        expect(within(screen.getByRole('group', { name: 'Choose network cost' })).getAllByText(/CRO max/).length).toBe(3)
         fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
         expect(screen.getByLabelText('Gas price in Gwei')).toBeTruthy()
         expect(screen.queryByLabelText('Priority fee in Gwei')).toBeNull()
@@ -86,6 +87,38 @@ describe('native network cost controls', () => {
         fireEvent.change(screen.getByLabelText('Transaction nonce'), { target: { value: '9' } })
         fireEvent.click(screen.getByRole('button', { name: 'Confirm network cost' }))
         expect(onSelect).toHaveBeenCalledWith('custom', { gasPrice: 2n, nonce: 9 })
+    })
+
+    it.each([
+        ['0', '0¢'], ['0.034', '3.4¢'], ['0.00005', '<0.01¢'], ['0.004321', '0.43¢'],
+        ['0.9999', '99.99¢'], ['1', '$1.00'], ['1.2345', '$1.23'], [null, null], ['invalid', null],
+    ])('formats network cost %s as %s without floating point loss', (value, expected) => {
+        expect(formatNetworkCostUsd(value)).toBe(expected)
+    })
+    it('shows cents for each live preset, the selected summary, and the editable custom estimate', () => {
+        const presets = { less: { maxFeePerGas: 150000000n, maxPriorityFeePerGas: 2n },
+            standard: { maxFeePerGas: 200000000n, maxPriorityFeePerGas: 3n },
+            high: { maxFeePerGas: 250000000n, maxPriorityFeePerGas: 8n } }
+        setup({ snapshot: { ...snapshot, presets }, fields: presets.standard })
+        expect(within(screen.getByRole('button', { name: /Less/ })).getByText('3¢ max')).toBeTruthy()
+        expect(within(screen.getByRole('button', { name: /Standard/ })).getByText('4¢ max')).toBeTruthy()
+        expect(within(screen.getByRole('button', { name: /High/ })).getByText('5¢ max')).toBeTruthy()
+        expect(screen.getAllByText('4¢ max')).toHaveLength(2)
+        fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+        const preview = screen.getByLabelText('Custom network cost estimate')
+        expect(within(preview).getByText('4¢ max')).toBeTruthy()
+        fireEvent.change(screen.getByLabelText('Max fee in Gwei'), { target: { value: '0.17' } })
+        expect(within(preview).getByText('3.4¢ max')).toBeTruthy()
+        fireEvent.change(screen.getByLabelText('Max fee in Gwei'), { target: { value: '6' } })
+        expect(within(preview).getByText('$1.20 max')).toBeTruthy()
+    })
+
+    it('identifies Base as the destination while editing Ethereum source fees', () => {
+        setup({ chainId: 1, destinationChainId: 8453, snapshot: { ...snapshot, chainId: 1 } })
+        expect(screen.getByText('Receiving on Base. Network cost settings apply to Ethereum.')).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+        expect(screen.getByRole('dialog').textContent).toContain('Source: Ethereum. Destination: Base.')
+        expect(screen.getByRole('dialog').textContent).toContain('These settings adjust the source transaction.')
     })
 
 })
