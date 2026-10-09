@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
+import { erc20Abi, decodeFunctionData } from 'viem'
 
 import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 import {
     resolveSendWallet,
     submitSendPlan,
+    sendExecutionInternals,
 } from './sendExecution.js'
 
 const account = '0x0000000000000000000000000000000000000001'
@@ -219,5 +221,51 @@ describe('selected-token Send execution', () => {
             createClient: fakeClientFactory({}),
             createTransport: (value) => value,
         })).rejects.toThrow('wallet account changed')
+    })
+})
+
+
+describe('WalletConnect numeric chain IDs', () => {
+    it.each([1, 10, 56, 8453])('reaches the wallet signing request on chain %s using the real Viem client', async (chainId) => {
+        const targetChain = getCuratedEvmChain(chainId)
+        const hash = `0x${'ca'.repeat(32)}`
+        const token = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+        const provider = { request: vi.fn(async ({ method }) => {
+            if (method === 'eth_chainId') return chainId
+            if (method === 'eth_accounts') return [account]
+            if (method === 'eth_sendTransaction') return hash
+            throw new Error(`Unexpected method: ${method}`)
+        }) }
+        const connector = {
+            id: 'walletConnect',
+            getProvider: vi.fn(async () => provider),
+            switchChain: vi.fn(async () => { throw new Error('Unnecessary switch') }),
+        }
+        const resolved = await resolveSendWallet({ connectedAddress: account, targetChain, connector })
+        await expect(submitSendPlan({
+            walletClient: resolved.walletClient,
+            targetChain,
+            plan: { kind: 'erc20', amountWei: 5_000_000n, request: {
+                address: token, abi: erc20Abi, functionName: 'transfer', args: [recipient, 5_000_000n],
+            } },
+        })).resolves.toBe(hash)
+        expect(connector.switchChain).not.toHaveBeenCalled()
+        const tx = provider.request.mock.calls.find(([request]) => request.method === 'eth_sendTransaction')[0].params[0]
+        expect(tx).toMatchObject({ from: account, to: token })
+        await expect(resolved.walletClient.getChainId()).resolves.toBe(chainId)
+        expect(decodeFunctionData({ abi: erc20Abi, data: tx.data })).toMatchObject({ functionName: 'transfer', args: [recipient, 5_000_000n] })
+    })
+
+    it('recognizes a numeric chain ID after an actual network switch', async () => {
+        let chainId = 56
+        const provider = { request: vi.fn(async ({ method }) => method === 'eth_chainId' ? chainId : [account]) }
+        const connector = { id: 'walletConnect', getProvider: vi.fn(async () => provider), switchChain: vi.fn(async () => { chainId = 1 }) }
+        const resolved = await resolveSendWallet({ connectedAddress: account, targetChain: getCuratedEvmChain(1), connector })
+        expect(resolved.walletClient.chain.id).toBe(1)
+        expect(connector.switchChain).toHaveBeenCalledExactlyOnceWith({ chainId: 1 })
+    })
+
+    it.each([0, -1, NaN, Infinity, 1.5, '1', '0x0', null, {}, Number.MAX_SAFE_INTEGER + 1])('rejects invalid chain IDs: %s', (value) => {
+        expect(sendExecutionInternals.parseProviderChainId(value)).toBeNull()
     })
 })

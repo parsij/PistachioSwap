@@ -20,9 +20,14 @@ function normalizedAddress(value) {
 }
 
 function parseProviderChainId(value) {
+    // AppKit's WalletConnect UniversalProvider returns a number; injected
+    // EIP-1193 providers normally return a hex string. Accept both explicitly.
+    if (typeof value === 'number') {
+        return Number.isSafeInteger(value) && value > 0 ? value : null
+    }
     if (typeof value !== 'string' || !/^0x[0-9a-f]+$/iu.test(value)) return null
     const chainId = Number(BigInt(value))
-    return Number.isSafeInteger(chainId) ? chainId : null
+    return Number.isSafeInteger(chainId) && chainId > 0 ? chainId : null
 }
 
 function localSessionAddress(snapshot) {
@@ -129,7 +134,17 @@ async function resolveConnectorWallet({
     const walletClient = createClient({
         account,
         chain: targetChain,
-        transport: createTransport(provider),
+        // Viem expects an EIP-1193 hex chain ID too. Normalize only that
+        // response; signing requests still go to the connected provider.
+        transport: createTransport({
+            async request(request) {
+                const result = await provider.request(request)
+                if (request.method !== 'eth_chainId') return result
+                const chainId = parseProviderChainId(result)
+                if (chainId === null) throw new Error('The wallet returned an invalid network ID.')
+                return `0x${chainId.toString(16)}`
+            },
+        }),
     })
     return {
         account,
