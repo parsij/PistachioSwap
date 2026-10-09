@@ -135,6 +135,11 @@ export function getNetworkFeeDisplayData({ chainId, gasEstimate, route, reviewed
     let rawGas = gasEstimate
     if (isCrossChain) {
         const matches = Number(route?.sourceChainId) === Number(chainId)
+        if (nativePriceUsd === null && matches && /^\d+(?:\.\d+)?$/.test(String(route?.sourceNativePriceUsd ?? ''))) {
+            // The quote's server-priced source native coin is display evidence only.
+            nativePriceUsd = getDisplayTokenPrice({ address: '0x0000000000000000000000000000000000000000',
+                isNative: true, priceUSD: route.sourceNativePriceUsd })
+        }
         const prepared = matches && reviewedRoute?.publicRouteId === route?.publicRouteId && preparation?.sourceGasEstimate
         // Use the provider's quote estimate before review; preparation replaces it with an RPC estimate.
         rawGas = prepared ? preparation.sourceGasEstimate : matches && /^[1-9]\d*$/.test(String(route?.sourceGasEstimate ?? ''))

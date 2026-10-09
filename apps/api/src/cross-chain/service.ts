@@ -1,3 +1,4 @@
+import { normalizeUsdDecimal } from './costs.js'
 import { normalizeAddress } from '../lib/address.js'
 import { CrossChainRegistry, crossChainQuoteRanking } from './registry.js'
 import {
@@ -30,6 +31,7 @@ export class CrossChainRouteService {
         private readonly privateGasAssistRequest: PrivateGasAssistRequest =
             requestPrivateGasAssist,
         private readonly previewDeadlineMs = 45_000,
+        private readonly displayPrices: { nativePrice: (chainId: number) => Promise<string | null> } = { nativePrice: async () => null },
     ) {}
 
     providerNames() {
@@ -60,7 +62,10 @@ export class CrossChainRouteService {
     }
 
     async quote(request: CrossChainRequest, signal?: AbortSignal) {
-        const result = await this.registry.quote(request, signal)
+        const [result, nativePrice] = await Promise.all([
+            this.registry.quote(request, signal),
+            this.quoteNativeDisplayPrice(request.sourceAsset.chainId),
+        ])
         const routes = await Promise.all(result.quotes.map((quote) =>
             this.repository.create(quote),
         ))
@@ -69,6 +74,7 @@ export class CrossChainRouteService {
         const publicRoutes = routes.map((route, index) => ({
             ...routeResponse(route),
             sourceGasEstimate: crossChainQuoteRanking.sourceGasEstimate(result.quotes[index])?.toString() ?? null,
+            sourceNativePriceUsd: nativePrice,
         }))
         return {
             selectedRoute: publicRoutes[routes.findIndex((route) => route.quoteId === result.selectedQuote.quoteId)],
@@ -82,6 +88,27 @@ export class CrossChainRouteService {
                 attemptedProviders: result.attemptedProviders,
                 successfulRouteCount: routes.length,
             },
+        }
+    }
+
+    private async quoteNativeDisplayPrice(chainId: number) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+            // Price reads share the provider's cache. A slow read may finish warming
+            // it later, but must not hold up or invalidate an executable quote.
+            const value = await Promise.race([
+                this.displayPrices.nativePrice(chainId),
+                new Promise<null>(resolve => {
+                    timer = setTimeout(() => resolve(null), 3_000)
+                    timer.unref()
+                }),
+            ])
+            const price = normalizeUsdDecimal(value)
+            return price && /[1-9]/.test(price) ? price : null
+        } catch {
+            return null
+        } finally {
+            if (timer) clearTimeout(timer)
         }
     }
 

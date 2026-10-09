@@ -2010,8 +2010,12 @@ describe('cross-chain backend', () => {
             const quote = await original(...args)
             return { ...quote, transaction: { ...quote.transaction!, gasEstimate: '180000' } }
         }
-        const service = new CrossChainRouteService(new CrossChainRegistry([adapter]), new MemoryCrossChainRouteRepository())
+        const nativePrice = vi.fn().mockResolvedValue('2600.12')
+        const service = new CrossChainRouteService(new CrossChainRegistry([adapter]), new MemoryCrossChainRouteRepository(),
+            undefined, undefined, { nativePrice })
         const quoted = await service.quote(request)
+        expect(nativePrice).toHaveBeenCalledWith(1)
+        expect(quoted.selectedRoute.sourceNativePriceUsd).toBe('2600.12')
         expect(quoted.selectedRoute.sourceGasEstimate).toBe('180000')
         expect(quoted.routes[0].sourceGasEstimate).toBe('180000')
         expect(quoted.selectedRoute).not.toHaveProperty('transaction')
@@ -2019,6 +2023,22 @@ describe('cross-chain backend', () => {
         expect(quoted.selectedRoute).not.toHaveProperty('ownerAddress')
         const withoutGas = new CrossChainRouteService(new CrossChainRegistry([fixtureAdapter('relay', '900')]), new MemoryCrossChainRouteRepository())
         expect((await withoutGas.quote(request)).selectedRoute.sourceGasEstimate).toBeNull()
+    })
+
+    it('keeps quotes available when native display pricing fails or is slow', async () => {
+        const makeService = (nativePrice: (chainId: number) => Promise<string | null>) => new CrossChainRouteService(
+            new CrossChainRegistry([fixtureAdapter('relay', '900')]), new MemoryCrossChainRouteRepository(),
+            undefined, undefined, { nativePrice },
+        )
+        expect((await makeService(async () => { throw new Error('Price unavailable') }).quote(request))
+            .selectedRoute.sourceNativePriceUsd).toBeNull()
+        expect((await makeService(async () => '0').quote(request)).selectedRoute.sourceNativePriceUsd).toBeNull()
+        vi.useFakeTimers()
+        try {
+            const pending = makeService(() => new Promise(() => {})).quote(request)
+            await vi.advanceTimersByTimeAsync(3_000)
+            expect((await pending).selectedRoute.sourceNativePriceUsd).toBeNull()
+        } finally { vi.useRealTimers() }
     })
 
     it('returns 200 from routes when one eligible provider succeeds', async () => {

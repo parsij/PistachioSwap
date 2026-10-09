@@ -153,4 +153,12 @@ describe('network cost quote display data', () => {
             .toEqual({ gasEstimate: 100000n, nativePriceUsd: '2600' })
         expect(getNetworkFeeDisplayData({ chainId: 1, gasEstimate: 'invalid' }).gasEstimate).toBeNull()
     })
+    it('uses the quote source-native price even when an unfunded wallet and fallback catalog have no price', () => {
+        const pricedRoute = normalizeCrossChainRoute({ ...route, sourceNativePriceUsd: '2600.12' })
+        expect(getNetworkFeeDisplayData({ chainId: 1, isCrossChain: true, route: pricedRoute, nativeToken: native }))
+            .toEqual({ gasEstimate: 216000n, nativePriceUsd: '2600.12' })
+        expect(getNetworkFeeDisplayData({ chainId: 10, isCrossChain: true, route: pricedRoute, nativeToken: native }))
+            .toEqual({ gasEstimate: null, nativePriceUsd: null })
+    })
+
 })

@@ -16,6 +16,7 @@ import {
     type CrossChainProviderName,
 } from '../cross-chain/types.js'
 import { validateCrossChainRequest } from '../cross-chain/validation.js'
+import { getNativeTokenPrice } from '../providers/alchemy/token-prices.js'
 import { getApiConfig } from '../config.js'
 import { ComplianceError, complianceRequestGeo, getComplianceService } from '../compliance/service.js'
 import { isRecord } from '../lib/http.js'
@@ -35,7 +36,7 @@ function abortSignal(request: FastifyRequest) {
 }
 
 export function createCrossChainRoutes(
-    service = new CrossChainRouteService(),
+    service = new CrossChainRouteService(undefined, undefined, undefined, undefined, { nativePrice: getNativeTokenPrice }),
     auth: CrossChainAuthService = getCrossChainAuthService(),
     compliance: ReturnType<typeof getComplianceService> | null = null,
 ): FastifyPluginAsync {
