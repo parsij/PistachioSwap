@@ -11,6 +11,7 @@ import {
     writeWalletTokenCache,
 } from '../services/walletTokenCache.js'
 import { useWalletTokens } from './useWalletTokens.js'
+import { beginOptimisticWalletTransaction, confirmOptimisticWalletTransaction, finishOptimisticWalletTransaction } from '../../wallet/services/optimisticBalances.js'
 
 vi.mock('../services/walletTokens.js', () => ({
     WALLET_TOKEN_CLASSIFICATION_VERSION: 4,
@@ -64,6 +65,35 @@ describe('cached wallet token hydration', () => {
     afterEach(() => {
         vi.unstubAllGlobals()
         localStorage.clear()
+    })
+
+    it.each([56, 137, 8453, 10])('never adds the pending swap output again to refreshed holdings on chain %s', async chainId => {
+        const held = { ...token('56000000'), chainId }
+        const hash = `0x${chainId.toString(16).padStart(64, '0')}`
+        fetchWalletTokens.mockResolvedValue(fullResult([held]))
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            address: WALLET,
+            balances: [{ chainId, address: XAUT, rawBalance: '56000000' }],
+            successfulChainIds: [chainId], failedChainIds: [], chainErrors: {}, partial: false,
+        }), { status: 200 })))
+        const { result, unmount } = renderHook(() => useWalletTokens({ chainId: 'all', walletAddress: WALLET }))
+        await waitFor(() => expect(result.current.loading).toBe(false))
+        const reads = fetchWalletTokens.mock.calls.length
+        try {
+            act(() => beginOptimisticWalletTransaction({ walletAddress: WALLET, transactionHash: hash, operation: 'swapping',
+                settlementMode: 'external', changes: [{ chainId, token: held, deltaRaw: 56000000n }] }))
+            expect(result.current.tokens[0].rawBalance).toBe('56000000')
+            await waitFor(() => expect(fetchWalletTokens.mock.calls.length).toBeGreaterThan(reads))
+            await waitFor(() => expect(result.current.loading).toBe(false))
+            expect(result.current.tokens[0].rawBalance).toBe('56000000')
+            act(() => confirmOptimisticWalletTransaction(hash))
+            expect(result.current.tokens[0].rawBalance).toBe('56000000')
+            act(() => finishOptimisticWalletTransaction(hash))
+            expect(result.current.tokens[0].rawBalance).toBe('56000000')
+        } finally {
+            unmount()
+            finishOptimisticWalletTransaction(hash)
+        }
     })
 
     it('keeps verified RPC balances when later discovery returns an older balance', async () => {

@@ -85,16 +85,35 @@
     gap: 12px;
 }
 
-.wallet-send-dialog .send-amount-line > input {
+.wallet-send-dialog .send-amount-input {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.wallet-send-dialog .send-amount-input > input {
+    width: 100%;
+    min-width: 0;
     min-height: 58px;
     padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #fff;
     font-size: clamp(40px, 8vw, 56px);
     font-weight: 510;
     letter-spacing: -.045em;
     line-height: 1;
 }
 
-.wallet-send-dialog .send-amount-line > input::placeholder {
+.wallet-send-dialog .send-amount-prefix {
+    font-size: clamp(40px, 8vw, 56px);
+    font-weight: 510;
+    letter-spacing: -.045em;
+}
+
+.wallet-send-dialog .send-amount-input > input::placeholder {
     color: #6f6b6d;
 }
 
@@ -138,6 +157,19 @@
 .wallet-send-dialog .send-balance-line button:hover {
     background: rgb(155 216 135 / 20%);
 }
+
+.wallet-send-dialog .send-balance-line .send-denomination-toggle {
+    padding: 5px 0;
+    background: transparent;
+    color: inherit;
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+}
+
+.wallet-send-dialog .send-denomination-toggle:hover:not(:disabled) { color: #fff; }
+.wallet-send-dialog .send-denomination-toggle:focus-visible { outline: 2px solid var(--send-accent); outline-offset: 4px; }
+.wallet-send-dialog .send-denomination-toggle:disabled { cursor: default; }
 
 .wallet-send-dialog .send-recipient-card {
     padding: 17px 18px;

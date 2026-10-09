@@ -28,6 +28,7 @@ vi.mock('../../services/sendExecution.js', () => ({
 }))
 
 import SendAssetDialog from './SendAssetDialog.jsx'
+import { subscribeWalletBalanceRefresh } from '../../services/walletBalanceRefresh.js'
 
 const account = '0x0000000000000000000000000000000000000001'
 const recipient = '0x0000000000000000000000000000000000000002'
@@ -195,6 +196,139 @@ describe('SendAssetDialog', () => {
         }))
     })
 
+    it('switches the clicked USD value into editable dollars and submits the converted native amount', async () => {
+        const onConfirmed = vi.fn()
+        renderDialog({ onConfirmed })
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.1' } })
+        const toggle = screen.getByRole('button', { name: 'Show send amount in USD' })
+        expect(toggle.textContent).toBe('$60.00')
+        fireEvent.click(toggle)
+        const usdInput = screen.getByLabelText('Amount to send in USD')
+        expect(usdInput.value).toBe('60')
+        expect(document.activeElement).toBe(usdInput)
+        fireEvent.change(usdInput, { target: { value: '30' } })
+        expect(screen.getByRole('button', { name: 'Show send amount in BNB' }).textContent).toBe('0.05 BNB')
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in BNB' }))
+        expect(screen.getByLabelText('Amount to send').value).toBe('0.05')
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in USD' }))
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        await screen.findByRole('heading', { name: 'Review send' })
+        expect(screen.getByText('0.05 BNB')).toBeTruthy()
+        expect(screen.getByText('$30.00')).toBeTruthy()
+        expect(mocks.submitSendPlan).not.toHaveBeenCalled()
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+        await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
+        expect(mocks.submitSendPlan).toHaveBeenCalledWith(expect.objectContaining({
+            plan: expect.objectContaining({ amountWei: parseEther('0.05'), request: expect.objectContaining({ value: parseEther('0.05') }) }),
+        }))
+    })
+
+    it('rounds USD conversions down to ERC-20 decimals and sends on the selected network with an external wallet', async () => {
+        mocks.connector = { id: 'injected' }
+        const onConfirmed = vi.fn()
+        const pricedUsdc = { ...baseUsdc, trustedPriceUSD: '0.93' }
+        renderDialog({ assets: [pricedUsdc, baseEth], onConfirmed })
+        fireEvent.click(document.querySelector('.send-token-button'))
+        fireEvent.click(screen.getByText('USD Coin', { selector: 'strong' }).closest('button'))
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in USD' }))
+        fireEvent.change(screen.getByLabelText('Amount to send in USD'), { target: { value: '0.27' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        await screen.findByRole('heading', { name: 'Review send' })
+        expect(screen.getByText('0.290322 USDC')).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+        await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce())
+        expect(mocks.resolveSendWallet).toHaveBeenCalledWith(expect.objectContaining({
+            targetChain: expect.objectContaining({ id: 8453 }), connector: expect.objectContaining({ id: 'injected' }),
+        }))
+        expect(mocks.submitSendPlan).toHaveBeenCalledWith(expect.objectContaining({
+            plan: expect.objectContaining({ amountWei: 290322n, request: expect.objectContaining({ args: [recipient, 290322n] }) }),
+        }))
+    })
+
+    it('keeps Max exact in USD mode and retains the native gas reserve', () => {
+        renderDialog()
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in USD' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Max' }))
+        expect(screen.getByLabelText('Amount to send in USD').value).toBe('599.97')
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in BNB' }))
+        expect(screen.getByLabelText('Amount to send').value).toBe('0.99995')
+    })
+
+    it('leaves token entry available when USD pricing is missing and blocks USD amounts beyond the balance', async () => {
+        renderDialog({ assets: [{ ...native, priceUSD: null, trustedPriceUSD: null, marketPriceUSD: null }] })
+        expect(screen.getByRole('button', { name: 'Show send amount in USD' }).disabled).toBe(true)
+        expect(screen.getByLabelText('Amount to send')).toBeTruthy()
+        cleanup()
+        renderDialog()
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in USD' }))
+        fireEvent.change(screen.getByLabelText('Amount to send in USD'), { target: { value: '601' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Insufficient balance.')
+        expect(mocks.submitSendPlan).not.toHaveBeenCalled()
+        expect(mocks.publicClient.estimateGas).not.toHaveBeenCalled()
+    })
+
+    it('does not reinterpret dollars as tokens if pricing disappears, and clears USD mode when changing tokens or reopening', async () => {
+        const props = { open: true, onOpenChange: vi.fn(), address: account, chainId: 56,
+            assets: [native, polygonNative], settings: {}, nativeBalanceWei: parseEther('1') }
+        const view = render(<SendAssetDialog {...props} />)
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in USD' }))
+        fireEvent.change(screen.getByLabelText('Amount to send in USD'), { target: { value: '30' } })
+        view.rerender(<SendAssetDialog {...props} assets={[{ ...native, priceUSD: null, trustedPriceUSD: null }, polygonNative]} />)
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'USD input is unavailable for this token. Switch to token amount.')
+        expect(mocks.publicClient.estimateGas).not.toHaveBeenCalled()
+        fireEvent.click(document.querySelector('.send-token-button'))
+        fireEvent.click(screen.getByText('Polygon', { selector: 'strong' }).closest('button'))
+        expect(screen.getByLabelText('Amount to send').value).toBe('')
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in USD' }))
+        view.rerender(<SendAssetDialog {...props} open={false} />)
+        view.rerender(<SendAssetDialog {...props} />)
+        expect(screen.getByLabelText('Amount to send').value).toBe('')
+    })
+
+    it('clears USD entry if portfolio updates change the default asset', () => {
+        const view = renderDialog()
+        fireEvent.click(screen.getByRole('button', { name: 'Show send amount in USD' }))
+        fireEvent.change(screen.getByLabelText('Amount to send in USD'), { target: { value: '30' } })
+        view.rerender(<SendAssetDialog open onOpenChange={vi.fn()} address={account} chainId={56}
+            assets={[polygonNative]} settings={{}} nativeBalanceWei={parseEther('1')} />)
+        expect(screen.getByLabelText('Amount to send').value).toBe('')
+        expect(screen.queryByLabelText('Amount to send in USD')).toBeNull()
+    })
+
+    it('requests fresh balances on opening Send and its token picker', () => {
+        const refresh = vi.fn()
+        const unsubscribe = subscribeWalletBalanceRefresh(refresh)
+        try {
+            renderDialog()
+            expect(refresh).toHaveBeenCalledExactlyOnceWith(account)
+            fireEvent.click(document.querySelector('.send-token-button'))
+            expect(refresh).toHaveBeenCalledTimes(2)
+        } finally { unsubscribe() }
+    })
+
+    it('uses refreshed ERC-20 holdings instead of the token picker snapshot, including a balance that becomes zero', async () => {
+        const props = { open: true, onOpenChange: vi.fn(), address: account, chainId: 56,
+            assets: [baseUsdc, baseEth], settings: {}, nativeBalanceWei: parseEther('1') }
+        const view = render(<SendAssetDialog {...props} />)
+        fireEvent.click(document.querySelector('.send-token-button'))
+        fireEvent.click(screen.getByText('USD Coin', { selector: 'strong' }).closest('button'))
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.2' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        view.rerender(<SendAssetDialog {...props} assets={[{ ...baseUsdc, rawBalance: '100000', balance: '0.1' }, baseEth]} />)
+        expect(screen.getByText(/Balance 0.1/)).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Insufficient balance.')
+        view.rerender(<SendAssetDialog {...props} assets={[baseEth]} />)
+        expect(screen.getByText(/Balance 0$/)).toBeTruthy()
+        expect(mocks.submitSendPlan).not.toHaveBeenCalled()
+    })
+
     it('starts a fresh send after completing and reopening the dialog', async () => {
         const onConfirmed = vi.fn()
         const view = renderDialog({ onConfirmed })
@@ -318,8 +452,8 @@ describe('SendAssetDialog', () => {
             onConfirmed,
         })
 
-        // Select the tested asset explicitly; portfolio ranking can prefer ETH.
-        fireEvent.click(screen.getByRole('button', { name: /ETH/ }))
+        // Select explicitly without depending on the default portfolio ranking.
+        fireEvent.click(document.querySelector('.send-token-button'))
         fireEvent.click(screen.getByText('USD Coin', { selector: 'strong' }).closest('button'))
         expect(screen.getByRole('button', { name: /USDC/ })).toBeTruthy()
         fireEvent.change(screen.getByLabelText('Amount to send'), {

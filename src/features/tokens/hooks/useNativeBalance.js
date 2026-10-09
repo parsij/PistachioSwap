@@ -4,18 +4,14 @@ import { formatEther } from 'viem'
 
 import { BSC_CHAIN_ID } from '../../../services/balances.js'
 import {
-    applyOptimisticRawBalance,
     getOptimisticWalletBalanceRevision,
-    getOptimisticWalletDeltas,
     subscribeOptimisticWalletBalances,
 } from '../../wallet/services/optimisticBalances.js'
 
-const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
-
 /**
  * Reads the connected account's native balance for an explicit chain through Wagmi.
- * Pending locally submitted transactions are overlaid immediately until their
- * receipt settles, after which the canonical RPC balance takes over again.
+ * Submitted transaction updates trigger refreshes; pending quote deltas are
+ * never added to or subtracted from a balance that may already include them.
  * @param {{address: string|null, chainId: number, enabled?: boolean}} config Balance query.
  * @returns {{value: bigint|null, formatted: string|null, status: string, error: unknown, refetch: Function}} Balance state.
  * @sideEffects Performs an RPC read when enabled; never prompts the wallet.
@@ -47,17 +43,7 @@ export function useNativeBalance({
         if (active) void query.refetch()
     }, [active, optimisticRevision, query.refetch])
 
-    const canonicalValue = active && query.data ? query.data.value : null
-    const nativeDelta = active
-        ? getOptimisticWalletDeltas(address).find((change) =>
-            Number(change.chainId) === resolvedChainId &&
-            change.tokenAddress === NATIVE_TOKEN_ADDRESS)
-        : null
-    const value = canonicalValue === null
-        ? null
-        : nativeDelta
-            ? applyOptimisticRawBalance(canonicalValue, nativeDelta.deltaRaw)
-            : canonicalValue
+    const value = active && query.data ? query.data.value : null
 
     const status = !active
         ? 'idle'

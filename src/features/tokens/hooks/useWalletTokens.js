@@ -5,7 +5,6 @@ import {
     useState,
     useSyncExternalStore,
 } from 'react'
-import { formatUnits } from 'viem'
 
 import { fetchWalletTokens } from '../services/walletTokens.js'
 import {
@@ -17,9 +16,7 @@ import {
     writeWalletTokenCache,
 } from '../services/walletTokenCache.js'
 import {
-    applyOptimisticRawBalance,
     getOptimisticWalletBalanceRevision,
-    getOptimisticWalletDeltas,
     subscribeOptimisticWalletBalances,
 } from '../../wallet/services/optimisticBalances.js'
 
@@ -39,75 +36,6 @@ function hasPositiveBalance(token) {
     if (/^\d+$/.test(raw)) return BigInt(raw) > 0n
     const balance = String(token?.formattedBalance ?? token?.balance ?? '').trim()
     return /[1-9]/.test(balance)
-}
-
-function isUsableOptimisticToken(change) {
-    const token = change?.token
-    if (!token || typeof token !== 'object' || Array.isArray(token)) return false
-    const chainId = Number(token.chainId)
-    const decimals = Number(token.decimals)
-    const address = String(token.address ?? '').toLowerCase()
-    if (
-        !Number.isSafeInteger(chainId) ||
-        chainId !== Number(change.chainId) ||
-        !/^0x[a-f0-9]{40}$/.test(address) ||
-        address !== String(change.tokenAddress ?? '').toLowerCase() ||
-        !Number.isInteger(decimals) ||
-        decimals < 0 ||
-        decimals > 255
-    ) return false
-    if (token.possibleSpam === true) return false
-    if (['high', 'blocked'].includes(token.securityStatus)) return false
-    if (token.classificationTier === 'blocked') return false
-    return true
-}
-
-function applyPendingBalanceChanges(tokens, walletAddress) {
-    if (!walletAddress) return tokens
-    const deltas = getOptimisticWalletDeltas(walletAddress)
-    if (deltas.length === 0) return tokens
-
-    const byIdentity = new Map(deltas.map((change) => [
-        `${Number(change.chainId)}:${change.tokenAddress}`,
-        change,
-    ]))
-    const consumed = new Set()
-    const updated = tokens.map((token) => {
-        const identity = `${Number(token.chainId)}:${String(token.address ?? '').toLowerCase()}`
-        const change = byIdentity.get(identity)
-        if (!change) return token
-        consumed.add(identity)
-        const rawBalance = applyOptimisticRawBalance(token.rawBalance ?? '0', change.deltaRaw)
-        const formattedBalance = formatUnits(rawBalance, Number(token.decimals ?? 18))
-        return {
-            ...token,
-            rawBalance: rawBalance.toString(),
-            balance: formattedBalance,
-            formattedBalance,
-            valueUSD: null,
-            optimisticPending: true,
-        }
-    })
-
-    for (const [identity, change] of byIdentity) {
-        if (
-            consumed.has(identity) ||
-            BigInt(change.deltaRaw) <= 0n ||
-            !isUsableOptimisticToken(change)
-        ) continue
-        const rawBalance = applyOptimisticRawBalance('0', change.deltaRaw)
-        const formattedBalance = formatUnits(rawBalance, Number(change.token.decimals ?? 18))
-        updated.push({
-            ...change.token,
-            rawBalance: rawBalance.toString(),
-            balance: formattedBalance,
-            formattedBalance,
-            valueUSD: null,
-            optimisticPending: true,
-        })
-    }
-
-    return updated
 }
 
 const DISCONNECTED_STATE = {
@@ -198,8 +126,8 @@ function mergeLastKnownGoodForUnresolvedChains(current, responseState) {
 /**
  * Paints cached wallet assets immediately, verifies those known balances through
  * the fast RPC endpoint, and replaces them with full backend discovery results.
- * Pending locally submitted transactions are overlaid until they settle so the
- * wallet reacts immediately instead of waiting for indexers or RPC confirmation.
+ * Submitted transaction updates trigger refreshes. Balances remain canonical:
+ * quote deltas can already be present in refreshed RPC/indexer holdings.
  */
 export function useWalletTokens({
     chainId = 56,
@@ -484,13 +412,8 @@ export function useWalletTokens({
     const visibleState = requestKey && state.requestKey === requestKey
         ? state
         : DISCONNECTED_STATE
-    const visibleTokens = requestKey
-        ? applyPendingBalanceChanges(visibleState.tokens, normalizedAddress)
-        : visibleState.tokens
-
     return {
         ...visibleState,
-        tokens: visibleTokens,
         refetch,
     }
 }

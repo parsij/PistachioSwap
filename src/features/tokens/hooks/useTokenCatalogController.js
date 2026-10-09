@@ -406,6 +406,9 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     }, [nativeBalance, refetchWalletTokens])
 
     function openTokenSelector(side, currentToken, mode = 'picker') {
+        // Opening the picker is an explicit request for current holdings.
+        // Refresh every wallet chain and the separately queried source native balance.
+        if (walletState.isConnected) void refreshWalletBalances().catch(() => undefined)
         setTokenSearch('')
         setTokenSelectorMode(mode)
         setSelectorChainId(

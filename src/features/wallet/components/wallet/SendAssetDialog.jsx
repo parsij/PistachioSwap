@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
     ArrowLeft,
@@ -35,6 +35,9 @@ import {
     isTransferRejectedError,
 } from '../../../../services/transfers.js'
 import { formatWalletTokenAmount } from '../../../tokens/services/walletTokens.js'
+import { getDisplayTokenPrice } from '../../../tokens/services/tokenPrices.js'
+import { decimalToUnits, divideDecimalToUnits, isDecimalInput, multiplyUnitsByDecimal } from '../../../swap/model/amountMath.js'
+import { formatSwapSecondaryTokenAmount } from '../../../swap/model/swapDisplay.js'
 import { shortenAddress } from '../../../../services/address.js'
 import {
     confirmRiskyTokenSelection,
@@ -45,6 +48,7 @@ import {
     isCuratedEvmChainId,
 } from '../../../../web3/curatedEvmChains.js'
 import { recordWalletActivity } from '../../services/walletActivity.js'
+import { requestWalletBalanceRefresh } from '../../services/walletBalanceRefresh.js'
 import {
     beginOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
@@ -77,12 +81,15 @@ function SendAssetDialogSession({
     onConfirmed,
 }) {
     const numericWalletChainId = Number(chainId)
+    useEffect(() => { requestWalletBalanceRefresh(address) }, [address])
     const connection = useConnection()
     const [selectedToken, setSelectedToken] = useState(null)
     const [showSelector, setShowSelector] = useState(false)
     const [selectorChainId, setSelectorChainId] = useState('all')
     const [search, setSearch] = useState('')
     const [amount, setAmount] = useState('')
+    const [usdInput, setUsdInput] = useState(false)
+    const amountInputRef = useRef(null)
     const [recipient, setRecipient] = useState('')
     const [error, setError] = useState(null)
     const [mode, setMode] = useState('edit')
@@ -95,8 +102,23 @@ function SendAssetDialogSession({
         heldAssets,
         settings,
     ))[0] ?? null
-    const activeSelectedToken = selectedToken ?? defaultSelectedToken
+    const activeSelectedToken = selectedToken
+        ? assets.find(token => Number(token.chainId) === Number(selectedToken.chainId) &&
+            String(token.address).toLowerCase() === String(selectedToken.address).toLowerCase()) ??
+            { ...selectedToken, rawBalance: '0', balance: '0', formattedBalance: '0', valueUSD: '0' }
+        : defaultSelectedToken
+    const displayPrice = getDisplayTokenPrice(activeSelectedToken)
+    const tokenDecimals = Number(activeSelectedToken?.decimals ?? 18)
+    const usdAmountUnits = usdInput ? divideDecimalToUnits(amount, displayPrice, tokenDecimals, 'down') : null
+    const tokenAmount = usdInput
+        ? usdAmountUnits !== null ? formatUnits(BigInt(usdAmountUnits), tokenDecimals) : ''
+        : amount
     const numericChainId = Number(activeSelectedToken?.chainId ?? numericWalletChainId)
+    // A different asset must never inherit a numeric USD input from the old one.
+    useEffect(() => {
+        setAmount('')
+        setUsdInput(false)
+    }, [activeSelectedToken?.address, numericChainId])
     const chain = getCuratedEvmChain(numericChainId)
     const nativeSymbol = chain?.nativeCurrency?.symbol ?? 'native token'
     const publicClient = usePublicClient({
@@ -123,20 +145,48 @@ function SendAssetDialogSession({
 
     function updateAmount(event) {
         const value = event.target.value
-        if (/^\d*(?:\.\d*)?$/.test(value)) {
+        if (isDecimalInput(value)) {
             setAmount(value)
             setError(null)
         }
     }
 
+    function toggleDenomination() {
+        if (!activeSelectedToken) return
+        if (usdInput) {
+            setAmount(tokenAmount)
+            setUsdInput(false)
+        } else {
+            if (!displayPrice) return
+            const raw = decimalToUnits(amount, tokenDecimals)
+            if (amount && raw === null) {
+                setError('Enter a valid token amount before switching to USD.')
+                return
+            }
+            const converted = raw === null ? '' : multiplyUnitsByDecimal(raw, tokenDecimals, displayPrice)
+            if (converted === null) return setError('USD input is unavailable for this token.')
+            setAmount(converted)
+            setUsdInput(true)
+        }
+        setError(null)
+        amountInputRef.current?.focus()
+    }
+
     function useMax() {
         if (!activeSelectedToken) return
-        setAmount(getSpendableTokenAmount({
+        const maximum = getSpendableTokenAmount({
             token: activeSelectedToken,
             nativeBalanceWei: selectedNativeBalanceWei,
             estimatedFeeWei: review?.feeWei ?? null,
             fallbackReserveWei: DEFAULT_NATIVE_GAS_RESERVE_WEI,
-        }))
+        })
+        if (usdInput && !displayPrice) return setError('USD input is unavailable for this token.')
+        const converted = usdInput
+            ? multiplyUnitsByDecimal(decimalToUnits(maximum, tokenDecimals), tokenDecimals, displayPrice)
+            : maximum
+        if (converted === null) return setError('USD input is unavailable for this token.')
+        setAmount(converted)
+        setError(null)
     }
 
     async function pasteRecipient() {
@@ -149,6 +199,8 @@ function SendAssetDialogSession({
         if (reviewLoading) return
         setError(null)
         if (!activeSelectedToken) return setError('Select a token.')
+        if (usdInput && !displayPrice) return setError('USD input is unavailable for this token. Switch to token amount.')
+        if (usdInput && usdAmountUnits === null) return setError('Enter a valid USD amount.')
         if (
             tokenRequiresRiskConfirmation(activeSelectedToken) &&
             !confirmRiskyTokenSelection(activeSelectedToken, 'review this send')
@@ -161,7 +213,7 @@ function SendAssetDialogSession({
                 account: address,
                 chainId: numericChainId,
                 recipient,
-                amount,
+                amount: tokenAmount,
                 token: activeSelectedToken,
                 nativeBalanceWei: selectedNativeBalanceWei,
                 estimatedFeeWei: 0n,
@@ -179,7 +231,7 @@ function SendAssetDialogSession({
                 account: address,
                 chainId: numericChainId,
                 recipient,
-                amount,
+                amount: tokenAmount,
                 token: activeSelectedToken,
                 nativeBalanceWei: selectedNativeBalanceWei,
                 estimatedFeeWei: feeWei,
@@ -188,7 +240,8 @@ function SendAssetDialogSession({
                 account: address,
                 chainId: numericChainId,
                 token: activeSelectedToken,
-                amount,
+                amount: tokenAmount,
+                priceUSD: displayPrice,
                 recipient,
                 feeWei,
                 gas,
@@ -354,24 +407,42 @@ function SendAssetDialogSession({
                                 <div className="send-form">
                                     <section className="send-amount-card">
                                         <div className="send-amount-line">
-                                            <input
-                                                value={amount}
-                                                onChange={updateAmount}
-                                                inputMode="decimal"
-                                                placeholder="0"
-                                                aria-label="Amount to send"
-                                            />
+                                            <div className="send-amount-input">
+                                                {usdInput && <span className="send-amount-prefix" aria-hidden="true">$</span>}
+                                                <input
+                                                    ref={amountInputRef}
+                                                    value={amount}
+                                                    onChange={updateAmount}
+                                                    inputMode="decimal"
+                                                    placeholder="0"
+                                                    aria-label={usdInput ? 'Amount to send in USD' : 'Amount to send'}
+                                                />
+                                            </div>
                                             <button
                                                 type="button"
                                                 className="send-token-button"
-                                                onClick={() => setShowSelector(true)}
+                                                onClick={() => {
+                                                    requestWalletBalanceRefresh(address)
+                                                    setShowSelector(true)
+                                                }}
                                             >
                                                 {activeSelectedToken && <TokenIcon token={activeSelectedToken} size="button" />}
                                                 <span>{activeSelectedToken ? getTokenDisplaySymbol(activeSelectedToken) : 'Select'}</span>
                                             </button>
                                         </div>
                                         <div className="send-balance-line">
-                                            <span>{formatUsdAmount(amount || '0', activeSelectedToken?.trustedPriceUSD ?? null)}</span>
+                                            <button
+                                                type="button"
+                                                className="send-denomination-toggle"
+                                                onClick={toggleDenomination}
+                                                disabled={!activeSelectedToken || (!usdInput && !displayPrice)}
+                                                aria-label={usdInput ? `Show send amount in ${getTokenDisplaySymbol(activeSelectedToken)}` : 'Show send amount in USD'}
+                                                title={!displayPrice ? 'USD input is unavailable for this token.' : undefined}
+                                            >
+                                                {usdInput
+                                                    ? displayPrice ? formatSwapSecondaryTokenAmount(tokenAmount, activeSelectedToken) : 'Price unavailable'
+                                                    : formatUsdAmount(amount || '0', displayPrice)}
+                                            </button>
                                             <span>
                                                 Balance {formatWalletTokenAmount(tokenBalance)}
                                                 <button type="button" onClick={useMax}>Max</button>
@@ -413,7 +484,7 @@ function SendAssetDialogSession({
                                     )}
                                     <dl>
                                         <div><dt>Amount</dt><dd>{review.amount} {getTokenDisplaySymbol(review.token)}</dd></div>
-                                        <div><dt>USD value</dt><dd>{formatUsdAmount(review.amount, review.token.trustedPriceUSD)}</dd></div>
+                                        <div><dt>USD value</dt><dd>{formatUsdAmount(review.amount, review.priceUSD)}</dd></div>
                                         {/*
                                           * Shown in full: address-poisoning
                                           * attacks mine a vanity address that
@@ -481,6 +552,7 @@ function SendAssetDialogSession({
                             setSelectorChainId('all')
                             setSearch('')
                             setAmount('')
+                            setUsdInput(false)
                             setReview(null)
                             setStatus('idle')
                             setError(null)

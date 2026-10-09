@@ -994,6 +994,18 @@ describe('App wallet integration', () => {
         expect(mocks.refetchWalletTokens).not.toHaveBeenCalled()
     })
 
+    it('refreshes every wallet chain and the source native balance when opening the token picker', () => {
+        mocks.account.address = ADDRESS
+        mocks.account.isConnected = true
+        const view = render(<App />)
+        mocks.refetchWalletTokens.mockClear()
+        mocks.refetchBalance.mockClear()
+        fireEvent.click(view.container.querySelector('.sell-token-position button'))
+        expect(mocks.refetchWalletTokens).toHaveBeenCalledOnce()
+        expect(mocks.refetchBalance).toHaveBeenCalledOnce()
+        expect(mocks.useWalletTokens).toHaveBeenCalledWith({ chainId: 'all', walletAddress: ADDRESS, enabled: true })
+    })
+
     it('opens an all-network portfolio without a header chain selector', () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
