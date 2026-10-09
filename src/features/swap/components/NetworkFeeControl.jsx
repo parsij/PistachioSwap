@@ -9,14 +9,14 @@ import { formatGwei, networkFeeCap, parseGwei, parseTransactionNonce, resolveNet
 import SwapInfoTooltip from './SwapInfoTooltip.jsx'
 import './NetworkFeeControl.css'
 
-function FeeAmount({ fields, fees, chain, nativePriceUsd }) {
+function FeeAmount({ fields, fees, chain, nativePriceUsd, showNative = false }) {
     if (!fields) return <small>Live estimate unavailable</small>
     const cap = networkFeeCap(fields)
     const native = fees.gasEstimate ? formatUnits(fees.gasEstimate * cap, chain.nativeCurrency.decimals) : null
     const usd = native && nativePriceUsd ? multiplyUsdAmount(native, nativePriceUsd) : null
     return <>
-        {usd && <strong>{formatNetworkCostUsd(usd)} max</strong>}
-        {native && <span>{native} {chain.nativeCurrency.symbol} max</span>}
+        {usd && <strong>{formatNetworkCostUsd(usd, true)}</strong>}
+        {native && (showNative || !usd) && <span>{native} {chain.nativeCurrency.symbol} max</span>}
         {!native && <small>Cost available after gas estimation</small>}
         {native && !usd && <small>USD price unavailable</small>}
         <small>{formatGwei(cap)} Gwei</small>
@@ -117,7 +117,7 @@ export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, spon
         {sponsored ? <p className="network-fee-note">Gas Assist manages this transaction’s network cost.</p> : <>
             <div className="network-fee-summary">
                 <span>{fees.automatic ? 'Automatic' : fees.selection.mode === 'custom' ? `Custom fees${fees.selection.fields?.nonce !== undefined ? ` · Nonce ${fees.selection.fields.nonce}` : ''}` : `${fees.selection.mode[0].toUpperCase()}${fees.selection.mode.slice(1)} fees`}</span>
-                <span>{fees.fields ? <FeeAmount fields={fees.fields} fees={fees} chain={chain} nativePriceUsd={nativePriceUsd} /> : fees.loading ? 'Loading live fees…' : 'Estimate unavailable'}</span>
+                <span>{fees.fields ? <FeeAmount fields={fees.fields} fees={fees} chain={chain} nativePriceUsd={nativePriceUsd} showNative /> : fees.loading ? 'Loading live fees…' : 'Estimate unavailable'}</span>
                 <button className="network-fee-icon-button" type="button" aria-label="Refresh network fees" onClick={() => void fees.refresh()} disabled={fees.loading}><RefreshCw size={15} /></button>
             </div>
             {!fees.automatic && <div className="network-fee-options" role="group" aria-label="Choose network cost">
