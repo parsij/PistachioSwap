@@ -145,7 +145,7 @@ jobs:
         run: pnpm exec vitest run src/App.wallet.test.jsx -t 'applies custom network fees from settings|isolates quote info tooltips|clears the previous submitted transaction|refreshes every wallet chain'
 
       - name: Send amount and wallet transfer regressions
-        run: pnpm exec vitest run src/features/wallet/components/wallet/SendAssetDialog.test.jsx src/features/wallet/services/sendExecution.test.js src/services/transfers.test.js src/services/balances.test.js
+        run: pnpm exec vitest run src/features/wallet/components/wallet/SendAssetDialog.test.jsx src/features/wallet/services/sendExecution.test.js src/features/wallet/services/sendNetworkFees.test.js src/features/swap/components/NetworkFeeControl.test.jsx src/services/transfers.test.js src/services/balances.test.js
 
       - name: Post-swap balance race regressions
         run: pnpm exec vitest run src/features/tokens/hooks/useWalletTokens.test.jsx src/features/tokens/hooks/useWalletTokens.cache.test.jsx src/features/tokens/hooks/useNativeBalance.test.jsx src/features/wallet/services/optimisticBalances.test.js src/features/wallet/services/reconcilePendingWalletOperations.test.js src/features/swap/hooks/useSameChainReceiptLifecycle.test.jsx src/features/cross-chain/hooks/useCrossChainRoutes.test.jsx

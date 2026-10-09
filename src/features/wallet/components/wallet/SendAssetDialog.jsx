@@ -1,3 +1,9 @@
+import '../../../settings/components/SwapSettingsPopover.css'
+import NetworkFeeControl from '../../../swap/components/NetworkFeeControl.jsx'
+import { useNetworkFees } from '../../../swap/hooks/useNetworkFees.js'
+import { fetchNetworkFees, networkFeeCap, prepareNetworkFeeTransaction } from '../../../swap/services/networkFees.js'
+import SettingsToggleRow from '../../../settings/components/SettingsToggleRow.jsx'
+import { sendPlanTransaction, sendPlanWithFees } from '../../services/sendNetworkFees.js'
 import { useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
@@ -96,6 +102,8 @@ function SendAssetDialogSession({
     const [status, setStatus] = useState('idle')
     const [reviewLoading, setReviewLoading] = useState(false)
     const [review, setReview] = useState(null)
+    const [estimatedSendGas, setEstimatedSendGas] = useState(null)
+    const [automaticFees, setAutomaticFees] = useState(true)
     const [hash, setHash] = useState(null)
     const heldAssets = assets.filter(isPositiveWalletBalance)
     const defaultSelectedToken = sortWalletAssetsByValue(filterPortfolioTokens(
@@ -133,6 +141,19 @@ function SendAssetDialogSession({
         : numericChainId === numericWalletChainId
             ? BigInt(nativeBalanceWei ?? 0)
             : 0n
+    const networkFees = useNetworkFees({ publicClient, chainId: numericChainId, account: address,
+        automatic: automaticFees, enabled: !automaticFees && status !== 'confirming' && status !== 'submitted', gasEstimate: review?.gas ?? estimatedSendGas })
+    const currentIntent = `${address}:${numericChainId}:${activeSelectedToken?.address}:${tokenAmount}:${recipient}:${automaticFees}`
+    const intentRef = useRef(currentIntent)
+    intentRef.current = currentIntent
+    useEffect(() => { setEstimatedSendGas(null) }, [address, numericChainId, activeSelectedToken?.address, tokenAmount, recipient])
+    function changeFees(mode, fields) {
+        networkFees.select(mode, fields)
+        setReview(null)
+        setMode('edit')
+        setStatus('idle')
+        setError(null)
+    }
     const selectedExplorerUrl = chain?.blockExplorers?.default?.url ?? explorerUrl
     const reviewedAccountChanged = Boolean(
         review?.account &&
@@ -208,6 +229,7 @@ function SendAssetDialogSession({
         if (!chain) return setError('This network is not enabled in PistachioSwap.')
         if (!publicClient) return setError(`${chain.name} is unavailable.`)
         setReviewLoading(true)
+        const reviewedIntent = intentRef.current
         try {
             const initialPlan = createTransferPlan({
                 account: address,
@@ -226,7 +248,12 @@ function SendAssetDialogSession({
                 await publicClient.simulateContract(initialPlan.request)
                 gas = await publicClient.estimateContractGas(initialPlan.request)
             }
-            const feeWei = gas * gasPrice
+            let preparedFees = null
+            if (!automaticFees) {
+                preparedFees = await networkFees.prepareTransaction(sendPlanTransaction(initialPlan), numericChainId)
+                gas = preparedFees.gas
+            }
+            const feeWei = gas * (preparedFees ? networkFeeCap(preparedFees) : gasPrice)
             const plan = createTransferPlan({
                 account: address,
                 chainId: numericChainId,
@@ -236,6 +263,8 @@ function SendAssetDialogSession({
                 nativeBalanceWei: selectedNativeBalanceWei,
                 estimatedFeeWei: feeWei,
             })
+            if (intentRef.current !== reviewedIntent) throw new Error('Send details changed. Review the send again.')
+            setEstimatedSendGas(gas)
             setReview({
                 account: address,
                 chainId: numericChainId,
@@ -246,7 +275,8 @@ function SendAssetDialogSession({
                 feeWei,
                 gas,
                 gasPrice,
-                plan,
+                manualFees: Boolean(preparedFees),
+                plan: preparedFees ? sendPlanWithFees(plan, preparedFees) : plan,
             })
             setMode('review')
             setStatus('review')
@@ -278,7 +308,18 @@ function SendAssetDialogSession({
             // Re-simulate the exact reviewed ERC-20 call on the token's chain,
             // then execute through a wallet client bound to that same chain.
             if (review.plan.kind === 'erc20') {
-                await publicClient.simulateContract(review.plan.request)
+                // Validate transfer execution independently of a deliberately low fee
+                // cap, which may be valid only in a future block.
+                const { gasPrice: _price, maxFeePerGas: _maximum, maxPriorityFeePerGas: _tip, nonce: _nonce, ...simulationRequest } = review.plan.request
+                await publicClient.simulateContract(simulationRequest)
+            }
+            if (review.manualFees) {
+                const snapshot = await fetchNetworkFees(publicClient, review.chainId)
+                // Pin the reviewed caps, gas limit and nonce; refresh the chain,
+                // balance and nonce checks without silently raising user fees.
+                await prepareNetworkFeeTransaction({ publicClient, transaction: sendPlanTransaction(review.plan),
+                    account: review.account, snapshot, chainId: review.chainId,
+                    selection: { chainId: review.chainId, mode: 'custom', fields: review.plan.request } })
             }
             const resolvedWallet = await resolveSendWallet({
                 connectedAddress: review.account,
@@ -495,8 +536,8 @@ function SendAssetDialogSession({
                                           */}
                                         <div className="send-review-recipient"><dt>Recipient</dt><dd>{review.recipient}</dd></div>
                                         <div><dt>Network</dt><dd>{chain?.name}</dd></div>
-                                        <div><dt>Estimated network fee</dt><dd>{formatEther(review.feeWei)} {nativeSymbol}</dd></div>
-                                        <div><dt>Total native {nativeSymbol} required</dt><dd>{formatEther(
+                                        <div><dt>{review.manualFees ? 'Maximum execution fee' : 'Estimated network fee'}</dt><dd>{formatEther(review.feeWei)} {nativeSymbol}</dd></div>
+                                        <div><dt>{review.manualFees ? `Native ${nativeSymbol} amount + execution fee` : `Total native ${nativeSymbol} required`}</dt><dd>{formatEther(
                                             review.feeWei + (isNativeEvmToken(review.token) ? review.plan.amountWei : 0n),
                                         )} {nativeSymbol}</dd></div>
                                         <div><dt>Balance after send</dt><dd>{afterBalance} {getTokenDisplaySymbol(review.token)}</dd></div>
@@ -504,6 +545,13 @@ function SendAssetDialogSession({
                                 </section>
                             )}
 
+                            {!['confirming', 'submitted', 'sent'].includes(status) && <fieldset className="send-network-fees" disabled={reviewLoading} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+                                <SettingsToggleRow label="Auto network cost" checked={automaticFees}
+                                    tooltip="Turn this off to choose live network fee presets or enter custom fees and a nonce for this send."
+                                    onCheckedChange={(value) => { setAutomaticFees(value); setReview(null); setMode('edit'); setStatus('idle'); setError(null) }} />
+                                <NetworkFeeControl fees={review ? { ...networkFees, fields: review.manualFees ? review.plan.request : { gasPrice: review.gasPrice } } : networkFees}
+                                    nativePriceUsd={getDisplayTokenPrice(selectedNativeAsset)} transactionLabel="send" onSelect={changeFees} />
+                            </fieldset>}
                             <TransactionStatusDialog
                                 status={status}
                                 hash={hash}

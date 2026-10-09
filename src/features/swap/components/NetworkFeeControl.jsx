@@ -23,7 +23,7 @@ function FeeAmount({ fields, fees, chain, nativePriceUsd, showNative = false }) 
     </>
 }
 
-function CustomFeeDialog({ fees, chain, destinationChain, nativePriceUsd, onSelect, onClose }) {
+function CustomFeeDialog({ fees, chain, destinationChain, nativePriceUsd, onSelect, onClose, transactionLabel }) {
     const standard = fees.snapshot.presets.standard
     const initial = fees.selection.mode === 'custom' ? fees.selection.fields : standard
     const legacy = fees.snapshot.type === 'legacy'
@@ -94,7 +94,7 @@ function CustomFeeDialog({ fees, chain, destinationChain, nativePriceUsd, onSele
                         <button type="button" onClick={() => { setNonce(''); setError(null) }}>Use automatic nonce</button>
                         {fees.pendingNonce !== undefined && <button type="button" onClick={() => { setNonce(String(fees.pendingNonce)); setError(null) }}>Use pending nonce {fees.pendingNonce}</button>}
                     </div>
-                    <p className="network-fee-note">Applies to this swap; approvals use automatic nonces. Using an existing pending nonce can replace that transaction. A higher nonce waits for earlier transactions. Leave blank for automatic.</p>
+                    <p className="network-fee-note">Applies to this {transactionLabel}; {transactionLabel === 'swap' ? 'approvals use automatic nonces.' : 'your selected nonce is used for this send.'} Using an existing pending nonce can replace that transaction. A higher nonce waits for earlier transactions. Leave blank for automatic.</p>
                     {error && <p className="network-fee-error" role="alert">{error}</p>}
                     <button className="network-fee-confirm" type="submit">Confirm network cost</button>
                 </form>
@@ -104,7 +104,7 @@ function CustomFeeDialog({ fees, chain, destinationChain, nativePriceUsd, onSele
 }
 
 /** Displays source-chain fee options without changing the gas token or gas limit. */
-export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, sponsored = false, destinationChainId = null }) {
+export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, sponsored = false, destinationChainId = null, transactionLabel = 'swap' }) {
     const [customScope, setCustomScope] = useState(null)
     useEffect(() => { setCustomScope(null) }, [fees.chainId, fees.account, fees.automatic])
     const chain = getCuratedEvmChain(fees.chainId)
@@ -112,7 +112,7 @@ export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, spon
     if (!chain) return null
     return <section className="network-fee-panel" aria-label="Network cost">
         <div className="network-fee-heading">
-            <span>Network cost <SwapInfoTooltip ariaLabel="Explain network cost">Fees are paid in {chain.nativeCurrency.symbol} on {chain.name}. The cards show a maximum execution fee using the quote’s gas estimate. Gas limits and additional network/data fees are finalized by your wallet; the final charge can be lower.</SwapInfoTooltip></span>
+            <span>Network cost <SwapInfoTooltip ariaLabel="Explain network cost">Fees are paid in {chain.nativeCurrency.symbol} on {chain.name}. The cards show a maximum execution fee using {transactionLabel === 'send' ? 'this send’s' : 'the quote’s'} gas estimate. Gas limits and additional network/data fees are finalized by your wallet; the final charge can be lower.</SwapInfoTooltip></span>
             <span className="network-fee-chain"><img src={getCuratedEvmChainLogoUri(chain.id)} alt="" />{chain.name}</span>
         </div>
         {destinationChain && <p className="network-fee-note">Receiving on {destinationChain.name}. Network cost settings apply to {chain.name}.</p>}
@@ -135,8 +135,8 @@ export default function NetworkFeeControl({ fees, nativePriceUsd, onSelect, spon
             </div>}
             {fees.error && <p className="network-fee-error" role="alert">{fees.error}</p>}
             {fees.warning && <p className="network-fee-warning" role="status">{fees.warning}</p>}
-            <p className="network-fee-note">{fees.automatic ? 'Turn off Auto network cost in settings to customize.' : 'Live source-network estimates. Lower fees may take longer. Custom fees apply to the swap transaction.'}</p>
-            {!fees.automatic && customScope?.chainId === fees.chainId && customScope.account === fees.account && fees.snapshot && <CustomFeeDialog key={`${fees.chainId}:${fees.account}:${fees.snapshot.type}`} fees={fees} chain={chain} destinationChain={destinationChain} nativePriceUsd={nativePriceUsd} onSelect={onSelect} onClose={() => setCustomScope(null)} />}
+            <p className="network-fee-note">{fees.automatic ? `Turn off Auto network cost${transactionLabel === 'swap' ? ' in settings' : ''} to customize.` : `Live source-network estimates. Lower fees may take longer. Custom fees apply to the ${transactionLabel} transaction.`}</p>
+            {!fees.automatic && customScope?.chainId === fees.chainId && customScope.account === fees.account && fees.snapshot && <CustomFeeDialog key={`${fees.chainId}:${fees.account}:${fees.snapshot.type}`} fees={fees} chain={chain} destinationChain={destinationChain} nativePriceUsd={nativePriceUsd} transactionLabel={transactionLabel} onSelect={onSelect} onClose={() => setCustomScope(null)} />}
         </>}
     </section>
 }

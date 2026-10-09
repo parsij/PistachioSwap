@@ -202,6 +202,12 @@ export async function submitSendPlan({
         throw new Error('The selected token network is unavailable.')
     }
 
+    const transactionFees = Object.fromEntries(
+        ['gas', 'gasPrice', 'maxFeePerGas', 'maxPriorityFeePerGas', 'nonce']
+            .filter(key => plan?.request?.[key] !== undefined)
+            .map(key => [key, plan.request[key]]),
+    )
+
     // Local Pistachio Wallet sends do not mutate or wait on the app-wide
     // network. The selected token's chain is pinned into the transaction and
     // the manager still performs passkey unlock, review, local signing,
@@ -232,7 +238,7 @@ export async function submitSendPlan({
         } else {
             throw new Error('The reviewed send is invalid.')
         }
-        return manager.sendTransaction(transaction, {
+        return manager.sendTransaction({ ...transaction, ...transactionFees }, {
             requireActiveChain: false,
         })
     }
@@ -242,6 +248,7 @@ export async function submitSendPlan({
     }
     if (plan?.kind === 'native') {
         return walletClient.sendTransaction({
+            ...transactionFees,
             account: walletClient.account,
             chain: targetChain,
             to: plan.request.to,
@@ -250,6 +257,7 @@ export async function submitSendPlan({
     }
     if (plan?.kind === 'erc20') {
         return walletClient.writeContract({
+            ...transactionFees,
             account: walletClient.account,
             chain: targetChain,
             address: plan.request.address,

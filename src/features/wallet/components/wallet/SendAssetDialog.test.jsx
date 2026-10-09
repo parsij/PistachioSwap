@@ -429,7 +429,7 @@ describe('SendAssetDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
 
         await screen.findByRole('heading', { name: 'Review send' })
-        expect(screen.getByText('Polygon')).toBeTruthy()
+        expect(screen.getAllByText('Polygon').length).toBeGreaterThan(0)
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
 
         await waitFor(() => expect(mocks.resolveSendWallet).toHaveBeenCalledWith(
@@ -465,7 +465,7 @@ describe('SendAssetDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
 
         await screen.findByRole('heading', { name: 'Review send' })
-        expect(screen.getByText('Base')).toBeTruthy()
+        expect(screen.getAllByText('Base').length).toBeGreaterThan(0)
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
 
         await waitFor(() => expect(mocks.resolveSendWallet).toHaveBeenCalledWith(
@@ -553,5 +553,69 @@ describe('SendAssetDialog', () => {
         expect(screen.getByText('SecantX AI')).toBeTruthy()
         expect(screen.getByText('Potential risk')).toBeTruthy()
         expect(document.body.textContent).not.toContain('$447,463.12')
+    })
+})
+
+
+describe('Send network cost chooser', () => {
+    afterEach(() => { cleanup(); vi.clearAllMocks() })
+    function feeRpc() {
+        Object.assign(mocks.publicClient, {
+            chain: { id: 8453 },
+            getChainId: vi.fn(async () => 8453),
+            getBlock: vi.fn(async () => ({ number: 10n, baseFeePerGas: 1_000_000_000n })),
+            estimateFeesPerGas: vi.fn(async () => ({ maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 100_000_000n })),
+            getBalance: vi.fn(async () => parseEther('0.01')),
+            getTransactionCount: vi.fn(async () => 7),
+        })
+        mocks.publicClient.estimateGas.mockResolvedValue(60_000n)
+        mocks.publicClient.simulateContract.mockImplementation(async request => ({ request }))
+        mocks.resolveSendWallet.mockImplementation(async ({ connectedAddress, targetChain }) => ({
+            account: connectedAddress, walletClient: { account: { address: connectedAddress }, chain: targetChain },
+        }))
+        mocks.submitSendPlan.mockResolvedValue(`0x${'ab'.repeat(32)}`)
+    }
+    it('reviews exact custom Base fees and nonce, then rechecks live balance before submission', async () => {
+        feeRpc()
+        renderDialog({ chainId: 56, assets: [{ ...baseUsdc, rawBalance: '10000000', balance: '10' }, baseEth] })
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '5' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('switch', { name: 'Auto network cost' }))
+        await waitFor(() => expect(screen.getByRole('button', { name: /Custom/ }).disabled).toBe(false))
+        fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+        fireEvent.change(screen.getByLabelText('Max fee in Gwei'), { target: { value: '0.5' } })
+        fireEvent.change(screen.getByLabelText('Priority fee in Gwei'), { target: { value: '0.1' } })
+        fireEvent.change(screen.getByLabelText('Transaction nonce'), { target: { value: '7' } })
+        expect(screen.getByText(/Applies to this send/)).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm network cost' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        await screen.findByRole('heading', { name: 'Review send' })
+        expect(screen.getByText('Maximum execution fee').nextSibling.textContent).toBe('0.000036 ETH')
+        expect(screen.getByRole('button', { name: /Less/ }).textContent).toContain('≈')
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+        await waitFor(() => expect(mocks.submitSendPlan).toHaveBeenCalled())
+        expect(mocks.submitSendPlan).toHaveBeenCalledWith(expect.objectContaining({
+            targetChain: expect.objectContaining({ id: 8453 }),
+            plan: expect.objectContaining({ request: expect.objectContaining({
+                gas: 72_000n, maxFeePerGas: 500_000_000n, maxPriorityFeePerGas: 100_000_000n, nonce: 7,
+            }) }),
+        }))
+        expect(mocks.publicClient.getBalance).toHaveBeenCalledTimes(2)
+        expect(mocks.publicClient.simulateContract.mock.calls.at(-1)[0].maxFeePerGas).toBeUndefined()
+    })
+    it('blocks a send if native balance drops after review instead of silently dropping the chosen fees', async () => {
+        feeRpc()
+        renderDialog({ chainId: 8453, assets: [{ ...baseUsdc, rawBalance: '10000000', balance: '10' }, baseEth] })
+        fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '5' } })
+        fireEvent.change(screen.getByLabelText('Send to'), { target: { value: recipient } })
+        fireEvent.click(screen.getByRole('switch', { name: 'Auto network cost' }))
+        await waitFor(() => expect(screen.getByRole('button', { name: /High/ }).disabled).toBe(false))
+        fireEvent.click(screen.getByRole('button', { name: /High/ }))
+        fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
+        await screen.findByRole('heading', { name: 'Review send' })
+        mocks.publicClient.getBalance.mockResolvedValueOnce(0n)
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Insufficient native balance'))
+        expect(mocks.submitSendPlan).not.toHaveBeenCalled()
     })
 })
