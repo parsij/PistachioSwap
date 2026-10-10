@@ -1,0 +1,50 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, expect, it, vi } from 'vitest'
+import { ChainSelector } from './TokenSelectorPrimitives.jsx'
+import CrossChainSelector from '../../cross-chain/components/ChainSelector.jsx'
+
+afterEach(cleanup)
+it('filters networks locally and clears search when reopened without changing token search', () => {
+    const onChange = vi.fn()
+    render(<ChainSelector chainId={56} onChange={onChange} />)
+    const trigger = screen.getByRole('button', { name: 'Token network' })
+    fireEvent.click(trigger)
+    const search = screen.getByRole('textbox', { name: 'Search networks' })
+    fireEvent.change(search, { target: { value: '  baSE ' } })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(screen.getByRole('option', { name: 'Base' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Base' }))
+    expect(onChange).toHaveBeenCalledWith('8453')
+    fireEvent.click(trigger)
+    expect(screen.getByRole('textbox').value).toBe('')
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'no-such-network' } })
+    expect(screen.getByRole('status').textContent).toBe('No networks found')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear network search' }))
+    expect(within(screen.getByRole('listbox')).getAllByRole('option').length).toBeGreaterThan(20)
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+})
+it('preserves disabled networks and searches chain IDs and aliases', () => {
+    render(<ChainSelector chainId={56} onChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button'))
+    const search = screen.getByRole('textbox')
+    fireEvent.change(search, { target: { value: 'bsc' } })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    fireEvent.change(search, { target: { value: '8453' } })
+    expect(screen.getByRole('option', { name: 'Base' })).toBeTruthy()
+    fireEvent.change(search, { target: { value: 'polygon z' } })
+    expect(screen.getByRole('option').disabled).toBe(true)
+})
+it('searches cross-chain selectors while preserving exclusion and numeric selection', () => {
+    const onChange = vi.fn()
+    render(<CrossChainSelector label="Destination network" value={10} excludeChainId={56} onChange={onChange} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Destination network' }))
+    expect(screen.queryByRole('option', { name: 'BNB Smart Chain' })).toBeNull()
+    expect(screen.queryByRole('option', { name: 'All Chains' })).toBeNull()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'base' } })
+    fireEvent.click(screen.getByRole('option', { name: 'Base' }))
+    expect(onChange).toHaveBeenCalledWith(8453)
+})

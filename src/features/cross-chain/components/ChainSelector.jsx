@@ -1,30 +1,11 @@
-import {
-    CURATED_EVM_CHAINS,
-} from '../../../web3/curatedEvmChains.js'
+import { ChainSelector as NetworkSelector } from '../../tokens/components/TokenSelectorPrimitives.jsx'
+import '../../tokens/components/TokenSelector.css'
 
-/** Renders curated source/destination chain choices and emits the selected chain ID. */
-export default function ChainSelector({
-    label,
-    value,
-    onChange,
-    excludeChainId = null,
-}) {
-    return (
-        <label className="cross-chain-selector">
-            <span>{label}</span>
-            <select
-                aria-label={label}
-                value={value}
-                onChange={(event) => onChange(Number(event.target.value))}
-            >
-                {CURATED_EVM_CHAINS
-                    .filter((chain) => chain.id !== Number(excludeChainId))
-                    .map((chain) => (
-                        <option key={chain.id} value={chain.id}>
-                            {chain.name}
-                        </option>
-                    ))}
-            </select>
-        </label>
-    )
+/** Curated source/destination choices with the shared searchable network menu. */
+export default function ChainSelector({ label, value, onChange, excludeChainId = null }) {
+    return <div className="cross-chain-selector">
+        <span>{label}</span>
+        <NetworkSelector label={label} chainId={value} onChange={(id) => onChange(Number(id))}
+            includeAll={false} excludeChainId={excludeChainId} discoveryOnly={false} />
+    </div>
 }

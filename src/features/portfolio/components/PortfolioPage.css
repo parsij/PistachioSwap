@@ -195,7 +195,7 @@
     padding: 6px;
 }
 
-.uni-portfolio-network-menu button {
+.uni-portfolio-network-menu [role="option"] {
     display: grid;
     width: 100%;
     min-height: 42px;
@@ -209,8 +209,8 @@
     text-align: left;
 }
 
-.uni-portfolio-network-menu button:hover,
-.uni-portfolio-network-menu button[aria-selected="true"] {
+.uni-portfolio-network-menu [role="option"]:hover,
+.uni-portfolio-network-menu [role="option"][aria-selected="true"] {
     background: var(--color-hover);
 }
 

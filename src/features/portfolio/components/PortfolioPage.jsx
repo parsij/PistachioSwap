@@ -1,3 +1,5 @@
+import NetworkSearchBar from '../../tokens/components/NetworkSearchBar.jsx'
+import { matchesNetworkSearch } from '../../tokens/services/networkSearch.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
     Activity,
@@ -257,6 +259,7 @@ function useOutsideDismiss(open, ref, close) {
 }
 
 function NetworkFilter({ value, onChange }) {
+    const [search, setSearch] = useState('')
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
     useOutsideDismiss(open, ref, () => setOpen(false))
@@ -264,6 +267,8 @@ function NetworkFilter({ value, onChange }) {
         if (!open) return undefined
         const dismiss = (event) => {
             if (event.key === 'Escape') {
+                event.preventDefault()
+                event.stopPropagation()
                 setOpen(false)
                 ref.current?.querySelector('button')?.focus()
             }
@@ -281,7 +286,7 @@ function NetworkFilter({ value, onChange }) {
                 aria-label={selected?.name ?? 'All networks'}
                 aria-haspopup="listbox"
                 aria-expanded={open}
-                onClick={() => setOpen((current) => !current)}
+                onClick={() => { setSearch(''); setOpen((current) => !current) }}
             >
                 <span className="uni-portfolio-network-icons" aria-hidden="true">
                     {selected ? (
@@ -296,7 +301,10 @@ function NetworkFilter({ value, onChange }) {
                 <ChevronDown aria-hidden="true" />
             </button>
             {open && (
-                <div className="uni-portfolio-network-menu" role="listbox" aria-label="Portfolio network">
+                <div className="uni-portfolio-network-menu" data-network-menu>
+                    <NetworkSearchBar value={search} onChange={setSearch} />
+                    <div role="listbox" aria-label="Portfolio network" style={{ display: 'contents' }}>
+                    {matchesNetworkSearch({ name: 'All networks' }, search) && <>
                     <button
                         type="button"
                         role="option"
@@ -309,7 +317,8 @@ function NetworkFilter({ value, onChange }) {
                         <AllChainsIcon />
                         <span>All networks</span>
                     </button>
-                    {CURATED_EVM_CHAINS.map((chain) => (
+                    </>}
+                    {CURATED_EVM_CHAINS.filter((chain) => matchesNetworkSearch(chain, search)).map((chain) => (
                         <button
                             key={chain.id}
                             type="button"
@@ -328,6 +337,8 @@ function NetworkFilter({ value, onChange }) {
                             <span>{chain.name}</span>
                         </button>
                     ))}
+                    </div>
+                    {!matchesNetworkSearch({ name: 'All networks' }, search) && !CURATED_EVM_CHAINS.some((chain) => matchesNetworkSearch(chain, search)) && <p className="network-search-empty" role="status">No networks found</p>}
                 </div>
             )}
         </div>

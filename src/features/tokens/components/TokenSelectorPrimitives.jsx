@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import NetworkSearchBar from './NetworkSearchBar.jsx'
+import { matchesNetworkSearch } from '../services/networkSearch.js'
 import { ShieldAlert } from 'lucide-react'
 
 import {
@@ -45,8 +47,9 @@ function usesRiskPresentation(token) {
  * @param {(value: string) => void} props.onChange Receives the selected chain ID.
  * @returns {import('react').ReactElement} Accessible chain selector.
  */
-export function ChainSelector({ chainId, onChange }) {
+export function ChainSelector({ chainId, onChange, label = 'Token network', includeAll = true, excludeChainId = null, discoveryOnly = true }) {
     const [open, setOpen] = useState(false)
+    const [search, setSearch] = useState('')
     const controlRef = useRef(null)
     const selectedChain = chainId === 'all' ? null : getCuratedEvmChain(chainId)
 
@@ -67,34 +70,53 @@ export function ChainSelector({ chainId, onChange }) {
             )
         }
     }, [open])
-    const options = [{ id: 'all', name: 'All Chains', active: true }, ...CURATED_EVM_CHAINS.map((chain) => ({
+    const options = [...(includeAll ? [{ id: 'all', name: 'All Chains', searchAliases: ['All networks'], active: true }] : []), ...CURATED_EVM_CHAINS.filter((chain) => chain.id !== Number(excludeChainId)).map((chain) => ({
+        ...chain,
         id: chain.id,
         name: chain.name,
-        active: TOKEN_DISCOVERY_CHAIN_IDS.includes(chain.id),
+        active: !discoveryOnly || TOKEN_DISCOVERY_CHAIN_IDS.includes(chain.id),
     }))]
     function selectOption(option) {
         if (!option.active) return
         onChange(String(option.id))
         setOpen(false)
     }
+    const visibleOptions = options.filter((option) => matchesNetworkSearch(option, search))
+    function toggleMenu() {
+        if (!open) setSearch('')
+        setOpen((value) => !value)
+    }
     function handleKeyDown(event) {
-        if (event.key === 'Escape') setOpen(false)
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.key === 'Escape' && open) {
             event.preventDefault()
-            setOpen((value) => !value)
+            event.stopPropagation()
+            setOpen(false)
+            controlRef.current?.querySelector('button')?.focus()
+        }
+        if (event.target.getAttribute('role') === 'option' && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault()
+            const buttons = [...controlRef.current.querySelectorAll('[role="option"]:not(:disabled)')]
+            const index = buttons.indexOf(event.target)
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+                : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+            buttons[next]?.focus()
         }
     }
     return (
-        <div ref={controlRef} className="ps-network-control">
-            <button type="button" className="ps-network-trigger" aria-label="Token network" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)} onKeyDown={handleKeyDown}>
+        <div ref={controlRef} className="ps-network-control" onKeyDown={handleKeyDown}>
+            <button type="button" className="ps-network-trigger" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={toggleMenu}>
                 {selectedChain ? <ChainIcon chainId={selectedChain.id} name={selectedChain.name} /> : <AllChainsIcon />}
                 <span>{selectedChain?.name ?? 'All Chains'}</span><ChevronDownIcon />
             </button>
-            {open && <div className="ps-network-menu" role="listbox" aria-label="Token network">
-                {options.map((option) => <button key={option.id} type="button" role="option" aria-selected={String(option.id) === String(chainId)} aria-disabled={!option.active} disabled={!option.active} onClick={() => selectOption(option)}>
+            {open && <div className="ps-network-menu" data-network-menu>
+                <NetworkSearchBar value={search} onChange={setSearch} />
+                <div className="ps-network-options" role="listbox" aria-label={label}>
+                {visibleOptions.map((option) => <button key={option.id} type="button" role="option" aria-selected={String(option.id) === String(chainId)} aria-disabled={!option.active} disabled={!option.active} onClick={() => selectOption(option)}>
                     {option.id === 'all' ? <AllChainsIcon /> : <ChainIcon chainId={option.id} name={option.name} />}
                     <span>{option.name}</span>{!option.active && <small>Unavailable</small>}
                 </button>)}
+                </div>
+                {!visibleOptions.length && <p className="network-search-empty" role="status">No networks found</p>}
             </div>}
         </div>
     )

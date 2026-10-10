@@ -97,6 +97,22 @@ describe('PortfolioPage', () => {
         expect(document.querySelector('.uni-portfolio-token-table-head')).toBeTruthy()
     })
 
+    it('searches portfolio networks locally and restores the full list on reopening', () => {
+        render(<PortfolioPage wallet={wallet()} />)
+        const trigger = screen.getByRole('button', { name: /All networks/ })
+        fireEvent.click(trigger)
+        const search = screen.getByRole('textbox', { name: 'Search networks' })
+        fireEvent.change(search, { target: { value: 'base' } })
+        expect(screen.getAllByRole('option')).toHaveLength(1)
+        expect(screen.getByRole('option', { name: 'Base' })).toBeTruthy()
+        fireEvent.change(search, { target: { value: 'missing-network' } })
+        expect(screen.getByRole('status').textContent).toBe('No networks found')
+        fireEvent.keyDown(search, { key: 'Escape' })
+        fireEvent.click(trigger)
+        expect(screen.getByRole('textbox', { name: 'Search networks' }).value).toBe('')
+        expect(screen.getAllByRole('option').length).toBeGreaterThan(20)
+    })
+
     it('uses the same canonical All Chains icon in the trigger and menu and dismisses with Escape', () => {
         render(<PortfolioPage wallet={wallet()} />)
         const trigger = screen.getByRole('button', { name: /All networks/ })
