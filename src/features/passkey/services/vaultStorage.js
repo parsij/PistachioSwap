@@ -71,6 +71,13 @@ export async function saveAndReadBackVault(vault, indexedDb = globalThis.indexed
                 throw Object.assign(new Error('This wallet changed in another tab. Refresh before creating another wallet.'), { code: 'PISTACHIO_VAULT_CHANGED' })
             }
         }
+        if (!expectedVault) {
+            const existing = await requestResult(vaultStore.getAll())
+            const address = validated.address.toLowerCase()
+            if (existing.some(saved => saved.vaultId !== validated.vaultId && vaultAccounts(saved).some(account => account.address.toLowerCase() === address))) {
+                throw Object.assign(new Error('This wallet is already saved on this device. Select it from Wallets instead of importing it again.'), { code: 'PISTACHIO_VAULT_ALREADY_EXISTS' })
+            }
+        }
         vaultStore.put(validated)
         if (!expectedVault) transaction.objectStore(PISTACHIO_PREFERENCES_STORE).put({ key: 'activeVaultId', value: validated.vaultId })
         await transactionDone(transaction)
@@ -79,7 +86,7 @@ export async function saveAndReadBackVault(vault, indexedDb = globalThis.indexed
         await transactionDone(readTransaction)
         return validatePistachioVault(stored)
     } catch (error) {
-        if (error.code === 'PISTACHIO_VAULT_CHANGED') throw error
+        if (['PISTACHIO_VAULT_CHANGED', 'PISTACHIO_VAULT_ALREADY_EXISTS'].includes(error.code)) throw error
         throw pistachioError('PISTACHIO_WALLET_STORAGE_FAILED', undefined, error)
     } finally {
         database.close()

@@ -316,22 +316,52 @@ export const methods = {
         if (!backupAcknowledged || confirmation !== 'DELETE') {
             throw managerError('PISTACHIO_VAULT_DELETE_CONFIRMATION_REQUIRED', 'Confirm a recovery backup and type DELETE to remove this local wallet.')
         }
-        if (this.vault?.vaultId === vaultId) {
-            await this.clearActiveSession()
-            await this.lock('vault-deleted')
+        if (this.accountChangePending) throw managerError('PISTACHIO_ACCOUNT_CHANGE_ACTIVE', 'Finish the current wallet change first.')
+        this.accountChangePending = true
+        const wasActive = this.vault?.vaultId === vaultId
+        try {
+            if (wasActive) {
+                this.interactionGeneration += 1
+                await this.clearActiveSession()
+                await this.lock('vault-deleted')
+            }
+            await this.storage.deleteVault(vaultId)
+            this.broadcastChannel?.postMessage({ type: 'vault-deleted', vaultId, tabId: this.tabId })
+            delete this.vaultPreferences[vaultId]
+            delete this.selectedAccountIndices[vaultId]
+            await this.storage.writePreference('vaultPreferences', this.vaultPreferences)
+            await this.storage.writePreference('selectedAccountIndices', this.selectedAccountIndices)
+            await this.refreshVaults()
+            if (wasActive) {
+                const nextVault = this.vaults[0] ?? null
+                this.vault = nextVault ? await this.storage.selectActiveVault(nextVault.vaultId) : null
+                this.address = null
+                this.phase = this.vault ? 'locked' : 'empty'
+                this.error = null
+                this.rejectConnection(connectionError('PISTACHIO_CONNECTION_CANCELLED', 'The selected local wallet was removed.'))
+            }
+            this.notify()
+        } finally {
+            this.accountChangePending = false
         }
-        await this.storage.deleteVault(vaultId)
-        delete this.vaultPreferences[vaultId]
-        await this.storage.writePreference('vaultPreferences', this.vaultPreferences)
-        await this.refreshVaults()
-        const nextVault = this.vaults[0] ?? null
-        this.vault = nextVault ? await this.storage.selectActiveVault(nextVault.vaultId) : null
-        this.address = null
-        this.phase = this.vault ? 'locked' : 'empty'
-        this.error = null
-        this.rejectConnection(connectionError('PISTACHIO_CONNECTION_CANCELLED', 'The selected local wallet was removed.'))
-        this.notify()
         return true
+    },
+    async handleDeletedVault(vaultId) {
+        const wasActive = this.vault?.vaultId === vaultId
+        if (wasActive) {
+            this.interactionGeneration += 1
+            await this.lock('vault-deleted', { broadcast: false })
+        }
+        await this.refreshVaults()
+        if (wasActive && this.vault?.vaultId === vaultId) {
+            this.vault = await this.storage.readActiveVault()
+            this.address = null
+            this.sessionActive = false
+            this.activeSessionVaultId = null
+            this.phase = this.vault ? 'locked' : 'empty'
+            this.rejectConnection(connectionError('PISTACHIO_CONNECTION_CANCELLED', 'The selected local wallet was removed in another tab.'))
+        }
+        this.notify()
     },
     requireUnlocked() {
         if (this.phase !== 'unlocked' || !this.address || !this.client) throw managerError('PISTACHIO_WALLET_LOCKED', 'Unlock Pistachio Wallet first.')

@@ -105,6 +105,24 @@ describe('Pistachio IndexedDB vault storage', () => {
         expect(await selectActiveVault(second.vaultId, indexedDb)).toEqual(second)
     })
 
+    it('rejects a reimport with a new ID without overwriting the saved wallet or active selection', async () => {
+        const first = await fixture()
+        const duplicate = await fixture({ vaultId: '20000000-0000-4000-8000-000000000002', address: first.address.toLowerCase() })
+        await saveAndReadBackVault(first, indexedDb)
+        await expect(saveAndReadBackVault(duplicate, indexedDb)).rejects.toMatchObject({ code: 'PISTACHIO_VAULT_ALREADY_EXISTS' })
+        expect(await listVaults(indexedDb)).toEqual([first])
+        expect(await readActiveVault(indexedDb)).toEqual(first)
+        expect(await saveAndReadBackVault(first, indexedDb)).toEqual(first)
+    })
+    it('serializes concurrent duplicate imports, retaining exactly one encrypted copy', async () => {
+        const first = await fixture()
+        const duplicate = await fixture({ vaultId: '20000000-0000-4000-8000-000000000002' })
+        const results = await Promise.allSettled([saveAndReadBackVault(first, indexedDb), saveAndReadBackVault(duplicate, indexedDb)])
+        expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+        expect(results.find(result => result.status === 'rejected').reason.code).toBe('PISTACHIO_VAULT_ALREADY_EXISTS')
+        expect(await listVaults(indexedDb)).toHaveLength(1)
+    })
+
     it('rejects stale account writes without overwriting a newer vault', async () => {
         const first = await fixture()
         await saveAndReadBackVault(first, indexedDb)

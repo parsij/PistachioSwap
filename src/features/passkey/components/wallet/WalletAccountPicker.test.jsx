@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, cleanup, act } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WalletAccountPicker from './WalletAccountPicker.jsx'
 vi.mock('../../services/walletManager.js', () => ({ getPistachioWalletManager: vi.fn() }))
@@ -10,13 +10,60 @@ const second = '0x0000000000000000000000000000000000000002'
 function harness(sourceType = 'imported-mnemonic') {
     let snapshot = { selectedVaultId: 'seed', selectedAccountIndex: 0, vaults: [{ vaultId: 'seed', name: 'Pistachio Wallet', sourceType, address: root, accounts: [{ index: 0, address: root }, { index: 1, address: second }] }] }
     let publish
-    const manager = { snapshot: () => snapshot, subscribe: (listener) => { publish = listener; listener(snapshot); return () => {} }, initialize: vi.fn(async () => {}), selectAccount: vi.fn(async (_vaultId, index) => { snapshot = { ...snapshot, selectedAccountIndex: index }; publish(snapshot) }), createAccount: vi.fn(async () => {}), prepareNewWallet: vi.fn(async () => {}), open: vi.fn() }
+    const manager = { snapshot: () => snapshot, subscribe: (listener) => { publish = listener; listener(snapshot); return () => {} }, initialize: vi.fn(async () => {}), selectAccount: vi.fn(async (_vaultId, index) => { snapshot = { ...snapshot, selectedAccountIndex: index }; publish(snapshot) }), createAccount: vi.fn(async () => {}), prepareNewWallet: vi.fn(async () => {}), open: vi.fn(), deleteLocalVault: vi.fn(async () => {}) }
     render(<WalletAccountPicker manager={manager} />)
     fireEvent.click(screen.getByRole('button', { name: 'Switch wallet' }))
     return manager
 }
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.useRealTimers() })
 describe('wallet account picker', () => {
+    it('requires a full ten seconds, a backup acknowledgement and exact DELETE before removing the selected group', async () => {
+        vi.useFakeTimers()
+        const manager = harness()
+        fireEvent.click(screen.getByRole('button', { name: /Remove Pistachio Wallet/ }))
+        expect(screen.getByRole('alertdialog')).toBeTruthy()
+        expect(screen.getByText(/All 2 wallets/)).toBeTruthy()
+        expect(screen.getByText(/passkey alone cannot restore/)).toBeTruthy()
+        fireEvent.click(screen.getByRole('checkbox'))
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'DELETE' } })
+        await act(async () => { vi.advanceTimersByTime(9999) })
+        expect(screen.getByRole('button', { name: /Remove wallet/ }).disabled).toBe(true)
+        expect(manager.deleteLocalVault).not.toHaveBeenCalled()
+        await act(async () => { vi.advanceTimersByTime(1) })
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'delete' } })
+        expect(screen.getByRole('button', { name: 'Remove wallet' }).disabled).toBe(true)
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'DELETE' } })
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Remove wallet' })) })
+        expect(manager.deleteLocalVault).toHaveBeenCalledWith('seed', { backupAcknowledged: true, confirmation: 'DELETE' })
+        expect(screen.getByRole('dialog')).toBeTruthy()
+    })
+    it('cancels without deletion and restarts the countdown and acknowledgements on reopening', async () => {
+        vi.useFakeTimers()
+        const manager = harness()
+        fireEvent.click(screen.getByRole('button', { name: /Remove Pistachio Wallet/ }))
+        await act(async () => { vi.advanceTimersByTime(10000) })
+        expect(screen.getByRole('button', { name: 'Remove wallet' }).disabled).toBe(true)
+        fireEvent.click(screen.getByRole('checkbox'))
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'DELETE' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+        expect(manager.deleteLocalVault).not.toHaveBeenCalled()
+        fireEvent.click(screen.getByRole('button', { name: /Remove Pistachio Wallet/ }))
+        expect(screen.getByRole('button', { name: 'Remove wallet (10s)' }).disabled).toBe(true)
+        expect(screen.getByRole('checkbox').checked).toBe(false)
+        expect(screen.getByRole('textbox').value).toBe('')
+    })
+    it('keeps the warning visible if storage deletion fails', async () => {
+        vi.useFakeTimers()
+        const manager = harness()
+        manager.deleteLocalVault.mockRejectedValueOnce(new Error('Storage unavailable.'))
+        fireEvent.click(screen.getByRole('button', { name: /Remove Pistachio Wallet/ }))
+        fireEvent.click(screen.getByRole('checkbox'))
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'DELETE' } })
+        await act(async () => { vi.advanceTimersByTime(10000) })
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Remove wallet' })) })
+        expect(screen.getByRole('alert').textContent).toContain('Storage unavailable')
+        expect(screen.getByRole('alertdialog')).toBeTruthy()
+    })
     it('lists wallet names/addresses, highlights the active account and switches by vault and index', async () => {
         const manager = harness()
         const selected = screen.getByRole('button', { name: /Wallet 1.*Selected wallet/ })

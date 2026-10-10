@@ -396,6 +396,66 @@ describe('Pistachio Wallet manager connection and vault lifecycle', () => {
         expect(manager.vault).toEqual(secondVault)
     })
 
+    it('removing an inactive saved wallet preserves the active signer, session and selection', async () => {
+        const { manager, storage } = createHarness([firstVault, secondVault], secondVault)
+        await manager.initialize()
+        manager.phase = 'unlocked'
+        manager.address = secondVault.address
+        manager.sessionActive = true
+        const client = { lock: vi.fn() }
+        manager.client = client
+        await manager.deleteLocalVault(firstVault.vaultId, { backupAcknowledged: true, confirmation: 'DELETE' })
+        expect(manager.vault).toEqual(secondVault)
+        expect(manager.address).toBe(secondVault.address)
+        expect(manager.phase).toBe('unlocked')
+        expect(manager.sessionActive).toBe(true)
+        expect(manager.client).toBe(client)
+        expect(client.lock).not.toHaveBeenCalled()
+        expect(storage.selectActiveVault).not.toHaveBeenCalled()
+    })
+    it('invalidates the signer and disconnects after another tab deletes its vault', async () => {
+        const { manager, storage } = createHarness()
+        await manager.initialize()
+        manager.phase = 'unlocked'
+        manager.address = firstVault.address
+        manager.sessionActive = true
+        const lock = vi.fn(async () => {})
+        manager.client = { lock }
+        await storage.deleteVault(firstVault.vaultId)
+        await manager.handleDeletedVault(firstVault.vaultId)
+        expect(lock).toHaveBeenCalledOnce()
+        expect(manager.vault).toBeNull()
+        expect(manager.client).toBeNull()
+        expect(manager.address).toBeNull()
+        expect(manager.sessionActive).toBe(false)
+        expect(manager.phase).toBe('empty')
+    })
+    it('rejects removal while an account change is in progress', async () => {
+        const { manager, storage } = createHarness()
+        await manager.initialize()
+        manager.accountChangePending = true
+        await expect(manager.deleteLocalVault(firstVault.vaultId, { backupAcknowledged: true, confirmation: 'DELETE' })).rejects.toMatchObject({ code: 'PISTACHIO_ACCOUNT_CHANGE_ACTIVE' })
+        expect(storage.deleteVault).not.toHaveBeenCalled()
+    })
+    it('locks and disconnects when the last saved wallet is removed' , async () => {
+        const { manager } = createHarness()
+        await manager.initialize()
+        manager.phase = 'unlocked'
+        manager.address = firstVault.address
+        manager.sessionActive = true
+        const lock = vi.fn(async () => {})
+        manager.client = { lock }
+        manager.selectedAccountIndices[firstVault.vaultId] = 0
+        await manager.deleteLocalVault(firstVault.vaultId, { backupAcknowledged: true, confirmation: 'DELETE' })
+        expect(lock).toHaveBeenCalledOnce()
+        expect(manager.vault).toBeNull()
+        expect(manager.address).toBeNull()
+        expect(manager.client).toBeNull()
+        expect(manager.sessionActive).toBe(false)
+        expect(manager.phase).toBe('empty')
+        expect(manager.selectedAccountIndices[firstVault.vaultId]).toBeUndefined()
+    })
+
     it('switches only to curated chains and invalidates an active review', async () => {
         const { manager } = createHarness()
         await manager.initialize()

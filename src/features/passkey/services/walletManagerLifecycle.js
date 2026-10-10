@@ -153,6 +153,9 @@ export const methods = {
             this.broadcastChannel = new this.window.BroadcastChannel('pistachio-wallet-lock')
             this.broadcastChannel.addEventListener('message', (event) => {
                 const message = event.data
+                if (message?.type === 'vault-deleted' && message.tabId !== this.tabId) {
+                    void this.handleDeletedVault(message.vaultId).catch(error => { this.error = error; this.notify() })
+                }
                 if (message?.type === 'unlocked' && message.vaultId === this.vault?.vaultId && message.tabId !== this.tabId) {
                     this.lock('another-tab-unlocked', { broadcast: false })
                 }

@@ -21,3 +21,14 @@
 .pistachio-account-picker button:disabled { cursor: default; opacity: .5; }
 .pistachio-account-picker button:focus-visible, .pistachio-account-picker-trigger:focus-visible { outline: 2px solid var(--accent-color, #76be82); outline-offset: 2px; }
 .pistachio-account-picker-error { margin: 0; color: #f39797; font-size: 13px; }
+
+.pistachio-account-picker-group > p { align-items: center; }
+.pistachio-wallet-trash { display: grid; place-items: center; min-width: 40px; min-height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary, #a4a7b0); cursor: pointer; }
+.pistachio-wallet-trash:hover { color: #f39797; background: #f3979714; }
+.pistachio-wallet-removal { display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 19px; }
+.pistachio-wallet-removal small { overflow-wrap: anywhere; color: var(--text-secondary, #a4a7b0); }
+.pistachio-wallet-removal p { color: #f39797; margin: 0; }
+.pistachio-wallet-removal label { display: flex; align-items: flex-start; gap: 8px; }
+.pistachio-wallet-removal label:last-child { flex-direction: column; }
+.pistachio-wallet-removal input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 12px; border: 1px solid #555; background: #24272e; color: inherit; font: inherit; }
+.pistachio-account-picker-actions .pistachio-wallet-delete-confirm { background: #b33242; color: #fff; }
