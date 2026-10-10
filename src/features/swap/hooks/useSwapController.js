@@ -1,4 +1,4 @@
-import { readLastSwapInput } from '../services/lastSwapInput.js'
+import { preferredSwapInput } from '../services/swapChainUsage.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
 import {
@@ -66,7 +66,8 @@ import {
 export function useSwapController() {
     const config = swapUiConfig
     const { chain, crossChain: crossChainConfig, quote: quoteConfig, tokens: defaultTokensConfig, wallet: walletConfig, tabs } = config
-    const [tokensConfig] = useState(() => ({ ...defaultTokensConfig, initialSellToken: readLastSwapInput() ?? defaultTokensConfig.initialSellToken }))
+    const connectedWallet = useWalletState(1)
+    const [tokensConfig] = useState(() => ({ ...defaultTokensConfig, initialSellToken: preferredSwapInput(connectedWallet.address) }))
     const layoutStyle = useMemo(() => createCssVariables(), [])
     const reducedMotion = useReducedMotion()
     const [swapChainId, setSwapChainId] = useState(Number(tokensConfig.initialSellToken?.chainId ?? chain.id))
@@ -78,7 +79,7 @@ export function useSwapController() {
     const wagmiConfig = useConfig()
     const publicClient = usePublicClient({ chainId: swapChainId })
     const { mutateAsync: sendTransaction } = useSendTransaction()
-    const walletState = useWalletState(swapChainId)
+    const walletState = { ...connectedWallet, isCorrectNetwork: connectedWallet.chainId === swapChainId }
     const compliance = useComplianceAccess({
         endpoint: quoteConfig.endpoint,
         walletAddress: walletState.address,
@@ -96,6 +97,15 @@ export function useSwapController() {
         setVisibleStatus: setStatusMessage,
         diagnostic: logSwapDiagnostic,
     })
+    const activeWalletRef = useRef(connectedWallet.address?.toLowerCase() ?? null)
+    const { resetForWallet } = inputs
+    useEffect(() => {
+        const address = walletState.address?.toLowerCase() ?? null
+        if (address === activeWalletRef.current) return
+        activeWalletRef.current = address
+        resetForWallet(preferredSwapInput(address))
+    }, [walletState.address, resetForWallet])
+
     const routing = useSwapRouting({
         quoteEndpoint: quoteConfig.endpoint,
         walletState: { ...walletState, expectedChainId: swapChainId },

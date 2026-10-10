@@ -340,11 +340,18 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     const selectorMarketTokens = useMemo(() => {
         const selected = catalogTokens.map((token) =>
             availableById.get(getTokenIdentity(token, discoveryChainId)) ?? token)
-        const initialNativeToken = tokensConfig.initialSellToken?.isNative === true
+        const nativeChainId = discoveryChainId === 'all' ? swapChainId : Number(discoveryChainId)
+        const nativeChain = getCuratedEvmChain(nativeChainId)
+        const initialNativeToken = nativeChain
             ? normalizeMarketToken({
-                ...tokensConfig.initialSellToken,
-                source: tokensConfig.initialSellToken.source ?? 'catalog-supplement',
-            }, swapChainId, getCuratedEvmChainLogoUri(swapChainId))
+                chainId: nativeChain.id,
+                address: zeroAddress,
+                isNative: true,
+                name: nativeChain.nativeCurrency.name,
+                symbol: nativeChain.nativeCurrency.symbol,
+                decimals: nativeChain.nativeCurrency.decimals,
+                source: 'catalog-supplement',
+            }, nativeChain.id, getCuratedEvmChainLogoUri(nativeChain.id))
             : null
         if (
             initialNativeToken &&
@@ -354,7 +361,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
             selected.unshift(initialNativeToken)
         }
         return selected
-    }, [availableById, catalogTokens, discoveryChainId, swapChainId, tokensConfig.initialSellToken])
+    }, [availableById, catalogTokens, discoveryChainId, swapChainId])
     const selectorWalletTokens = useMemo(() => {
         const selected = walletTokens.map((token) =>
             availableById.get(getTokenIdentity(token, discoveryChainId)) ?? token)

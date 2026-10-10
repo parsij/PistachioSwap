@@ -1,3 +1,4 @@
+import { recordSuccessfulSwap, SWAP_CHAIN_USAGE_PREFIX } from './features/swap/services/swapChainUsage.js'
 // @vitest-environment jsdom
 
 import React from 'react'
@@ -376,6 +377,8 @@ describe('App wallet integration', () => {
         mocks.sendPreparedCrossChainTransaction.mockResolvedValue(`0x${'12'.repeat(32)}`)
         mocks.waitForCrossChainApproval.mockResolvedValue({ status: 'success' })
         window.localStorage.clear()
+        // Existing BNB execution fixtures belong to a wallet with BNB swap usage.
+        window.localStorage.setItem(SWAP_CHAIN_USAGE_PREFIX + ADDRESS, JSON.stringify({ counts: { 56: 1 }, seen: [] }))
         window.history.replaceState(null, '', '/swap/')
         mocks.marketTokens = []
         mocks.useWalletTokens.mockReturnValue({
@@ -389,18 +392,32 @@ describe('App wallet integration', () => {
         cleanup()
     })
 
-    it('restores the last input token and chain without restoring amounts or cached balances', () => {
+    it('defaults a new wallet to Ethereum and ignores the previous last-token preference', () => {
+        window.localStorage.removeItem(SWAP_CHAIN_USAGE_PREFIX + ADDRESS)
         window.localStorage.setItem('pistachio:last-swap-input:v1', JSON.stringify({
-            chainId: 8453, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', symbol: 'USDC', name: 'USD Coin', decimals: 6,
-            balance: '1000', priceUSD: '500', sellAmount: '5',
+            chainId: 8453, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', symbol: 'USDC', decimals: 6,
         }))
+        mocks.account.address = ADDRESS
+        mocks.account.isConnected = true
         const { container } = render(<App />)
-        expect(container.querySelector('.sell-token-position button').textContent).toContain('USDC')
+        expect(container.querySelector('.sell-token-position button').textContent).toContain('ETH')
         expect(container.querySelector('.sell-panel input').value).toBe('')
-        const persisted = JSON.parse(window.localStorage.getItem('pistachio:last-swap-input:v1'))
-        expect(persisted.chainId).toBe(8453)
-        expect(persisted.balance).toBeUndefined()
-        expect(persisted.priceUSD).toBeUndefined()
+    })
+
+    it('restores the most used wallet chain and resets it when switching wallets', () => {
+        window.localStorage.removeItem(SWAP_CHAIN_USAGE_PREFIX + ADDRESS)
+        recordSuccessfulSwap({ walletAddress: ADDRESS, chainId: 56, hash: '0x' + '01'.repeat(32) })
+        recordSuccessfulSwap({ walletAddress: ADDRESS, chainId: 8453, hash: '0x' + '02'.repeat(32) })
+        recordSuccessfulSwap({ walletAddress: ADDRESS, chainId: 8453, hash: '0x' + '03'.repeat(32) })
+        mocks.account.address = ADDRESS
+        mocks.account.isConnected = true
+        const { container, rerender } = render(<App />)
+        expect(container.querySelector('.sell-token-position button').textContent).toContain('ETH')
+        expect(container.querySelector('.sell-token-position img[src*="base"]')).toBeTruthy()
+        mocks.account.address = '0x2222222222222222222222222222222222222222'
+        rerender(<App />)
+        expect(container.querySelector('.sell-token-position img[src*="ethereum"]')).toBeTruthy()
+        expect(container.querySelector('.sell-panel input').value).toBe('')
     })
 
     it('opens the Sell token selector on touch without quick-amount hover rerender stealing the tap', () => {

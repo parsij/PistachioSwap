@@ -1,5 +1,4 @@
-import { rememberSwapInput } from '../services/lastSwapInput.js'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatUnits } from 'viem'
 import { resolveSelectedToken } from '../../tokens/services/walletTokens.js'
 import { getDisplayTokenPrice } from '../../tokens/services/tokenPrices.js'
@@ -23,7 +22,7 @@ export const USD_DENOMINATION = 'USD'
  *
  * @param {object} config Input configuration and token catalog.
  * @returns {object} Input state, normalized raw intent, display values, and semantic mutation operations.
- * @sideEffects Updates React state and existing input diagnostics; remembers public token selection; performs no HTTP, RPC, or wallet calls.
+ * @sideEffects Updates React state and existing input diagnostics; resets selection when the active wallet changes; performs no HTTP, RPC, or wallet calls.
  * @security Raw-unit conversion is exact and rejects precision beyond token decimals.
  */
 export function useSwapInputs({
@@ -45,7 +44,6 @@ export function useSwapInputs({
 
     const [activeTab, setActiveTab] = useState(tabs[0])
     const [selectedSellToken, setSelectedSellToken] = useState(initialSellToken)
-    useEffect(() => { if (selectedSellToken) rememberSwapInput(selectedSellToken) }, [selectedSellToken])
     const [selectedBuyToken, setSelectedBuyToken] = useState(initialBuyToken)
     const [sellAmount, setSellAmount] = useState('')
     const [buyAmount, setBuyAmount] = useState('0')
@@ -54,6 +52,17 @@ export function useSwapInputs({
     const [activeAmountSide, setActiveAmountSide] = useState('sell')
     const [showQuickAmounts, setShowQuickAmounts] = useState(false)
     const [switchRotation, setSwitchRotation] = useState(0)
+
+    const resetForWallet = useCallback((token) => {
+        setSelectedSellToken(token)
+        setSelectedBuyToken(null)
+        setSellAmount('')
+        setBuyAmount('0')
+        setSellInputDenomination(TOKEN_DENOMINATION)
+        setBuyInputDenomination(TOKEN_DENOMINATION)
+        setActiveAmountSide('sell')
+        setSwapChainId(Number(token.chainId))
+    }, [setSwapChainId])
 
     const sellToken = useMemo(
         () => resolveSelectedToken(selectedSellToken, availableTokens),
@@ -286,5 +295,6 @@ export function useSwapInputs({
         toggleDenomination,
         selectToken,
         resetInputsAfterSuccess,
+        resetForWallet,
     }
 }
