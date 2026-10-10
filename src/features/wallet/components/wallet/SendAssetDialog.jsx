@@ -58,6 +58,7 @@ import { recordWalletActivity } from '../../services/walletActivity.js'
 import { requestWalletBalanceRefresh } from '../../services/walletBalanceRefresh.js'
 import {
     beginOptimisticWalletTransaction,
+    confirmOptimisticWalletTransaction,
     finishOptimisticWalletTransaction,
     rollbackOptimisticWalletTransaction,
 } from '../../services/optimisticBalances.js'
@@ -368,6 +369,8 @@ function SendAssetDialogSession({
                 rollbackOptimisticWalletTransaction(transactionHash)
                 throw new Error('Transaction failed on-chain.')
             }
+            confirmOptimisticWalletTransaction(transactionHash)
+            requestWalletBalanceRefresh(review.account)
             setStatus('sent')
             recordWalletActivity({
                 walletAddress: review.account,

@@ -32,6 +32,7 @@ import {
 } from '../../../tokens/services/portfolio.js'
 import { getTokenDisplaySymbol } from '../../../tokens/services/tokenDisplay.js'
 import { useWalletActivity } from '../../hooks/useWalletActivity.js'
+import { requestWalletBalanceRefresh } from '../../services/walletBalanceRefresh.js'
 import { filterVisibleActivity } from '../../services/visibleWalletActivity.js'
 import {
     getCuratedEvmChain,
@@ -50,7 +51,7 @@ function portfolioValue(tokens) {
         .filter((value) => Number.isFinite(value) && value >= 0)
 
     const total = values.reduce((sum, value) => sum + value, 0)
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
         minimumFractionDigits: 2,
@@ -107,7 +108,9 @@ function compactAmount(value) {
     }).format(numeric)
 }
 
-function activityTitle(type) {
+function activityTitle(type, status) {
+    if (status === 'pending') return { sent: 'Sending…', swapped: 'Swapping…', approved: 'Approving…' }[type] ?? 'Pending'
+    if (status === 'failed') return { sent: 'Send failed', swapped: 'Swap failed' }[type] ?? 'Transaction failed'
     return {
         swapped: 'Swapped',
         approved: 'Approved',
@@ -279,7 +282,7 @@ function ActivityRow({
                 />
             </span>
             <span className="uni-activity-copy">
-                <strong>{activityTitle(activity.type)}</strong>
+                <strong>{activityTitle(activity.type, activity.status)}</strong>
                 <span>{activitySummary(displayActivity)}</span>
             </span>
             <time dateTime={activity.timestamp}>
@@ -343,12 +346,19 @@ export default function WalletAccountDialog({
         limit: 50,
     })
 
-    const enrichedNativeToken = nativeToken ? {
-        ...nativeToken,
-        balance: nativeBalance.formatted ?? '0',
-        rawBalance: nativeBalance.value?.toString() ?? '0',
-        valueUSD: nativeToken.valueUSD ?? null,
-    } : null
+    const currentNativeToken = nativeToken
+        ? walletTokens.find((token) => tokenIdentity(token) === tokenIdentity(nativeToken)) ?? nativeToken
+        : null
+    const hasLiveNativeBalance = nativeBalance.value != null && nativeBalance.formatted != null
+    const nativeBalanceChanged = hasLiveNativeBalance &&
+        nativeBalance.value.toString() !== currentNativeToken?.rawBalance
+    const enrichedNativeToken = currentNativeToken && hasLiveNativeBalance ? {
+        ...currentNativeToken,
+        balance: nativeBalance.formatted,
+        rawBalance: nativeBalance.value.toString(),
+        // A cached dollar total belongs to its original balance, not the fresh one.
+        valueUSD: nativeBalanceChanged ? null : currentNativeToken.valueUSD,
+    } : currentNativeToken
 
     const assets = useMemo(() => {
         const merged = walletTokens.map((token) =>
@@ -390,6 +400,10 @@ export default function WalletAccountDialog({
         [activity, assets],
     )
     const recentActivity = visibleActivity.slice(0, 3)
+
+    useEffect(() => {
+        if (open && address) requestWalletBalanceRefresh(address)
+    }, [open, address])
 
     useEffect(() => {
         if (!open) {

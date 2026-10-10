@@ -168,7 +168,40 @@ describe('WalletAccountDialog trust filtering', () => {
     afterEach(() => {
         cleanup()
         mocks.activity = []
+        vi.restoreAllMocks()
         vi.clearAllMocks()
+    })
+
+    it('formats USD with the dollar sign first regardless of the device locale', () => {
+        const NumberFormat = Intl.NumberFormat
+        vi.spyOn(Intl, 'NumberFormat').mockImplementation(function (locale, options) {
+            return new NumberFormat(locale ?? 'ru-RU', options)
+        })
+        renderDialog()
+        expect(screen.getByText('$3,010.00')).toBeTruthy()
+    })
+
+    it('recomputes native USD value from the fresh balance instead of retaining the previous total', () => {
+        renderDialog({ nativeBalance: { value: 500000000000000000n, formatted: '0.5' } })
+        expect(screen.getByText('$2,710.00')).toBeTruthy()
+        expect(screen.queryByText('$3,010.00')).toBeNull()
+    })
+
+    it('preserves the wallet token balance when the separate native balance is unavailable', () => {
+        renderDialog({ nativeBalance: {} })
+        expect(screen.getByText('$3,010.00')).toBeTruthy()
+    })
+
+    it('distinguishes a pending send from a confirmed or failed send', () => {
+        mocks.activity = [
+            { ...activity('sent', usdt, '201'), status: 'pending' },
+            { ...activity('sent', usdt, '202'), status: 'confirmed' },
+            { ...activity('sent', usdt, '203'), status: 'failed' },
+        ]
+        renderDialog()
+        expect(screen.getByText('Sending…')).toBeTruthy()
+        expect(screen.getByText('Sent')).toBeTruthy()
+        expect(screen.getByText('Send failed')).toBeTruthy()
     })
 
     it('supplies positioning and typography variables to the portaled account dialog', () => {

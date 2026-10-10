@@ -154,7 +154,9 @@ function formatSignedUsd(value) {
     return prefix + formatUsd(Math.abs(numeric))
 }
 
-function activityLabel(type) {
+function activityLabel(type, status) {
+    if (status === 'pending') return { sent: 'Sending…', swapped: 'Swapping…', approved: 'Approving…' }[type] ?? 'Pending'
+    if (status === 'failed') return { sent: 'Send failed', swapped: 'Swap failed' }[type] ?? 'Transaction failed'
     return {
         swapped: 'Swapped',
         approved: 'Approved',
@@ -811,7 +813,7 @@ function ActivityRow({ item, assets }) {
                 )}
             </span>
             <span className="uni-portfolio-activity-copy">
-                <strong>{activityLabel(item.type)}</strong>
+                <strong>{activityLabel(item.type, item.status)}</strong>
                 <small>{activitySummary(item)}</small>
             </span>
             <span className="uni-portfolio-activity-network">{chain?.name ?? 'Chain ' + item.chainId}</span>
@@ -1046,7 +1048,7 @@ export default function PortfolioPage({ wallet }) {
             if (activityType !== 'all' && item.type !== activityType) return false
             if (!query) return true
             return [
-                activityLabel(item.type),
+                activityLabel(item.type, item.status),
                 activitySummary(item),
                 item.hash,
                 getCuratedEvmChain(item.chainId)?.name,

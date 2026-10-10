@@ -367,7 +367,7 @@ describe('SendAssetDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Review send' }))
         await screen.findByRole('heading', { name: 'Review send' })
         fireEvent.click(screen.getByRole('button', { name: 'Confirm in wallet' }))
-        await screen.findByText('Waiting for confirmation')
+        await screen.findAllByText('Sending…')
         view.setOpen(false)
         view.setOpen(true)
         fireEvent.change(screen.getByLabelText('Amount to send'), { target: { value: '0.2' } })

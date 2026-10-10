@@ -37,7 +37,7 @@ export default function TransactionStatusDialog({
             <strong>{
                 status === 'confirming' ? 'Confirm in wallet' :
                 status === 'sending' ? 'Sending…' :
-                status === 'submitted' ? 'Waiting for confirmation' :
+                status === 'submitted' ? 'Sending…' :
                 status === 'sent' ? 'Sent' :
                 status === 'rejected' ? 'Rejected' : 'Failed'
             }</strong>

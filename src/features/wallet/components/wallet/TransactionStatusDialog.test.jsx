@@ -63,7 +63,7 @@ describe('TransactionStatusDialog', () => {
         )
         const status = screen.getByRole('status')
         const tokenLogo = container.querySelector('.ps-token-main-logo')
-        expect(screen.getByText('Waiting for confirmation')).toBeTruthy()
+        expect(screen.getByText('Sending…')).toBeTruthy()
         expect(tokenLogo?.getAttribute('src')).toBe('/assets/bnb-logo-Ujb8xjX_.png')
         expect(status.style.position).toBe('relative')
         expect(status.style.overflow).toBe('hidden')
