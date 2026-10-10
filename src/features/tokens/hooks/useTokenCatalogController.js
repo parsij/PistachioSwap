@@ -231,6 +231,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
     })
     const {
         tokens: walletTokenResponse,
+        loading: walletTokenLoading,
         error: walletTokenError,
         failedChainIds: walletTokenFailedChainIds = [],
         stale: walletTokenStale,
@@ -442,6 +443,7 @@ export function useTokenCatalogController({ swapChainId, walletState, tokensConf
         backendWalletTokens: normalizedWalletTokens,
         availableTokens,
         walletTokenError,
+        walletTokenLoading,
         walletTokenFailedChainIds,
         walletTokenStale,
         refetchWalletTokens,

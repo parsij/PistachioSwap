@@ -1,4 +1,3 @@
-import { recordSuccessfulSwap, SWAP_CHAIN_USAGE_PREFIX } from './features/swap/services/swapChainUsage.js'
 // @vitest-environment jsdom
 
 import React from 'react'
@@ -199,6 +198,7 @@ function configureSameChainQuoteToken(overrides = {}) {
     mocks.account.address = ADDRESS
     mocks.account.isConnected = true
     mocks.network.chainId = 56
+    mocks.useWalletTokens.mockReturnValue({ tokens: [{ chainId: 56, address: BNB_ADDRESS, isNative: true, name: 'BNB', symbol: 'BNB', decimals: 18, balance: '1', rawBalance: '1000000000000000000', valueUSD: '600', trustedPriceUSD: '600', visibility: 'primary', recognitionStatus: 'established', recognitionReasons: ['native-token'], priceConfidence: 'trusted', includeInPortfolioValue: true }], loading: false, error: null, refetch: mocks.refetchWalletTokens })
     mocks.marketTokens = [{
         chainId: 56,
         address: QTKN_ADDRESS,
@@ -377,8 +377,6 @@ describe('App wallet integration', () => {
         mocks.sendPreparedCrossChainTransaction.mockResolvedValue(`0x${'12'.repeat(32)}`)
         mocks.waitForCrossChainApproval.mockResolvedValue({ status: 'success' })
         window.localStorage.clear()
-        // Existing BNB execution fixtures belong to a wallet with BNB swap usage.
-        window.localStorage.setItem(SWAP_CHAIN_USAGE_PREFIX + ADDRESS, JSON.stringify({ counts: { 56: 1 }, seen: [] }))
         window.history.replaceState(null, '', '/swap/')
         mocks.marketTokens = []
         mocks.useWalletTokens.mockReturnValue({
@@ -393,7 +391,6 @@ describe('App wallet integration', () => {
     })
 
     it('defaults a new wallet to Ethereum and ignores the previous last-token preference', () => {
-        window.localStorage.removeItem(SWAP_CHAIN_USAGE_PREFIX + ADDRESS)
         window.localStorage.setItem('pistachio:last-swap-input:v1', JSON.stringify({
             chainId: 8453, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', symbol: 'USDC', decimals: 6,
         }))
@@ -404,17 +401,21 @@ describe('App wallet integration', () => {
         expect(container.querySelector('.sell-panel input').value).toBe('')
     })
 
-    it('restores the most used wallet chain and resets it when switching wallets', () => {
-        window.localStorage.removeItem(SWAP_CHAIN_USAGE_PREFIX + ADDRESS)
-        recordSuccessfulSwap({ walletAddress: ADDRESS, chainId: 56, hash: '0x' + '01'.repeat(32) })
-        recordSuccessfulSwap({ walletAddress: ADDRESS, chainId: 8453, hash: '0x' + '02'.repeat(32) })
-        recordSuccessfulSwap({ walletAddress: ADDRESS, chainId: 8453, hash: '0x' + '03'.repeat(32) })
+    it('defaults to the highest value wallet chain and resets it when switching wallets', () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
+        mocks.useWalletTokens.mockReturnValue({
+            tokens: [{ chainId: 8453, address: BNB_ADDRESS, isNative: true, symbol: 'ETH', name: 'Ether', decimals: 18,
+                balance: '0.1', rawBalance: '100000000000000000', valueUSD: '300', trustedPriceUSD: '3000',
+                visibility: 'primary', recognitionStatus: 'established', recognitionReasons: ['native-token'],
+                priceConfidence: 'trusted', includeInPortfolioValue: true }],
+            loading: false, error: null, refetch: mocks.refetchWalletTokens,
+        })
         const { container, rerender } = render(<App />)
         expect(container.querySelector('.sell-token-position button').textContent).toContain('ETH')
         expect(container.querySelector('.sell-token-position img[src*="base"]')).toBeTruthy()
         mocks.account.address = '0x2222222222222222222222222222222222222222'
+        mocks.useWalletTokens.mockReturnValue({ tokens: [], loading: true, error: null, refetch: mocks.refetchWalletTokens })
         rerender(<App />)
         expect(container.querySelector('.sell-token-position img[src*="ethereum"]')).toBeTruthy()
         expect(container.querySelector('.sell-panel input').value).toBe('')

@@ -1,4 +1,5 @@
-import { preferredSwapInput } from '../services/swapChainUsage.js'
+import { nativeSwapInput } from '../services/walletValueDefault.js'
+import { useWalletValueDefault } from './useWalletValueDefault.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
 import {
@@ -67,7 +68,7 @@ export function useSwapController() {
     const config = swapUiConfig
     const { chain, crossChain: crossChainConfig, quote: quoteConfig, tokens: defaultTokensConfig, wallet: walletConfig, tabs } = config
     const connectedWallet = useWalletState(1)
-    const [tokensConfig] = useState(() => ({ ...defaultTokensConfig, initialSellToken: preferredSwapInput(connectedWallet.address) }))
+    const [tokensConfig] = useState(() => ({ ...defaultTokensConfig, initialSellToken: nativeSwapInput() }))
     const layoutStyle = useMemo(() => createCssVariables(), [])
     const reducedMotion = useReducedMotion()
     const [swapChainId, setSwapChainId] = useState(Number(tokensConfig.initialSellToken?.chainId ?? chain.id))
@@ -97,14 +98,14 @@ export function useSwapController() {
         setVisibleStatus: setStatusMessage,
         diagnostic: logSwapDiagnostic,
     })
-    const activeWalletRef = useRef(connectedWallet.address?.toLowerCase() ?? null)
-    const { resetForWallet } = inputs
-    useEffect(() => {
-        const address = walletState.address?.toLowerCase() ?? null
-        if (address === activeWalletRef.current) return
-        activeWalletRef.current = address
-        resetForWallet(preferredSwapInput(address))
-    }, [walletState.address, resetForWallet])
+    useWalletValueDefault({
+        address: walletState.address,
+        tokens: catalog.backendWalletTokens,
+        loading: catalog.walletTokenLoading,
+        stale: catalog.walletTokenStale,
+        hasUserIntent: inputs.hasUserIntent,
+        resetForWallet: inputs.resetForWallet,
+    })
 
     const routing = useSwapRouting({
         quoteEndpoint: quoteConfig.endpoint,

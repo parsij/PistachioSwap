@@ -1,4 +1,3 @@
-import { recordSuccessfulSwap } from '../../swap/services/swapChainUsage.js'
 import { getCuratedEvmChain } from '../../../web3/curatedEvmChains.js'
 import { recordWalletActivity } from './walletActivity.js'
 
@@ -362,10 +361,6 @@ export function confirmOptimisticWalletTransaction(transactionHash, { sourceOnly
     if (!hash) return false
     const transaction = pendingTransactions.get(hash)
     if (!transaction) return false
-    if (transaction.operation === 'swapping') {
-        const sourceChainId = transaction.changes.find((change) => BigInt(change.deltaRaw) < 0n)?.chainId
-        recordSuccessfulSwap({ walletAddress: transaction.walletAddress, chainId: sourceChainId, hash })
-    }
     const displayStatus = sourceOnly ? 'source-confirmed' : 'confirmed'
     if (transaction.displayStatus === 'confirmed' || transaction.displayStatus === displayStatus) return true
 
@@ -385,10 +380,6 @@ function settleOptimisticWalletTransaction(transactionHash, status) {
     if (!hash) return false
     const transaction = pendingTransactions.get(hash)
     if (!transaction || !pendingTransactions.delete(hash)) return false
-    if (status === 'confirmed' && transaction.operation === 'swapping') {
-        const sourceChainId = transaction.changes.find((change) => BigInt(change.deltaRaw) < 0n)?.chainId
-        recordSuccessfulSwap({ walletAddress: transaction.walletAddress, chainId: sourceChainId, hash })
-    }
 
     // Receipt reconciliation may finish immediately after the swap controller
     // confirms. Clear balance deltas now, but preserve the remaining display

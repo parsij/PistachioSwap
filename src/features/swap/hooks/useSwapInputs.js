@@ -296,5 +296,6 @@ export function useSwapInputs({
         selectToken,
         resetInputsAfterSuccess,
         resetForWallet,
+        hasUserIntent: selectedSellToken?.uiSelectionOrigin === 'user' || Boolean(selectedBuyToken) || sellAmount !== '' || (buyAmount !== '0' && buyAmount !== ''),
     }
 }

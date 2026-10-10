@@ -1,4 +1,3 @@
-import { recordSuccessfulSwap } from '../../swap/services/swapChainUsage.js'
 import { mergeWalletActivity } from './mergeWalletActivity.js'
 
 const STORAGE_KEY = 'pistachioswap:wallet-activity:v1'
@@ -201,9 +200,6 @@ export function normalizeWalletActivity(input) {
 export function recordWalletActivity(input) {
     const activity = normalizeWalletActivity(input)
     if (!activity) return null
-    if (activity.type === 'swapped' && activity.status === 'confirmed' && activity.source === 'local') {
-        recordSuccessfulSwap({ walletAddress: activity.walletAddress, chainId: activity.chainId, hash: activity.hash })
-    }
 
     const store = readStore()
     const current = Array.isArray(store[activity.walletAddress])
