@@ -106,7 +106,12 @@ function WalletIdentity({ selected = false, vault }) {
 }
 
 function DeleteLocalVaultConfirmation({ onCancel, onDeleted, onSensitiveChange, vault }) {
-    const [confirmation, setConfirmation] = useState('')
+    const [deadline] = useState(() => Date.now() + 10_000)
+    const [remaining, setRemaining] = useState(10)
+    useEffect(() => {
+        const timer = setInterval(() => setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000))), 250)
+        return () => clearInterval(timer)
+    }, [deadline])
     const [backupAcknowledged, setBackupAcknowledged] = useState(false)
     const [error, setError] = useState(null)
     const [busy, setBusy] = useState(false)
@@ -117,11 +122,11 @@ function DeleteLocalVaultConfirmation({ onCancel, onDeleted, onSensitiveChange, 
     }, [onSensitiveChange])
 
     async function removeLocalVault() {
-        if (busy) return
+        if (busy || !backupAcknowledged || Date.now() < deadline) return
         setBusy(true)
         setError(null)
         try {
-            await manager.deleteLocalVault(vault.vaultId, { backupAcknowledged, confirmation })
+            await manager.deleteLocalVault(vault.vaultId, { backupAcknowledged, confirmation: 'DELETE' })
             onDeleted()
         } catch (nextError) {
             setError(nextError)
@@ -142,12 +147,10 @@ function DeleteLocalVaultConfirmation({ onCancel, onDeleted, onSensitiveChange, 
             </div>
             <div className="pistachio-wallet-field-group"><span>Wallet address</span><code className="pistachio-wallet-address">{vault.address}</code></div>
             <label className="pistachio-wallet-check"><input type="checkbox" checked={backupAcknowledged} onChange={(event) => setBackupAcknowledged(event.target.checked)} /> I have the recovery phrase or a tested backup for this wallet.</label>
-            <label htmlFor="pistachio-delete-confirmation">Type DELETE to confirm</label>
-            <input id="pistachio-delete-confirmation" value={confirmation} autoComplete="off" spellCheck="false" aria-describedby="pistachio-delete-help" onChange={(event) => setConfirmation(event.target.value)} />
-            <p className="pistachio-wallet-note" id="pistachio-delete-help">This action cannot remove a passkey from your browser or password manager.</p>
+            <p className="pistachio-wallet-note" id="pistachio-delete-help">Without your recovery phrase, private key, or encrypted backup, you may permanently lose access. A passkey alone cannot restore a deleted wallet.</p>
             <div className="pistachio-wallet-button-row">
                 <button type="button" disabled={busy} onClick={onCancel}>Cancel</button>
-                <button className="pistachio-wallet-danger-button" type="button" disabled={busy || !backupAcknowledged || confirmation !== 'DELETE'} onClick={removeLocalVault}><Trash2 aria-hidden="true" /> {busy ? 'Removing…' : 'Remove from this browser'}</button>
+                <button className="pistachio-wallet-danger-button" type="button" disabled={busy || !backupAcknowledged || remaining > 0} onClick={removeLocalVault}><Trash2 aria-hidden="true" /> {busy ? 'Removing…' : remaining > 0 ? `Remove from this browser (${remaining}s)` : 'Remove from this browser'}</button>
             </div>
             <ErrorNotice error={error} />
         </div>

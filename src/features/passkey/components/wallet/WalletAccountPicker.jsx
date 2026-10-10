@@ -14,7 +14,6 @@ export default function WalletAccountPicker({ onAddWallet, manager = getPistachi
     const [removal, setRemoval] = useState(null)
     const [remaining, setRemaining] = useState(10)
     const [backupAcknowledged, setBackupAcknowledged] = useState(false)
-    const [confirmation, setConfirmation] = useState('')
     useEffect(() => {
         if (!removal || !open) return
         const update = () => setRemaining(Math.max(0, Math.ceil((removal.deadline - Date.now()) / 1000)))
@@ -26,14 +25,13 @@ export default function WalletAccountPicker({ onAddWallet, manager = getPistachi
         setRemoval({ vault, deadline: Date.now() + 10_000 })
         setRemaining(10)
         setBackupAcknowledged(false)
-        setConfirmation('')
         setError(null)
     }
-    const canRemove = removal && remaining === 0 && backupAcknowledged && confirmation === 'DELETE' && !busy
+    const canRemove = removal && remaining === 0 && backupAcknowledged && !busy
     async function removeWallet() {
         if (!canRemove || Date.now() < removal.deadline) return
         await run(async () => {
-            await manager.deleteLocalVault(removal.vault.vaultId, { backupAcknowledged, confirmation })
+            await manager.deleteLocalVault(removal.vault.vaultId, { backupAcknowledged, confirmation: 'DELETE' })
             setRemoval(null)
         }, false)
     }
@@ -75,7 +73,6 @@ export default function WalletAccountPicker({ onAddWallet, manager = getPistachi
                         {(removal.vault.accounts ?? [{ index: 0, address: removal.vault.address }]).map(account => <small key={account.index}>{account.address}</small>)}
                         {(removal.vault.accounts?.length ?? 1) > 1 && <p>All {removal.vault.accounts.length} wallets in this recovery phrase group will be removed from this device.</p>}
                         <label><input type="checkbox" checked={backupAcknowledged} disabled={busy} onChange={event => setBackupAcknowledged(event.target.checked)} /> I have saved my recovery phrase, private key, or encrypted backup.</label>
-                        <label>Type DELETE to confirm<input aria-label="Type DELETE to confirm" value={confirmation} disabled={busy} autoComplete="off" onChange={event => setConfirmation(event.target.value)} /></label>
                     </div>
                     {error && <p className="pistachio-account-picker-error" role="alert">{error}</p>}
                     <div className="pistachio-account-picker-actions">
