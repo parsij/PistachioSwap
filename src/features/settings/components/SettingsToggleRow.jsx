@@ -39,12 +39,13 @@ export default function SettingsToggleRow({
         <div className="settings-toggle-row">
             <div className="settings-toggle-copy">
                 <div className="settings-row-label">
-                    <label htmlFor={switchId}>
+                    <label className="settings-toggle-desktop-label" htmlFor={switchId}>
                         {label}
                     </label>
 
                     <InfoTooltip
                         label={tooltip}
+                        triggerLabel={label}
                     />
                 </div>
             </div>

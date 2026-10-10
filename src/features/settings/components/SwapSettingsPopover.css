@@ -38,7 +38,10 @@
 
     padding: 15px 17px;
 
-    overflow: hidden;
+    box-sizing: border-box;
+    max-height: min(var(--radix-popover-content-available-height, 100dvh), calc(100dvh - 24px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
 
     border: 1px solid var(--settings-border);
     border-radius: 22px;
@@ -864,3 +867,20 @@ prefers-reduced-motion:
 .swap-settings-gas-assist { display: grid; gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--settings-border); }
 .swap-settings-gas-assist select { width: 100%; padding: 9px; border-radius: 10px; border: 1px solid var(--settings-border); background: var(--settings-background); color: var(--settings-text); }
 .swap-settings-gas-assist small { color: var(--settings-muted); line-height: 1.4; }
+
+.settings-info-label { display: none; }
+@media (pointer: coarse) {
+    .swap-settings-popover { width: min(320px, calc(100vw - 24px)); padding: 10px 12px; border-radius: 18px; }
+    .swap-settings-popover .slippage-setting { padding-bottom: 6px; }
+    .swap-settings-gas-assist { grid-template-columns: minmax(0, 1fr) minmax(0, 145px); align-items: center; gap: 8px; padding: 8px 0; }
+    .settings-toggle-row { min-height: 52px; gap: 8px; }
+    .settings-row-label { font-size: 14px; gap: 0; }
+    .settings-toggle-desktop-label { display: none; }
+    .settings-info-button.swap-info-trigger { min-width: 44px; width: 44px; height: 44px; border-radius: 10px; }
+    .settings-info-button.swap-info-trigger svg { width: 20px; height: 20px; flex: 0 0 auto; }
+    .settings-info-button.settings-info-with-label { display: inline-flex; width: auto; gap: 8px; color: inherit; font: inherit; text-align: left; }
+    .settings-info-label { display: inline; }
+    .uniswap-toggle { min-height: 44px; }
+    .uniswap-toggle-thumb { top: 7px; }
+    .slippage-combined-control { width: 126px; }
+}

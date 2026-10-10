@@ -55,6 +55,19 @@ describe('SwapSettingsPopover', () => {
         expect(screen.getByRole('tooltip').textContent).toContain('custom native gas fees')
     })
 
+    it('opens the explanation from the setting name without changing its switch, and shows small balances initially', () => {
+        render(<Harness />)
+        fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
+        const control = screen.getByRole('switch', { name: 'Auto network cost' })
+        const info = screen.getByRole('button', { name: /Turn this off to choose Less/ })
+        fireEvent.click(info.querySelector('.settings-info-label'))
+        expect(screen.getByRole('tooltip').textContent).toContain('custom native gas fees')
+        expect(control.getAttribute('aria-checked')).toBe('true')
+        expect(screen.getByRole('switch', { name: 'Hide small balances' }).getAttribute('aria-checked')).toBe('false')
+        fireEvent.click(control)
+        expect(control.getAttribute('aria-checked')).toBe('false')
+    })
+
     it('accepts custom slippage and rejects malformed input', () => {
         render(<Harness />)
         fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
@@ -96,7 +109,7 @@ describe('SwapSettingsPopover', () => {
         fireEvent.click(info)
         expect(screen.getByRole('tooltip')).toBeTruthy()
 
-        fireEvent.pointerDown(screen.getByText('Hide unknown tokens'))
+        fireEvent.pointerDown(screen.getByRole('switch', { name: 'Hide unknown tokens' }))
         expect(screen.queryByRole('tooltip')).toBeNull()
         expect(screen.getByRole('dialog')).toBeTruthy()
     })

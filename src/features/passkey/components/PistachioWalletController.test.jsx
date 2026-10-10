@@ -553,14 +553,35 @@ describe('Pistachio Wallet entry and modal behavior', () => {
         await screen.findByLabelText('Word 1')
         pasteImportPhrase()
         await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
-        expect(await screen.findByRole('heading', { name: 'Confirm wallet address' })).toBeTruthy()
+        expect(await screen.findByRole('heading', { name: 'Choose wallet' })).toBeTruthy()
 
+        expect(screen.queryByText(/I confirm that this is the wallet address/)).toBeNull()
+        expect(screen.getByRole('button', { name: 'Import wallet' }).disabled).toBe(false)
         await user.click(screen.getByRole('button', { name: 'Back' }))
         await waitFor(() => expect(mocks.manager.resetPendingImport).toHaveBeenCalledOnce())
         expect(screen.getByRole('heading', { name: 'Import an existing wallet' })).toBeTruthy()
 
         await user.click(screen.getByRole('button', { name: /^Private key/ }))
         expect(await screen.findByLabelText('Private key')).toBeTruthy()
+    })
+
+    it('imports the selected address directly without a redundant confirmation checkbox', async () => {
+        const user = userEvent.setup()
+        mocks.manager.beginPasskeySetup.mockImplementation(async () => mocks.publish({ phase: 'passkey-ready' }))
+        mocks.manager.importMnemonic.mockImplementation(async () => {
+            mocks.publish({ phase: 'confirm-import' })
+            return { address: savedVault.address }
+        })
+        render(<PistachioWalletController />)
+        await openImportRisk(user)
+        await completeImportPasskeyStep(user)
+        await screen.findByLabelText('Word 1')
+        pasteImportPhrase()
+        await user.click(screen.getByRole('button', { name: 'Review imported wallet' }))
+        await screen.findByRole('heading', { name: 'Choose wallet' })
+        expect(screen.queryByRole('checkbox')).toBeNull()
+        await user.click(screen.getByRole('button', { name: 'Import wallet' }))
+        expect(mocks.manager.persistPendingWallet).toHaveBeenCalledOnce()
     })
 
     it('keeps the phrase and passkey ready after failure so the same import can be retried', async () => {

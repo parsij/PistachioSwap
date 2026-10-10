@@ -1,6 +1,7 @@
 import * as Popover from '@radix-ui/react-popover'
 
 import SlippageSettingsSection from './SlippageSettingsSection.jsx'
+import InfoTooltip from './InfoTooltip.jsx'
 import SettingsToggleRow from './SettingsToggleRow.jsx'
 import SettingsVisibilitySection from './SettingsVisibilitySection.jsx'
 import { useSwapSettingsPopover } from '../hooks/useSwapSettingsPopover.js'
@@ -27,15 +28,14 @@ export default function SwapSettingsPopover({ children, settings, onSettingsChan
                 else draft.autoButtonRef.current?.focus()
             }}>
                 <SlippageSettingsSection draft={draft} />
-                <label className="swap-settings-gas-assist">
-                    <span>Gas Assist</span>
-                    <select aria-label="Gas Assist preference" value={settings.gasAssistPreference ?? 'auto'} onChange={(event) => onSettingsChange({ ...settings, gasAssistPreference: event.target.value })}>
+                <div className="swap-settings-gas-assist">
+                    <div className="settings-row-label"><label htmlFor="swap-gas-assist-preference">Gas Assist</label><InfoTooltip label="Auto uses Gas Assist when gas is low. Force requires an eligible token and enabled network. Normal gas uses your wallet’s native balance." /></div>
+                    <select id="swap-gas-assist-preference" aria-label="Gas Assist preference" value={settings.gasAssistPreference ?? 'auto'} onChange={(event) => onSettingsChange({ ...settings, gasAssistPreference: event.target.value })}>
                         <option value="auto">Auto</option>
                         <option value="force">Force Gas Assist</option>
                         <option value="normal">Normal gas</option>
                     </select>
-                    <small>Auto uses Gas Assist when gas is low. Force requires an eligible token and enabled network. Normal gas uses your wallet’s native balance.</small>
-                </label>
+                </div>
                 <SettingsToggleRow label="Auto network cost"
                     tooltip="Turn this off to choose Less, Standard, High, or custom native gas fees in the expanded swap details. Automatic fees follow the network and your wallet. Gas Assist fees are managed separately."
                     checked={settings.autoNetworkCost !== false}

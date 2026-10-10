@@ -12,3 +12,13 @@
 .pistachio-import-account-option strong { font-size: 14px; font-weight: 500; }
 .pistachio-import-account-option code { font-size: 12px; line-height: 18px; overflow-wrap: anywhere; color: #b8babf; }
 .pistachio-import-account-search button:disabled { opacity: .5; cursor: default; }
+
+@media (max-width: 640px) {
+    .pistachio-wallet-import-review { gap: 12px; padding: 16px 20px calc(20px + env(safe-area-inset-bottom)); }
+    .pistachio-wallet-import-review h3 { font-size: 22px; }
+    .pistachio-import-accounts { gap: 8px; }
+    .pistachio-import-account-list { max-height: min(216px, 30dvh); }
+    .pistachio-import-account-option { padding: 10px; gap: 8px; border-radius: 12px; }
+    .pistachio-import-account-option span { gap: 2px; }
+    .pistachio-wallet-import-review .pistachio-wallet-note { font-size: 12px; line-height: 18px; }
+}

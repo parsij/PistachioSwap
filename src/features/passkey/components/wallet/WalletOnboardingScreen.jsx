@@ -101,7 +101,6 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
     const [backupAcknowledged, setBackupAcknowledged] = useState(false)
     const [derivedAddress, setDerivedAddress] = useState(null)
     const [importAccounts, setImportAccounts] = useState([])
-    const [addressConfirmed, setAddressConfirmed] = useState(false)
     useEffect(() => {
         const sensitive = GUARDED_SETUP_PHASES.has(snapshot.phase)
         onSensitiveChange(sensitive)
@@ -141,7 +140,6 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
         setBackupAcknowledged(false)
         setDerivedAddress(null)
         setImportAccounts([])
-        setAddressConfirmed(false)
     }
 
     async function returnToImportMethods() {
@@ -184,7 +182,6 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
             if (result) {
                 setDerivedAddress(result.address)
                 setImportAccounts(result.accounts ?? [])
-                setAddressConfirmed(false)
                 setSecretInput('')
                 setImportWords(Array(12).fill(''))
             }
@@ -350,13 +347,12 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
     }
     if (snapshot.phase === 'confirm-import') {
         return (
-            <div className="pistachio-wallet-stack">
+            <div className="pistachio-wallet-stack pistachio-wallet-import-review">
                 <BackButton onClick={() => void returnToImportMethods()} />
-                <ScreenIntro title="Confirm wallet address">Make sure this is the EVM wallet address you expect before saving the encrypted wallet.</ScreenIntro>
+                <ScreenIntro title="Choose wallet">Select the wallet you want to import.</ScreenIntro>
                 {importMode === 'mnemonic' && importAccounts.length > 0 && <ImportAccountChooser
                     accounts={importAccounts} selectedAddress={derivedAddress} busy={busy}
                     onSelect={async (index) => {
-                        setAddressConfirmed(false)
                         const result = await run(() => manager.selectPendingAccount(index))
                         if (result) setDerivedAddress(result.address)
                     }}
@@ -365,14 +361,12 @@ function SetupContent({ entryScreen, initialImportMode = null, onBackupRestored,
                         if (result) setImportAccounts(result.accounts)
                     }}
                     onFind={async (address) => {
-                        setAddressConfirmed(false)
                         const result = await run(() => manager.findPendingAccount(address))
                         if (result) { setDerivedAddress(result.address); setImportAccounts(result.accounts) }
                     }}
                 />}
-                <div className="pistachio-wallet-field-group"><span>Wallet address</span><code className="pistachio-wallet-address">{derivedAddress}</code></div>
-                <label className="pistachio-wallet-check"><input type="checkbox" checked={addressConfirmed} onChange={(event) => setAddressConfirmed(event.target.checked)} /> I confirm that this is the wallet address I intend to import.</label>
-                <button className="pistachio-wallet-primary" type="button" disabled={!addressConfirmed || busy} onClick={() => run(() => manager.persistPendingWallet())}>{busy ? 'Encrypting wallet…' : 'Encrypt and save wallet'}</button>
+                {(importMode !== 'mnemonic' || importAccounts.length === 0) && <div className="pistachio-wallet-field-group"><span>Wallet address</span><code className="pistachio-wallet-address">{derivedAddress}</code></div>}
+                <button className="pistachio-wallet-primary" type="button" disabled={!derivedAddress || busy} onClick={() => run(() => manager.persistPendingWallet())}>{busy ? 'Encrypting wallet…' : 'Import wallet'}</button>
                 <ErrorNotice error={error} />
             </div>
         )
