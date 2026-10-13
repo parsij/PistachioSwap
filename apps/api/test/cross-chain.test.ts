@@ -940,6 +940,7 @@ describe('cross-chain backend', () => {
             '60000',
             '65000',
         ])
+        expect(relayBody!.refundTo).toBe(request.ownerAddress)
         expect(relayBody!.appFees).toEqual([{ recipient: sender, fee: '45' }])
         expect(relayBody!.ttl).toBe(900)
         expect(Date.parse(quote.expiresAt) - Date.now()).toBeGreaterThan(14 * 60_000)

@@ -83,6 +83,8 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
                 body: {
                     user: request.ownerAddress,
                     recipient: request.recipient,
+                    // Relay refunds return on the origin chain to the source wallet.
+                    refundTo: request.ownerAddress,
                     originChainId: request.sourceAsset.chainId,
                     destinationChainId: request.destinationAsset.chainId,
                     originCurrency: request.sourceAsset.address,
