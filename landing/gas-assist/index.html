@@ -83,12 +83,12 @@
               {
                 "@type": "HowToStep",
                 "name": "Choose tokens on BNB Chain",
-                "text": "Select a BEP-20 sell token and a buy token in the wallet. Gas Assist is only offered on BNB Smart Chain."
+                "text": "Select a BEP-20 sell token and a buy token in the wallet. Check current Gas Assist availability in the app."
               },
               {
                 "@type": "HowToStep",
                 "name": "Review the Gas Assist quote",
-                "text": "If the route is eligible, the quote shows network cost, sponsorship cost, the Pistachio Swap fee, and the minimum you receive."
+                "text": "If the route is eligible, the review shows the exact quoted sponsorship-service charge and the minimum you receive. This charge can exceed actual gas cost; Pistachio Swap retains the difference."
               },
               {
                 "@type": "HowToStep",
@@ -247,7 +247,7 @@
           <p>
             For an eligible prepaid Gas Assist swap, the backend prepares one
             sponsored transaction. Fee payment, exact token approval, and the
-            swap run together. If that transaction fails, no fee is taken.
+            swap run together. If the source operation reverts, no fee is taken.
           </p>
           <ol>
             <li>the disclosed fee transfer to treasury</li>
@@ -269,13 +269,14 @@
           </p>
 
           <h2>What Gas Assist costs</h2>
-          <p>Gas sponsorship changes how the network cost is paid; it does not remove that cost. The quote discloses the applicable network, sponsorship, and Pistachio Swap fees before you approve. Costs can change with the route and network conditions.</p>
+          <p>The Gas Assist service charge is fixed for the quote you authorize, not equal to final actual network gas. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. If the source operation reverts, its fee transfer also reverts. Cross-chain destination fulfillment is separate: destination failure or a provider principal refund does not automatically refund the source service charge. Provider refunds are conditional. Applicable terms, historical promises, and law still apply.</p>
+          <p>The operator pays network gas and charges the quoted sponsorship-service price. Prices can vary between quotes with route and network conditions; the token charge you authorize is fixed for that quote.</p>
           <p>Read the <a href="/gas-assist/">Gas Assist fees and eligibility guide</a> for a deeper explanation. For normal swaps and bridges, see <a href="/landing/how-it-works/">How Pistachio Swap works</a>.</p>
 
           <h2>What it is not</h2>
           <ul>
-            <li>It is not a free swap. Network cost, sponsorship cost, and Pistachio Swap fees are disclosed in the quote.</li>
-            <li>It is not available on every network. Gas Assist runs on BNB Smart Chain only.</li>
+            <li>It is not a free swap. The quoted sponsorship-service charge is disclosed before signing.</li>
+            <li>It is not available on every network. Gas Assist availability depends on the source network and current app capabilities.</li>
             <li>It is not available for every token or every route. When it is not, the app says so.</li>
             <li>It is not custody. Tokens stay in your wallet until you sign.</li>
           </ul>

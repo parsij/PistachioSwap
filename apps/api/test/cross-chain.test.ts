@@ -2196,3 +2196,24 @@ describe('verified sponsored source recovery', () => {
         expect((await repository.get(route.publicRouteId))?.submissionAttempts).toBe(0)
     })
 })
+
+
+
+it.each([
+    ['success', 'completed', true],
+    ['submitted', 'destination-confirming', true],
+    ['refund', 'refunded', false],
+    ['refund-pending', 'unknown', false],
+    ['refund-failed', 'unknown', false],
+])('interprets Relay v3 status %s without inventing destination settlement', async (providerStatus, expectedStatus, destinationExpected) => {
+    vi.stubEnv('RELAY_ENABLED', 'true')
+    vi.stubEnv('RELAY_API_KEY', 'test-placeholder')
+    const sourceHash = `0x${'11'.repeat(32)}`
+    const outgoingHash = `0x${'22'.repeat(32)}`
+    const http: HttpJson = async () => ({ status: providerStatus, inTxHashes: [sourceHash], txHashes: [outgoingHash] })
+    const result = await createRelayAdapter(http).getStatus('relay-status-test')
+    expect(result.status).toBe(expectedStatus)
+    expect(result.sourceTransactionHash).toBe(sourceHash)
+    if (providerStatus === 'refund') expect(result.destinationTransactionHash).toBeNull()
+    if (destinationExpected) expect(result.destinationTransactionHash).toBe(outgoingHash)
+})

@@ -159,14 +159,16 @@ export function createRelayAdapter(http: HttpJson = fetchJson): CrossChainAdapte
                 notFoundAsNull: true,
             })
             const value = isRecord(payload) ? payload : {}
+            const status = mapStatus(value.status)
             return {
                 provider: 'relay',
                 statusId,
-                status: mapStatus(value.status),
+                status,
                 sourceTransactionHash: transactionHash(
                     value.originTxHash ?? value.sourceTxHash ?? value.inTxHashes,
                 ),
-                destinationTransactionHash: transactionHash(
+                // Outgoing hashes on a refund belong to the origin chain.
+                destinationTransactionHash: status === 'refunded' ? null : transactionHash(
                     value.destinationTxHash ?? value.txHashes,
                 ),
             }
@@ -570,12 +572,14 @@ function parseFees(value: unknown, token: string) {
     })
 }
 function mapStatus(value: unknown) {
-    const status = String(value ?? '').toLowerCase()
-    if (/success|complete/.test(status)) return 'completed' as const
-    if (/refund/.test(status)) return 'refunded' as const
-    if (/fail/.test(status)) return 'failed' as const
-    if (/submitted|destination/.test(status)) return 'destination-confirming' as const
-    if (/depositing|pending/.test(status)) return 'source-confirming' as const
-    if (/waiting|delayed/.test(status)) return 'in-flight' as const
-    return 'unknown' as const
+    // Unknown/new provider values must not imply terminal settlement.
+    switch (String(value ?? '').toLowerCase()) {
+        case 'success': case 'completed': return 'completed' as const
+        case 'refund': case 'refunded': return 'refunded' as const
+        case 'failure': case 'failed': return 'failed' as const
+        case 'submitted': return 'destination-confirming' as const
+        case 'depositing': case 'pending': return 'source-confirming' as const
+        case 'waiting': case 'delayed': return 'in-flight' as const
+        default: return 'unknown' as const
+    }
 }

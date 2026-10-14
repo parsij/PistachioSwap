@@ -1,7 +1,7 @@
 # PistachioSwap Terms of Use
 
 **Effective date:** July 28, 2026  
-**Last updated:** August 11, 2026
+**Last updated:** October 13, 2026
 
 > [!IMPORTANT]
 > **Pre-launch legal notice.** PistachioSwap is currently a project name and this repository does not yet identify the final operating legal entity. Before commercial launch, these Terms must be reviewed by qualified counsel and updated with the operator's exact legal name and address, monitored contact information, final production fees/features, supported jurisdictions, regulatory/compliance decisions, and final dispute provisions. These Terms are a repository-aligned pre-launch draft, not a claim that every launch jurisdiction has been cleared.
@@ -100,7 +100,11 @@ A repository example, environment value, test fixture, or documentation sample i
 
 ## 9. Gas Assist limitations
 
-Gas Assist is intended to help eligible users execute supported transactions when the wallet lacks native gas currency. It may include network cost, sponsorship cost, conversion cost, and PistachioSwap fees in the quote or prepayment flow.
+Gas Assist is intended to help eligible users execute supported transactions when the wallet lacks native gas currency. For the direct sponsored source operation, you authorize an exact token-denominated service charge for the particular quote before execution. The charge may be calculated using estimated gas, safety margins, conversion expenses, and configured commercial fees. It is not a promise to charge only final actual blockchain gas.
+
+The quoted service charge is collected when the source operation succeeds. If that operation reverts, its token payment reverts and no service charge is collected through that operation. Once earned under the applicable transaction terms, the full charge is operator compensation; PistachioSwap retains any difference between the agreed charge and actual gas expenses. Lower actual gas does not automatically create a refund, customer deposit, or credit balance. References to a gas reserve or prepayment in legacy API fields describe pricing components, not a separately refundable customer balance.
+
+For cross-chain routes, successful source execution and destination fulfillment are separate. A later destination failure or provider principal refund does not automatically reverse the source service charge. Provider refunds depend on route, provider, screening, chain, and economic conditions, may be reduced by costs, and are not guaranteed. Mandatory legal rights, express transaction-specific promises, and obligations under historical terms remain applicable. These draft Terms do not determine that this pricing or retention policy is lawful.
 
 Gas Assist:
 

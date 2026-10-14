@@ -234,7 +234,8 @@
                 <span>With Pistachio Wallet the transaction is authorized once, then signed on your device.</span>
               </li>
               <li>
-                <strong>If it fails, no fee is taken</strong>
+                <strong>If the source operation reverts, no fee is taken</strong>
+                <p>The Gas Assist service charge is fixed for the quote you authorize, not equal to final actual network gas. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. If the source operation reverts, its fee transfer also reverts. Cross-chain destination fulfillment is separate: destination failure or a provider principal refund does not automatically refund the source service charge. Provider refunds are conditional. Applicable terms, historical promises, and law still apply.</p>
                 <span>Fee, approval, and swap revert together. The treasury receives nothing.</span>
               </li>
             </ol>
@@ -242,8 +243,8 @@
             <aside class="callout">
               <h3>Gas Assist is not free</h3>
               <p>
-                The network cost, the sponsorship cost and our fee are all shown in
-                the quote before you sign.
+                The exact quoted sponsorship-service charge is shown before you sign.
+                Actual blockchain gas is a separate operator expense.
               </p>
               <p>
                 It is not available for every token or every route. When it is not,
@@ -417,7 +418,7 @@
               <summary>Does Gas Assist work on every network?</summary>
               <div>
                 <p>
-                  No. Gas Assist runs on BNB Smart Chain. You can still swap on the
+                  No. Gas Assist is offered only on eligible source networks shown in the app. You can still swap on the
                   other supported EVM networks when you hold that network’s gas token.
                 </p>
               </div>
