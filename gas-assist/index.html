@@ -110,7 +110,7 @@
               },
               {
                 "@type": "HowToStep",
-                "name": "If it fails, no fee is taken",
+                "name": "If the source operation reverts, no fee is taken",
                 "text": "Fee payment, approval, and swap are one on-chain transaction. If any step fails, the whole transaction reverts and the treasury receives nothing."
               }
             ]
@@ -132,7 +132,7 @@
                 "name": "Is Gas Assist free?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. Gas Assist is not described as free. The network cost, the sponsorship cost, and PistachioSwap fees are disclosed by the quote or the review flow before you sign anything."
+                  "text": "No. The exact quoted sponsorship-service charge is shown before you sign. It may exceed actual gas cost, and PistachioSwap retains the difference."
                 }
               },
               {
@@ -140,7 +140,7 @@
                 "name": "Which network does Gas Assist run on?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Gas Assist runs on BNB Smart Chain, for BEP-20 tokens. Pistachio Swap itself supports 25 EVM networks for ordinary swaps."
+                  "text": "Gas Assist supports eligible source networks shown by the app, including BNB Smart Chain. Pistachio Swap itself supports 25 EVM networks for ordinary swaps."
                 }
               },
               {
@@ -156,7 +156,7 @@
                 "name": "Can Gas Assist submit only part of my swap?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. Fee payment, approval, and swap are one sponsored BNB Chain transaction. If that transaction fails, no fee is taken. A mismatch — a changed account, nonce, chain, expiry, or rewritten transaction — aborts signing and nothing is submitted."
+                  "text": "No. Fee payment, approval, and swap are one sponsored BNB Chain transaction. If the source operation reverts, no fee is taken. A mismatch — a changed account, nonce, chain, expiry, or rewritten transaction — aborts signing and nothing is submitted."
                 }
               }
             ]
@@ -248,7 +248,7 @@
             <p>
               An eligible prepaid swap is prepared as one sponsored BNB Chain
               transaction. The disclosed fee, exact approval, and swap run
-              together. If that transaction fails, no fee is taken.
+              together. If the source operation reverts, no fee is taken.
             </p>
           </div>
 
@@ -277,7 +277,7 @@
                 </span>
               </li>
               <li>
-                <strong>If it fails, no fee is taken</strong>
+                <strong>If the source operation reverts, no fee is taken</strong>
                 <span>
                   A changed account, nonce, chain, expiry, or rewritten transaction
                   aborts signing. If the on-chain transaction reverts, the treasury
@@ -291,7 +291,7 @@
               <p>
                 The fee, the approval and the swap only make sense together. Binding
                 them into one sponsored transaction means you approve exactly what
-                runs — and a failure reverts everything, including the fee.
+                runs — and a source reversion rolls back the fee. Cross-chain destination fulfillment happens separately.
               </p>
               <p>
                 A fresh Gas Assist session may still ask for one message signature
@@ -305,17 +305,15 @@
         <section class="section" id="cost">
           <div class="section-head">
             <h2>What Gas Assist costs</h2>
+          <p>The Gas Assist service charge is fixed for the quote you authorize, not equal to final actual network gas. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. If the source operation reverts, its fee transfer also reverts. Cross-chain destination fulfillment is separate: destination failure or a provider principal refund does not automatically refund the source service charge. Provider refunds are conditional. Applicable terms, historical promises, and law still apply.</p>
             <p>Gas Assist is not free, and it never pretends to be.</p>
           </div>
 
           <div class="split">
             <div class="callout">
-              <h3>Three parts, all disclosed first</h3>
+              <h3>One quoted service charge</h3>
               <p>
-                The quote or the review shows the network cost, the sponsorship cost,
-                and the PistachioSwap fee before you sign. A gas-assisted swap
-                therefore costs more than an ordinary swap where you pay gas
-                yourself, because it also covers the sponsored BNB.
+                The review shows one exact token-denominated service charge before you sign. Gas estimates, margins, and applicable commercial components determine its price; actual blockchain gas is a separate operator expense.
               </p>
             </div>
             <div class="callout">
@@ -358,7 +356,7 @@
           </div>
 
           <p class="providers">
-            Gas Assist runs on BNB Smart Chain, for BEP-20 tokens. Ordinary swaps
+            Gas Assist supports eligible source networks shown by the app, including BNB Smart Chain. Ordinary swaps
             cover 25 EVM networks.
           </p>
         </section>
@@ -385,9 +383,7 @@
               <summary>Is Gas Assist free?</summary>
               <div>
                 <p>
-                  No. Gas Assist is not described as free. The network cost, the
-                  sponsorship cost, and PistachioSwap fees are disclosed by the quote
-                  or the review flow before you sign anything.
+                  No. The exact quoted sponsorship-service charge is shown before you sign. It can exceed actual gas cost, and PistachioSwap retains the difference.
                 </p>
               </div>
             </details>
@@ -396,7 +392,7 @@
               <summary>Which network does Gas Assist run on?</summary>
               <div>
                 <p>
-                  Gas Assist runs on BNB Smart Chain, for BEP-20 tokens. Pistachio
+                  Gas Assist supports eligible source networks shown by the app, including BNB Smart Chain. Pistachio
                   Swap itself supports 25 EVM networks for ordinary swaps.
                 </p>
               </div>
@@ -418,7 +414,7 @@
               <div>
                 <p>
                   No. Fee payment, approval, and swap are one sponsored
-                  transaction. If that transaction fails, no fee is taken. A
+                  transaction. If the source operation reverts, no fee is taken. A
                   mismatch — a changed account, nonce, chain, expiry, or rewritten
                   transaction — aborts signing and nothing is submitted.
                 </p>

@@ -140,7 +140,7 @@ function statusContent({ phase, order, orderExpired }) {
         return { title: 'Preparing your swap', detail: 'Building one sponsored transaction for the fee, approval, and swap.' }
     }
     if (phase === 'package-signing') {
-        return { title: 'Confirm with your passkey', detail: 'One passkey check authorizes this exact sponsored transaction. If it fails, no fee is taken.' }
+        return { title: 'Confirm with your passkey', detail: 'One passkey check authorizes this exact sponsored transaction. If the source operation reverts, no fee is taken.' }
     }
     if (['atomic-submitting', 'atomic-submitted'].includes(order?.status) ||
         (phase === 'swap-confirming' && order?.atomicExecution)) {
@@ -237,7 +237,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                     <div className="gas-assist-details">
                         <div><span>Gross input</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
-                        <div><span>Gas Assist fee</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong></div>
+                        <div><span>Gas Assist service charge</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong></div>
                         <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong></div>
                         {!completed && !order.userOpHash && <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>}
                         {atomic && hashes[0] && (
@@ -249,7 +249,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                     </div>
                 )}
                 <p className="gas-assist-technical-note">
-                    Pistachio Wallet signs one direct EIP-7702 source-chain transaction. The disclosed fee goes to PistachioSwap, the swap principal goes directly through the quoted router, and everything reverts if the swap fails.
+                    Pistachio Wallet authorizes one sponsored source operation. The disclosed fee goes to PistachioSwap and the swap principal goes through the quoted provider. If the source operation reverts, its token fee transfer also reverts. Cross-chain destination fulfillment happens separately.
                 </p>
             </div>
         </details>
@@ -380,9 +380,17 @@ export default function GasAssistPrepaymentDialog({
                                 </div>
                             </div>
                             <div className="gas-assist-summary-fee">
-                                <span>Gas Assist fee</span>
+                                <span>Gas Assist service charge</span>
                                 <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong>
                             </div>
+                            <p className="gas-assist-one-tap-note">
+                                This is the fixed service charge for this quote, not the final blockchain gas cost. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. Applicable terms and law still apply.
+                            </p>
+                            {purpose === 'cross-chain-gas' && (
+                                <p className="gas-assist-one-tap-note">
+                                    The charge is collected on source success. Destination fulfillment is separate; a destination failure or provider refund does not automatically refund this charge. Provider refunds are conditional and may be reduced by costs.
+                                </p>
+                            )}
                             {!completed && !order.userOpHash && <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />}
                         </div>
                     )}
@@ -413,7 +421,7 @@ export default function GasAssistPrepaymentDialog({
                         <p className="gas-assist-one-tap-note">
                             {purpose === 'cross-chain-gas'
                                 ? 'One tap starts the flow. Pistachio Wallet will ask you to confirm the sponsored source swap.'
-                                : 'One tap starts the flow. Pistachio Wallet will ask you to confirm one sponsored transaction. If it fails, no fee is taken.'}
+                                : 'One tap starts the flow. Pistachio Wallet will ask you to confirm one sponsored transaction. If the source operation reverts, no fee is taken.'}
                         </p>
                     )}
                     {canRetry && retryAction && (

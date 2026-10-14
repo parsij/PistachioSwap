@@ -46,6 +46,8 @@ jobs:
         run: pnpm exec vitest run src/features/passkey/components src/features/passkey/services/walletManagerImport.test.js src/features/swap/hooks/useSameChainReceiptLifecycle.test.jsx
       - name: New token transaction state regressions
         run: pnpm exec vitest run src/App.wallet.test.jsx -t 'clears the previous submitted transaction'
+      - name: Gas Assist pricing disclosure regressions
+        run: pnpm exec vitest run src/features/gas-assist/components/GasAssistBanner.test.jsx src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx src/features/gas-assist/components/GasAssistPrepaymentDialog.requote.test.jsx src/features/gas-assist/model/gasAssistFee.test.js
       - name: Build
         env:
           NODE_OPTIONS: --max-old-space-size=8192

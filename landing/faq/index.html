@@ -81,7 +81,7 @@
                 "name": "What is Gas Assist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Gas Assist is a BNB Chain flow for wallets that hold BEP-20 tokens but no BNB to pay gas. The backend prepares one sponsored transaction for the disclosed fee, exact approval, and swap. You review the cost, then sign. If that transaction fails, no fee is taken."
+                  "text": "Gas Assist is a BNB Chain flow for wallets that hold BEP-20 tokens but no BNB to pay gas. The backend prepares one sponsored transaction for the disclosed fee, exact approval, and swap. You review the cost, then sign. If the source operation reverts, no fee is taken."
                 }
               },
               {
@@ -105,7 +105,7 @@
                 "name": "Is Gas Assist free?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. Network cost, sponsorship cost, and Pistachio Swap fees are shown in the quote before you sign."
+                  "text": "No. The exact quoted sponsorship-service charge is shown before you sign. It may exceed actual gas cost, and Pistachio Swap retains the difference."
                 }
               },
               {
@@ -113,7 +113,7 @@
                 "name": "Which networks are supported?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "25 EVM networks, including Ethereum, BNB Smart Chain, Polygon, Arbitrum, OP Mainnet, Base and Avalanche. Gas Assist runs on BNB Smart Chain only."
+                  "text": "25 EVM networks, including Ethereum, BNB Smart Chain, Polygon, Arbitrum, OP Mainnet, Base and Avalanche. Gas Assist availability depends on the source network and current app capabilities."
                 }
               },
               {
@@ -313,10 +313,10 @@
 
             <details>
               <summary>Is Gas Assist free?</summary>
+              <p>The Gas Assist service charge is fixed for the quote you authorize, not equal to final actual network gas. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. If the source operation reverts, its fee transfer also reverts. Cross-chain destination fulfillment is separate: destination failure or a provider principal refund does not automatically refund the source service charge. Provider refunds are conditional. Applicable terms, historical promises, and law still apply.</p>
               <div>
                 <p>
-                  No. Network cost, sponsorship cost, and Pistachio Swap fees are
-                  shown in the quote before you sign.
+                  No. The quoted sponsorship-service charge is shown before you sign. Actual gas is a separate expense; Pistachio Swap retains any difference.
                 </p>
               </div>
             </details>
@@ -326,8 +326,7 @@
               <div>
                 <p>
                   25 EVM networks, including Ethereum, BNB Smart Chain, Polygon,
-                  Arbitrum, OP Mainnet, Base and Avalanche. Gas Assist runs on BNB
-                  Smart Chain only.
+                  Arbitrum, OP Mainnet, Base and Avalanche. Gas Assist availability depends on the source network and current app capabilities.
                 </p>
               </div>
             </details>

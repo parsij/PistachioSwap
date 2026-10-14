@@ -78,9 +78,11 @@ describe('Gas Assist prepayment review', () => {
 
         expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
         expect(screen.getByText('No BNB needed')).toBeTruthy()
+        expect(screen.getByText(/PistachioSwap retains any difference after gas expenses/)).toBeTruthy()
+        expect(screen.queryByText(/charge is collected on source success/)).toBeNull()
         expect(screen.getByText('You pay')).toBeTruthy()
         expect(screen.getByText('You receive')).toBeTruthy()
-        expect(screen.getAllByText('Gas Assist fee').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Gas Assist service charge').length).toBeGreaterThan(0)
         expect(screen.queryByText('Gas Assist fee (all-in)')).toBeNull()
         expect(screen.getByText(/One tap starts the flow/)).toBeTruthy()
 
@@ -89,7 +91,7 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByText('Net swap input')).toBeTruthy()
         expect(screen.getByText('Minimum output')).toBeTruthy()
         expect(screen.getAllByText(/one sponsored transaction/).length).toBeGreaterThan(0)
-        expect(screen.getAllByText(/If it fails, no fee is taken/).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/If the source operation reverts, no fee is taken/).length).toBeGreaterThan(0)
 
         fireEvent.click(screen.getByRole('button', { name: 'Swap using Gas Assist' }))
         expect(value.signPackage).toHaveBeenCalledOnce()
@@ -127,11 +129,16 @@ describe('Gas Assist prepayment review', () => {
 
         expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
         expect(screen.getByText(/No BNB is sent to your wallet/)).toBeTruthy()
-        expect(screen.getAllByText('Gas Assist fee').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Gas Assist service charge').length).toBeGreaterThan(0)
         expect(screen.queryByText('Gas Assist fee (included)')).toBeNull()
         expect(screen.queryByText('Total cross-chain cost (all-in)')).toBeNull()
         expect(screen.queryByText('$3.702')).toBeNull()
         expect(screen.queryByText(/converts only/i)).toBeNull()
+        expect(screen.getByText(/fixed service charge for this quote, not the final blockchain gas cost/)).toBeTruthy()
+        expect(screen.getByText(/lower actual gas does not automatically produce a refund/)).toBeTruthy()
+        expect(screen.getByText(/charge is collected on source success/)).toBeTruthy()
+        expect(screen.getByText(/destination failure or provider refund does not automatically refund this charge/)).toBeTruthy()
+        expect(screen.queryByText(/everything reverts if the swap fails/)).toBeNull()
     })
 
     it('keeps progress visible while authentication and package signing are active', () => {
