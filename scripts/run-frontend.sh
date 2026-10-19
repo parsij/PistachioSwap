@@ -2,11 +2,13 @@
 set -euo pipefail
 
 install_dir="./PistachioSwap"
+custom_dir=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dir)
             [[ $# -ge 2 && -n "$2" ]] || { echo 'Usage: bash run-frontend.sh [--dir PATH]' >&2; exit 1; }
             install_dir="$2"
+            custom_dir=true
             shift 2
             ;;
         --help|-h)
@@ -23,8 +25,14 @@ for tool in git node pnpm; do
 done
 [[ "$(node -p 'process.versions.node.split(".")[0]')" == 24 ]] || { echo 'Use Node.js 24.' >&2; exit 1; }
 
-if [[ -e "$install_dir" ]]; then
-    [[ -d "$install_dir/.git" || -f "$install_dir/.git" ]] || { echo 'The destination exists but is not a PistachioSwap checkout. Choose another --dir.' >&2; exit 1; }
+if [[ "$custom_dir" == false && ( -d .git || -f .git ) ]]; then
+    current_remote="$(git remote get-url origin 2>/dev/null || true)"
+    case "$current_remote" in
+        https://github.com/parsij/PistachioSwap|https://github.com/parsij/PistachioSwap.git|git@github.com:parsij/PistachioSwap.git) install_dir=. ;;
+    esac
+fi
+
+if [[ -d "$install_dir/.git" || -f "$install_dir/.git" ]]; then
     remote="$(git -C "$install_dir" remote get-url origin)"
     case "$remote" in
         https://github.com/parsij/PistachioSwap|https://github.com/parsij/PistachioSwap.git|git@github.com:parsij/PistachioSwap.git) ;;

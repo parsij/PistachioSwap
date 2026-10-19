@@ -79,7 +79,7 @@ else
 fi
 `, { mode: 0o755 })
         writeFileSync(join(bin, 'pnpm'), '#!/usr/bin/env bash\nprintf "pnpm %s\\n" "$*" >> "$CALLS"\n', { mode: 0o755 })
-        const launch = () => spawnSync('bash', [join(root, 'scripts/run-frontend.sh'), '--dir', destination], { cwd: temp, env, encoding: 'utf8' })
+        const launch = (args = ['--dir', destination], cwd = temp) => spawnSync('bash', [join(root, 'scripts/run-frontend.sh'), ...args], { cwd, env, encoding: 'utf8' })
         let result = launch()
         assert.equal(result.status, 0, result.stderr)
         assert.equal(readFileSync(join(destination, 'version'), 'utf8'), 'first')
@@ -93,6 +93,9 @@ fi
         assert.equal(events.filter((line) => line === 'clone').length, 1)
         assert.equal(events.filter((line) => line === 'fetch').length, 1)
         assert.equal(events.filter((line) => line === 'pnpm self-host').length, 2)
+        result = launch([], destination)
+        assert.equal(result.status, 0, result.stderr)
+        assert.equal(readFileSync(calls, 'utf8').split('\n').filter((line) => line === 'clone').length, 1)
         writeFileSync(join(destination, 'version'), 'my local work')
         result = launch()
         assert.notEqual(result.status, 0)

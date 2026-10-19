@@ -12,7 +12,7 @@ curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/r
 
 This downloads and executes the public launcher from GitHub. You can inspect [the launcher](../scripts/run-frontend.sh) before running it. It clones into `./PistachioSwap` when the folder is absent, installs the lockfile dependencies using pnpm, loads browser-safe settings from the public production build manifest into the current process, and starts the frontend at **http://localhost:5173/swap/**. No configuration file is created, and no backend or private repository is started.
 
-The script uses the folder relative to your terminal's current directory. To choose a stable location, use an absolute path:
+When run from the root of an existing PistachioSwap checkout, the command reuses it automatically. Otherwise it uses `./PistachioSwap` relative to your terminal's current directory. To choose a stable location, use an absolute path:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.sh | bash -s -- --dir "$HOME/apps/PistachioSwap"
