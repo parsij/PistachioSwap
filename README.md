@@ -125,7 +125,7 @@ A successful verification proves that the static frontend bytes served during th
 
 ### Run the frontend with hosted quotes (no .env)
 
-Install Git, Node.js 24, and pnpm, then run:
+Run the following command. On supported systems it installs missing Git, a compatible Node.js 24 runtime, and pnpm automatically:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.sh | bash
@@ -133,7 +133,9 @@ curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/r
 
 Choose a custom install folder with `| bash -s -- --dir "$HOME/apps/PistachioSwap"` instead of `| bash`. Repeating the command reuses that checkout and fast-forwards clean `main` when updates exist; local work is never reset. It opens `http://localhost:5173/swap/`, loads public browser settings automatically, and uses PistachioSwap hosted quotes and services. Existing fees, screening, provider restrictions, and availability apply. Wallet storage and passkeys are separate from the production site. See [setup details, updates, and public-domain hosting requirements](docs/run-your-own-frontend.md).
 
-Already installed? `pnpm self-host` starts this mode without updating Git. The following instructions are for developers running their **own backend**.
+On native Windows, use the PowerShell command in the [setup guide](docs/run-your-own-frontend.md#windows-powershell); WSL is optional. System package installations may require administrator approval. Node.js and pnpm downloaded by these launchers live in a project-specific user tools folder, preserving the system installation. Linux package-manager support includes apt, dnf, pacman, zypper, and apk; macOS uses an existing Homebrew installation if system tools are missing.
+
+Already installed? `pnpm self-host` starts this mode without updating Git, when the required tools are already on your shell's PATH. Otherwise rerun the launcher, which restores its private tools PATH automatically. The following instructions are for developers running their **own backend**.
 
 ### Requirements
 
