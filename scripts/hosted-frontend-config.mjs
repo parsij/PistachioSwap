@@ -1,3 +1,6 @@
+import { Agent } from 'node:https'
+import process from 'node:process'
+
 export const HOSTED_ORIGIN = 'https://pistachioswap.com'
 
 export function readPublicFrontendEnvironment(manifest) {
@@ -30,6 +33,7 @@ export function hostedApiProxy() {
         target: HOSTED_ORIGIN,
         changeOrigin: true,
         secure: true,
+        agent: new Agent({ keepAlive: true, proxyEnv: process.env }),
         timeout: 60_000,
         proxyTimeout: 60_000,
         configure(proxy) {
