@@ -52,7 +52,7 @@ The local proxy reaches the hosted API from the computer running it. The hosted 
 
 ## Wallets and browser origins
 
-Use **localhost** consistently. Local vaults, storage, and passkeys are distinct from `pistachioswap.com` and from other browser origins. A website passkey does not unlock a localhost vault. Changing host, port, or browser profile can change available local wallet storage. Keep a recovery backup before moving or clearing wallet data.
+Use **localhost** consistently. Local vaults and storage belong to the local browser origin. Localhost passkeys use the localhost relying-party ID, separately from `pistachioswap.com`; the relying-party ID does not include the port. A website passkey does not unlock a localhost vault. Changing host, port, or browser profile can change available local wallet storage. Keep a recovery backup before moving or clearing wallet data.
 
 External-wallet/provider features depend on the selected wallet and any origin restrictions imposed by Reown, RPC/indexer providers, and other services. Public production project IDs do not guarantee every feature is authorized for every mirror domain. No allowlist or passkey security check is disabled by this setup.
 

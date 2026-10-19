@@ -6,7 +6,7 @@ $tokens = $null
 if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
 . $scriptPath
 
-$realGit = (Get-Command git -CommandType Application).Source
+$realGit = (Get-Command git -CommandType Application | Select-Object -First 1).Source
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N'))
 $script:testRemote = Join-Path $temporary 'upstream'
 $destination = Join-Path $temporary 'custom folder/frontend'
