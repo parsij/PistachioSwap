@@ -123,6 +123,18 @@ A successful verification proves that the static frontend bytes served during th
 
 ## Local development
 
+### Run the frontend with hosted quotes (no .env)
+
+Install Git, Node.js 24, and pnpm, then run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.sh | bash
+```
+
+Choose a custom install folder with `| bash -s -- --dir "$HOME/apps/PistachioSwap"` instead of `| bash`. Repeating the command reuses that checkout and fast-forwards clean `main` when updates exist; local work is never reset. It opens `http://localhost:5173/swap/`, loads public browser settings automatically, and uses PistachioSwap hosted quotes and services. Existing fees, screening, provider restrictions, and availability apply. Wallet storage and passkeys are separate from the production site. See [setup details, updates, and public-domain hosting requirements](docs/run-your-own-frontend.md).
+
+Already installed? `pnpm self-host` starts this mode without updating Git. The following instructions are for developers running their **own backend**.
+
 ### Requirements
 
 - Node.js 24

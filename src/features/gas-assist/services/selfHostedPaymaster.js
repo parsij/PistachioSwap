@@ -12,6 +12,7 @@ import {
     recoverTypedDataAddress,
 } from 'viem'
 import { hashAuthorization, recoverAuthorizationAddress } from 'viem/utils'
+import { hostedServiceUrl } from '../../../lib/hostedServiceUrl.js'
 
 import { pendingUserOperations, persistPendingUserOperation } from './pendingUserOperations.js'
 import { gasAssistTrace } from './gasAssistTrace.js'
@@ -94,7 +95,7 @@ function publicRpcUrl(value, name) {
         /(?:alchemy|infura|nodereal|quiknode|quicknode)/i.test(parsed.hostname)) {
         deny('PAYMASTER_RPC_UNSAFE', `${name} must be a public HTTPS RPC URL without URL credentials or query secrets.`)
     }
-    return parsed.href
+    return hostedServiceUrl(parsed.href)
 }
 function frontendConfig(backend) {
     if (import.meta.env?.VITE_GAS_ASSIST_ENABLED !== 'true' ||

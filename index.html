@@ -382,6 +382,23 @@
           </div>
         </section>
 
+        <section class="section" id="run-locally" aria-labelledby="run-locally-title">
+          <div class="section-head">
+            <h2 id="run-locally-title">Run your own frontend</h2>
+            <p>Use the interface on your computer with quotes from PistachioSwap. No .env file or backend setup needed.</p>
+          </div>
+          <div class="self-host-instructions">
+            <p>Install Git, Node.js 24, and pnpm first. Then run this in a Linux or macOS terminal, or Windows WSL:</p>
+            <pre><code>curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.sh | bash</code></pre>
+            <p>The command clones into <code>./PistachioSwap</code>, installs dependencies with pnpm, and opens <code>http://localhost:5173/swap/</code>. Run the same command again to check for updates and restart. Existing checkouts are reused; local changes and commits are never reset or overwritten.</p>
+            <h3>Choose the install folder</h3>
+            <pre><code>curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.sh | bash -s -- --dir "$HOME/apps/PistachioSwap"</code></pre>
+            <p>Replace the quoted path with your preferred folder. Use the same <code>--dir</code> on later runs. Stop a running instance with Ctrl+C before restarting. Already in the checkout? Run <code>pnpm self-host</code>.</p>
+            <p>This runs the frontend locally; quotes, routing, screening, and Gas Assist still depend on PistachioSwap’s hosted services. Quoted charges, eligibility, provider restrictions, and availability still apply. Wallet storage and passkeys are separate from the main website; existing website passkeys do not unlock a local vault. Some third-party features may restrict localhost or other origins.</p>
+            <p><a href="https://github.com/parsij/PistachioSwap/blob/main/docs/run-your-own-frontend.md" target="_blank" rel="noopener noreferrer">Setup details and hosting options →</a></p>
+          </div>
+        </section>
+
         <section class="section" id="faq">
           <div class="section-head">
             <h2>Common questions</h2>
