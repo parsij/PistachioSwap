@@ -213,7 +213,9 @@ jobs:
           set -euo pipefail
           trap 'rm -f .env.production.local' EXIT
 
+          node --test scripts/tests/legal-pages.test.mjs
           pnpm build
+          LEGAL_DIST=dist node --test scripts/tests/legal-pages.test.mjs
           pnpm frontend:manifest
           pnpm frontend:verify-build
 
@@ -317,6 +319,8 @@ jobs:
             ./scripts/build/verify-frontend-manifest.mjs \
             ./dist/index.html \
             ./dist/swap/index.html \
+            ./dist/legal/terms/index.html \
+            ./dist/legal/privacy/index.html \
             ./dist/.well-known/pistachio-build-manifest.json
           do
             grep -Fxq "$required_path" "$listing" || {
@@ -445,3 +449,4 @@ jobs:
             "$API_SERVICE" \
             "$PUBLIC_ORIGIN"
           REMOTE
+

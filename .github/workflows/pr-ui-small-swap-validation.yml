@@ -38,6 +38,10 @@ jobs:
         run: bash -n scripts/deploy/activate-vps-release.sh
       - name: Contributor agreement policy regression tests
         run: node scripts/tests/contributor-assignment.test.mjs
+      - name: Legal page and navigation regressions
+        run: |
+          node --test scripts/tests/legal-pages.test.mjs
+          pnpm exec vitest run src/app/BrandMenu.test.jsx src/web3/publicRoutes.test.js
       - name: Backend tests
         run: pnpm --filter @pistachio/api test
       - name: Gas Assist source capability tests
@@ -52,3 +56,6 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
         run: pnpm build
+      - name: Verify built legal pages
+        run: LEGAL_DIST=dist node --test scripts/tests/legal-pages.test.mjs
+

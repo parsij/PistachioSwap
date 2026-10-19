@@ -1,12 +1,11 @@
 # PistachioSwap Privacy Policy
 
-**Effective date:** July 28, 2026  
-**Last updated:** August 11, 2026
+**Last updated:** October 19, 2026  
+**Status:** Published pre-launch draft; final commercial terms are not yet adopted.
 
-> [!IMPORTANT]
 > **Pre-launch status.** The repository does not yet identify the final legal entity that will operate PistachioSwap. Before commercial launch, this Policy must be updated with that entity's exact legal name, required address/contact details, actual production vendors, final retention/deletion schedules, supported jurisdictions, and any jurisdiction-specific disclosures. A qualified privacy lawyer should review the production deployment. This document describes the current software and intended data flows; it is not a certification of legal compliance.
 
-This Privacy Policy explains how the operator of PistachioSwap ("PistachioSwap," "we," "us," or "our") may collect, use, disclose, and protect information when you use the PistachioSwap website, wallet interface, public API, and related services (collectively, the "Service").
+This Privacy Policy describes the person or entity operating PistachioSwap and Gas Assist; the final operator/controller's legal identity and mailing address have not yet been identified in this pre-launch draft ("PistachioSwap," "we," "us," or "our"). It explains how that operator collects, uses, discloses, and protects information when you use the PistachioSwap website, wallet interface, public API, and related services (collectively, the "Service").
 
 ## 1. Scope and public-blockchain warning
 
@@ -37,12 +36,13 @@ When you request or execute a quote, bridge, swap, or Gas Assist transaction, th
 - approval targets and exact approval amounts;
 - transaction calldata and unsigned transaction fields prepared for your review;
 - wallet-authentication challenges and signatures used to prove control of a wallet;
-- signed raw transactions when required for an explicitly authorized Gas Assist flow;
+- unsigned ERC-4337 UserOperation fields, sender, nonce, EntryPoint, delegate, gas limits, Paymaster data, and the source execution plan for sponsorship validation;
+- signed UserOperations and EIP-7702 authorizations received by the operator-run Bundler ingress and Bundler for validation and submission;
 - payment, approval, swap, bridge, and settlement transaction hashes;
 - order/intent status, failure codes, recovery state, timestamps, idempotency values, and replay-prevention records; and
 - sponsorship limits, abuse indicators, and security events.
 
-For Gas Assist, a transaction is presented for wallet review before authorization. Private keys are not sent to PistachioSwap.
+For the current direct Gas Assist design, the sponsorship API receives the unsigned operation for policy checks and Paymaster sponsorship; the browser supplies user signatures and submits the signed operation to the operator-run Bundler infrastructure. A statement that the sponsorship API does not receive a signed operation must not be read as saying that no operator-run infrastructure receives it. A signature is not a private key, but signed operations and authorizations are security-sensitive and are not appropriate support attachments. Wallet private keys and recovery phrases are not required by these API or Bundler functions.
 
 ### C. Pistachio Wallet information stored on your device
 
@@ -53,7 +53,8 @@ If the optional Pistachio Wallet is enabled, browser storage may contain:
 - wallet labels and selected-vault preferences;
 - passkey credential identifiers/metadata and values needed to request WebAuthn operations;
 - recovery-backup confirmation state and local settings; and
-- local session/activity metadata used to decide whether a wallet can be resumed or must be reauthenticated.
+- local session/activity metadata used to decide whether a wallet can be resumed or must be reauthenticated; and
+- locally cached wallet activity, scan checkpoints, and related transaction classifications in IndexedDB.
 
 Unlocked secret material is designed to remain in a dedicated browser worker-owned session and to be cleared when the wallet locks, times out, changes account, or is disposed. The encrypted vault remains in browser storage until you delete it, clear site data, or remove the browser profile.
 
@@ -70,13 +71,17 @@ Servers and infrastructure providers may receive or process:
 - sanctions-screening decisions, the version/hash of sanctions data used, and limited compliance case evidence when a transaction is restricted; and
 - diagnostic information needed to operate or secure the Service.
 
-Application logging is configured to redact sensitive fields including authorization credentials, internal service tokens, raw signed transactions, signatures, private keys, recovery phrases, passwords, and similar wallet-secret material. Operators must still review production logging and provider logging because no redaction configuration is infallible.
+Application code contains sensitive-field redaction controls. The full production logging and backup configuration has not been independently verified for this notice. Redaction at one layer does not establish redaction at every layer. Receiving a signed operation for execution is distinct from logging or retaining the payload.
 
 ### E. Communications
 
 If you contact us, we may process the address or account you contact us from, your name or alias, message contents, attachments, wallet address if you voluntarily provide it, and our response history.
 
 Do not send private keys, seed/recovery phrases, passkey secrets, raw signed transactions, API credentials, or internal service tokens in support messages or public GitHub issues.
+
+### F. Direct requests from your browser
+
+Wallet-history features can query Alchemy and thirdweb Insight/RPC directly from your browser, depending on configuration and availability. The selected provider receives the queried wallet address, network/request information, and information normally disclosed by the browser’s network connection. These requests do not need to pass through the PistachioSwap API. Direct requests to other configured RPC, wallet-connection, image, token-data, or security services can also disclose network and request information to those providers. Public on-chain data is not necessarily anonymous when combined with other information.
 
 ## 3. Sources of information
 
@@ -116,20 +121,28 @@ Information may be disclosed as necessary to operate the Service to categories s
 
 - hosting, database, CDN, security, RPC, and indexing providers;
 - wallet-connection and wallet-software providers such as Reown/WalletConnect or the wallet you choose;
-- swap, liquidity, sponsorship, and bridge providers such as configured Uniswap, 0x, PancakeSwap, Across, deBridge, Relay, Chainflip, the self-hosted Gas Assist infrastructure, or similar services;
-- market-data and token-security providers such as configured CoinGecko, GeckoTerminal, DexScreener, DexPaprika, Moralis, Alchemy, Honeypot.is, GoPlus, ShapeShift asset data, token lists, or self-hosted Pchained infrastructure;
+- independent swap, liquidity, and bridge providers such as configured Uniswap, 0x, PancakeSwap, Across, deBridge, Relay, Chainflip, or similar services;
+- market-data and token-security providers such as configured CoinGecko, GeckoTerminal, DexScreener, DexPaprika, Moralis, Alchemy, thirdweb, Honeypot.is, GoPlus, ShapeShift asset data, token lists, or self-hosted Pchained infrastructure;
 - accountants, auditors, insurers, attorneys, regulators, courts, or law enforcement when reasonably necessary and lawful; and
 - an acquirer, successor, or newly formed operating entity in a financing, merger, reorganization, sale, insolvency, or similar business transfer.
 
-The exact provider list depends on production configuration. A provider named in repository documentation may be disabled in a particular deployment.
+Gas Assist’s operator-run sponsorship API and Bundler, and Pchained where run by the same operator, are internal components rather than independent providers merely because they occupy separate repositories. Infrastructure vendors supporting those components can still receive or process data.
+
+The named providers above are examples supported by software configuration, not a verified inventory of enabled production vendors. The final production vendor inventory, roles, and relevant policy links remain to be confirmed before commercial launch.
+
+Independent providers’ policies apply to their own processing. This does not eliminate the operator’s responsibility for its own collection, disclosure, vendor selection, or contractual obligations.
 
 When a blockchain transaction is broadcast, transaction data is disclosed to the network and may become permanently public.
 
-## 7. Sale, sharing, advertising, and preference signals
+## 7. Advertising, tracking, and privacy signals
 
-The current repository does not intentionally implement behavioral-advertising trackers or a business model that sells personal information or shares it for cross-context behavioral advertising. If the production operator begins a practice treated as a sale or sharing under applicable law, the Policy and required opt-out controls must be updated before that practice begins.
+The reviewed repository does not intentionally implement behavioral-advertising trackers or a model of selling personal information or sharing it for cross-context behavioral advertising. Actual deployed scripts, analytics settings, vendor contracts, and production practices have not been fully verified for this notice; this is not a categorical representation that no sale or sharing occurs. Operational disclosures to an RPC provider are not automatically equivalent to advertising sharing; their legal treatment depends on the facts.
 
-Where California law requires a covered business to honor a valid Global Privacy Control or similar legally recognized opt-out preference signal, the production Service must do so for applicable sale/sharing activity. The present absence of such sale/sharing activity should not be treated as a promise that the business model can never change; material changes require updated notice and controls.
+No Service-wide response to the browser Do Not Track signal has been verified for this notice. Do not rely on that signal to disable data processing by this Service or its providers. Independent providers may collect information across services under their own policies; their actual production tracking configurations remain to be verified.
+
+Do Not Track and Global Privacy Control are different signals. Where an applicable law requires recognition of a valid opt-out preference signal, including GPC for covered sale/sharing practices, the Service must implement that requirement and describe the actual response. Applicability and the deployed response to these signals remain unverified; this notice does not claim that a signal automatically changes processing.
+
+A future change in analytics, advertising, or data monetization requires an updated assessment, disclosures, and any required choices before the new processing begins.
 
 ## 8. Browser storage and tracking choices
 
@@ -150,9 +163,11 @@ Current categories include:
 - **Quotes, orders, and signing intents:** expire on configured schedules, while transaction/recovery records may be kept longer where operationally or legally necessary.
 - **Transaction and fee records:** may be retained for accounting, tax, reconciliation, dispute, and legal needs.
 - **Security/abuse records:** may be kept while a threat, limit, investigation, or legal need remains active.
-- **Sanctions screening records:** ordinary checks are designed to store only compact wallet/chain/action, coarse location, decision, sanctions-data version, transaction reference, and time fields. Raw signed transactions and identity documents are not collected merely for routine sanctions screening. When a request is actually blocked or escalated, a separate case record may preserve the client IP and limited evidence needed for legal review/reporting. Records required by OFAC or other law may be retained for the legally required period, which is currently up to 10 years for records subject to OFAC's recordkeeping rule.
+- **Sanctions screening records:** ordinary checks are designed to store only compact wallet/chain/action, coarse location, decision, sanctions-data version, transaction reference, and time fields. Raw signed transactions and identity documents are not collected merely for routine sanctions screening. When a request is actually blocked or escalated, a separate case record may preserve the client IP and limited evidence needed for legal review/reporting. Records within 31 CFR 501.601 generally must remain available for at least 10 years after the relevant transaction; blocked-property records can require retention throughout blocking and at least 10 years after unblocking, subject to the rule’s exceptions. This is not a 10-year maximum or a statement that every routine screening log is legally required for that period. Counsel must map the rule to the actual records and facts.
 - **Support communications:** may be kept while necessary to resolve and document the request.
 - **Backups:** may retain data for a limited additional period before rotation or deletion.
+
+Final category-specific production retention periods, deletion schedules, backup rotation, and vendor retention remain to be confirmed before commercial launch. Expiration of a session or quote does not necessarily delete related security, transaction, or legal records.
 
 Before production launch, the operator must adopt specific documented retention and deletion schedules for logs, transaction records, authentication data, abuse/security records, backups, and support systems. De-identified or aggregated information may be kept where it can no longer reasonably identify a person.
 
@@ -174,7 +189,7 @@ Public blockchain records generally cannot be deleted or corrected by PistachioS
 
 If the California Consumer Privacy Act and related regulations apply to the production operator, California residents may have rights including rights to know/access, delete, correct, opt out of sale/sharing, limit certain uses of sensitive personal information where applicable, and exercise rights without unlawful discrimination.
 
-Before launch, the operator must determine whether statutory thresholds apply and establish required intake, verification, response, and preference-signal processes. Privacy requests may be sent to **privacy@pistachioswap.com** only after the operator confirms that address is active and monitored. We will never require a seed phrase or private key to verify a privacy request.
+Before launch, the operator must determine whether statutory thresholds apply and establish required intake, verification, response, and preference-signal processes. Privacy requests may be sent to **privacy@pistachioswap.com** only after the operator confirms that address is active and monitored. We will never require a seed phrase or private key to verify a privacy request. A request should not require broadcasting a transaction, granting token approval, or signing a spend-capable payload. The final request-verification and response procedures, including authorized-agent and appeal procedures where required, remain to be confirmed before commercial launch.
 
 ## 13. EEA/UK rights and international transfers
 
@@ -194,10 +209,12 @@ We may update this Policy when the Service, operator, vendors, law, data flows, 
 
 ## 16. Contact
 
-Privacy questions and requests: **privacy@pistachioswap.com**
+Proposed privacy contact (monitoring not yet confirmed): **privacy@pistachioswap.com**
 
 Before commercial launch, the final section must identify the operating legal entity, confirm that the contact channel is monitored, and add any legally required mailing address, representative, or data-protection contact.
 
 ---
 
-This is a repository-aligned pre-launch privacy notice, not a substitute for advice from qualified counsel reviewing the actual operator, production infrastructure, vendors, retention schedules, jurisdictions, and business practices.
+This published pre-launch notice does not retroactively describe or authorize historical processing. Previous versions remain available in the repository history. Final operator identity, production vendors, retention, privacy-request procedures, and jurisdiction-specific requirements still require verification and qualified legal review.
+
+

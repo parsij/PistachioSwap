@@ -48,6 +48,8 @@ const PROTOCOL_LINKS = [
 ]
 
 const COMPANY_LINKS = [
+    { href: '/legal/terms/', label: 'Terms of Use' },
+    { href: '/legal/privacy/', label: 'Privacy Policy' },
     { href: '/', label: 'About' },
     { href: '/how-it-works/', label: 'How Pistachio Swap works' },
     { href: '/faq/', label: 'FAQ' },
@@ -433,3 +435,4 @@ export default function BrandMenu({ name }) {
         </div>
     )
 }
+

@@ -11,6 +11,8 @@ import { publicRoutesPlugin } from './src/web3/publicRoutesMiddleware.js'
 import { originCacheHeadersPlugin } from './src/web3/originCacheMiddleware.js'
 import { resolveModulePreloadDependencies } from './src/web3/walletChunkPreload.js'
 
+import { legalPagesPlugin } from './scripts/build/legal-pages.mjs'
+
 function legacyGuideFallback(canonical) {
   return `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Pistachio Swap page moved</title>\n    <link rel="canonical" href="https://pistachioswap.com${canonical}" />\n    <meta name="theme-color" content="#191919" />\n    <meta http-equiv="refresh" content="0; url=${canonical}" />\n  </head>\n  <body style="background:#191919;color:#f4f4f4;font-family:system-ui,sans-serif;padding:3rem">\n    <p>This page moved to <a href="${canonical}" style="color:#8ac27c">${canonical}</a>.</p>\n  </body>\n</html>\n`
 }
@@ -48,6 +50,7 @@ export default defineConfig(({ mode }) => {
     appType: 'mpa',
     plugins: [
       publicRoutesPlugin(),
+      legalPagesPlugin(import.meta.dirname),
       publicGuideBuildPlugin(),
       originCacheHeadersPlugin(),
       tailwindcss(),
@@ -101,6 +104,8 @@ export default defineConfig(({ mode }) => {
          * /wallet/, /faq/, /how-it-works/, and /gas-assist/.
          */
         input: {
+          terms: resolve(import.meta.dirname, 'legal/terms/index.html'),
+          privacy: resolve(import.meta.dirname, 'legal/privacy/index.html'),
           home: resolve(import.meta.dirname, 'index.html'),
           main: resolve(import.meta.dirname, 'swap/index.html'),
           landing: resolve(import.meta.dirname, 'landing/index.html'),
@@ -133,3 +138,4 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
