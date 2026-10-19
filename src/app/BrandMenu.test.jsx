@@ -63,6 +63,8 @@ describe('brand menu', () => {
                 .toBe('/how-it-works/')
             expect(screen.getByRole('link', { name: 'Legal & third-party notices' }).getAttribute('href'))
                 .toBe('/legal/third-party/')
+            expect(screen.getByRole('link', { name: 'Terms of Use' }).getAttribute('href')).toBe('/legal/terms/')
+            expect(screen.getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe('/legal/privacy/')
             expect(screen.queryByText('Protocol')).toBeNull()
             expect(screen.queryByText('Company')).toBeNull()
             expect(screen.queryByText('Smart routing')).toBeNull()
@@ -102,6 +104,8 @@ describe('brand menu', () => {
             fireEvent.click(screen.getByRole('button', { name: 'Open product menu' }))
             const menu = screen.getByRole('navigation', { name: 'PistachioSwap' })
             expect(menu.className).toContain('brand-menu-sheet')
+            expect(screen.getByRole('link', { name: 'Terms of Use' }).getAttribute('href')).toBe('/legal/terms/')
+            expect(screen.getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe('/legal/privacy/')
             expect(menu.querySelector('.brand-menu-handle')).toBeTruthy()
             expect(menu.parentElement.className).toContain('brand-menu-backdrop')
             expect(menu.querySelectorAll('.brand-menu-app-links a')).toHaveLength(2)
@@ -155,3 +159,4 @@ describe('brand menu', () => {
         expect(css).toMatch(/\.brand-menu-products\s*\{[^}]*grid-template-columns:\s*repeat\(2/)
     })
 })
+

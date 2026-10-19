@@ -1,14 +1,14 @@
 # PistachioSwap Terms of Use
 
-**Effective date:** July 28, 2026  
-**Last updated:** October 13, 2026
+**Last updated:** October 19, 2026  
+**Status:** Published pre-launch draft; final commercial terms are not yet adopted.
 
-> [!IMPORTANT]
 > **Pre-launch legal notice.** PistachioSwap is currently a project name and this repository does not yet identify the final operating legal entity. Before commercial launch, these Terms must be reviewed by qualified counsel and updated with the operator's exact legal name and address, monitored contact information, final production fees/features, supported jurisdictions, regulatory/compliance decisions, and final dispute provisions. These Terms are a repository-aligned pre-launch draft, not a claim that every launch jurisdiction has been cleared.
 
-These Terms of Use (the "Terms") govern access to and use of the PistachioSwap website, wallet interface, public API, software, and related services (collectively, the "Service"). "PistachioSwap," "we," "us," and "our" refer to the person or entity operating the Service under the PistachioSwap name.
+These Terms of Use (the "Terms") govern access to and use of the PistachioSwap website, wallet interface, public API, software, and related services (collectively, the "Service"). "PistachioSwap," "we," "us," and "our" refer to the person or entity operating the Service under the PistachioSwap name; the final legal entity and business mailing address have not yet been identified in this pre-launch draft. PistachioSwap and Gas Assist are service names. Repository ownership or a proposed future company name does not, by itself, identify the operator or transfer an existing agreement.
 
-By accessing or using the Service, you agree to these Terms. If you do not agree, do not use the Service.
+
+Review these Terms before using the Service. Where the Service asks you to accept them, your acceptance applies to the identified version. Acceptance of these Terms is separate from a wallet signature or transaction authorization. The Privacy Policy explains data practices; acknowledging it is not blanket consent to optional processing.
 
 ## 1. Eligibility
 
@@ -32,7 +32,7 @@ Depending on configuration, the Service may:
 - request and compare swap or bridge quotes from third-party providers;
 - prepare transaction, typed-data, or message-signing requests;
 - submit or monitor transactions that you authorize; and
-- offer Gas Assist for certain eligible BNB Chain transactions when the wallet lacks native BNB.
+- offer Gas Assist for eligible same-chain and cross-chain source operations on networks currently enabled for sponsorship, including when the wallet lacks the required native gas token.
 
 PistachioSwap may change supported chains, assets, providers, transaction types, limits, fees, and eligibility rules at any time.
 
@@ -60,21 +60,19 @@ The wallet may use WebAuthn/passkeys and a platform authenticator. Your fingerpr
 
 Browser encryption and passkey protection reduce risk but do not make a compromised device safe. Malware, malicious extensions, operating-system compromise, phishing, synchronization-provider compromise, or physical access may expose or destroy wallet information.
 
-## 6. One-confirmation Gas Assist authorization
+## 6. Gas Assist authorization and execution
 
-For the current Pistachio Wallet prepaid Gas Assist flow on BNB Chain, the wallet may present one sponsored transaction. That transaction pays the disclosed fee, authorizes the exact swap amount, executes the swap, and requires the reviewed minimum output. Bought tokens are sent to the same user wallet.
+Gas Assist combines operator-funded native gas with your authorization of a specific source operation. In the current direct design, the browser prepares an ERC-4337 UserOperation using EIP-7702 account delegation. The reviewed source execution plan includes the quoted token payment to the treasury, an allowance reset, exact approval, provider execution, and a final allowance reset. Support depends on the route, account, network, and current configuration.
 
-When this atomic flow is available:
+The sponsorship API checks the proposed operation and authorizes Paymaster sponsorship. Your wallet supplies the required user signatures and authorizations, and the signed operation is submitted to the operator-run Bundler infrastructure. The operator’s sponsorship signature is distinct from your wallet’s spending authorization; it does not replace your required signature.
 
-- Pistachio Wallet presents one review and, for an already-unlocked session, requires one fresh passkey reauthentication;
-- a resumed session that has just been passkey-unlocked is not intentionally prompted for a second passkey for the same swap;
-- the wallet validates chain ID, destination, calldata, nonce, gas, fee recipient, recipient, and minimum output against the backend-prepared payload before returning a signature;
-- the frontend submits one signed transaction; and
-- if the on-chain transaction fails, no fee is taken.
+Wallet authentication and operation authorization are separate. Depending on the wallet and session state, the signing flow may use a bounded authenticated session, require a fresh passkey check, or ask for an external-wallet confirmation. An authentication message does not itself authorize an arbitrary asset transfer. Do not assume that every underlying protocol signature requires a separate biometric prompt. Review each operation presented by your wallet.
 
-This confirmation authorizes only the exact reviewed transaction. It is not a blanket approval for future transactions, arbitrary tokens, arbitrary recipients, unlimited approvals, different networks, or unrelated Gas Assist orders.
+For the direct atomic source operation, a reverted source execution also reverts its token payment, so that payment is not collected through the reverted operation. A mined Bundler transaction or an accepted UserOperation hash alone does not prove successful execution of your individual operation. A pending, dropped, or unverified operation must not be treated as a confirmed payment receipt.
 
-Gas Assist wallet authentication is separate from transaction authorization. A fresh authentication session may require a message signature proving control of the wallet. That authentication message states that it does not itself authorize a transaction.
+EIP-7702 delegation and token approvals can persist after a transaction, depending on the account and contracts used. Disconnecting a wallet or clearing browser data does not revoke on-chain permissions. Review permissions using appropriate wallet tools; later revocation may require native gas.
+
+Cross-chain destination fulfillment is separate from the source operation and is addressed below.
 
 ## 7. Quotes, routes, and execution
 
@@ -90,32 +88,31 @@ A displayed route does not guarantee that:
 
 Reject any wallet request that does not match your intent.
 
-## 8. Fees and costs
+## 8. Quotes, service charges, and other costs
 
-The Service may charge disclosed platform, integrator, Gas Assist, fixed, percentage-based, progressive, or other fees. Third parties may separately charge liquidity-provider fees, bridge fees, protocol fees, token taxes, spreads, gas costs, relayer costs, sponsorship costs, or other charges.
+The Service may charge platform, integrator, Gas Assist, fixed, percentage-based, progressive, or other disclosed charges. Third parties may separately impose liquidity-provider, bridge, protocol, token-tax, spread, network-gas, relayer, or other costs. A cost included in an estimated quote is not necessarily an additional separately collected charge. Review the total token payment, expected output, minimum output, recipient, and route before authorization.
 
-Review the final quote/review information before authorization. Fees may vary by route, provider, asset, network, trade size, and current conditions. Unless expressly stated otherwise or required by law, fees are not refundable after an irreversible transaction has been submitted or completed.
+A normal transaction’s actual blockchain network gas is different from the quoted Gas Assist sponsorship-service charge. Estimates of network gas may be used to calculate that service price, but the resulting total is not represented as the exact final on-chain gas cost.
 
-A repository example, environment value, test fixture, or documentation sample is not a binding production price. The transaction-specific disclosure presented by the production Service controls, subject to obvious error and applicable law.
+Fees may vary between quotes by route, provider, asset, network, trade size, and current conditions. A quote-specific payment is fixed when you authorize that quote, subject to its disclosed expiration and execution conditions. A changed payment or operation requires appropriate renewed authorization. Repository examples, historical defaults, environment samples, and test fixtures are not binding production prices.
 
-## 9. Gas Assist limitations
+Refunds and when a charge is earned depend on the relevant service, transaction-specific terms, mandatory law, and historical promises. Submission alone does not establish that the direct Gas Assist token payment was collected. Section 9 governs that payment and its intended retained-margin treatment; it does not waive mandatory remedies or remedies for an operator’s actionable conduct.
 
-Gas Assist is intended to help eligible users execute supported transactions when the wallet lacks native gas currency. For the direct sponsored source operation, you authorize an exact token-denominated service charge for the particular quote before execution. The charge may be calculated using estimated gas, safety margins, conversion expenses, and configured commercial fees. It is not a promise to charge only final actual blockchain gas.
+## 9. Gas Assist pricing, collection, and cross-chain outcomes
 
-The quoted service charge is collected when the source operation succeeds. If that operation reverts, its token payment reverts and no service charge is collected through that operation. Once earned under the applicable transaction terms, the full charge is operator compensation; PistachioSwap retains any difference between the agreed charge and actual gas expenses. Lower actual gas does not automatically create a refund, customer deposit, or credit balance. References to a gas reserve or prepayment in legacy API fields describe pricing components, not a separately refundable customer balance.
+Before execution, you authorize an exact token-denominated sponsorship-service charge for the particular quote. The price may incorporate estimated network gas, safety margins, conversion expenses, and commercial pricing components. It is a quoted service price, not an undertaking to charge only final actual blockchain gas.
 
-For cross-chain routes, successful source execution and destination fulfillment are separate. A later destination failure or provider principal refund does not automatically reverse the source service charge. Provider refunds depend on route, provider, screening, chain, and economic conditions, may be reduced by costs, and are not guaranteed. Mandatory legal rights, express transaction-specific promises, and obligations under historical terms remain applicable. These draft Terms do not determine that this pricing or retention policy is lawful.
+In the current direct design, that token payment is collected within a successful source operation. If source execution reverts, the payment in that operation also reverts. Once earned under the applicable transaction terms and law, the full charge is operator compensation. The operator retains any difference between the agreed charge and actual gas expenses. Lower actual gas alone does not create an automatic refund, customer deposit, or unused credit. Legacy references to a reserve or prepayment do not, by themselves, establish a separately refundable customer balance.
 
-Gas Assist:
+The final contractual earning event and remedies for operator error or destination failure remain subject to legal review. Collection at source success is a technical event; it does not, by itself, determine legal entitlement to retain a charge.
 
-- is not free unless the interface expressly says so;
-- is not available for every wallet, token, amount, route, or network;
-- may require wallet authentication, a passkey, message/transaction signatures, exact token approval, payment, simulation, liquidity/price/security checks, and rate-limit or abuse checks;
-- may be rejected because of token risk, liquidity, price impact, allowance, provider/paymaster support, policy restrictions, treasury limits, simulation, abuse controls, or network conditions;
-- may expire before signing or submission is complete; and
-- depends on service and third-party infrastructure that may be paused, unavailable, or changed.
+For cross-chain routes, source success does not establish destination fulfillment. The intended model does not automatically return the source sponsorship charge solely because a later destination transfer fails or a provider returns principal. Applicable remedies remain subject to the final earning-event terms, express promises, mandatory law, and any relevant historical agreement.
 
-PistachioSwap may pause, limit, refuse, or terminate Gas Assist when reasonably necessary to protect users, the treasury, providers, or the Service.
+Provider refunds and refunds of this service charge are separate. Configuring a refund recipient is not a guarantee that a provider supports, initiates, or completes a refund. Refund availability, assets, amount, destination, timing, and deductions depend on the route, provider, screening, contracts, gas, and economic conditions. A refund-eligible or refund-pending status is not evidence that funds have arrived.
+
+Gas Assist is not free unless a specific offer says so. It may be unavailable or refused because of network support, token risk, liquidity, price impact, allowance, simulation, screening, rate limits, abuse controls, provider support, or operator funding. Quotes and authorizations can expire. We may reasonably pause or limit sponsorship for security, funding, compliance, maintenance, or provider reasons.
+
+Never send private keys, recovery phrases, or signed operation payloads with a payment or destination-failure complaint.
 
 ## 10. Public blockchain records
 
@@ -139,13 +136,14 @@ You are responsible for your decisions and for professional advice appropriate t
 
 You are responsible for determining and satisfying taxes, reporting obligations, recordkeeping duties, sanctions/compliance obligations applicable to you, and other legal obligations arising from your transactions. PistachioSwap does not calculate or file taxes for you unless a separate written service expressly states otherwise.
 
-## 14. Third-party services
+## 14. Infrastructure and independent providers
 
-The Service relies on or links to independent wallets, blockchains, RPC providers, indexers, token lists, market-data providers, swap aggregators, decentralized exchanges, bridges, relayers, sponsorship/paymaster providers, security services, hosting services, and software libraries.
+The integrated Service includes wallet software, routing and transaction preparation, and operator-run Gas Assist and related infrastructure. Separate repositories do not make those components independent businesses. Where the same operator runs the sponsorship API, Paymaster administration, Bundler infrastructure, or Pchained services, their relevant activities are part of that operator’s activities.
 
-Third-party services are not controlled by PistachioSwap. Their terms, privacy policies, fees, licenses, availability, security, and conduct apply separately. Integration does not imply endorsement, partnership, guarantee, or sponsorship unless expressly stated.
+The Service also uses independent wallets, blockchains, RPC/indexing services, token and price data, swap/bridge providers, hosting/CDN services, and software libraries. Their roles, terms, privacy policies, fees, availability, and risks are separate where applicable. Integration does not imply endorsement or guarantee. This distinction does not disclaim responsibility for the operator’s own activities.
 
-Names and logos of third parties remain the property of their respective owners.
+
+Third-party names and logos remain subject to their owners’ rights.
 
 ## 15. Acceptable use
 
@@ -165,7 +163,7 @@ We may investigate suspected abuse and cooperate with lawful requests.
 
 PistachioSwap may screen public wallet addresses and request location signals against applicable sanctions restrictions, official government sanctions data, and configured blockchain-intelligence providers. The hosted website, APIs, routing, Gas Assist, transaction preparation, and other state-changing services may be refused or disabled when a request is prohibited, presents a sanctions match, or cannot be screened reliably.
 
-PistachioSwap does not control public blockchains or independent smart contracts and cannot prevent a user from interacting with them through other software. A restriction by the hosted Service is not a representation about the legal status of an address, asset, person, or transaction outside the specific Service decision. Screening can produce false positives or incomplete results. Users who believe a restriction is erroneous may contact legal@pistachioswap.com without sending a private key, recovery phrase, or signed raw transaction.
+PistachioSwap does not control public blockchains or independent smart contracts and cannot prevent a user from interacting with them through other software. A restriction by the hosted Service is not a representation about the legal status of an address, asset, person, or transaction outside the specific Service decision. Screening can produce false positives or incomplete results. The proposed contact for screening concerns is legal@pistachioswap.com; monitoring of this address remains unconfirmed. Never send a private key, recovery phrase, or signed raw transaction.
 
 Sanctions programs and geographic restrictions change. Availability from a location or to a wallet at one time does not guarantee future availability.
 
@@ -185,7 +183,7 @@ Code contributions are governed by the repository license, `CONTRIBUTING.md`, th
 
 ## 19. Privacy
 
-The [Privacy Policy](PRIVACY.md) explains current repository-aligned data practices and the information that must still be finalized before launch.
+The [Privacy Policy](/legal/privacy/) explains current repository-aligned data practices and the information that must still be finalized before launch.
 
 Do not submit wallet secrets through support channels, analytics, issue trackers, pull requests, or other public channels.
 
@@ -241,11 +239,13 @@ These Terms, the Privacy Policy, the applicable software license, transaction-sp
 
 ## 27. Contact
 
-Legal questions: **legal@pistachioswap.com**  
-Privacy questions: **privacy@pistachioswap.com**
+Proposed legal contact (monitoring not yet confirmed): **legal@pistachioswap.com**  
+Proposed privacy contact (monitoring not yet confirmed): **privacy@pistachioswap.com**
 
 Before commercial launch, the operator must confirm that these addresses exist and are monitored, identify the final legal entity, and add any legally required mailing address, registered-agent, representative, or regulatory contact information.
 
 ---
 
-This pre-launch draft reflects major product and risk characteristics visible in the repository. It is not a substitute for qualified counsel reviewing the final operator, launch jurisdictions, money-transmission and sanctions analysis, consumer disclosures, privacy program, fees, and production infrastructure.
+This published pre-launch draft does not retroactively change earlier agreements or promises. Previous versions remain available in the repository history. Publication is not regulatory approval or a substitute for qualified counsel reviewing the actual operator, fees, jurisdictions, consumer disclosures, and production infrastructure.
+
+
