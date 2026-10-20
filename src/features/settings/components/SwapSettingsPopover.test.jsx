@@ -113,6 +113,19 @@ describe('SwapSettingsPopover', () => {
         expect(screen.queryByRole('tooltip')).toBeNull()
         expect(screen.getByRole('dialog')).toBeTruthy()
     })
+    it('opts into the bundled Gas Assist route and explains its charge without skipping review', () => {
+        render(<Harness />)
+        fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
+        const control = screen.getByRole('switch', { name: 'One-confirmation swaps' })
+        const preference = screen.getByRole('combobox', { name: 'Gas Assist preference' })
+        expect(control.getAttribute('aria-checked')).toBe('false')
+        fireEvent.click(control)
+        expect(preference.value).toBe('force')
+        expect(screen.getByText(/Eligible routes only; the quoted token service charge applies/)).toBeTruthy()
+        fireEvent.click(control)
+        expect(preference.value).toBe('auto')
+    })
+
     it('lets the user force Gas Assist or choose normal gas', () => {
         render(<Harness />)
         fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))

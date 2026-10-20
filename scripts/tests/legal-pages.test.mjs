@@ -29,6 +29,11 @@ test('published pages include current documents, pricing limitations, and no int
             assert.match(html, /If source execution reverts, the payment in that operation also reverts/)
             assert.match(html, /source success does not establish destination fulfillment/)
             assert.match(html, /mandatory law/)
+            assert.match(html, /One-confirmation swaps/)
+            assert.match(html, /one passkey prompt does not mean one protocol signature/i)
+            assert.match(html, /Permit2/)
+            assert.match(html, /Locally hosted frontends/)
+            assert.match(html, /final commercial terms are not yet adopted/)
         } else {
             assert.match(html, /signed UserOperations and EIP-7702 authorizations/i)
             assert.match(html, /Alchemy and thirdweb/)

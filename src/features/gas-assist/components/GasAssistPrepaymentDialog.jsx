@@ -239,6 +239,12 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                         <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Gas Assist service charge</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong></div>
                         <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong></div>
+                        {(order.destinationRecipient || order.recipient || order.walletAddress) && <div><span>Recipient</span><code>{order.destinationRecipient || order.recipient || order.walletAddress}</code></div>}
+                        {order.approvalSpender && <div><span>Approval spender</span><code>{order.approvalSpender}</code></div>}
+                        {order.treasuryAddress && <div><span>Service-charge recipient</span><code>{order.treasuryAddress}</code></div>}
+                        {order.quoteProvider && <div><span>Provider</span><strong>{order.quoteProvider}</strong></div>}
+                        {(order.chainId || sellToken?.chainId) && <div><span>Source chain</span><strong>{order.chainId || sellToken.chainId}</strong></div>}
+                        {buyToken?.chainId && <div><span>Destination chain</span><strong>{buyToken.chainId}</strong></div>}
                         {!completed && !order.userOpHash && <div><span>Quote expires</span><strong><Countdown expiresAt={order.expiresAt} /></strong></div>}
                         {atomic && hashes[0] && (
                             <div><span>Transaction</span><code>{hashes[0]}</code></div>
@@ -386,6 +392,12 @@ export default function GasAssistPrepaymentDialog({
                             <p className="gas-assist-one-tap-note">
                                 This is the fixed service charge for this quote, not the final blockchain gas cost. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. Applicable terms and law still apply.
                             </p>
+                            <p className="gas-assist-one-tap-note">
+                                Confirming authorizes this quoted service charge, exact token approval and swap together. EIP-7702 delegation can remain active afterward; disconnecting does not revoke it. Replacing an existing delegation requires an additional wallet review.
+                            </p>
+                            {sponsorship.config?.delegate && <p className="gas-assist-one-tap-note">
+                                Delegation contract: <code>{sponsorship.config.delegate}</code>
+                            </p>}
                             {purpose === 'cross-chain-gas' && (
                                 <p className="gas-assist-one-tap-note">
                                     The charge is collected on source success. Destination fulfillment is separate; a destination failure or provider refund does not automatically refund this charge. Provider refunds are conditional and may be reduced by costs.
@@ -420,8 +432,8 @@ export default function GasAssistPrepaymentDialog({
                     {primaryAction && sponsorship.signPackage && showPayment && !reviewUpdated && (
                         <p className="gas-assist-one-tap-note">
                             {purpose === 'cross-chain-gas'
-                                ? 'One tap starts the flow. Pistachio Wallet will ask you to confirm the sponsored source swap.'
-                                : 'One tap starts the flow. Pistachio Wallet will ask you to confirm one sponsored transaction. If the source operation reverts, no fee is taken.'}
+                                ? 'After this review, one passkey verification authorizes the supported sponsored source flow. A changed quote or delegation replacement requires another review.'
+                                : 'After this review, one passkey verification authorizes the supported sponsored flow. If the source operation reverts, its token service charge also reverts. A changed quote or delegation replacement requires another review.'}
                         </p>
                     )}
                     {canRetry && retryAction && (

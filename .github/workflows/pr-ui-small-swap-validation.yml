@@ -50,7 +50,7 @@ jobs:
           node --test scripts/tests/hosted-frontend.test.mjs scripts/tests/bootstrap-tools.test.mjs
           pnpm exec vitest run src/lib/apiBaseUrl.test.js src/lib/hostedServiceUrl.test.js
       - name: Gas Assist source capability tests
-        run: pnpm exec vitest run src/features/passkey/services/walletWorker.gasAssist.test.js src/features/passkey/services/walletManagerSelfHostedPaymasterSigning.test.js src/services/swapExecutionMode.test.js src/features/gas-assist/services/capabilityRegistry.test.js src/features/wallet/services/walletHistoryMultichain.test.js src/features/gas-assist/services/selfHostedPaymaster.test.js
+        run: pnpm exec vitest run src/features/passkey/services/walletWorker.gasAssist.test.js src/features/passkey/services/walletManagerSelfHostedPaymasterSigning.test.js src/features/passkey/services/walletManagerSmartSwap.test.js src/features/passkey/services/walletManagerProduction.test.js src/features/settings/components/SwapSettingsPopover.test.jsx src/features/settings/services/swapSettings.test.js src/services/swapExecutionMode.test.js src/features/gas-assist/services/capabilityRegistry.test.js src/features/wallet/services/walletHistoryMultichain.test.js src/features/gas-assist/services/selfHostedPaymaster.test.js
       - name: Wallet import and receipt reset regressions
         run: pnpm exec vitest run src/features/passkey/components src/features/passkey/services/walletManagerImport.test.js src/features/swap/hooks/useSameChainReceiptLifecycle.test.jsx
       - name: New token transaction state regressions

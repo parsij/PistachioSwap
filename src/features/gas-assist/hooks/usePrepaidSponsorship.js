@@ -78,6 +78,10 @@ export function reviewedSponsorshipOrderChanged(reviewed, created) {
     if (!reviewed || !created) return true
     const fields = [
         ['walletAddress', true],
+        ['recipient', true],
+        ['destinationRecipient', true],
+        ['refundRecipient', true],
+        ['treasuryAddress', true],
         ['chainId', false],
         ['sellToken', true],
         ['buyToken', true],
@@ -611,6 +615,7 @@ export function usePrepaidSponsorship({
                     sessionToken,
                     walletClient,
                     authenticatedWalletAddress: walletAddress,
+                    useSingleConfirmation: true,
                     onBroadcast: ({ userOpHash }) => {
                         if (!isCurrent(walletEpoch, flowEpoch)) return
                         setState((current) => ({ ...current, phase: 'swap-confirming',

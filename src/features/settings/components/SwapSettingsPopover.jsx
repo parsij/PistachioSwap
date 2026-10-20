@@ -28,11 +28,16 @@ export default function SwapSettingsPopover({ children, settings, onSettingsChan
                 else draft.autoButtonRef.current?.focus()
             }}>
                 <SlippageSettingsSection draft={draft} />
+                <SettingsToggleRow label="One-confirmation swaps"
+                    tooltip="Use Gas Assist to bundle the token charge, approval and swap. Review once, then authorize with one passkey in Pistachio Wallet on eligible routes. A token service charge applies even if you have native gas. Delegation persists; replacing another wallet’s delegation requires a separate review. External wallets control their own prompts."
+                    checked={settings.gasAssistPreference === 'force'}
+                    onCheckedChange={(enabled) => onSettingsChange({ ...settings, gasAssistPreference: enabled ? 'force' : 'auto' })} />
+                <p className="swap-settings-smart-swap-note">Pistachio Wallet + Gas Assist. Eligible routes only; the quoted token service charge applies. Review is always required.</p>
                 <div className="swap-settings-gas-assist">
                     <div className="settings-row-label"><label htmlFor="swap-gas-assist-preference">Gas Assist</label><InfoTooltip label="Auto uses Gas Assist when gas is low. Force requires an eligible token and enabled network. Normal gas uses your wallet’s native balance." /></div>
                     <select id="swap-gas-assist-preference" aria-label="Gas Assist preference" value={settings.gasAssistPreference ?? 'auto'} onChange={(event) => onSettingsChange({ ...settings, gasAssistPreference: event.target.value })}>
                         <option value="auto">Auto</option>
-                        <option value="force">Force Gas Assist</option>
+                        <option value="force">One-confirmation (Gas Assist)</option>
                         <option value="normal">Normal gas</option>
                     </select>
                 </div>

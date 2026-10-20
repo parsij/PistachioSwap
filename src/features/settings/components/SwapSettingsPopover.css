@@ -884,3 +884,10 @@ prefers-reduced-motion:
     .uniswap-toggle-thumb { top: 7px; }
     .slippage-combined-control { width: 126px; }
 }
+
+.swap-settings-smart-swap-note {
+    margin: 6px 0 14px;
+    color: var(--settings-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
