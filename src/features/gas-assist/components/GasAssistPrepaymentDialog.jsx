@@ -160,7 +160,7 @@ function statusContent({ phase, order, orderExpired }) {
         return { title: 'Preparing the final swap', detail: 'Refreshing the exact route and transaction.' }
     }
     if (phase === 'continuation-ready' || phase === 'swap-signing') {
-        return { title: 'Confirm the final swap', detail: 'Review the exact sponsored swap in Pistachio Wallet.' }
+        return { title: 'Confirm the final swap', detail: 'Review the exact sponsored swap in your connected wallet.' }
     }
     if (phase === 'completed') {
         return { tone: 'success', title: 'Swap complete', detail: 'Your sponsored swap was confirmed.' }
@@ -255,7 +255,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                     </div>
                 )}
                 <p className="gas-assist-technical-note">
-                    Pistachio Wallet authorizes one sponsored source operation. The disclosed fee goes to PistachioSwap and the swap principal goes through the quoted provider. If the source operation reverts, its token fee transfer also reverts. Cross-chain destination fulfillment happens separately.
+                    Your compatible wallet authorizes one sponsored source operation. The disclosed fee goes to PistachioSwap and the swap principal goes through the quoted provider. If the source operation reverts, its token fee transfer also reverts. Cross-chain destination fulfillment happens separately.
                 </p>
             </div>
         </details>
@@ -398,7 +398,9 @@ export default function GasAssistPrepaymentDialog({
                             {sponsorship.config?.delegate && <p className="gas-assist-one-tap-note">
                                 Delegation contract: <code>{sponsorship.config.delegate}</code>
                             </p>}
-                            {purpose === 'cross-chain-gas' && (
+                            {sponsorship.externalWallet
+                                ? 'Your external wallet must support wallet_signAuthorization and typed-data signing. Most browser wallets, including MetaMask and Rabby, do not expose the required authorization method. Your wallet controls the number of confirmation prompts.'
+                                : purpose === 'cross-chain-gas' && (
                                 <p className="gas-assist-one-tap-note">
                                     The charge is collected on source success. Destination fulfillment is separate; a destination failure or provider refund does not automatically refund this charge. Provider refunds are conditional and may be reduced by costs.
                                 </p>
@@ -431,7 +433,9 @@ export default function GasAssistPrepaymentDialog({
                     )}
                     {primaryAction && sponsorship.signPackage && showPayment && !reviewUpdated && (
                         <p className="gas-assist-one-tap-note">
-                            {purpose === 'cross-chain-gas'
+                            {sponsorship.externalWallet
+                                ? 'Your external wallet must support wallet_signAuthorization and typed-data signing. Most browser wallets, including MetaMask and Rabby, do not expose the required authorization method. Your wallet controls the number of confirmation prompts.'
+                                : purpose === 'cross-chain-gas'
                                 ? 'After this review, one passkey verification authorizes the supported sponsored source flow. A changed quote or delegation replacement requires another review.'
                                 : 'After this review, one passkey verification authorizes the supported sponsored flow. If the source operation reverts, its token service charge also reverts. A changed quote or delegation replacement requires another review.'}
                         </p>

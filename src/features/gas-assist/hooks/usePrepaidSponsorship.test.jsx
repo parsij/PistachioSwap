@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+    connectorId: 'pistachio-local',
     recover: vi.fn(),
     fetchConfig: vi.fn(),
     authenticate: vi.fn(),
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('#wallet-runtime', () => ({
-    useConnection: () => ({ connector: { id: 'pistachio-local' } }),
+    useConnection: () => ({ connector: { id: mocks.connectorId } }),
     useWalletClient: () => ({
         data: {
             account: { address: '0x1' },
@@ -128,6 +129,7 @@ describe('reviewed sponsorship order binding', () => {
 
 describe('self-hosted sponsorship async ownership', () => {
     beforeEach(() => {
+        mocks.connectorId = 'pistachio-local'
         vi.clearAllMocks()
         mocks.fetchConfig.mockResolvedValue(activeConfig)
         mocks.authenticate.mockResolvedValue({ sessionToken: 'session' })
@@ -152,6 +154,20 @@ describe('self-hosted sponsorship async ownership', () => {
 
     afterEach(() => {
         vi.useRealTimers()
+    })
+
+    it('routes external connectors through authorization signing without opening the local passkey session', async () => {
+        mocks.connectorId = 'injected-test-wallet'
+        const { result } = setup()
+        await waitForConfig(result)
+        await act(async () => result.current.start())
+        expect(result.current.externalWallet).toBe(true)
+        expect(result.current.phase).toBe('review')
+        await act(async () => result.current.signPackage())
+        expect(mocks.submitSelfHosted).toHaveBeenCalledWith(expect.objectContaining({
+            signerKind: 'external', useSingleConfirmation: false,
+        }))
+        expect(result.current.phase).toBe('completed')
     })
 
     it('continues order polling after a transient status failure without converting it into a fatal error', async () => {
@@ -358,6 +374,7 @@ describe('refresh recovery from public identifiers', () => {
     const wallet = '0x1111111111111111111111111111111111111111'
     const userOpHash = `0x${'ab'.repeat(32)}`
     beforeEach(() => {
+        mocks.connectorId = 'pistachio-local'
         vi.clearAllMocks()
         localStorage.clear()
         localStorage.setItem('pistachioswap:pending-userops:v1', JSON.stringify([{

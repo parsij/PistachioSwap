@@ -170,7 +170,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             .toThrow(/unrecognized contract code/iu)
     })
 
-    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted']])(
+    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted'], ['0x', false, 'external']])(
         'always includes a fresh EIP-7702 auth with factory 0x7702 and submits for code %s',
         async (onChainCode, delayed, mode) => {
             const onSubmitted = vi.fn()
@@ -181,6 +181,13 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             let estimateAttempts = 0
             const walletClient = {
                 request: vi.fn(async ({ method, params }) => {
+                    if (mode === 'external') {
+                        if (method === 'eth_chainId') return '0x38'
+                        if (method === 'eth_accounts') return [sender]
+                        expect(method).toBe('wallet_signAuthorization')
+                        expect(params).toEqual([{ address: delegate, chainId: '0x38', nonce: '0x0' }])
+                        return signer.signAuthorization({ contractAddress: delegate, chainId: 56, nonce: 0 })
+                    }
                     expect(method).toBe('pistachio_signSelfHostedAuthorization')
                     expect(params[0].data.address).toBe(delegate)
                     const previous = params[0].data.previousDelegate
@@ -259,6 +266,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 quoteEndpoint: 'http://localhost:3001/v1/quote',
                 sessionToken: 'session',
                 walletClient, authenticatedWalletAddress: sender, onSubmitted,
+                signerKind: mode === 'external' ? 'external' : 'pistachio',
             })
             if (delayed) {
                 await vi.waitFor(() => expect(receiptAttempts).toBeGreaterThan(0))
@@ -322,7 +330,9 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             expect(requests.filter((r) => r.url.startsWith('http://localhost:3001')).every(
                 (r) => !JSON.stringify(r.body).includes(requests[sendIndex].body.params[0].signature) && !JSON.stringify(r.body).includes(sendAuth.r),
             )).toBe(true)
-            expect(walletClient.request).toHaveBeenCalledTimes(1)
+            if (mode === 'external') {
+                expect(walletClient.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'pistachio_signSelfHostedAuthorization' }))
+            } else expect(walletClient.request).toHaveBeenCalledTimes(1)
         },
     )
 })

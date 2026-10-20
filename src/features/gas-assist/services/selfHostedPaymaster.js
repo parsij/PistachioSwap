@@ -1,3 +1,4 @@
+import { assertExternalWalletContext, signExternalAuthorization } from './externalAuthorization.js'
 import {
     concatHex,
     decodeFunctionData,
@@ -391,7 +392,7 @@ async function delegationState(publicRpc, sender, delegate, signal) {
     const code = await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)
     return classifyDelegationCode(code, delegate)
 }
-async function authorizationForBundler7702(walletClient, publicRpc, sender, delegate, state, signal, chainId) {
+async function authorizationForBundler7702(walletClient, publicRpc, sender, delegate, state, signal, chainId, signerKind) {
     const nonce = quantity(await rpc(publicRpc, 'eth_getTransactionCount', [sender, 'latest'], signal), 'EOA authorization nonce', (1n << 64n) - 1n)
     if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) deny('PAYMASTER_AUTHORIZATION_INVALID', 'The EOA authorization nonce exceeds supported precision.')
     const authRequest = {
@@ -404,7 +405,12 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
         },
         rawPayload: hashAuthorization({ contractAddress: delegate, chainId, nonce: Number(nonce) }),
     }
-    const signature = await walletClient.request({ method: AUTH_METHOD, params: [authRequest] })
+    if (signerKind === 'external' && state.previousDelegate) {
+        deny('PAYMASTER_EXTERNAL_DELEGATE_CONFLICT', 'This account already uses a different smart-account implementation. Gas Assist will not replace it through this external-wallet flow.')
+    }
+    const signature = signerKind === 'external'
+        ? await signExternalAuthorization(walletClient, sender, authRequest.data)
+        : await walletClient.request({ method: AUTH_METHOD, params: [authRequest] })
     if (!/^0x[0-9a-f]{130}$/iu.test(String(signature ?? ''))) {
         deny('PAYMASTER_AUTHORIZATION_INVALID', 'The wallet returned an invalid EIP-7702 authorization signature.')
     }
@@ -448,11 +454,12 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
 async function submitOperation({
     prepared, order, backendConfig, quoteEndpoint, sessionToken,
     walletClient, authenticatedWalletAddress, signal, onSubmitted, onBroadcast,
-    useSingleConfirmation = false,
+    useSingleConfirmation = false, signerKind = 'pistachio',
 }) {
     if (pendingUserOperations(authenticatedWalletAddress).some((item) => item.orderId === order.id)) {
         deny('PAYMASTER_ALREADY_SUBMITTED', 'This operation is unresolved. Resume confirmation instead of sending again.')
     }
+    if (!['pistachio', 'external'].includes(signerKind)) deny('PAYMASTER_SIGNER_INVALID', 'Unknown Gas Assist signer.')
     const settings = frontendConfig(backendConfig)
     const calls = validateSelfHostedPrepared(prepared, order, settings)
     const sender = address(authenticatedWalletAddress, 'authenticated wallet')
@@ -460,7 +467,7 @@ async function submitOperation({
         deny('PAYMASTER_WALLET_MISMATCH', 'The authenticated wallet changed since order review.')
     }
     if (typeof walletClient?.request !== 'function' || typeof walletClient?.signTypedData !== 'function') {
-        deny('PISTACHIO_WALLET_REQUIRED', 'Self-hosted Gas Assist requires the Pistachio Wallet signer.')
+        deny('WALLET_NOT_CONNECTED', 'Connect a compatible wallet signer first.')
     }
     if (quantity(await rpc(settings.publicRpc, 'eth_chainId', [], signal), 'chain id') !== BigInt(settings.chainId) ||
         quantity(await rpc(settings.bundlerRpc, 'eth_chainId', [], signal), 'bundler chain id') !== BigInt(settings.chainId)) {
@@ -472,7 +479,8 @@ async function submitOperation({
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
     let finishReviewedOperation = null
-    if (useSingleConfirmation) {
+    if (signerKind === 'external') await assertExternalWalletContext(walletClient, sender, settings.chainId)
+    if (useSingleConfirmation && signerKind === 'pistachio') {
         const { getPistachioWalletManager } = await import('../../passkey/services/walletManager.js')
         finishReviewedOperation = getPistachioWalletManager().beginReviewedGasAssistOperation({
             orderId: order.id, walletAddress: sender, chainId: settings.chainId,
@@ -483,7 +491,7 @@ async function submitOperation({
     try {
         return await signAndSubmitReviewedOperation({
             prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
-            walletClient, signal, onSubmitted, onBroadcast,
+            walletClient, signal, onSubmitted, onBroadcast, signerKind,
         })
     } finally {
         await finishReviewedOperation?.()
@@ -492,12 +500,12 @@ async function submitOperation({
 
 async function signAndSubmitReviewedOperation({
     prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
-    walletClient, signal, onSubmitted, onBroadcast,
+    walletClient, signal, onSubmitted, onBroadcast, signerKind,
 }) {
     const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), settings.maximumFeePerGasWei)
     const delegation = await delegationState(settings.publicRpc, sender, settings.delegate, signal)
-    // ERC-7769/Alto requires eip7702Auth whenever the public UserOperation
-    // carries factory=0x7702. That remains true when the sender is already
+    // Our pinned Alto v1.2.8 requires eip7702Auth whenever the public
+    // UserOperation carries factory=0x7702. That remains true when the sender is already
     // delegated to the same trusted implementation, so sign a fresh
     // same-delegate authorization at the current EOA nonce for every such
     // UserOperation. The backend never receives this authorization.
@@ -509,6 +517,7 @@ async function signAndSubmitReviewedOperation({
         delegation,
         signal,
         settings.chainId,
+        signerKind,
     )
     const encodedNonce = await rpc(settings.publicRpc, 'eth_call', [{
         to: settings.entryPoint,
@@ -579,6 +588,7 @@ async function signAndSubmitReviewedOperation({
     const finalUnsigned = Object.freeze({ ...estimated, paymasterData: sponsorship.paymasterData })
     const typedData = selfHostedUserOpTypedData(finalUnsigned, settings)
     const expectedHash = hashTypedData(typedData)
+    if (signerKind === 'external') await assertExternalWalletContext(walletClient, sender, settings.chainId)
     const signature = await walletClient.signTypedData({ account: sender, ...typedData })
     if (!/^0x[0-9a-f]{130}$/iu.test(String(signature ?? '')) ||
         getAddress(await recoverTypedDataAddress({ ...typedData, signature })) !== sender) {
@@ -592,6 +602,7 @@ async function signAndSubmitReviewedOperation({
         signature,
         ...(eip7702Auth ? { eip7702Auth } : {}),
     }
+    if (signerKind === 'external') await assertExternalWalletContext(walletClient, sender, settings.chainId)
     // Persist the locally expected PUBLIC hash before the ambiguous send boundary.
     // No signatures, operation body, credentials or RPC URLs are stored.
     const recovery = persistPendingUserOperation({
