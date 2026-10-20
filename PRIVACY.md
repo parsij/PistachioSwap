@@ -1,6 +1,7 @@
 # PistachioSwap Privacy Policy
 
-**Last updated:** October 19, 2026  
+**Last updated:** October 20, 2026
+
 **Status:** Published pre-launch draft; final commercial terms are not yet adopted.
 
 > **Pre-launch status.** The repository does not yet identify the final legal entity that will operate PistachioSwap. Before commercial launch, this Policy must be updated with that entity's exact legal name, required address/contact details, actual production vendors, final retention/deletion schedules, supported jurisdictions, and any jurisdiction-specific disclosures. A qualified privacy lawyer should review the production deployment. This document describes the current software and intended data flows; it is not a certification of legal compliance.
@@ -217,4 +218,6 @@ Before commercial launch, the final section must identify the operating legal en
 
 This published pre-launch notice does not retroactively describe or authorize historical processing. Previous versions remain available in the repository history. Final operator identity, production vendors, retention, privacy-request procedures, and jurisdiction-specific requirements still require verification and qualified legal review.
 
+## One-confirmation signing handoff
 
+For eligible Gas Assist swaps, an internal browser-memory handoff binds the reviewed operation to a wallet, source chain, transaction batch, delegation contract and Paymaster for a short signing window. It is not a prepaid balance or a general authorization for later spending. The handoff is cleared when the signing flow ends or expires. The setting remains a local swap preference. This description does not alter the signed-operation, public blockchain, provider or retention practices described above, or make a claim about every browser's memory-erasure guarantees.

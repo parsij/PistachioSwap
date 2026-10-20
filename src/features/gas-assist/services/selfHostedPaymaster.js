@@ -448,6 +448,7 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
 async function submitOperation({
     prepared, order, backendConfig, quoteEndpoint, sessionToken,
     walletClient, authenticatedWalletAddress, signal, onSubmitted, onBroadcast,
+    useSingleConfirmation = false,
 }) {
     if (pendingUserOperations(authenticatedWalletAddress).some((item) => item.orderId === order.id)) {
         deny('PAYMASTER_ALREADY_SUBMITTED', 'This operation is unresolved. Resume confirmation instead of sending again.')
@@ -470,6 +471,29 @@ async function submitOperation({
         isAddress(candidate) && getAddress(candidate) === settings.entryPoint)) {
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
+    let finishReviewedOperation = null
+    if (useSingleConfirmation) {
+        const { getPistachioWalletManager } = await import('../../passkey/services/walletManager.js')
+        finishReviewedOperation = getPistachioWalletManager().beginReviewedGasAssistOperation({
+            orderId: order.id, walletAddress: sender, chainId: settings.chainId,
+            delegate: settings.delegate, paymaster: settings.paymaster,
+            callData: encodeSelfHostedBatch(calls), expiresAt: prepared.expiresAt,
+        })
+    }
+    try {
+        return await signAndSubmitReviewedOperation({
+            prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
+            walletClient, signal, onSubmitted, onBroadcast,
+        })
+    } finally {
+        await finishReviewedOperation?.()
+    }
+}
+
+async function signAndSubmitReviewedOperation({
+    prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
+    walletClient, signal, onSubmitted, onBroadcast,
+}) {
     const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), settings.maximumFeePerGasWei)
     const delegation = await delegationState(settings.publicRpc, sender, settings.delegate, signal)
     // ERC-7769/Alto requires eip7702Auth whenever the public UserOperation

@@ -1,5 +1,7 @@
 import { getAddress, hexToString, isHex } from 'viem'
 
+import { createReviewedGasAssistScope, matchesReviewedGasAssistAuthorization, matchesReviewedGasAssistUserOperation } from './reviewedGasAssistScope.js'
+
 import { isGasAssistSourceChainId } from '../../gas-assist/model/gasAssistChains.js'
 
 const HARDENED_MANAGER = Symbol.for(
@@ -184,7 +186,8 @@ function isGasAssistAuthenticationMessage(
  * A passkey authorizes the wallet-management view once per page lifetime. The
  * decrypted key normally remains loaded only while one operation needs it.
  * Gas Assist may reuse one passkey for its exact authentication messages and
- * one reviewed self-hosted EIP-7702 authorization inside a short, wallet-bound scope.
+ * a reviewed EIP-7702 authorization and exact UserOperation inside a short,
+ * wallet-bound scope.
  */
 export function hardenPistachioWalletManager(manager) {
     if (!manager || manager[HARDENED_MANAGER]) return manager
@@ -227,6 +230,19 @@ export function hardenPistachioWalletManager(manager) {
     let sensitiveActionTimestamps = []
     let walletViewAuthorizedVaultId = null
     let currentSensitiveActionKind = 'default'
+    let reviewedGasAssistScope = null
+    let reviewedGasAssistTimer = null
+    const clearReviewedGasAssistScope = () => {
+        if (reviewedGasAssistTimer !== null) globalThis.clearTimeout(reviewedGasAssistTimer)
+        reviewedGasAssistTimer = null
+        reviewedGasAssistScope = null
+    }
+    const reviewedScopeActive = () => Boolean(reviewedGasAssistScope &&
+        reviewedGasAssistScope.expiresAt > Date.now() &&
+        reviewedGasAssistScope.vaultId === manager.vault?.vaultId &&
+        reviewedGasAssistScope.walletAddress.toLowerCase() === readOnlyAccount(manager)?.toLowerCase() &&
+        reviewedGasAssistScope.chainId === manager.activeChainId)
+
     let gasAssistFlow = null
     let gasAssistFlowTimer = null
 
@@ -398,7 +414,8 @@ export function hardenPistachioWalletManager(manager) {
         }
         const scopedGasAssistAction = (
             currentSensitiveActionKind === 'gas-assist-auth' ||
-            currentSensitiveActionKind === 'gas-assist-authorization'
+            currentSensitiveActionKind === 'gas-assist-authorization' ||
+            currentSensitiveActionKind === 'gas-assist-user-operation'
         )
         if (
             scopedGasAssistAction &&
@@ -418,16 +435,42 @@ export function hardenPistachioWalletManager(manager) {
         this.requireUnlocked()
     }
 
-    // Package signing may omit a second wallet-owned review while the
-    // dapp Gas Assist confirmation is in flight or the bounded
-    // authentication-to-package handoff is still active. Malformed
-    // packages are rejected before this is consulted.
+    // Legacy authentication-handoff indicator. Spending review reuse additionally
+    // requires the exact reviewed-operation scope below; this indicator alone
+    // never permits skipping the real delegation or typed-data review.
     manager.hasActiveGasAssistAuthorization = () => (
         currentSensitiveActionKind === 'gas-assist-authorization' ||
         gasAssistFlowMatches()
     )
 
+    // Internal first-party handoff, not a provider RPC method. Its caller has
+    // validated the exact five-call plan after the user confirmed its quote.
+    manager.beginReviewedGasAssistOperation = (input) => {
+        if (sensitiveActionActive || reviewedGasAssistScope) {
+            throw walletError('PISTACHIO_SIGNING_REQUEST_ACTIVE', 'Another smart swap is already in progress.')
+        }
+        const scope = createReviewedGasAssistScope(input, {
+            walletAddress: readOnlyAccount(manager), vaultId: manager.vault?.vaultId,
+            trustedDelegate: import.meta.env.VITE_SIMPLE_7702_ACCOUNT_ADDRESS,
+        })
+        if (scope.chainId !== manager.activeChainId) {
+            throw walletError('PISTACHIO_CHAIN_INVARIANT_FAILED', 'The reviewed swap is not for the active chain.')
+        }
+        reviewedGasAssistScope = scope
+        reviewedGasAssistTimer = globalThis.setTimeout(() => {
+            void manager.lock('reviewed-gas-assist-expired', { broadcast: false })
+        }, scope.expiresAt - Date.now())
+        return async () => {
+            if (reviewedGasAssistScope?.id === scope.id) {
+                await manager.lock('reviewed-gas-assist-finished', { broadcast: false })
+            }
+        }
+    }
+    manager.hasReviewedGasAssistAuthorization = (request) => reviewedScopeActive() &&
+        matchesReviewedGasAssistAuthorization(reviewedGasAssistScope, request)
+
     manager.lock = async function lock(reason = 'manual', options = {}) {
+        clearReviewedGasAssistScope()
         clearGasAssistFlow()
         if (reason === 'manual' || SESSION_CLEAR_LOCK_REASONS.has(reason)) {
             walletViewAuthorizedVaultId = null
@@ -453,6 +496,7 @@ export function hardenPistachioWalletManager(manager) {
             return
         }
 
+        clearReviewedGasAssistScope()
         clearGasAssistFlow()
         if (!manager.sessionActive || !manager.vault) return
 
@@ -504,12 +548,17 @@ export function hardenPistachioWalletManager(manager) {
             succeeded = true
             return result
         } finally {
-            if (succeeded && actionKind === 'gas-assist-auth') {
+            if (succeeded && actionKind === 'gas-assist-authorization' && reviewedScopeActive()) {
+                reviewedGasAssistScope.authorizationSigned = true
+            }
+            if (succeeded && (actionKind === 'gas-assist-auth' ||
+                (actionKind === 'gas-assist-authorization' && reviewedScopeActive()))) {
                 armGasAssistFlow()
             }
             const preserveGasAssistUnlock = (
                 succeeded &&
-                actionKind === 'gas-assist-auth' &&
+                (actionKind === 'gas-assist-auth' ||
+                    (actionKind === 'gas-assist-authorization' && reviewedScopeActive())) &&
                 gasAssistFlowMatches()
             )
             currentSensitiveActionKind = 'default'
@@ -532,7 +581,17 @@ export function hardenPistachioWalletManager(manager) {
         ),
         classifyMessage,
     )
-    manager.signTypedData = wrapSensitiveAction(originalSignTypedData)
+    const classifyTypedData = (value) => {
+        if (!reviewedGasAssistScope) return 'default'
+        if (!reviewedScopeActive() || !matchesReviewedGasAssistUserOperation(reviewedGasAssistScope, value)) {
+            throw walletError('PISTACHIO_REVIEWED_SWAP_MISMATCH', 'The operation changed after review or the smart-swap authorization expired.')
+        }
+        return 'gas-assist-user-operation'
+    }
+    manager.signTypedData = wrapSensitiveAction(
+        (value) => originalSignTypedData(value, { skipReview: classifyTypedData(value) === 'gas-assist-user-operation' }),
+        classifyTypedData,
+    )
     manager.signSelfHostedAuthorization = wrapSensitiveAction(
         originalSignSelfHostedAuthorization,
         () => 'gas-assist-authorization',

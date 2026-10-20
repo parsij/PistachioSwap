@@ -62,7 +62,7 @@ export const selfHostedAuthorizationMethods = {
         await this.ensureUnlockedForSigning()
         const context = this.captureSigningContext(chainId)
         const chainName = getCuratedEvmChain(chainId)?.name ?? `Chain ${chainId}`
-        await this.reviewQueue.request({
+        if (!this.hasReviewedGasAssistAuthorization?.(request)) await this.reviewQueue.request({
             walletAddress: context.address,
             chainId,
             action: previousDelegate

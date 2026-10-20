@@ -427,9 +427,13 @@ export const methods = {
         if (skipReview) await this.recordActivity()
         return result.signature
     },
-    async signTypedData(typedData) {
+    async signTypedData(typedData, { skipReview = false } = {}) {
         const normalized = parseTypedData(typedData, this.activeChainId)
-        const context = await this.review('Sign typed data', {
+        let context
+        if (skipReview) {
+            await this.ensureUnlockedForSigning()
+            context = this.captureSigningContext(this.activeChainId)
+        } else context = await this.review('Sign typed data', {
             domain: normalized.domain,
             chainId: this.activeChainId,
             verifyingContract: normalized.domain.verifyingContract ?? null,
@@ -443,6 +447,7 @@ export const methods = {
             value: normalized.message,
         })
         this.assertSigningContext(context)
+        if (skipReview) await this.recordActivity()
         return result.signature
     },
     async sendTransaction(

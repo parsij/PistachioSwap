@@ -84,14 +84,14 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByText('You receive')).toBeTruthy()
         expect(screen.getAllByText('Gas Assist service charge').length).toBeGreaterThan(0)
         expect(screen.queryByText('Gas Assist fee (all-in)')).toBeNull()
-        expect(screen.getByText(/One tap starts the flow/)).toBeTruthy()
+        expect(screen.getByText(/After this review, one passkey/)).toBeTruthy()
 
         const details = screen.getByText('Transaction details').closest('details')
         expect(details?.hasAttribute('open')).toBe(false)
         expect(screen.getByText('Net swap input')).toBeTruthy()
         expect(screen.getByText('Minimum output')).toBeTruthy()
-        expect(screen.getAllByText(/one sponsored transaction/).length).toBeGreaterThan(0)
-        expect(screen.getAllByText(/If the source operation reverts, no fee is taken/).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/exact token approval and swap together/).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/its token service charge also reverts/).length).toBeGreaterThan(0)
 
         fireEvent.click(screen.getByRole('button', { name: 'Swap using Gas Assist' }))
         expect(value.signPackage).toHaveBeenCalledOnce()
@@ -106,7 +106,7 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
         fireEvent.click(screen.getByRole('button', { name: 'Confirm updated quote' }))
         expect(value.signPackage).toHaveBeenCalledOnce()
-        expect(screen.queryByText(/One tap starts the flow/)).toBeNull()
+        expect(screen.queryByText(/After this review, one passkey/)).toBeNull()
     })
 
     it('explains that cross-chain MegaFuel sponsorship does not top up the wallet', () => {

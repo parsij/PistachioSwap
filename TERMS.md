@@ -1,6 +1,7 @@
 # PistachioSwap Terms of Use
 
-**Last updated:** October 19, 2026  
+**Last updated:** October 20, 2026
+
 **Status:** Published pre-launch draft; final commercial terms are not yet adopted.
 
 > **Pre-launch legal notice.** PistachioSwap is currently a project name and this repository does not yet identify the final operating legal entity. Before commercial launch, these Terms must be reviewed by qualified counsel and updated with the operator's exact legal name and address, monitored contact information, final production fees/features, supported jurisdictions, regulatory/compliance decisions, and final dispute provisions. These Terms are a repository-aligned pre-launch draft, not a claim that every launch jurisdiction has been cleared.
@@ -9,6 +10,10 @@ These Terms of Use (the "Terms") govern access to and use of the PistachioSwap w
 
 
 Review these Terms before using the Service. Where the Service asks you to accept them, your acceptance applies to the identified version. Acceptance of these Terms is separate from a wallet signature or transaction authorization. The Privacy Policy explains data practices; acknowledging it is not blanket consent to optional processing.
+
+## Read this first
+
+You choose the assets, amounts and recipient and authorize the operation in your wallet. The Service prepares requests and operates routing and, where enabled, Gas Assist infrastructure. Independent protocols may receive your swap principal and perform later cross-chain settlement. Gas Assist collects the exact quoted token service charge through successful source execution; it is not a promise to charge only actual gas. Review is required even when approvals and the swap are bundled. Permissions can persist after execution. The detailed provisions below describe these limits; no summary removes rights that mandatory law protects.
 
 ## 1. Eligibility
 
@@ -74,6 +79,15 @@ EIP-7702 delegation and token approvals can persist after a transaction, dependi
 
 Cross-chain destination fulfillment is separate from the source operation and is addressed below.
 
+### One-confirmation swaps
+
+Where offered, the One-confirmation swaps setting requests eligible Gas Assist routes even when your wallet has enough native gas. It does not make sponsorship free or remove the quoted token service charge. Availability depends on the built-in Pistachio Wallet, payment token, network, route, provider and current service configuration. Ordinary transactions and external wallets can require separate approvals and confirmations.
+
+For a supported unchanged quote, the intended flow is one review of the payment, approval and swap followed by one passkey verification for the bounded signing flow. Several underlying cryptographic signatures may be produced within that flow; one passkey prompt does not mean one protocol signature. The internal handoff is restricted to the reviewed batch, wallet, source chain, trusted delegation contract and Paymaster, expires promptly, and ends when signing completes or the flow is cancelled or fails. It does not authorize arbitrary future transfers. A changed quote must be reviewed again, and replacing a different existing delegation requires a separate wallet review. Device, browser, authentication, expiry or account changes may require additional verification; do not approve an unexpected request.
+
+The setting does not revoke existing allowances or delegation when turned off. Review the delegation address and other operation details before enabling or replacing wallet execution code. No setting removes a required transaction signature, screening decision or service restriction.
+
+
 ## 7. Quotes, routes, and execution
 
 Quotes are estimates based on information available when requested. They may expire or change because of market movement, liquidity, slippage, price impact, gas prices, provider behavior, token taxes, rebasing, transfer restrictions, block timing, maximum extractable value, bridge conditions, front-running, blockchain reorganization, or other conditions.
@@ -87,6 +101,15 @@ A displayed route does not guarantee that:
 - a risk label, simulation, token list, or security check is complete or correct.
 
 Reject any wallet request that does not match your intent.
+
+### Approvals, recipients and transaction records
+
+An ERC-20 allowance permits its named spender to transfer tokens within the allowance. A Permit2 approval or signature can have different amounts, expiry and reuse rules. These permissions are different from merely connecting a wallet or authenticating to an API. Use the actual wallet review to identify the spender and scope; do not assume every route resets every pre-existing permission. A failed or abandoned swap can leave a separately confirmed approval in place. Source-side cleanup does not revoke unrelated permissions you previously granted.
+
+Check the destination address, source and destination networks, minimum output, route, expiry, token service charge and any native-gas cost. Cross-chain principal may be deposited with third-party bridge or order contracts and fulfilled later by a solver or relayer. A source receipt is not proof of destination delivery, and a requested refund is not proof of repayment. The operator's transaction preparation and status display do not guarantee that an independent provider will fulfill or refund an order.
+
+Keep the public transaction hashes and relevant quote/fee details for your records. Never send support a recovery phrase, private key or signed operation payload. Public blockchain records and service-generated status labels may disagree temporarily; confirmations and outcomes must be checked against the relevant networks and provider records.
+
 
 ## 8. Quotes, service charges, and other costs
 
@@ -126,6 +149,10 @@ Digital assets and decentralized protocols involve substantial risk, including t
 
 Risk labels, simulations, token lists, liquidity checks, and provider checks may be incomplete, delayed, incorrect, unavailable, or defeated by changing contract behavior. You must independently evaluate each asset and transaction.
 
+### Stablecoins and other supported assets
+
+Support for a token is not an endorsement, classification, guarantee of reserves, or promise of redemption. A stablecoin can lose its peg; its issuer or other administrators may freeze, block, upgrade or restrict it under the asset's own rules. Wrapped, bridged and tokenized assets can have different issuers, collateral, redemption rights and risks from the assets they reference. PistachioSwap does not become the issuer of a third-party token merely by displaying, routing or accepting it as payment. No bank-deposit or government-insurance protection is promised for assets used through the Service.
+
 ## 12. No investment, legal, tax, or fiduciary advice
 
 The Service provides software and transaction information. Nothing in the Service is investment, financial, trading, legal, tax, accounting, or fiduciary advice, and PistachioSwap does not recommend that you buy, sell, hold, bridge, stake, or use any asset.
@@ -145,6 +172,13 @@ The Service also uses independent wallets, blockchains, RPC/indexing services, t
 
 Third-party names and logos remain subject to their owners’ rights.
 
+### Locally hosted frontends and other interfaces
+
+Running a copy of the frontend does not necessarily mean operating an independent backend. The documented local mode still requests quotes, routes, screening and Gas Assist from PistachioSwap-hosted services. Those services remain subject to their fees, eligibility rules, applicable terms and restrictions. Each browser origin has its own local wallet storage and passkey relying-party scope; a passkey for the official website does not automatically unlock a localhost or mirror-domain vault.
+
+Hosting or modifying source code remains subject to its actual license and third-party notices. A person running a public mirror is responsible for its own modifications, hosting, customer representations, data handling and applicable legal obligations; these Terms do not grant a commercial license, appoint that person as our agent or certify its interface as authentic. Using a mirror does not itself transfer the hosted operator's responsibilities to the mirror operator or provide either party a regulatory exemption.
+
+
 ## 15. Acceptable use
 
 You may not use the Service to:
@@ -159,6 +193,8 @@ You may not use the Service to:
 
 We may investigate suspected abuse and cooperate with lawful requests.
 
+Good-faith security reporting and lawful review remain subject to applicable law and any expressly published testing permission. These Terms do not grant permission to access customer data, extract secrets, sign or broadcast another person's transactions, or test production with third-party funds. Report suspected issues through a verified operator contact without including wallet secrets.
+
 ## 16. Sanctions and restricted access
 
 PistachioSwap may screen public wallet addresses and request location signals against applicable sanctions restrictions, official government sanctions data, and configured blockchain-intelligence providers. The hosted website, APIs, routing, Gas Assist, transaction preparation, and other state-changing services may be refused or disabled when a request is prohibited, presents a sanctions match, or cannot be screened reliably.
@@ -166,6 +202,8 @@ PistachioSwap may screen public wallet addresses and request location signals ag
 PistachioSwap does not control public blockchains or independent smart contracts and cannot prevent a user from interacting with them through other software. A restriction by the hosted Service is not a representation about the legal status of an address, asset, person, or transaction outside the specific Service decision. Screening can produce false positives or incomplete results. The proposed contact for screening concerns is legal@pistachioswap.com; monitoring of this address remains unconfirmed. Never send a private key, recovery phrase, or signed raw transaction.
 
 Sanctions programs and geographic restrictions change. Availability from a location or to a wallet at one time does not guarantee future availability.
+
+Contact the operator if you believe a service restriction is erroneous. An appeal does not guarantee reinstatement or require disclosure of confidential screening methods. Any applicable identity, recordkeeping, blocking, reporting or other compliance requirements depend on the actual activity and governing law; these Terms neither promise anonymous access in all circumstances nor represent that every swap requires an identity-document upload.
 
 ## 17. Intellectual property and source license
 
