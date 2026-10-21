@@ -42,6 +42,7 @@ const messages = {
     ATOMIC_SWAP_REVERTED: 'The sponsored swap reverted on-chain. Try again.',
     UNSIGNED_EIP7702_AUTHORIZATION: 'The wallet did not sign the one-transaction Gas Assist authorization. Try again.',
     SPONSORED_ROUTE_UNAVAILABLE: 'No usable route found.',
+    FEE_CONVERSION_UNAVAILABLE: 'The cost of converting the service payment into native gas could not be quoted. Try again or choose another token.',
     PRESIGNED_PACKAGE_REQUIRES_UNISWAP: 'This route cannot currently use the one-tap Gas Assist flow.',
     PRESIGNED_PACKAGE_NONCE_MISMATCH: 'Your wallet nonce changed. Refresh and try again.',
     SPONSORSHIP_PACKAGE_NONCE_MISMATCH: 'Your wallet nonce changed. Refresh and try again.',
