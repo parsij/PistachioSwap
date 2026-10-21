@@ -238,6 +238,9 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                         <div><span>Gross input</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Gas Assist service charge</span><strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong></div>
+                        {fees?.conversionCostUsdMicros !== null && fees?.conversionCostUsdMicros !== undefined && (
+                            <div><span>Included native-token conversion cost</span><strong>{formatUsdMicros(fees.conversionCostUsdMicros)}</strong></div>
+                        )}
                         <div><span>Minimum output</span><strong>{formatRaw(order.minimumOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong></div>
                         {(order.destinationRecipient || order.recipient || order.walletAddress) && <div><span>Recipient</span><code>{order.destinationRecipient || order.recipient || order.walletAddress}</code></div>}
                         {order.approvalSpender && <div><span>Approval spender</span><code>{order.approvalSpender}</code></div>}
@@ -389,6 +392,11 @@ export default function GasAssistPrepaymentDialog({
                                 <span>Gas Assist service charge</span>
                                 <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong>
                             </div>
+                            {feeBreakdown?.conversionCostUsdMicros > 0n && (
+                                <p className="gas-assist-one-tap-note">
+                                    Includes {formatUsdMicros(feeBreakdown.conversionCostUsdMicros)} for the estimated cost of converting the service payment into {nativeSymbol}, including conversion fees and network gas.
+                                </p>
+                            )}
                             <p className="gas-assist-one-tap-note">
                                 This is the fixed service charge for this quote, not the final blockchain gas cost. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. Applicable terms and law still apply.
                             </p>

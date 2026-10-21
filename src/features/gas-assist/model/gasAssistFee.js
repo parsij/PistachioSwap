@@ -71,6 +71,11 @@ export function getGasAssistFeeBreakdown(order) {
         'gasReserveUsdMicros',
         'gasReserve',
     )
+    const conversionCostUsdMicros = usdMicros(
+        order,
+        'conversionCostUsdMicros',
+        'conversionCost',
+    )
     const estimatedSponsoredGasUsdMicros = usdMicros(
         order,
         'estimatedSponsoredGasUsdMicros',
@@ -112,6 +117,7 @@ export function getGasAssistFeeBreakdown(order) {
         commercialFeeUsdMicros,
         networkReserveUsdMicros,
         estimatedSponsoredGasUsdMicros,
+        conversionCostUsdMicros,
         routeCostUsdMicros,
         allInCostUsdMicros,
     }
