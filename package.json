@@ -87,6 +87,7 @@
   "pnpm": {
     "_overridesNote": "Bare-name or range selectors so a transitive version bump cannot silently stop an override from matching and reinstall the vulnerable package.",
     "overrides": {
+      "follow-redirects": "1.16.1",
       "@pancakeswap/swap-sdk-core>bn.js": "^5.2.3",
       "axios": "^1.20.0",
       "bigint-buffer": "link:packages/bigint-buffer-safe",
