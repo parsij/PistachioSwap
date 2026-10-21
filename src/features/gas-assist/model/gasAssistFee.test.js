@@ -60,6 +60,16 @@ describe('Gas Assist fee safety', () => {
         })
     })
 
+    it('exposes conversion as an included component without adding it to the total again', () => {
+        const fees = getGasAssistFeeBreakdown(quote({
+            amountsUsd: { commercialFee: '0.5', conversionCost: '0.1' },
+        }))
+        expect(fees.conversionCostUsdMicros).toBe(100_000n)
+        expect(fees.totalFeeUsdMicros).toBe(1_000_000n)
+        expect(fees.allInCostUsdMicros).toBe(1_000_000n)
+        expect(getGasAssistFeeBreakdown(quote()).conversionCostUsdMicros).toBeNull()
+    })
+
     it('rejects hidden leftovers, fees that consume the input, and uneconomic all-in costs', () => {
         expect(getGasAssistFeeBreakdown(quote({ netSwapAmountRaw: '899999' }))).toBeNull()
         expect(getGasAssistFeeBreakdown(quote({

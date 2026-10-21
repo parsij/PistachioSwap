@@ -72,6 +72,15 @@ describe('Gas Assist prepayment review', () => {
         expect(container.innerHTML).toBe('')
     })
 
+    it('discloses conversion as included in the reviewed fixed service charge', () => {
+        const value = sponsorship()
+        value.order.conversionCostUsdMicros = '20000'
+        render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
+        expect(screen.getByText(/Includes \$0.02 for the estimated cost of converting/)).toBeTruthy()
+        expect(screen.getByText('Included native-token conversion cost')).toBeTruthy()
+        expect(screen.getByText(/PistachioSwap retains any difference after gas expenses/)).toBeTruthy()
+    })
+
     it('shows one simple no-BNB action and keeps technical details collapsed by default', () => {
         const value = sponsorship()
         render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)

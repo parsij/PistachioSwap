@@ -33,6 +33,7 @@ function previewReviewOrder(preview, walletAddress) {
         platformFeeUsdMicros: micros(usdDecimalToMicros(preview.amountsUsd?.platformFee)),
         commercialFeeUsdMicros: micros(fees.commercialFeeUsdMicros),
         gasReserveUsdMicros: micros(fees.networkReserveUsdMicros),
+        conversionCostUsdMicros: micros(fees.conversionCostUsdMicros),
         estimatedSponsoredGasUsdMicros: micros(fees.estimatedSponsoredGasUsdMicros),
         totalPrepaymentUsdMicros: fees.totalFeeUsdMicros.toString(),
         routeCostUsdMicros: micros(fees.routeCostUsdMicros),
