@@ -1,3 +1,4 @@
+import { feeRefillPolicyCalls, verifyFeeRefillDeployment } from './feeRefill.js'
 import {
     concatHex,
     decodeFunctionData,
@@ -114,6 +115,7 @@ function frontendConfig(backend) {
         deny('PAYMASTER_CONFIG_MISMATCH', 'The backend did not provide the expected ERC-4337 v0.8 deployment.')
     }
     return {
+        feeRefill: backend.feeRefill ?? null,
         chainId, nativeSymbol: backend.nativeSymbol ?? 'native token', entryPoint, delegate, paymaster,
         publicRpc: publicRpcUrl(backend.publicRpc || (chainId === 56 ? import.meta.env.VITE_BSC_PUBLIC_RPC_URL : undefined), 'source public RPC'),
         maximumFeePerGasWei: backend.maximumFeePerGasWei ?? UINT128_MAX.toString(),
@@ -137,10 +139,10 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
         address(prepared.delegate, 'prepared delegate') !== settings.delegate ||
         address(prepared.paymaster, 'prepared Paymaster') !== settings.paymaster ||
         address(prepared.eip7702Factory, 'prepared factory') !== getAddress(FACTORY_MARKER) ||
-        !Array.isArray(prepared.transactions) || prepared.transactions.length !== 5) {
+        !Array.isArray(prepared.transactions) || ![5, 8].includes(prepared.transactions.length)) {
         deny('PAYMASTER_INTENT_INVALID', 'The prepared self-hosted swap does not match the reviewed Gas Assist order.')
     }
-    const calls = prepared.transactions.map((call) => {
+    const fullCalls = prepared.transactions.map((call) => {
         const to = address(call?.to, 'reviewed call target')
         const data = hex(call?.data, 'reviewed call data')
         if (quantity(call?.value ?? '0x0', 'native call value', (1n << 256n) - 1n) !== 0n) {
@@ -148,6 +150,7 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
         }
         return { target: to, data, value: 0n }
     })
+    const calls = feeRefillPolicyCalls(fullCalls, prepared.feeRefill, settings, order)
     const decode = (call, functionName) => {
         try {
             const decoded = decodeFunctionData({ abi: erc20Abi, data: call.data })
@@ -188,10 +191,10 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
     if (order.treasuryAddress && treasury !== address(order.treasuryAddress, 'reviewed treasury')) {
         deny('PAYMASTER_ORDER_CHANGED', 'The treasury address changed after review.')
     }
-    return calls
+    return fullCalls
 }
 export function encodeSelfHostedBatch(calls) {
-    if (!Array.isArray(calls) || calls.length !== 5) deny('PAYMASTER_INTENT_INVALID', 'Exactly five reviewed calls are required.')
+    if (!Array.isArray(calls) || ![5, 8].includes(calls.length)) deny('PAYMASTER_INTENT_INVALID', 'Five treasury calls or eight replenishment calls are required.')
     return encodeFunctionData({ abi: SIMPLE_ACCOUNT_ABI, functionName: 'executeBatch', args: [calls] })
 }
 
@@ -471,6 +474,7 @@ async function submitOperation({
         isAddress(candidate) && getAddress(candidate) === settings.entryPoint)) {
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
+    await verifyFeeRefillDeployment(prepared.feeRefill, (method, params) => rpc(settings.publicRpc, method, params, signal))
     let finishReviewedOperation = null
     if (useSingleConfirmation) {
         const { getPistachioWalletManager } = await import('../../passkey/services/walletManager.js')
