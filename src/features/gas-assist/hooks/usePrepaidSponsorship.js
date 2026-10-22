@@ -384,23 +384,6 @@ export function usePrepaidSponsorship({
         setState({ ...initial, open: false, phase: 'authenticating', config })
 
         try {
-            if (connection.connector?.id !== 'pistachio-local') {
-                const error = flowError(
-                    'PISTACHIO_WALLET_REQUIRED',
-                    'Gas Assist requires Pistachio Wallet.',
-                    { stage: 'flow.start' },
-                )
-                if (isCurrent(walletEpoch, flowEpoch)) {
-                    setState({
-                        ...initial,
-                        open: true,
-                        phase: 'unsupported',
-                        config,
-                        error,
-                    })
-                }
-                return
-            }
             if (configStatus === 'loading') {
                 throw flowError(
                     'SPONSORSHIP_CONFIG_LOADING',
@@ -433,7 +416,7 @@ export function usePrepaidSponsorship({
                 throw flowError('SPONSORSHIP_ENDPOINT_MISSING', 'Gas Assist is not configured.', { stage: 'flow.start' })
             }
             if (!walletClient || !walletAddress) {
-                throw flowError('WALLET_NOT_CONNECTED', 'Connect Pistachio Wallet first.', { stage: 'flow.start' })
+                throw flowError('WALLET_NOT_CONNECTED', 'Connect a compatible wallet first.', { stage: 'flow.start' })
             }
             if (!sellToken?.address || !buyToken || (!buyToken.isNative && !buyToken.address)) {
                 throw flowError('SWAP_TOKENS_MISSING', 'Choose both swap tokens first.', { stage: 'flow.start' })
@@ -494,7 +477,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient, recoveryKind, sourceChainId])
+    }, [beginOperation, buyToken, config, configError, configStatus, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient, recoveryKind, sourceChainId])
 
     const signPackage = useCallback(async () => {
         if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
@@ -615,7 +598,8 @@ export function usePrepaidSponsorship({
                     sessionToken,
                     walletClient,
                     authenticatedWalletAddress: walletAddress,
-                    useSingleConfirmation: true,
+                    signerKind: connection.connector?.id === 'pistachio-local' ? 'pistachio' : 'external',
+                    useSingleConfirmation: connection.connector?.id === 'pistachio-local',
                     onBroadcast: ({ userOpHash }) => {
                         if (!isCurrent(walletEpoch, flowEpoch)) return
                         setState((current) => ({ ...current, phase: 'swap-confirming',
@@ -667,7 +651,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient, recoveryKind, sourceChainId])
+    }, [connection.connector?.id, beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient, recoveryKind, sourceChainId])
 
     useEffect(() => {
         if (!walletAddress || !quoteEndpoint) return undefined
@@ -886,6 +870,7 @@ export function usePrepaidSponsorship({
 
     return {
         ...state,
+        externalWallet: connection.connector?.id !== 'pistachio-local',
         config,
         configStatus,
         configError,
