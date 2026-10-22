@@ -298,9 +298,10 @@ async function reportPaymasterHash(quoteEndpoint, sessionToken, path, body, sign
         if (!response.ok) return false
         if (!path.endsWith('/receipt')) return true
         const verified = await response.json()
-        return verified.sourceStatus === 'confirmed' &&
-            verified.userOpHash?.toLowerCase() === body.userOpHash.toLowerCase() &&
-            verified.transactionHash?.toLowerCase() === body.transactionHash.toLowerCase()
+        if (!['confirmed', 'reverted'].includes(verified.sourceStatus) ||
+            verified.userOpHash?.toLowerCase() !== body.userOpHash.toLowerCase() ||
+            verified.transactionHash?.toLowerCase() !== body.transactionHash.toLowerCase()) return false
+        return verified.sourceStatus
     } catch {
         // The UserOperation may already have been broadcast. Reporting must
         // never trigger a replacement transaction or label it as reverted.
@@ -631,13 +632,12 @@ async function signAndSubmitReviewedOperation({
             }
             // Gas-Assist verifies the actual BNB Chain EntryPoint event and
             // distinguishes a confirmed source operation from Polygon delivery.
-            const sourceReport = transactionHash
+            const sourceStatus = transactionHash
                 ? await reportPaymasterHash(quoteEndpoint, sessionToken,
                     `${endpoint}/receipt`, { userOpHash, transactionHash }, signal)
                 : false
-            const success = receipt.success === true || receipt.success === '0x1'
-            const transactionSuccess = receipt.receipt?.status === '0x1' || receipt.receipt?.status === 1
-            if (!success || !transactionSuccess) {
+            const sourceReport = sourceStatus === 'confirmed'
+            if (sourceStatus === 'reverted') {
                 deny('PAYMASTER_EXECUTION_REVERTED', 'The sponsored UserOperation or swap reverted; Paymaster gas may still have been charged.')
             }
             // Only advance the bridge route after an actual successful source

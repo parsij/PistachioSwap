@@ -170,7 +170,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             .toThrow(/unrecognized contract code/iu)
     })
 
-    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted']])(
+    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted'], ['0x', false, 'unverified']])(
         'always includes a fresh EIP-7702 auth with factory 0x7702 and submits for code %s',
         async (onChainCode, delayed, mode) => {
             const onSubmitted = vi.fn()
@@ -218,7 +218,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                     if (mode === 'transient' && receiptAttempts === 1) throw new Error('Temporary Bundler outage')
                     if (delayed) return null
                     return {
-                    success: mode !== 'reverted', receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
+                    success: !['reverted', 'unverified'].includes(mode), receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
                 }
                 default: throw new Error(`Unexpected RPC ${method}`)
                 }
@@ -241,6 +241,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                         jsonrpc: '2.0', id: 1, result: rpcResult(body.method),
                     }), { status: 200 })
                 }
+                if (String(url).endsWith('/paymaster/receipt') && mode === 'unverified') return new Response('{}', { status: 503 })
                 if (String(url).endsWith('/paymaster/receipt')) return new Response(JSON.stringify({
                     ...body, sourceStatus: mode === 'reverted' ? 'reverted' : 'confirmed',
                 }))
@@ -271,7 +272,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 return
             }
             const result = await submittedPromise
-            expect(result).toMatchObject({ status: delayed ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
+            expect(result).toMatchObject({ status: delayed || mode === 'unverified' ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
             if (delayed) {
                 expect(receiptAttempts).toBe(60)
                 await expect(submitSelfHostedPaymasterUserOperation({
@@ -379,7 +380,7 @@ describe('all approved source chains preserve browser-owned final signatures', (
                     if (mode === 'transient' && receiptAttempts === 1) throw new Error('Temporary Bundler outage')
                     if (delayed) return null
                     return {
-                    success: mode !== 'reverted', receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
+                    success: !['reverted', 'unverified'].includes(mode), receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
                 }
                 default: throw new Error(`Unexpected RPC ${method}`)
                 }
@@ -402,6 +403,7 @@ describe('all approved source chains preserve browser-owned final signatures', (
                         jsonrpc: '2.0', id: 1, result: rpcResult(body.method),
                     }), { status: 200 })
                 }
+                if (String(url).endsWith('/paymaster/receipt') && mode === 'unverified') return new Response('{}', { status: 503 })
                 if (String(url).endsWith('/paymaster/receipt')) return new Response(JSON.stringify({
                     ...body, sourceStatus: mode === 'reverted' ? 'reverted' : 'confirmed',
                 }))
@@ -432,7 +434,7 @@ describe('all approved source chains preserve browser-owned final signatures', (
                 return
             }
             const result = await submittedPromise
-            expect(result).toMatchObject({ status: delayed ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
+            expect(result).toMatchObject({ status: delayed || mode === 'unverified' ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
             if (delayed) {
                 expect(receiptAttempts).toBe(60)
                 await expect(submitSelfHostedPaymasterUserOperation({

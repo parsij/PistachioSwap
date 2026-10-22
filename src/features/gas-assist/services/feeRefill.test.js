@@ -57,10 +57,15 @@ describe('reviewed fee replenishment', () => {
         const { code, plan } = fixture()
         const encoded = encodeFunctionResult({ abi: FEE_REFILL_ABI, functionName: 'settings',
             result: [plan.entryPoint, plan.paymaster, plan.bundler, plan.treasury, BigInt(plan.thresholdWei)] })
-        const rpc = vi.fn(async method => method === 'eth_getCode' ? code : encoded)
+        const routeData = encodeFunctionData({ abi: FEE_REFILL_ABI, functionName: 'routeAllowed', args: [plan.router, plan.spender] })
+        const allowed = encodeFunctionResult({ abi: FEE_REFILL_ABI, functionName: 'routeAllowed', result: true })
+        const rpc = vi.fn(async (method, params) => method === 'eth_getCode' ? code : params[0].data === routeData ? allowed : encoded)
         await verifyFeeRefillDeployment(plan, rpc)
-        expect(rpc).toHaveBeenCalledTimes(2)
+        expect(rpc).toHaveBeenCalledTimes(3)
         await expect(verifyFeeRefillDeployment({ ...plan, codeHash: keccak256('0x6001') }, rpc)).rejects.toThrow()
         await expect(verifyFeeRefillDeployment({ ...plan, treasury: a(99) }, rpc)).rejects.toThrow()
+        rpc.mockImplementation(async (method, params) => method === 'eth_getCode' ? code : params[0].data === routeData
+            ? encodeFunctionResult({ abi: FEE_REFILL_ABI, functionName: 'routeAllowed', result: false }) : encoded)
+        await expect(verifyFeeRefillDeployment(plan, rpc)).rejects.toThrow()
     })
 })

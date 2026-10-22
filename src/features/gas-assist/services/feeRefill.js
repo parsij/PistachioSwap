@@ -3,6 +3,7 @@ import { decodeFunctionResult, encodeFunctionData, erc20Abi, getAddress, keccak2
 export const FEE_REFILL_ABI = parseAbi([
     'function settle(address token,uint256 amount,address router,address spender,uint256 minimumNativeOutput,uint256 deadline,bytes routeData)',
     'function settings() view returns (address,address,address,address,uint256)',
+    'function routeAllowed(address router,address spender) view returns (bool)',
 ])
 function reject() {
     throw Object.assign(new Error('The fee conversion or its funding destinations changed. Request a new quote.'), { code: 'PAYMASTER_FEE_REFILL_INVALID' })
@@ -45,12 +46,14 @@ export function feeRefillPolicyCalls(calls, plan, settings, order) {
 /** Independently inspect the pinned deployment before any wallet authorization. */
 export async function verifyFeeRefillDeployment(plan, rpc) {
     if (!plan) return
-    const [code, encoded] = await Promise.all([
+    const [code, encoded, allowed] = await Promise.all([
         rpc('eth_getCode', [plan.settlement, 'latest']),
         rpc('eth_call', [{ to: plan.settlement, data: encodeFunctionData({ abi: FEE_REFILL_ABI, functionName: 'settings' }) }, 'latest']),
+        rpc('eth_call', [{ to: plan.settlement, data: encodeFunctionData({ abi: FEE_REFILL_ABI, functionName: 'routeAllowed', args: [plan.router, plan.spender] }) }, 'latest']),
     ])
     try {
         if (code === '0x' || keccak256(code).toLowerCase() !== plan.codeHash.toLowerCase()) reject()
+        if (decodeFunctionResult({ abi: FEE_REFILL_ABI, functionName: 'routeAllowed', data: allowed }) !== true) reject()
         const actual = decodeFunctionResult({ abi: FEE_REFILL_ABI, functionName: 'settings', data: encoded })
         if (![plan.entryPoint, plan.paymaster, plan.bundler, plan.treasury].every((value, i) => getAddress(value) === getAddress(actual[i])) ||
             actual[4] !== BigInt(plan.thresholdWei)) reject()
