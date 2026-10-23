@@ -1,3 +1,4 @@
+import { selfHostedDelegateAddress } from './selfHostedDelegate.js'
 import { Signature } from 'ethers'
 import { getAddress, isAddress, parseTransaction, toHex } from 'viem'
 import { hashAuthorization, recoverAuthorizationAddress } from 'viem/utils'
@@ -13,11 +14,11 @@ function deny(code, message) {
     throw error
 }
 
-function trustedDelegate() {
+function trustedDelegate(chainId) {
     if (import.meta.env?.VITE_SELF_HOSTED_PAYMASTER_ENABLED !== 'true') {
         deny('SELF_HOSTED_PAYMASTER_DISABLED', 'Self-hosted Gas Assist is disabled in this build.')
     }
-    const candidate = String(import.meta.env?.VITE_SIMPLE_7702_ACCOUNT_ADDRESS ?? '')
+    const candidate = String(selfHostedDelegateAddress(chainId) ?? '')
     if (!isAddress(candidate) || !ADDRESS.test(candidate)) {
         deny('PAYMASTER_DELEGATE_NOT_CONFIGURED', 'The trusted self-hosted EIP-7702 delegate is not configured.')
     }
@@ -26,7 +27,7 @@ function trustedDelegate() {
 
 export const selfHostedAuthorizationMethods = {
     async signSelfHostedAuthorization(request) {
-        const trusted = trustedDelegate()
+        const trusted = trustedDelegate(request?.data?.chainId)
         if (!request || request.type !== 'eip7702Auth' || !request.data || typeof request.data !== 'object') {
             deny('PAYMASTER_AUTHORIZATION_INVALID', 'A single self-hosted EIP-7702 authorization is required.')
         }
@@ -71,7 +72,7 @@ export const selfHostedAuthorizationMethods = {
             payload: {
                 purpose: previousDelegate
                     ? 'Your wallet already delegates execution to another contract. Switching to Pistachio changes the code controlling future wallet operations. This authorization does not itself transfer tokens. Review the previous and new contract addresses carefully.'
-                    : `Delegate this existing EOA to the trusted ERC-4337 Simple7702Account for ${chainName}. This authorization does not itself transfer tokens.`,
+                    : `Delegate this existing EOA to the checked Gas Assist account for ${chainName}. This authorization does not itself transfer tokens.`,
                 ...(previousDelegate ? { previousDelegate } : {}),
                 delegate: trusted,
                 authorizationScope: `${chainName} (${chainId})`,

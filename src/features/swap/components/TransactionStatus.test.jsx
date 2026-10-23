@@ -32,7 +32,7 @@ describe('TransactionStatus', () => {
 
         fireEvent.pointerEnter(info)
         expect(screen.getByRole('tooltip').textContent).toContain('Every blockchain transaction needs gas')
-        expect(screen.getByRole('tooltip').textContent).toContain('On BNB Chain, gas is paid in BNB')
+        expect(screen.getByRole('tooltip').textContent).toContain('On this network, gas is paid in BNB')
     })
 
     it('does not add the Gas Assist explanation to unrelated execution messages', () => {

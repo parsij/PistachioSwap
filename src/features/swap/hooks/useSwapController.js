@@ -1,3 +1,4 @@
+import { getSpendableAmount, nativeReserveConfiguration } from './nativeSpendable.js'
 import { nativeSwapInput } from '../services/walletValueDefault.js'
 import { useWalletValueDefault } from './useWalletValueDefault.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -9,7 +10,7 @@ import {
     usePublicClient,
     useSendTransaction,
 } from '#wallet-runtime'
-import { formatUnits, parseEther } from 'viem'
+import { formatUnits } from 'viem'
 import { useNetworkFees } from './useNetworkFees.js'
 import { useSwapSettings } from '../../settings/hooks/useSwapSettings.js'
 import { useWalletState } from '../../wallet/hooks/useWalletState.js'
@@ -37,12 +38,8 @@ import { decimalToUnits } from '../model/amountMath.js'
 import { getEffectiveSlippageBps } from '../../settings/services/swapSettings.js'
 import { getSwapExecutionMessage } from '../../../services/swapExecutionMode.js'
 import {
-    DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
-    DEFAULT_NATIVE_GAS_BUFFER_BPS,
-    DEFAULT_NATIVE_GAS_RESERVE_WEI,
     getBootstrapNativeGasReserveWei,
     getQuoteEstimatedNativeFeeWei,
-    getSpendableTokenAmount,
     isNativeEvmToken,
 } from '../../../services/balances.js'
 import { fetchSwapQuote } from '../services/quotes.js'
@@ -357,23 +354,7 @@ export function useSwapController() {
     ])
     const activeQuote = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.currentRoute : gasAssist.activeQuote
     const activeQuoteStatus = routing.routingMode === routing.modes.CROSS_CHAIN ? crossChain.quoteStatus : gasAssist.activeQuoteStatus
-    const configuredNativeReserveWei =
-        parseNativeReserve(
-            walletConfig.nativeGasReserve,
-            DEFAULT_NATIVE_GAS_RESERVE_WEI,
-        )
-    const minimumNativeGasBufferWei =
-        parseNativeReserve(
-            walletConfig.minimumNativeGasBuffer,
-            DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
-        )
-    const nativeGasBufferBps =
-        Number.isFinite(Number(walletConfig.nativeGasBufferBps))
-            ? Math.max(
-                0,
-                Math.trunc(Number(walletConfig.nativeGasBufferBps)),
-            )
-            : DEFAULT_NATIVE_GAS_BUFFER_BPS
+    const { configuredNativeReserveWei, minimumNativeGasBufferWei, nativeGasBufferBps } = nativeReserveConfiguration(walletConfig)
     const nativePriceToken =
         catalog.walletTokens.find((token) =>
             isNativeEvmToken(token) &&
@@ -802,42 +783,4 @@ export function useSwapController() {
         executionMessage,
     })
     return { layoutStyle, header: viewModel.header, page: viewModel.page }
-}
-
-function getSpendableAmount(
-    token,
-    nativeBalanceWei,
-    {
-        estimatedFeeWei = null,
-        fallbackReserveWei =
-        DEFAULT_NATIVE_GAS_RESERVE_WEI,
-        gasBufferBps =
-        DEFAULT_NATIVE_GAS_BUFFER_BPS,
-        minimumGasBufferWei =
-        DEFAULT_MIN_NATIVE_GAS_BUFFER_WEI,
-    } = {},
-) {
-    if (!token) return '0'
-
-    return getSpendableTokenAmount({
-        token,
-        nativeBalanceWei:
-            nativeBalanceWei ??
-            0n,
-        estimatedFeeWei,
-        fallbackReserveWei,
-        gasBufferBps,
-        minimumGasBufferWei,
-    })
-}
-
-function parseNativeReserve(
-    value,
-    fallback = DEFAULT_NATIVE_GAS_RESERVE_WEI,
-) {
-    try {
-        return parseEther(String(value))
-    } catch {
-        return fallback
-    }
 }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -43,7 +44,7 @@ describe('main swap quoted output text', () => {
     })
 
     it('keeps the white rules scoped to ready quotes with a muted placeholder', () => {
-        const css = readFileSync(new URL('./SwapAmountInput.css', import.meta.url), 'utf8')
+        const css = readFileSync(resolve('src/features/swap/components/SwapAmountInput.css'), 'utf8')
         expect(css).toMatch(/\.buy-panel\[data-quote-ready='true'\] \.buy-amount-input/u)
         expect(css).toMatch(/\.buy-panel\[data-quote-ready='true'\] \.buy-fiat-value/u)
         expect(css).toMatch(/color:\s*#fff/u)

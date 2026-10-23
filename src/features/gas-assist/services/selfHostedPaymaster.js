@@ -1,3 +1,5 @@
+import { CHECKED_ACCOUNT_RUNTIME_HASH } from './checkedAccountIdentity.js'
+import { verifyCheckedAccountDeployment } from './checkedAccount.js'
 import { feeRefillPolicyCalls, verifyFeeRefillDeployment } from './feeRefill.js'
 import {
     concatHex,
@@ -114,7 +116,16 @@ function frontendConfig(backend) {
         address(backend.eip7702Factory, 'factory marker') !== getAddress(FACTORY_MARKER)) {
         deny('PAYMASTER_CONFIG_MISMATCH', 'The backend did not provide the expected ERC-4337 v0.8 deployment.')
     }
+    if (backend.checkedExecution?.version !== 'pistachio-checked-7702-v1' ||
+        backend.checkedExecution.delegateCodeHash?.toLowerCase() !== CHECKED_ACCOUNT_RUNTIME_HASH ||
+        !/^0x[0-9a-f]{64}$/iu.test(backend.checkedExecution.delegateCodeHash ?? '') ||
+        !/^0x[0-9a-f]{64}$/iu.test(backend.checkedExecution.paymasterCodeHash ?? '') ||
+        !/^0x[0-9a-f]{64}$/iu.test(backend.checkedExecution.entryPointCodeHash ?? '') ||
+        delegate.toLowerCase() === '0xe6cae83bde06e4c305530e199d7217f42808555b') {
+        deny('PAYMASTER_CHECKED_EXECUTION_REQUIRED', 'Checked execution requires verified new account and Paymaster deployments.')
+    }
     return {
+        checkedExecution: backend.checkedExecution,
         feeRefill: backend.feeRefill ?? null,
         chainId, nativeSymbol: backend.nativeSymbol ?? 'native token', entryPoint, delegate, paymaster,
         publicRpc: publicRpcUrl(backend.publicRpc || (chainId === 56 ? import.meta.env.VITE_BSC_PUBLIC_RPC_URL : undefined), 'source public RPC'),
@@ -126,7 +137,11 @@ export function selfHostedFrontendEnabled(config) {
     return import.meta.env?.VITE_GAS_ASSIST_ENABLED === 'true' &&
         import.meta.env?.VITE_SELF_HOSTED_PAYMASTER_ENABLED === 'true' &&
         config?.provider === 'pistachio-paymaster-v08' &&
-        config?.execution === 'erc4337-v08-eip7702-direct'
+        config?.execution === 'erc4337-v08-eip7702-direct' &&
+        config?.checkedExecution?.version === 'pistachio-checked-7702-v1' &&
+        config.checkedExecution.delegateCodeHash?.toLowerCase() === CHECKED_ACCOUNT_RUNTIME_HASH &&
+        ['entryPointCodeHash', 'delegateCodeHash', 'paymasterCodeHash'].every(key => /^0x[0-9a-f]{64}$/iu.test(config.checkedExecution[key] ?? '')) &&
+        String(config.delegate).toLowerCase() !== '0xe6cae83bde06e4c305530e199d7217f42808555b'
 }
 export function validateSelfHostedPrepared(prepared, order, settings) {
     if (!prepared || prepared.provider !== 'pistachio-paymaster-v08' ||
@@ -389,7 +404,7 @@ export function classifyDelegationCode(rawCode, trustedDelegate) {
     }
     // Changing an existing EIP-7702 delegation requires a separate, explicit
     // wallet security review. Never silently replace third-party wallet code.
-    return { status: 'requires-authorization', previousDelegate: current, initialCode: code }
+    deny('PAYMASTER_DELEGATION_MIGRATION_REQUIRED', 'This wallet already uses another delegate. Explicitly migrate its delegation before using checked Gas Assist.')
 }
 async function delegationState(publicRpc, sender, delegate, signal) {
     const code = await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)
@@ -475,6 +490,7 @@ async function submitOperation({
         isAddress(candidate) && getAddress(candidate) === settings.entryPoint)) {
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
+    await verifyCheckedAccountDeployment(settings, (method, params) => rpc(settings.publicRpc, method, params, signal))
     await verifyFeeRefillDeployment(prepared.feeRefill, (method, params) => rpc(settings.publicRpc, method, params, signal))
     let finishReviewedOperation = null
     if (useSingleConfirmation) {

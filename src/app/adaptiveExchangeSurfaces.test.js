@@ -26,7 +26,7 @@ describe('adaptive exchange surfaces', () => {
         const source = css('src/features/tokens/components/GlobalSearchModal.css')
 
         expect(source).toMatch(
-            /\.global-search-backdrop\s*\{[\s\S]*background:\s*rgb\(0 0 0 \/ 46%\)/,
+            /\.global-search-backdrop\s*\{[\s\S]*background:\s*#0f0f0f/,
         )
         expect(source).not.toMatch(
             /\.global-search-backdrop\s*\{[^}]*backdrop-filter:\s*blur/,
