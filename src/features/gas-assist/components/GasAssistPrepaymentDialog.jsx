@@ -258,7 +258,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
                     </div>
                 )}
                 <p className="gas-assist-technical-note">
-                    Pistachio Wallet authorizes one sponsored source operation. The disclosed fee goes to PistachioSwap and the swap principal goes through the quoted provider. If the source operation reverts, its token fee transfer also reverts. Cross-chain destination fulfillment happens separately.
+                    Pistachio Wallet authorizes one sponsored source operation. The disclosed fee goes to PistachioSwap and may be converted on the source network to replenish its gas funding. The swap principal goes through the quoted provider. If the source operation reverts, its token fee transfer also reverts. Cross-chain destination fulfillment happens separately.
                 </p>
             </div>
         </details>

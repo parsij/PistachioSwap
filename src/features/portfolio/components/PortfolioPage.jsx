@@ -1,3 +1,4 @@
+import { usePortfolioSnapshots } from '../hooks/usePortfolioSnapshots.js'
 import NetworkSearchBar from '../../tokens/components/NetworkSearchBar.jsx'
 import { matchesNetworkSearch } from '../../tokens/services/networkSearch.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -47,7 +48,6 @@ import {
 import {
     PORTFOLIO_CHART_PERIODS,
     portfolioSnapshotChange,
-    readPortfolioSnapshots,
     recordPortfolioSnapshot,
 } from '../services/portfolioHistory.js'
 
@@ -624,7 +624,6 @@ function PerformancePanel({
     walletAddress,
     scope,
     currentValue,
-    historyRevision,
 }) {
     const [period, setPeriod] = useState('ALL')
     const [periodOpen, setPeriodOpen] = useState(false)
@@ -634,14 +633,7 @@ function PerformancePanel({
     useOutsideDismiss(periodOpen, periodRef, () => setPeriodOpen(false))
     useOutsideDismiss(infoOpen, infoRef, () => setInfoOpen(false))
 
-    const snapshots = useMemo(
-        () => readPortfolioSnapshots({
-            walletAddress,
-            scope,
-            period,
-        }),
-        [historyRevision, period, scope, walletAddress],
-    )
+    const snapshots = usePortfolioSnapshots({ walletAddress, scope, period })
     const change = useMemo(() => portfolioSnapshotChange(snapshots), [snapshots])
     const trackedChange = change ?? (snapshots.length === 1
         ? { absolute: 0, percent: 0 }
@@ -855,7 +847,6 @@ function Overview({
     onRefresh,
     onTab,
     historyScope,
-    historyRevision,
 }) {
     const miniAssets = assets.slice(0, 8)
     return (
@@ -888,7 +879,6 @@ function Overview({
                         walletAddress={address}
                         scope={historyScope}
                         currentValue={totalValue}
-                        historyRevision={historyRevision}
                     />
                 </aside>
             </div>
@@ -1001,7 +991,6 @@ export default function PortfolioPage({ wallet }) {
     const [sortKey, setSortKey] = useState('value')
     const [sortDirection, setSortDirection] = useState('desc')
     const [period, setPeriod] = useState('1M')
-    const [historyRevision, setHistoryRevision] = useState(0)
     const [refreshing, setRefreshing] = useState(false)
     const [shareNotice, setShareNotice] = useState('')
 
@@ -1068,25 +1057,16 @@ export default function PortfolioPage({ wallet }) {
     }, [activitySearch, activityType, visibleActivity])
 
     const historyScope = chainFilter === 'all' ? 'all' : String(chainFilter)
-    const snapshots = useMemo(
-        () => readPortfolioSnapshots({
-            walletAddress: address,
-            scope: historyScope,
-            period,
-        }),
-        [address, historyRevision, historyScope, period],
-    )
+    const snapshots = usePortfolioSnapshots({ walletAddress: address, scope: historyScope, period })
     const periodChange = useMemo(() => portfolioSnapshotChange(snapshots), [snapshots])
 
     useEffect(() => {
         if (!address || !Number.isFinite(totalValue)) return
-        if (recordPortfolioSnapshot({
+        recordPortfolioSnapshot({
             walletAddress: address,
             scope: historyScope,
             valueUSD: totalValue,
-        })) {
-            setHistoryRevision((revision) => revision + 1)
-        }
+        })
     }, [address, historyScope, totalValue])
 
     useEffect(() => {
@@ -1221,7 +1201,6 @@ export default function PortfolioPage({ wallet }) {
                         onRefresh={refresh}
                         onTab={changeTab}
                         historyScope={historyScope}
-                        historyRevision={historyRevision}
                     />
                 )}
 

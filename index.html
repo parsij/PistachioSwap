@@ -235,7 +235,7 @@
               </li>
               <li>
                 <strong>If the source operation reverts, no fee is taken</strong>
-                <p>The Gas Assist service charge is fixed for the quote you authorize, not equal to final actual network gas. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. If the source operation reverts, its fee transfer also reverts. Cross-chain destination fulfillment is separate: destination failure or a provider principal refund does not automatically refund the source service charge. Provider refunds are conditional. Applicable terms, historical promises, and law still apply.</p>
+                <p>Your authorized service charge is fixed. PistachioSwap retains any difference after actual gas expenses; unused gas is not automatically refunded. Source reverts also revert the fee. Destination fulfillment is separate; destination failure or principal refunds do not automatically refund the service charge. Provider refunds are conditional. Applicable terms, historical promises, and law still apply.</p>
                 <span>Fee, approval, and swap revert together. The treasury receives nothing.</span>
               </li>
             </ol>
@@ -361,7 +361,7 @@
         <section class="section" aria-labelledby="product-guides">
           <div class="section-head">
             <h2 id="product-guides">Get to know Pistachio Swap</h2>
-            <p>Understand your wallet, your swap, and the costs before you sign.</p>
+            <p>Understand costs before signing.</p>
           </div>
           <div class="cards">
             <article class="card">
@@ -385,18 +385,18 @@
         <section class="section" id="run-locally" aria-labelledby="run-locally-title">
           <div class="section-head">
             <h2 id="run-locally-title">Run your own frontend</h2>
-            <p>Use the interface on your computer with quotes from PistachioSwap. No .env file or backend setup needed.</p>
+            <p>Use the interface locally with hosted quotes. No backend setup needed.</p>
           </div>
           <div class="self-host-instructions">
-            <p>Run this in a Linux or macOS terminal, or Windows WSL. Missing Git, Node.js 24, and pnpm are installed automatically on supported systems; system packages may request administrator approval.</p>
+            <p>Linux, macOS or Windows WSL: missing Git, Node.js 24 and pnpm are installed on supported systems; system packages may require administrator approval.</p>
             <pre><code>curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.sh | bash</code></pre>
-            <p>The command clones into <code>./PistachioSwap</code>, installs dependencies with pnpm, and opens <code>http://localhost:5173/swap/</code>. Run the same command again to check for updates and restart. Existing checkouts are reused; local changes and commits are never reset or overwritten.</p>
+            <p>Clones into <code>./PistachioSwap</code>, installs dependencies, and opens <code>http://localhost:5173/swap/</code>. Rerun to update and restart; existing checkouts, changes and commits are preserved.</p>
             <h3>Choose the install folder</h3>
             <pre><code>curl -fsSL https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.sh | bash -s -- --dir "$HOME/apps/PistachioSwap"</code></pre>
             <h3>Windows PowerShell</h3>
             <pre><code>&amp; ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/parsij/PistachioSwap/main/scripts/run-frontend.ps1').Content))</code></pre>
-            <p>No WSL is needed for this Windows command. It uses winget for missing Git and installs a verified Node.js 24 copy and pnpm in PistachioSwap’s user tools folder when needed. Add <code>-Dir "$HOME\apps\PistachioSwap"</code> after the command to choose a folder. Existing system Node.js installations are preserved.</p>
-            <p>Replace the quoted path with your preferred folder. Use the same <code>--dir</code> on later runs. Stop a running instance with Ctrl+C before restarting. Already in the checkout? Run <code>pnpm self-host</code>.</p>
+            <p>No WSL needed. Uses winget for missing Git; installs verified Node.js 24 and pnpm in user tools when needed. System Node.js is preserved. Choose a folder with <code>-Dir "$HOME\apps\PistachioSwap"</code>.</p>
+            <p>Reuse your chosen <code>--dir</code>. Stop with Ctrl+C before restarting. In the checkout, run <code>pnpm self-host</code>.</p>
             <p>This runs the frontend locally; quotes, routing, screening, and Gas Assist still depend on PistachioSwap’s hosted services. Quoted charges, eligibility, provider restrictions, and availability still apply. Wallet storage and passkeys are separate from the main website; existing website passkeys do not unlock a local vault. Some third-party features may restrict localhost or other origins.</p>
             <p><a href="https://github.com/parsij/PistachioSwap/blob/main/docs/run-your-own-frontend.md" target="_blank" rel="noopener noreferrer">Setup details and hosting options →</a></p>
           </div>
@@ -457,7 +457,7 @@
 
         <section class="cta">
           <h2>Open wallet and look around</h2>
-          <p>Nothing to sign up for. Connect only when you want to trade.</p>
+          <p>Connect when you want to trade.</p>
           <div class="hero-actions">
             <a class="button button-primary button-lg" href="/swap/">Open wallet</a>
             <a

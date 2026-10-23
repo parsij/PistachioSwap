@@ -60,9 +60,12 @@ describe('mobile touch targets', () => {
     it('keeps fiat values and token balances the desktop size on phones', () => {
         const amountSource = css('src/features/swap/components/SwapAmountInput.css')
         const appSource = css('src/index.css')
-        expect(amountSource).not.toContain('.sell-fiat-value')
-        expect(amountSource).not.toContain('.buy-fiat-value')
-        expect(amountSource).not.toContain('.sell-balance')
+        // Quote color rules may target these labels; typography must stay shared.
+        for (const rule of amountSource.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+            if (/\.(?:sell-fiat-value|buy-fiat-value|sell-balance)(?![\w-])/.test(rule[1])) {
+                expect(rule[2]).not.toMatch(/(?:font-size|line-height)\s*:/)
+            }
+        }
         expect(appSource).toMatch(
             /\.sell-fiat-value,\s*\.buy-fiat-value,\s*\.sell-balance\s*\{[^}]*font-size:\s*var\(--size-secondary-font\)/,
         )

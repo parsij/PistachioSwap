@@ -1,3 +1,4 @@
+import { CHECKED_ACCOUNT_RUNTIME_HASH } from '../../gas-assist/services/checkedAccountIdentity.js'
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from '@testing-library/react'
@@ -105,6 +106,8 @@ describe('useCrossChainGasAssist', () => {
                 atomicExecution: false,
                 provider: 'pistachio-paymaster-v08',
                 execution: 'erc4337-v08-eip7702-direct',
+                delegate: '0x8888888888888888888888888888888888888888',
+                checkedExecution: { version: 'pistachio-checked-7702-v1', delegateCodeHash: CHECKED_ACCOUNT_RUNTIME_HASH, entryPointCodeHash: `0x${'11'.repeat(32)}`, paymasterCodeHash: `0x${'22'.repeat(32)}` },
             },
         })
         const { result } = renderHook((value) => useCrossChainGasAssist(value), {

@@ -227,6 +227,7 @@ describe('browser wallet-history classifier', () => {
             swap_evidence: true,
             user_operation_senders: [wallet],
             user_operation_paymasters: [paymaster],
+            user_operations: [{ userOpHash: hash, sender: wallet, paymaster, success: true }],
             erc20_transfers: [
                 transfer({ token: tokenA, from: wallet, to: other, value: 2_000_000, symbol: 'USDC' }),
                 transfer({ token: tokenB, from: other, to: wallet, value: 3_000_000, symbol: 'ETH' }),
@@ -300,7 +301,7 @@ describe('browser wallet-history classifier', () => {
                 value: '0.25',
                 rawContract: {
                     address: null,
-                    value: '0x3635c9adc5dea000',
+                    value: '0x3782dace9d90000',
                     decimal: '0x12',
                 },
                 metadata: {
@@ -325,6 +326,7 @@ describe('browser wallet-history classifier', () => {
             swap_evidence: false,
             user_operation_senders: [wallet],
             user_operation_paymasters: [paymaster],
+            user_operations: [{ userOpHash: hash, sender: wallet, paymaster, success: true }],
             native_transfers: [{
                 from_address: wallet,
                 to_address: other,
@@ -353,6 +355,7 @@ describe('browser wallet-history classifier', () => {
             swap_evidence: false,
             user_operation_senders: [wallet],
             user_operation_paymasters: [paymaster],
+            user_operations: [{ userOpHash: hash, sender: wallet, paymaster, success: true }],
             erc20_transfers: [
                 transfer({ token: tokenA, from: wallet, to: other, value: 2_000_000, symbol: 'SELL' }),
             ],
