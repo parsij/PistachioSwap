@@ -1,3 +1,6 @@
+import { CHECKED_ACCOUNT_RUNTIME_HASH } from './checkedAccountIdentity.js'
+import { verifyCheckedAccountDeployment } from './checkedAccount.js'
+import { feeRefillPolicyCalls, verifyFeeRefillDeployment } from './feeRefill.js'
 import {
     concatHex,
     decodeFunctionData,
@@ -113,7 +116,17 @@ function frontendConfig(backend) {
         address(backend.eip7702Factory, 'factory marker') !== getAddress(FACTORY_MARKER)) {
         deny('PAYMASTER_CONFIG_MISMATCH', 'The backend did not provide the expected ERC-4337 v0.8 deployment.')
     }
+    if (backend.checkedExecution?.version !== 'pistachio-checked-7702-v1' ||
+        backend.checkedExecution.delegateCodeHash?.toLowerCase() !== CHECKED_ACCOUNT_RUNTIME_HASH ||
+        !/^0x[0-9a-f]{64}$/iu.test(backend.checkedExecution.delegateCodeHash ?? '') ||
+        !/^0x[0-9a-f]{64}$/iu.test(backend.checkedExecution.paymasterCodeHash ?? '') ||
+        !/^0x[0-9a-f]{64}$/iu.test(backend.checkedExecution.entryPointCodeHash ?? '') ||
+        delegate.toLowerCase() === '0xe6cae83bde06e4c305530e199d7217f42808555b') {
+        deny('PAYMASTER_CHECKED_EXECUTION_REQUIRED', 'Checked execution requires verified new account and Paymaster deployments.')
+    }
     return {
+        checkedExecution: backend.checkedExecution,
+        feeRefill: backend.feeRefill ?? null,
         chainId, nativeSymbol: backend.nativeSymbol ?? 'native token', entryPoint, delegate, paymaster,
         publicRpc: publicRpcUrl(backend.publicRpc || (chainId === 56 ? import.meta.env.VITE_BSC_PUBLIC_RPC_URL : undefined), 'source public RPC'),
         maximumFeePerGasWei: backend.maximumFeePerGasWei ?? UINT128_MAX.toString(),
@@ -124,7 +137,11 @@ export function selfHostedFrontendEnabled(config) {
     return import.meta.env?.VITE_GAS_ASSIST_ENABLED === 'true' &&
         import.meta.env?.VITE_SELF_HOSTED_PAYMASTER_ENABLED === 'true' &&
         config?.provider === 'pistachio-paymaster-v08' &&
-        config?.execution === 'erc4337-v08-eip7702-direct'
+        config?.execution === 'erc4337-v08-eip7702-direct' &&
+        config?.checkedExecution?.version === 'pistachio-checked-7702-v1' &&
+        config.checkedExecution.delegateCodeHash?.toLowerCase() === CHECKED_ACCOUNT_RUNTIME_HASH &&
+        ['entryPointCodeHash', 'delegateCodeHash', 'paymasterCodeHash'].every(key => /^0x[0-9a-f]{64}$/iu.test(config.checkedExecution[key] ?? '')) &&
+        String(config.delegate).toLowerCase() !== '0xe6cae83bde06e4c305530e199d7217f42808555b'
 }
 export function validateSelfHostedPrepared(prepared, order, settings) {
     if (!prepared || prepared.provider !== 'pistachio-paymaster-v08' ||
@@ -137,10 +154,10 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
         address(prepared.delegate, 'prepared delegate') !== settings.delegate ||
         address(prepared.paymaster, 'prepared Paymaster') !== settings.paymaster ||
         address(prepared.eip7702Factory, 'prepared factory') !== getAddress(FACTORY_MARKER) ||
-        !Array.isArray(prepared.transactions) || prepared.transactions.length !== 5) {
+        !Array.isArray(prepared.transactions) || ![5, 8].includes(prepared.transactions.length)) {
         deny('PAYMASTER_INTENT_INVALID', 'The prepared self-hosted swap does not match the reviewed Gas Assist order.')
     }
-    const calls = prepared.transactions.map((call) => {
+    const fullCalls = prepared.transactions.map((call) => {
         const to = address(call?.to, 'reviewed call target')
         const data = hex(call?.data, 'reviewed call data')
         if (quantity(call?.value ?? '0x0', 'native call value', (1n << 256n) - 1n) !== 0n) {
@@ -148,6 +165,7 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
         }
         return { target: to, data, value: 0n }
     })
+    const calls = feeRefillPolicyCalls(fullCalls, prepared.feeRefill, settings, order)
     const decode = (call, functionName) => {
         try {
             const decoded = decodeFunctionData({ abi: erc20Abi, data: call.data })
@@ -188,10 +206,10 @@ export function validateSelfHostedPrepared(prepared, order, settings) {
     if (order.treasuryAddress && treasury !== address(order.treasuryAddress, 'reviewed treasury')) {
         deny('PAYMASTER_ORDER_CHANGED', 'The treasury address changed after review.')
     }
-    return calls
+    return fullCalls
 }
 export function encodeSelfHostedBatch(calls) {
-    if (!Array.isArray(calls) || calls.length !== 5) deny('PAYMASTER_INTENT_INVALID', 'Exactly five reviewed calls are required.')
+    if (!Array.isArray(calls) || ![5, 8].includes(calls.length)) deny('PAYMASTER_INTENT_INVALID', 'Five treasury calls or eight replenishment calls are required.')
     return encodeFunctionData({ abi: SIMPLE_ACCOUNT_ABI, functionName: 'executeBatch', args: [calls] })
 }
 
@@ -295,9 +313,10 @@ async function reportPaymasterHash(quoteEndpoint, sessionToken, path, body, sign
         if (!response.ok) return false
         if (!path.endsWith('/receipt')) return true
         const verified = await response.json()
-        return verified.sourceStatus === 'confirmed' &&
-            verified.userOpHash?.toLowerCase() === body.userOpHash.toLowerCase() &&
-            verified.transactionHash?.toLowerCase() === body.transactionHash.toLowerCase()
+        if (!['confirmed', 'reverted'].includes(verified.sourceStatus) ||
+            verified.userOpHash?.toLowerCase() !== body.userOpHash.toLowerCase() ||
+            verified.transactionHash?.toLowerCase() !== body.transactionHash.toLowerCase()) return false
+        return verified.sourceStatus
     } catch {
         // The UserOperation may already have been broadcast. Reporting must
         // never trigger a replacement transaction or label it as reverted.
@@ -385,7 +404,7 @@ export function classifyDelegationCode(rawCode, trustedDelegate) {
     }
     // Changing an existing EIP-7702 delegation requires a separate, explicit
     // wallet security review. Never silently replace third-party wallet code.
-    return { status: 'requires-authorization', previousDelegate: current, initialCode: code }
+    deny('PAYMASTER_DELEGATION_MIGRATION_REQUIRED', 'This wallet already uses another delegate. Explicitly migrate its delegation before using checked Gas Assist.')
 }
 async function delegationState(publicRpc, sender, delegate, signal) {
     const code = await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)
@@ -471,6 +490,8 @@ async function submitOperation({
         isAddress(candidate) && getAddress(candidate) === settings.entryPoint)) {
         deny('PAYMASTER_BUNDLER_INCOMPATIBLE', 'The Bundler does not support the configured ERC-4337 v0.8 EntryPoint.')
     }
+    await verifyCheckedAccountDeployment(settings, (method, params) => rpc(settings.publicRpc, method, params, signal))
+    await verifyFeeRefillDeployment(prepared.feeRefill, (method, params) => rpc(settings.publicRpc, method, params, signal))
     let finishReviewedOperation = null
     if (useSingleConfirmation) {
         const { getPistachioWalletManager } = await import('../../passkey/services/walletManager.js')
@@ -627,13 +648,12 @@ async function signAndSubmitReviewedOperation({
             }
             // Gas-Assist verifies the actual BNB Chain EntryPoint event and
             // distinguishes a confirmed source operation from Polygon delivery.
-            const sourceReport = transactionHash
+            const sourceStatus = transactionHash
                 ? await reportPaymasterHash(quoteEndpoint, sessionToken,
                     `${endpoint}/receipt`, { userOpHash, transactionHash }, signal)
                 : false
-            const success = receipt.success === true || receipt.success === '0x1'
-            const transactionSuccess = receipt.receipt?.status === '0x1' || receipt.receipt?.status === 1
-            if (!success || !transactionSuccess) {
+            const sourceReport = sourceStatus === 'confirmed'
+            if (sourceStatus === 'reverted') {
                 deny('PAYMASTER_EXECUTION_REVERTED', 'The sponsored UserOperation or swap reverted; Paymaster gas may still have been charged.')
             }
             // Only advance the bridge route after an actual successful source

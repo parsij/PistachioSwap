@@ -57,6 +57,8 @@ jobs:
         run: pnpm exec vitest run src/App.wallet.test.jsx -t 'clears the previous submitted transaction'
       - name: Gas Assist pricing disclosure regressions
         run: pnpm exec vitest run src/features/gas-assist/components/GasAssistBanner.test.jsx src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx src/features/gas-assist/components/GasAssistPrepaymentDialog.requote.test.jsx src/features/gas-assist/model/gasAssistFee.test.js
+      - name: Complete frontend release gate
+        run: pnpm exec vitest run src --maxWorkers=2 --pool=forks
       - name: Build
         env:
           NODE_OPTIONS: --max-old-space-size=8192

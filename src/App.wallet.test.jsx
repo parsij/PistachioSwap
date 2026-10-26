@@ -3,6 +3,8 @@
 import React from 'react'
 import { encodeErrorResult, parseAbi } from 'viem'
 import appStyles from './index.css?raw'
+import { expirePendingWalletTransactions } from './features/wallet/services/optimisticBalances.js'
+import { STALE_BALANCE_NOTICE_DELAY_MS } from './features/swap/components/SwapBalanceNotice.jsx'
 import {
     act,
     cleanup,
@@ -142,6 +144,10 @@ vi.mock('./features/tokens/hooks/useWalletTokens.js', () => ({
         mocks.useWalletTokens(options),
 }))
 
+vi.mock('./features/gas-assist/hooks/useSponsorshipConfig.js', () => ({
+    useSponsorshipConfig: () => mocks.gasAssistConfig,
+}))
+
 vi.mock('./features/cross-chain/hooks/useCrossChainGasAssist.js', () => ({
     useCrossChainGasAssist: () => mocks.crossChainGasAssistState,
 }))
@@ -193,6 +199,12 @@ const simulationErrorAbi = parseAbi([
     'error InsufficientAllowance(uint256 amount)',
     'error TransactionDeadlinePassed()',
 ])
+
+function configureBnbToken() { return { chainId: 56, address: BNB_ADDRESS, isNative: true, name: 'BNB', symbol: 'BNB', decimals: 18, balance: '1', rawBalance: '1000000000000000000', valueUSD: '600', trustedPriceUSD: '600', visibility: 'primary', recognitionStatus: 'established', recognitionReasons: ['native-token'], priceConfidence: 'trusted', includeInPortfolioValue: true } }
+
+function configureBnbHolding() {
+    mocks.useWalletTokens.mockReturnValue({ tokens: [{ chainId: 56, address: BNB_ADDRESS, isNative: true, name: 'BNB', symbol: 'BNB', decimals: 18, balance: '1', rawBalance: '1000000000000000000', valueUSD: '600', trustedPriceUSD: '600', visibility: 'primary', recognitionStatus: 'established', recognitionReasons: ['native-token'], priceConfidence: 'trusted', includeInPortfolioValue: true }], loading: false, error: null, refetch: mocks.refetchWalletTokens })
+}
 
 function configureSameChainQuoteToken(overrides = {}) {
     mocks.account.address = ADDRESS
@@ -291,6 +303,9 @@ function selectQtknToBnb(container, getAllByText) {
 
 describe('App wallet integration', () => {
     beforeEach(() => {
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 60 * 60 * 1000)
+        expirePendingWalletTransactions()
+        clock.mockRestore()
         globalThis.ResizeObserver = class ResizeObserver {
             observe() {}
             unobserve() {}
@@ -477,6 +492,7 @@ describe('App wallet integration', () => {
     })
 
     it('loads chain-scoped wallet tokens independently of the connected network', () => {
+        configureBnbHolding()
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.network.chainId = 1
@@ -503,6 +519,7 @@ describe('App wallet integration', () => {
     })
 
     it('enables normal token selection state on BSC', () => {
+        configureBnbHolding()
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.network.chainId = 56
@@ -603,6 +620,7 @@ describe('App wallet integration', () => {
                 symbol: 'BNB',
                 decimals: 18,
                 isNative: true,
+                balance: '2', rawBalance: '2000000000000000000', valueUSD: '1200', includeInPortfolioValue: true,
                 recognitionStatus: 'established',
                 possibleSpam: false,
                 visibility: 'primary',
@@ -686,8 +704,9 @@ describe('App wallet integration', () => {
         expect(container.textContent).not.toContain('Cross-chain swap')
         expect(container.textContent).not.toContain('Find routes')
         expect(container.querySelector('details').open).toBe(true)
-        expect(container.textContent).toContain('Estimated route cost~$0.04')
-        expect(container.textContent).toContain('Source network gasCalculated at confirmation')
+        expect(container.textContent).toContain('Estimated fee~$0.04')
+        expect(container.textContent).toContain('Network cost BNB Smart Chain')
+        expect(container.textContent).toContain('Receiving on Celo. Network cost settings apply to BNB Smart Chain.')
         expect(container.textContent).not.toContain('Network costUnavailable')
         expect(container.textContent).not.toContain('Swap/route impact')
         expect(container.textContent).not.toContain('Free')
@@ -706,6 +725,7 @@ describe('App wallet integration', () => {
                 symbol: 'BNB',
                 decimals: 18,
                 isNative: true,
+                balance: '2', rawBalance: '2000000000000000000', valueUSD: '1200', includeInPortfolioValue: true,
                 recognitionStatus: 'established',
                 possibleSpam: false,
                 visibility: 'primary',
@@ -823,6 +843,7 @@ describe('App wallet integration', () => {
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.network.chainId = 56
+        mocks.gasAssistConfig.config = { supported: true, chainId: 56, enabled: true, provider: 'pistachio-paymaster-v08', execution: 'erc4337-v08-eip7702-direct' }
         mocks.nativeBalance = 0n
         mocks.crossChainGasAssistState = {
             required: true,
@@ -842,7 +863,8 @@ describe('App wallet integration', () => {
                 rawBalance: '2000000000000000000',
                 balance: '2',
                 volume24hUsd: 2_000,
-                verificationStatus: 'established',
+                classificationVersion: 6, recognitionStatus: 'established', classificationTier: 'established',
+                spamStatus: 'clean', classificationReasons: ['curated-official-contract'], priceConfidence: 'market', marketPriceUSD: '1', recognitionReasons: ['curated-official-contract'], verifiedContract: true, possibleSpam: false, securityStatus: 'trusted',
                 visibility: 'primary',
             },
             {
@@ -852,10 +874,12 @@ describe('App wallet integration', () => {
                 symbol: 'BASE',
                 decimals: 18,
                 volume24hUsd: 1_000,
-                verificationStatus: 'established',
+                classificationVersion: 6, recognitionStatus: 'established', classificationTier: 'established',
+                spamStatus: 'clean', classificationReasons: ['curated-official-contract'], priceConfidence: 'market', marketPriceUSD: '1', recognitionReasons: ['curated-official-contract'], verifiedContract: true, possibleSpam: false, securityStatus: 'trusted',
                 visibility: 'primary',
             },
         ]
+        mocks.useWalletTokens.mockReturnValue({ tokens: [{ ...mocks.marketTokens[0], balance: '2', valueUSD: '2', marketPriceUSD: '1', priceConfidence: 'market', recognitionStatus: 'established', recognitionReasons: ['curated-official-contract'], includeInPortfolioValue: true }], error: null, refetch: mocks.refetchWalletTokens })
         let route
         mocks.fetchCrossChainRoutes.mockImplementation(async ({ request }) => {
             route = {
@@ -896,6 +920,8 @@ describe('App wallet integration', () => {
         }))
         const { container, getAllByText, getByRole, queryByRole } = render(<App />)
         fireEvent.click(container.querySelector('.sell-token-position button'))
+        fireEvent.click(getByRole('button', { name: 'Token network' }))
+        fireEvent.click(getByRole('option', { name: 'BNB Smart Chain' }))
         fireEvent.click(getAllByText('BSCX').map((node) => node.closest('.ps-token-row')).find(Boolean))
         fireEvent.click(container.querySelector('.buy-token-position button'))
         fireEvent.click(getByRole('button', { name: 'Token network' }))
@@ -992,6 +1018,7 @@ describe('App wallet integration', () => {
     })
 
     it('keeps the app enabled when Wagmi restores a wallet before AppKit account state catches up', () => {
+        configureBnbHolding()
         mocks.wagmiAccount.address = ADDRESS
         mocks.wagmiAccount.chainId = 56
         mocks.wagmiAccount.connector = { id: 'pistachio-local' }
@@ -1108,7 +1135,7 @@ describe('App wallet integration', () => {
         fireEvent.click(getByRole('button', { name: /Open account/ }))
         fireEvent.click(getByRole('button', { name: /View portfolio/ }))
         expect(document.querySelector('.uni-portfolio-page')).toBeTruthy()
-        expect(document.body.textContent).toContain('BNB')
+        expect(document.body.textContent).toContain('ETH')
         expect(document.querySelector('.wallet-asset-list')).toBeNull()
     })
 
@@ -1155,6 +1182,7 @@ describe('App wallet integration', () => {
     })
 
     it('shows the stale-balance warning only when stale is true', () => {
+        vi.useFakeTimers()
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.useWalletTokens.mockReturnValue({
@@ -1171,8 +1199,11 @@ describe('App wallet integration', () => {
 
         const { getByText, queryByText } = render(<App />)
 
+        expect(queryByText('Showing previously loaded balances.')).toBeNull()
+        act(() => vi.advanceTimersByTime(STALE_BALANCE_NOTICE_DELAY_MS))
         expect(getByText('Showing previously loaded balances.')).toBeTruthy()
         expect(queryByText('Some network balances could not be refreshed.')).toBeNull()
+        vi.useRealTimers()
     })
 
     it('does not present unsupported or provider-rejected networks as temporary failures', () => {
@@ -1198,6 +1229,7 @@ describe('App wallet integration', () => {
     })
 
     it('clicking native balance and percentages use the spendable amount', () => {
+        configureBnbHolding()
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         const { container, getByRole } = render(<App />)
@@ -1269,6 +1301,7 @@ describe('App wallet integration', () => {
             decimals: 18,
             rawBalance: '10000000000000000000',
             balance: '10',
+            valueUSD: '10', includeInPortfolioValue: true,
             priceUSD: null,
             trustedPriceUSD: null,
             marketPriceUSD: '1',
@@ -1293,6 +1326,8 @@ describe('App wallet integration', () => {
 
         const { container, getAllByText, getByRole } = render(<App />)
         fireEvent.click(container.querySelector('.sell-token-position button'))
+        fireEvent.click(getByRole('button', { name: 'Token network' }))
+        fireEvent.click(getByRole('option', { name: 'BNB Smart Chain' }))
         const usdtRow = getAllByText('USDT')
             .map((node) => node.closest('.ps-token-row'))
             .find(Boolean)
@@ -1306,6 +1341,7 @@ describe('App wallet integration', () => {
     })
 
     it('toggles Sell into USD mode and sends a token-denominated exact-input quote', async () => {
+        configureBnbHolding()
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.network.chainId = 56
@@ -1594,6 +1630,9 @@ describe('App wallet integration', () => {
     })
 
     it('opens same-chain review immediately without approval or submission', async () => {
+        const style = document.createElement('style')
+        style.textContent = appStyles
+        document.head.append(style)
         const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
         const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
         configureSameChainQuoteToken()
@@ -1646,6 +1685,7 @@ describe('App wallet integration', () => {
         )
         expect(errorSpy.mock.calls.some(([, diagnostic]) =>
             diagnostic?.event === 'review.dialog.visibility-failed')).toBe(false)
+        style.remove()
         debugSpy.mockRestore()
         errorSpy.mockRestore()
     })
@@ -2274,6 +2314,7 @@ describe('App wallet integration', () => {
     })
 
     it('keeps wallet-only spam out of the 24H volume catalog', () => {
+        configureBnbHolding()
         mocks.account.address = ADDRESS
         mocks.account.isConnected = true
         mocks.marketTokens = [{
@@ -2287,7 +2328,7 @@ describe('App wallet integration', () => {
             visibility: 'primary',
         }]
         mocks.useWalletTokens.mockReturnValue({
-            tokens: [{
+            tokens: [configureBnbToken(), {
                 classificationVersion: 5,
                 chainId: 56,
                 address: '0x0000000000000000000000000000000000000099',

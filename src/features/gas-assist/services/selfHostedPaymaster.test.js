@@ -1,6 +1,7 @@
+import { checkedAccountRuntime } from './checkedAccount.fixture.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-    encodeFunctionData, erc20Abi, getAddress, hashTypedData, numberToHex, serializeSignature,
+    encodeFunctionData, encodeFunctionResult, parseAbi, keccak256, toHex, erc20Abi, getAddress, hashTypedData, numberToHex, serializeSignature,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
@@ -22,7 +23,7 @@ const treasury = getAddress('0x4444444444444444444444444444444444444444')
 const spender = getAddress('0x5555555555555555555555555555555555555555')
 const router = getAddress('0x6666666666666666666666666666666666666666')
 const entryPoint = getAddress('0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108')
-const delegate = getAddress('0xe6Cae83BdE06E4c305530e199D7217f42808555B')
+const delegate = getAddress('0x8888888888888888888888888888888888888888')
 const marker = getAddress('0x7702000000000000000000000000000000000000')
 const paymaster = getAddress('0x7777777777777777777777777777777777777777')
 const fee = encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [treasury, 10n] })
@@ -42,6 +43,7 @@ const order = {
     netSwapAmountRaw: '90', paymentAmountRaw: '10',
 }
 const backendConfig = {
+    checkedExecution: { entryPointCodeHash: keccak256('0x6000'), version: 'pistachio-checked-7702-v1', delegateCodeHash: keccak256(checkedAccountRuntime), paymasterCodeHash: keccak256('0x6000') },
     enabled: true, provider: 'pistachio-paymaster-v08',
     execution: 'erc4337-v08-eip7702-direct',
     entryPoint, delegate, paymaster, eip7702Factory: marker,
@@ -104,6 +106,8 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
 
     it('rejects disabled frontend and tampered or non-five-call intents', () => {
         expect(selfHostedFrontendEnabled(backendConfig)).toBe(true)
+        expect(selfHostedFrontendEnabled({ ...backendConfig, checkedExecution: null })).toBe(false)
+        expect(selfHostedFrontendEnabled({ ...backendConfig, delegate: '0xe6Cae83BdE06E4c305530e199D7217f42808555B' })).toBe(false)
         vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'false')
         expect(selfHostedFrontendEnabled(backendConfig)).toBe(false)
         vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'true')
@@ -161,16 +165,14 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
         expect(classifyDelegationCode(`0xef0100${delegate.slice(2)}`, delegate)).toMatchObject({
             status: 'already-delegated', previousDelegate: null,
         })
-        expect(classifyDelegationCode(`0xef0100${treasury.slice(2)}`, delegate)).toMatchObject({
-            status: 'requires-authorization', previousDelegate: treasury,
-        })
+        expect(() => classifyDelegationCode(`0xef0100${treasury.slice(2)}`, delegate)).toThrow(/migrate/)
         expect(() => classifyDelegationCode('0x6001600055', delegate))
             .toThrow(/unrecognized contract code/iu)
         expect(() => classifyDelegationCode('0xef0100', delegate))
             .toThrow(/unrecognized contract code/iu)
     })
 
-    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted']])(
+    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted'], ['0x', false, 'unverified']])(
         'always includes a fresh EIP-7702 auth with factory 0x7702 and submits for code %s',
         async (onChainCode, delayed, mode) => {
             const onSubmitted = vi.fn()
@@ -202,7 +204,15 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                     return signer.signTypedData(typed)
                 }),
             }
-            const rpcResult = (method) => {
+            const rpcResult = (method, params) => {
+                if (method === 'eth_getCode' && getAddress(params[0]) === delegate) return checkedAccountRuntime
+                if (method === 'eth_getCode' && [entryPoint,paymaster].includes(getAddress(params[0]))) return '0x6000'
+                if (method === 'eth_call') {
+                    const abi = parseAbi(['function executionVersion() view returns (bytes32)','function ENTRY_POINT() view returns (address)','function TRUSTED_DELEGATE() view returns (address)'])
+                    for (const [functionName,result] of [['executionVersion',keccak256(toHex('pistachio-checked-7702-v1'))],['ENTRY_POINT',entryPoint],['TRUSTED_DELEGATE',delegate]]) {
+                        if (params[0].data === encodeFunctionData({ abi,functionName })) return encodeFunctionResult({ abi,functionName,result })
+                    }
+                }
                 switch (method) {
                 case 'eth_chainId': return '0x38'
                 case 'eth_supportedEntryPoints': return [entryPoint]
@@ -218,7 +228,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                     if (mode === 'transient' && receiptAttempts === 1) throw new Error('Temporary Bundler outage')
                     if (delayed) return null
                     return {
-                    success: mode !== 'reverted', receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
+                    success: !['reverted', 'unverified'].includes(mode), receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
                 }
                 default: throw new Error(`Unexpected RPC ${method}`)
                 }
@@ -238,9 +248,10 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                         }
                     }
                     return new Response(JSON.stringify({
-                        jsonrpc: '2.0', id: 1, result: rpcResult(body.method),
+                        jsonrpc: '2.0', id: 1, result: rpcResult(body.method, body.params),
                     }), { status: 200 })
                 }
+                if (String(url).endsWith('/paymaster/receipt') && mode === 'unverified') return new Response('{}', { status: 503 })
                 if (String(url).endsWith('/paymaster/receipt')) return new Response(JSON.stringify({
                     ...body, sourceStatus: mode === 'reverted' ? 'reverted' : 'confirmed',
                 }))
@@ -260,6 +271,11 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 sessionToken: 'session',
                 walletClient, authenticatedWalletAddress: sender, onSubmitted,
             })
+            if (onChainCode === `0xef0100${treasury.slice(2)}`) {
+                await expect(submittedPromise).rejects.toMatchObject({ code: 'PAYMASTER_DELEGATION_MIGRATION_REQUIRED' })
+                expect(requests.filter(r => r.body.method === 'eth_sendUserOperation')).toHaveLength(0)
+                return
+            }
             if (delayed) {
                 await vi.waitFor(() => expect(receiptAttempts).toBeGreaterThan(0))
                 await vi.runAllTimersAsync()
@@ -271,7 +287,7 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 return
             }
             const result = await submittedPromise
-            expect(result).toMatchObject({ status: delayed ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
+            expect(result).toMatchObject({ status: delayed || mode === 'unverified' ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
             if (delayed) {
                 expect(receiptAttempts).toBe(60)
                 await expect(submitSelfHostedPaymasterUserOperation({
@@ -363,7 +379,15 @@ describe('all approved source chains preserve browser-owned final signatures', (
                     return signer.signTypedData(typed)
                 }),
             }
-            const rpcResult = (method) => {
+            const rpcResult = (method, params) => {
+                if (method === 'eth_getCode' && getAddress(params[0]) === delegate) return checkedAccountRuntime
+                if (method === 'eth_getCode' && [entryPoint,paymaster].includes(getAddress(params[0]))) return '0x6000'
+                if (method === 'eth_call') {
+                    const abi = parseAbi(['function executionVersion() view returns (bytes32)','function ENTRY_POINT() view returns (address)','function TRUSTED_DELEGATE() view returns (address)'])
+                    for (const [functionName,result] of [['executionVersion',keccak256(toHex('pistachio-checked-7702-v1'))],['ENTRY_POINT',entryPoint],['TRUSTED_DELEGATE',delegate]]) {
+                        if (params[0].data === encodeFunctionData({ abi,functionName })) return encodeFunctionResult({ abi,functionName,result })
+                    }
+                }
                 switch (method) {
                 case 'eth_chainId': return numberToHex(chainId)
                 case 'eth_supportedEntryPoints': return [entryPoint]
@@ -379,7 +403,7 @@ describe('all approved source chains preserve browser-owned final signatures', (
                     if (mode === 'transient' && receiptAttempts === 1) throw new Error('Temporary Bundler outage')
                     if (delayed) return null
                     return {
-                    success: mode !== 'reverted', receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
+                    success: !['reverted', 'unverified'].includes(mode), receipt: { status: '0x1', transactionHash: `0x${'fa'.repeat(32)}` },
                 }
                 default: throw new Error(`Unexpected RPC ${method}`)
                 }
@@ -399,9 +423,10 @@ describe('all approved source chains preserve browser-owned final signatures', (
                         }
                     }
                     return new Response(JSON.stringify({
-                        jsonrpc: '2.0', id: 1, result: rpcResult(body.method),
+                        jsonrpc: '2.0', id: 1, result: rpcResult(body.method, body.params),
                     }), { status: 200 })
                 }
+                if (String(url).endsWith('/paymaster/receipt') && mode === 'unverified') return new Response('{}', { status: 503 })
                 if (String(url).endsWith('/paymaster/receipt')) return new Response(JSON.stringify({
                     ...body, sourceStatus: mode === 'reverted' ? 'reverted' : 'confirmed',
                 }))
@@ -421,6 +446,11 @@ describe('all approved source chains preserve browser-owned final signatures', (
                 sessionToken: 'session',
                 walletClient, authenticatedWalletAddress: sender, onSubmitted,
             })
+            if (onChainCode === `0xef0100${treasury.slice(2)}`) {
+                await expect(submittedPromise).rejects.toMatchObject({ code: 'PAYMASTER_DELEGATION_MIGRATION_REQUIRED' })
+                expect(requests.filter(r => r.body.method === 'eth_sendUserOperation')).toHaveLength(0)
+                return
+            }
             if (delayed) {
                 await vi.waitFor(() => expect(receiptAttempts).toBeGreaterThan(0))
                 await vi.runAllTimersAsync()
@@ -432,7 +462,7 @@ describe('all approved source chains preserve browser-owned final signatures', (
                 return
             }
             const result = await submittedPromise
-            expect(result).toMatchObject({ status: delayed ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
+            expect(result).toMatchObject({ status: delayed || mode === 'unverified' ? 'pending' : 'source-confirmed', userOpHash: locallySignedHash })
             if (delayed) {
                 expect(receiptAttempts).toBe(60)
                 await expect(submitSelfHostedPaymasterUserOperation({

@@ -13,7 +13,7 @@ export const PORTFOLIO_CHART_PERIODS = Object.freeze([
 
 function storage() {
     try {
-        return globalThis.localStorage ?? null
+        return globalThis.window?.localStorage ?? globalThis.localStorage ?? null
     } catch {
         return null
     }
@@ -52,6 +52,7 @@ function writeStore(store) {
     if (!target) return false
     try {
         target.setItem(STORAGE_KEY, JSON.stringify(store))
+        globalThis.window?.dispatchEvent(new Event('pistachio:portfolio-history'))
         return true
     } catch {
         return false
@@ -103,12 +104,15 @@ export function readPortfolioSnapshots({
     scope = 'all',
     period = '1M',
     now = Date.now(),
+    snapshot,
 } = {}) {
     const key = seriesKey(walletAddress, scope)
     if (!key) return []
 
-    const points = Array.isArray(readStore()[key])
-        ? readStore()[key].map(normalizePoint).filter(Boolean)
+    let store
+    try { store = snapshot === undefined ? readStore() : JSON.parse(snapshot) } catch { store = {} }
+    const points = Array.isArray(store?.[key])
+        ? store[key].map(normalizePoint).filter(Boolean)
         : []
     const configured = PORTFOLIO_CHART_PERIODS.find((item) => item.id === period)
     const durationMs = configured?.durationMs ?? null
@@ -139,4 +143,18 @@ export const portfolioHistoryInternals = {
     normalizeAddress,
     normalizePoint,
     seriesKey,
+}
+
+export function portfolioHistorySnapshot() {
+    try { return storage()?.getItem(STORAGE_KEY) ?? '{}' } catch { return '{}' }
+}
+export function subscribePortfolioHistory(listener) {
+    const target = globalThis.window
+    if (!target) return () => {}
+    target.addEventListener('storage', listener)
+    target.addEventListener('pistachio:portfolio-history', listener)
+    return () => {
+        target.removeEventListener('storage', listener)
+        target.removeEventListener('pistachio:portfolio-history', listener)
+    }
 }

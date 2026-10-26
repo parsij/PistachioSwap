@@ -1,3 +1,4 @@
+import { selfHostedDelegateAddress } from './selfHostedDelegate.js'
 import { getAddress, hexToString, isHex } from 'viem'
 
 import { createReviewedGasAssistScope, matchesReviewedGasAssistAuthorization, matchesReviewedGasAssistUserOperation } from './reviewedGasAssistScope.js'
@@ -451,7 +452,7 @@ export function hardenPistachioWalletManager(manager) {
         }
         const scope = createReviewedGasAssistScope(input, {
             walletAddress: readOnlyAccount(manager), vaultId: manager.vault?.vaultId,
-            trustedDelegate: import.meta.env.VITE_SIMPLE_7702_ACCOUNT_ADDRESS,
+            trustedDelegate: selfHostedDelegateAddress(input.chainId),
         })
         if (scope.chainId !== manager.activeChainId) {
             throw walletError('PISTACHIO_CHAIN_INVARIANT_FAILED', 'The reviewed swap is not for the active chain.')
