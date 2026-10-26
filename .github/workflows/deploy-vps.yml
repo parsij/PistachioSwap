@@ -123,6 +123,9 @@ jobs:
 
           exit "$status"
 
+      - name: Dependency compatibility regressions
+        run: pnpm exec vitest run test/dependency-compatibility.test.js
+
       - name: Lint
         run: pnpm lint
 
