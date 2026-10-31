@@ -126,6 +126,9 @@ jobs:
       - name: Dependency compatibility regressions
         run: pnpm exec vitest run test/dependency-compatibility.test.js
 
+      - name: Environment watcher lifecycle regressions
+        run: pnpm exec vitest run test/shared-api-env-sync.test.js
+
       - name: Lint
         run: pnpm lint
 

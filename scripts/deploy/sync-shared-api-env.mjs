@@ -416,9 +416,10 @@ async function watchFiles(options) {
         }
     }
 
+    const watchController = new AbortController()
     const watchers = directories.map((directory) => ({
         directory,
-        watcher: watch(directory),
+        watcher: watch(directory, { signal: watchController.signal }),
     }))
     for (const { directory, watcher } of watchers) {
         ;(async () => {
@@ -431,6 +432,7 @@ async function watchFiles(options) {
                 timer = setTimeout(() => void run(), WATCH_DEBOUNCE_MS)
             }
         })().catch(async (error) => {
+            if (watchController.signal.aborted) return
             await writeLog(options, `[env-sync] Watcher failed: ${error.message}`, { stderr: true }).catch(() => undefined)
             process.exit(78)
         })
@@ -441,7 +443,8 @@ async function watchFiles(options) {
         `[env-sync] Watching ${options.left} and ${options.right} for shared-setting changes. Separate log: ${options.logFile}`,
     )
     const shutdown = () => {
-        for (const { watcher } of watchers) watcher.close()
+        if (timer) clearTimeout(timer)
+        watchController.abort()
         process.exit(0)
     }
     process.on('SIGINT', shutdown)

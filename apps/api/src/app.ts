@@ -261,11 +261,12 @@ export function createApp() {
     app.addHook('onReady', async () => {
         if (process.env.NODE_ENV !== 'test') {
             if (getComplianceService().status().enabled) {
-                try {
-                    await getComplianceService().refreshOfacSnapshot()
-                } catch (error) {
+                // A bounded OFAC download can outlast Fastify's startup hook.
+                // Warm the shared refresh in the background; screening still
+                // awaits a fresh snapshot and fails closed when unavailable.
+                void getComplianceService().refreshOfacSnapshot().catch((error) => {
                     app.log.error({ subsystem: 'compliance', err: error }, 'Initial OFAC list refresh failed; transaction screening will fail closed')
-                }
+                })
             }
             marketCatalogService.setPersistenceWarningHandler((code) => {
                 app.log.warn({
