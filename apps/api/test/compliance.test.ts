@@ -86,6 +86,28 @@ afterEach(() => {
 })
 
 describe('OFAC compliance service', () => {
+    it('waits for an in-flight warm-up before screening and still blocks a sanctioned address', async () => {
+        let release!: () => void
+        const gate = new Promise<void>((resolve) => { release = resolve })
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            await gate
+            return new Response(ofacXml(), { status: 200 })
+        }))
+        const { pool } = fakePool()
+        const service = createComplianceService(pool)
+        const warmup = service.refreshOfacSnapshot()
+        let settled = false
+        const screening = service.screen({
+            walletAddress: sanctioned, chainId: 1,
+            action: 'startup-warmup', persist: false, clientIp: rawIp,
+        }).finally(() => { settled = true })
+        await Promise.resolve()
+        expect(settled).toBe(false)
+        release()
+        await warmup
+        expect((await screening).reasonCode).toBe('OFAC_ADDRESS_MATCH')
+    })
+
     it('blocks an exact OFAC digital-currency address', async () => {
         installHealthyOfac()
         const { pool, calls } = fakePool()

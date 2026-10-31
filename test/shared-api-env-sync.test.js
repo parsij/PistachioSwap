@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -42,6 +42,40 @@ afterEach(async () => {
 })
 
 describe('shared API environment synchronizer', () => {
+    it.each(['SIGTERM', 'SIGINT'])('stops watch mode cleanly on %s', async (signal) => {
+        const { left, right, logFile } = await fixture('COMPLIANCE_ENABLED=true\n', 'COMPLIANCE_ENABLED=true\n')
+        const child = spawn(process.execPath, [
+            script, '--required', '--watch', '--left', left,
+            '--right', right, '--log-file', logFile,
+        ], { stdio: ['ignore', 'pipe', 'pipe'] })
+        let output = ''
+        let errors = ''
+        const exited = new Promise((resolve, reject) => {
+            child.once('error', reject)
+            child.once('exit', (code, exitSignal) => resolve({ code, signal: exitSignal }))
+        })
+        child.stderr.on('data', chunk => { errors += chunk })
+        try {
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('Watcher did not start')), 3_000)
+                child.stdout.on('data', chunk => {
+                    output += chunk
+                    if (output.includes('[env-sync] Watching ')) {
+                        clearTimeout(timer)
+                        resolve()
+                    }
+                })
+                child.once('error', error => { clearTimeout(timer); reject(error) })
+            })
+            child.kill(signal)
+            expect(await exited).toEqual({ code: 0, signal: null })
+            expect(errors).toBe('')
+        } finally {
+            if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+            await exited
+        }
+    })
+
     it('copies missing shared settings both directions without copying service-only settings', async () => {
         const { left, right, logFile } = await fixture(
             'PORT=3006\nCOMPLIANCE_ENABLED=true\nOFAC_MAX_LIST_AGE_MS=86400000\n',
