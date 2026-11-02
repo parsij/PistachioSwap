@@ -438,10 +438,6 @@ async function watchFiles(options) {
         })
     }
 
-    await writeLog(
-        options,
-        `[env-sync] Watching ${options.left} and ${options.right} for shared-setting changes. Separate log: ${options.logFile}`,
-    )
     const shutdown = () => {
         if (timer) clearTimeout(timer)
         watchController.abort()
@@ -449,6 +445,11 @@ async function watchFiles(options) {
     }
     process.on('SIGINT', shutdown)
     process.on('SIGTERM', shutdown)
+    // Readiness must imply that an immediate stop is handled gracefully.
+    await writeLog(
+        options,
+        `[env-sync] Watching ${options.left} and ${options.right} for shared-setting changes. Separate log: ${options.logFile}`,
+    )
     await new Promise(() => {})
 }
 

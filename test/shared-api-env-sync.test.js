@@ -42,6 +42,27 @@ afterEach(async () => {
 })
 
 describe('shared API environment synchronizer', () => {
+    it.each(['SIGTERM', 'SIGINT'])('handles %s at the exact readiness announcement', async (signal) => {
+        const { left, right, logFile } = await fixture('COMPLIANCE_ENABLED=true\n', 'COMPLIANCE_ENABLED=true\n')
+        const preload = path.join(path.dirname(logFile), 'stop-at-ready.mjs')
+        await writeFile(preload, `
+const write = process.stdout.write.bind(process.stdout)
+process.stdout.write = function (chunk, ...args) {
+    if (String(chunk).includes('[env-sync] Watching ')) {
+        process.kill(process.pid, process.env.TEST_ENV_SYNC_STOP)
+    }
+    return write(chunk, ...args)
+}
+`)
+        const result = await execFileAsync(process.execPath, [
+            '--import', preload, script, '--required', '--watch',
+            '--left', left, '--right', right, '--log-file', logFile,
+        ], { env: { ...process.env, TEST_ENV_SYNC_STOP: signal } })
+        expect(result.stderr).toBe('')
+        expect(result.stdout).toContain('[env-sync] Watching ')
+    })
+
+
     it.each(['SIGTERM', 'SIGINT'])('stops watch mode cleanly on %s', async (signal) => {
         const { left, right, logFile } = await fixture('COMPLIANCE_ENABLED=true\n', 'COMPLIANCE_ENABLED=true\n')
         const child = spawn(process.execPath, [
