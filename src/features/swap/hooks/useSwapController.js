@@ -202,6 +202,7 @@ export function useSwapController() {
         diagnostic: logSwapDiagnostic,
     })
     const gasAssist = useGasAssistController({
+        oneConfirmationEnabled: swapSettings.gasAssistPreference === 'force',
         routingMode: routing.routingMode,
         gasAssistRoutingMode: routing.modes.SAME_CHAIN_GAS_ASSIST,
         normalMode: routing.modes.NORMAL_SWAP_MODE,
@@ -306,6 +307,7 @@ export function useSwapController() {
         sellToken: inputs.sellToken,
     })
     const crossChainGasAssist = useCrossChainGasAssist({
+        oneConfirmationEnabled: swapSettings.gasAssistPreference === 'force',
         quoteEndpoint: quoteConfig.endpoint,
         account: walletState.address,
         sellToken: inputs.sellToken,

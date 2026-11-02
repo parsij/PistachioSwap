@@ -166,13 +166,18 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
             status: 'already-delegated', previousDelegate: null,
         })
         expect(() => classifyDelegationCode(`0xef0100${treasury.slice(2)}`, delegate)).toThrow(/migrate/)
+        expect(classifyDelegationCode(`0xef0100${treasury.slice(2)}`, delegate, true)).toMatchObject({
+            status: 'requires-authorization', previousDelegate: treasury,
+            initialCode: `0xef0100${treasury.slice(2).toLowerCase()}`,
+        })
+        expect(() => classifyDelegationCode('0x6001600055', delegate, true)).toThrow(/unrecognized contract code/iu)
         expect(() => classifyDelegationCode('0x6001600055', delegate))
             .toThrow(/unrecognized contract code/iu)
         expect(() => classifyDelegationCode('0xef0100', delegate))
             .toThrow(/unrecognized contract code/iu)
     })
 
-    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted'], ['0x', false, 'unverified']])(
+    it.each([['0x', false], [`0xef0100${delegate.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false], [`0xef0100${treasury.slice(2)}`, false, 'migrate'], ['0x', true], ['0x', false, 'transient'], ['0x', false, 'reverted'], ['0x', false, 'unverified']])(
         'always includes a fresh EIP-7702 auth with factory 0x7702 and submits for code %s',
         async (onChainCode, delayed, mode) => {
             const onSubmitted = vi.fn()
@@ -270,8 +275,9 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                 quoteEndpoint: 'http://localhost:3001/v1/quote',
                 sessionToken: 'session',
                 walletClient, authenticatedWalletAddress: sender, onSubmitted,
+                allowDelegationMigration: mode === 'migrate',
             })
-            if (onChainCode === `0xef0100${treasury.slice(2)}`) {
+            if (onChainCode === `0xef0100${treasury.slice(2)}` && mode !== 'migrate') {
                 await expect(submittedPromise).rejects.toMatchObject({ code: 'PAYMASTER_DELEGATION_MIGRATION_REQUIRED' })
                 expect(requests.filter(r => r.body.method === 'eth_sendUserOperation')).toHaveLength(0)
                 return

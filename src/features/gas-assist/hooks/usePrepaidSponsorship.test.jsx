@@ -271,7 +271,7 @@ describe('self-hosted sponsorship async ownership', () => {
         expect(mocks.submitSelfHosted).toHaveBeenCalledTimes(1)
     })
 
-    it('requires a second review when the final order differs from the preview', async () => {
+    it.each([false, true])('requires a second review for a higher final charge (one-confirmation=%s)', async (oneConfirmationEnabled) => {
         const previewOrder = {
             id: 'preview-1',
             isPreview: true,
@@ -299,7 +299,7 @@ describe('self-hosted sponsorship async ownership', () => {
             isPreview: false,
             paymentAmountRaw: '101',
         })
-        const { result } = setup(walletA, vi.fn(), { previewOrder })
+        const { result } = setup(walletA, vi.fn(), { previewOrder, oneConfirmationEnabled })
         await waitForConfig(result)
 
         await act(async () => {
@@ -315,6 +315,26 @@ describe('self-hosted sponsorship async ownership', () => {
         expect(result.current.reviewUpdated).toBe(true)
         expect(mocks.prepareSelfHosted).not.toHaveBeenCalled()
         expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
+    })
+
+    it('continues within confirmed output/fee limits and authorizes migration only when opted in', async () => {
+        const previewOrder = {
+            id: 'preview-bounded', isPreview: true, walletAddress: walletA,
+            chainId: 56, sellToken: tokenA.address, buyToken: tokenB.address,
+            grossInputAmountRaw: '1000', netSwapAmountRaw: '900',
+            paymentToken: tokenA.address, paymentAmountRaw: '100',
+            totalPrepaymentUsdMicros: '100000', expectedOutputRaw: '850', minimumOutputRaw: '800',
+        }
+        mocks.createOrder.mockResolvedValue({ ...previewOrder, id: 'order-1', isPreview: false, expectedOutputRaw: '849' })
+        const { result } = setup(walletA, vi.fn(), { previewOrder, oneConfirmationEnabled: true })
+        await waitForConfig(result)
+        await act(() => result.current.start())
+        await act(() => result.current.signPackage())
+        expect(mocks.submitSelfHosted).toHaveBeenCalledOnce()
+        expect(mocks.submitSelfHosted).toHaveBeenCalledWith(expect.objectContaining({
+            useSingleConfirmation: true, allowDelegationMigration: true,
+        }))
+        expect(result.current.reviewUpdated).toBe(false)
     })
 
     it('fails closed when the self-hosted provider is unavailable', async () => {

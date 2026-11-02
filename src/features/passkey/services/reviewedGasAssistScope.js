@@ -26,16 +26,25 @@ export function createReviewedGasAssistScope(input, { walletAddress, vaultId, tr
         !Number.isFinite(expiresAt) || expiresAt <= now) {
         throw Object.assign(new Error('The reviewed smart swap is invalid or expired.'), { code: 'PISTACHIO_REVIEWED_SWAP_INVALID' })
     }
+    const previousDelegate = input.previousDelegate == null ? null : input.previousDelegate
+    if (previousDelegate !== null && (!isAddress(previousDelegate) ||
+        /^0x0{40}$/iu.test(previousDelegate) || sameAddress(previousDelegate, trustedDelegate))) {
+        throw Object.assign(new Error('The previous delegate is invalid.'), { code: 'PISTACHIO_REVIEWED_SWAP_INVALID' })
+    }
     return {
         id: crypto.randomUUID(), vaultId, walletAddress: getAddress(walletAddress),
         chainId: Number(input.chainId), delegate: getAddress(input.delegate),
         paymaster: getAddress(input.paymaster), callData: input.callData.toLowerCase(),
+        previousDelegate: previousDelegate === null ? null : getAddress(previousDelegate),
         expiresAt, authorizationSigned: false,
     }
 }
 
 export function matchesReviewedGasAssistAuthorization(scope, request) {
-    return Boolean(scope && !scope.authorizationSigned && !request?.data?.previousDelegate &&
+    const previousMatches = scope?.previousDelegate
+        ? sameAddress(scope.previousDelegate, request?.data?.previousDelegate)
+        : request?.data?.previousDelegate == null
+    return Boolean(scope && !scope.authorizationSigned && previousMatches &&
         request?.type === 'eip7702Auth' && Number(request.data.chainId) === scope.chainId &&
         sameAddress(request.data.address, scope.delegate))
 }

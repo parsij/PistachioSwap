@@ -70,6 +70,45 @@ const preview = {
 }
 
 describe('Gas Assist requote orchestration', () => {
+    it('refreshes an open one-confirmation review automatically and leaves the option off unchanged', async () => {
+        vi.useFakeTimers()
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+        try {
+            mocks.prepaid.phase = 'review'
+            const { rerender, unmount } = renderHook(({ enabled }) => useGasAssistController({ ...props, oneConfirmationEnabled: enabled }),
+                { initialProps: { enabled: false } })
+            await act(() => vi.advanceTimersByTimeAsync(30_000))
+            expect(mocks.preview.refresh).not.toHaveBeenCalled()
+            rerender({ enabled: true })
+            await act(() => vi.advanceTimersByTimeAsync(30_000))
+            expect(mocks.preview.refresh).toHaveBeenCalledOnce()
+            expect(mocks.prepaid.openPreviewLoading).toHaveBeenCalledOnce()
+            unmount()
+        } finally { visibility.mockRestore(); vi.useRealTimers() }
+    })
+
+    it('refreshes an expired preview instead of invoking wallet signing', async () => {
+        mocks.prepaid.phase = 'review'
+        mocks.prepaid.order = { isPreview: true, expiresAt: '2020-01-01T00:00:00Z' }
+        mocks.prepaid.signPackage = vi.fn()
+        const { result } = renderHook(() => useGasAssistController({ ...props, oneConfirmationEnabled: true }))
+        await act(() => result.current.prepaidSponsorship.signPackage())
+        expect(mocks.preview.refresh).toHaveBeenCalledOnce()
+        expect(mocks.prepaid.signPackage).not.toHaveBeenCalled()
+    })
+
+    it('does not refresh an operation that is already being signed', async () => {
+        vi.useFakeTimers()
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+        try {
+            mocks.prepaid.phase = 'package-signing'
+            const { unmount } = renderHook(() => useGasAssistController({ ...props, oneConfirmationEnabled: true }))
+            await act(() => vi.advanceTimersByTimeAsync(60_000))
+            expect(mocks.preview.refresh).not.toHaveBeenCalled()
+            unmount()
+        } finally { visibility.mockRestore(); vi.useRealTimers() }
+    })
+
     beforeEach(() => {
         props.setBuyAmount.mockReset()
         props.setVisibleStatus.mockReset()
