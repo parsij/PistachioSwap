@@ -6,6 +6,7 @@ import {
     createSponsorshipOrder,
     fetchSponsorshipConfig,
     fetchSponsorshipOrder,
+    cancelSponsorshipOrder,
 } from '../services/prepaidSponsorship.js'
 import {
     gasAssistTrace,
@@ -39,6 +40,7 @@ const initial = {
 function phaseForOrderStatus(status, currentPhase) {
     return {
         'payment-submitting': 'payment-confirming',
+        cancelled: 'cancelled',
         'payment-submitted': 'payment-confirming',
         'payment-confirmed': 'payment-confirmed',
         'approval-submitted': 'approval-confirming',
@@ -618,8 +620,9 @@ export function usePrepaidSponsorship({
                     sessionToken,
                     walletClient,
                     authenticatedWalletAddress: walletAddress,
-                    useSingleConfirmation: true,
-                    allowDelegationMigration: oneConfirmationEnabled,
+                    useSingleConfirmation: oneConfirmationEnabled,
+                    // The wallet asks separately when the combined review is off.
+                    allowDelegationMigration: true,
                     onBroadcast: ({ userOpHash }) => {
                         if (!isCurrent(walletEpoch, flowEpoch)) return
                         setState((current) => ({ ...current, phase: 'swap-confirming',
@@ -667,7 +670,16 @@ export function usePrepaidSponsorship({
                 setState((current) => ({ ...current, phase: 'confirmation-delayed', error: null,
                     order: { ...current.order, userOpHash: pending.userOpHash,
                         status: 'atomic-submitting', submissionAmbiguous: pending.ambiguous } }))
-            } else publishFailure(error, { walletEpoch, flowEpoch })
+            } else {
+                if (order?.id && !order.isPreview && sessionToken) {
+                    try {
+                        await cancelSponsorshipOrder(quoteEndpoint, sessionToken, order.id)
+                    } catch (cleanupError) {
+                        gasAssistTraceError('flow.order.cancel-error', cleanupError, { orderId: order.id })
+                    }
+                }
+                publishFailure(error, { walletEpoch, flowEpoch })
+            }
         } finally {
             finishOperation(operation)
         }
@@ -779,7 +791,7 @@ export function usePrepaidSponsorship({
         const walletEpoch = walletEpochRef.current
         const flowEpoch = flowEpochRef.current
         if (state.order?.userOpHash || !state.open || !orderId || pollOrderIsPreview || !sessionToken ||
-            ['completed', 'expired', 'rejected', 'failed'].includes(pollOrderStatus)) return undefined
+            ['completed', 'expired', 'rejected', 'failed', 'cancelled'].includes(pollOrderStatus)) return undefined
         const controller = new AbortController()
         const delay = forceImmediatePollRef.current ? 0 : 3_000
         forceImmediatePollRef.current = false

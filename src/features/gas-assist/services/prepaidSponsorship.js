@@ -276,6 +276,12 @@ export function createSponsorshipOrder(
     })
 }
 
+export function cancelSponsorshipOrder(quoteEndpoint, sessionToken, orderId, signal) {
+    return post(quoteEndpoint, `/v1/sponsorship/orders/${encodeURIComponent(orderId)}/cancel`, {}, {
+        sessionToken, signal, stage: 'order.cancel',
+    })
+}
+
 export async function fetchSponsorshipOrder(
     quoteEndpoint,
     sessionToken,

@@ -127,6 +127,27 @@ describe('private Gas Assist proxy', () => {
         }
     })
 
+    it('forwards authenticated cancellation to the private backend', async () => {
+        process.env.GAS_ASSIST_SERVICE_ENABLED = 'true'
+        process.env.GAS_ASSIST_SERVICE_URL = 'http://127.0.0.1:3002/internal'
+        process.env.GAS_ASSIST_INTERNAL_TOKEN = TOKEN
+        const fetchMock = vi.fn(async () => new Response(JSON.stringify({ cancelled: true, status: 'cancelled' }), {
+            headers: { 'content-type': 'application/json' },
+        }))
+        vi.stubGlobal('fetch', fetchMock)
+        const app = Fastify()
+        await app.register(gasAssistProxyRoutes, { prefix: '/api' })
+        try {
+            const response = await app.inject({ method: 'POST', url: '/api/v1/sponsorship/orders/order-1/cancel',
+                headers: { authorization: 'Bearer wallet-session' }, payload: {} })
+            expect(response.statusCode).toBe(200)
+            const [target, init] = fetchMock.mock.calls[0]
+            expect(String(target)).toBe('http://127.0.0.1:3002/internal/v1/sponsorship/orders/order-1/cancel')
+            expect(init.method).toBe('POST')
+            expect(new Headers(init.headers).get('authorization')).toBe('Bearer wallet-session')
+        } finally { await app.close() }
+    })
+
     it('forwards idempotency keys and strips api prefixes for private routes', async () => {
         process.env.GAS_ASSIST_SERVICE_ENABLED = 'true'
         process.env.GAS_ASSIST_SERVICE_URL = 'http://127.0.0.1:3002/internal'

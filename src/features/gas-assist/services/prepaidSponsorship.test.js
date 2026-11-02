@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
     createSponsorshipOrder,
+    cancelSponsorshipOrder,
     fetchSponsorshipConfig,
     prepaidSponsorshipInternals,
 } from './prepaidSponsorship.js'
@@ -13,6 +14,15 @@ afterEach(() => {
 })
 
 describe('Gas Assist frontend trust boundary', () => {
+    it('requests cancellation with the authenticated session and no client status override', async () => {
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ cancelled: true, status: 'cancelled' })))
+        await expect(cancelSponsorshipOrder('http://localhost:3001/v1/quote', 'session', 'order-1'))
+            .resolves.toEqual({ cancelled: true, status: 'cancelled' })
+        expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/v1/sponsorship/orders/order-1/cancel'), expect.objectContaining({
+            method: 'POST', body: '{}',
+            headers: expect.objectContaining({ authorization: 'Bearer session' }),
+        }))
+    })
     it.each(['paymentToken', 'spender', 'router', 'calldata', 'gasLimit', 'projectKey'])(
         'rejects frontend field %s',
         async (field) => {

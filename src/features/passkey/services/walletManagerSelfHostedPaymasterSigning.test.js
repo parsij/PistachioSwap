@@ -30,6 +30,22 @@ function signingContext() {
 }
 
 describe('self-hosted Gas Assist EIP-7702 authorization signing', () => {
+    it('requires a separate replacement review without a combined reviewed scope', async () => {
+        vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'true')
+        vi.stubEnv('VITE_SIMPLE_7702_ACCOUNT_ADDRESS', delegate)
+        const previousDelegate = '0x2222222222222222222222222222222222222222'
+        const context = signingContext()
+        const data = { address: delegate, chainId: 56, nonce: 3, previousDelegate }
+        await expect(selfHostedAuthorizationMethods.signSelfHostedAuthorization.call(context, {
+            type: 'eip7702Auth', data,
+            rawPayload: hashAuthorization({ contractAddress: delegate, chainId: 56, nonce: 3 }),
+        })).rejects.toBe(context.stopped)
+        expect(context.reviewQueue.request).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'Replace existing EIP-7702 wallet delegation',
+            payload: expect.objectContaining({ previousDelegate, delegate }),
+        }))
+        expect(context.client.request).not.toHaveBeenCalled()
+    })
     it('accepts Base and scopes the authorization review to Base', async () => {
         vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'true')
         vi.stubEnv('VITE_SIMPLE_7702_ACCOUNT_ADDRESS', delegate)

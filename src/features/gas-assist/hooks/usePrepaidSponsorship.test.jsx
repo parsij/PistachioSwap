@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     authenticate: vi.fn(),
     createOrder: vi.fn(),
     fetchOrder: vi.fn(),
+    cancelOrder: vi.fn(),
     prepareSelfHosted: vi.fn(),
     submitSelfHosted: vi.fn(),
 }))
@@ -30,6 +31,7 @@ vi.mock('../services/prepaidSponsorship.js', () => ({
     authenticateSponsorshipWallet: mocks.authenticate,
     createSponsorshipOrder: mocks.createOrder,
     fetchSponsorshipOrder: mocks.fetchOrder,
+    cancelSponsorshipOrder: mocks.cancelOrder,
 }))
 
 vi.mock('../services/selfHostedPaymaster.js', () => ({
@@ -131,6 +133,7 @@ describe('self-hosted sponsorship async ownership', () => {
         vi.clearAllMocks()
         mocks.fetchConfig.mockResolvedValue(activeConfig)
         mocks.authenticate.mockResolvedValue({ sessionToken: 'session' })
+        mocks.cancelOrder.mockResolvedValue({ cancelled: true, status: 'cancelled' })
         mocks.createOrder.mockResolvedValue({ id: 'order-1', status: 'quoted' })
         mocks.prepareSelfHosted.mockResolvedValue({
             orderId: 'order-1',
@@ -317,7 +320,7 @@ describe('self-hosted sponsorship async ownership', () => {
         expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
     })
 
-    it('continues within confirmed output/fee limits and authorizes migration only when opted in', async () => {
+    it('continues within confirmed output/fee limits with the combined review enabled', async () => {
         const previewOrder = {
             id: 'preview-bounded', isPreview: true, walletAddress: walletA,
             chainId: 56, sellToken: tokenA.address, buyToken: tokenB.address,
@@ -335,6 +338,30 @@ describe('self-hosted sponsorship async ownership', () => {
             useSingleConfirmation: true, allowDelegationMigration: true,
         }))
         expect(result.current.reviewUpdated).toBe(false)
+    })
+
+    it.each([false, true])('allows wallet-reviewed delegation replacement (one-confirmation=%s)', async (oneConfirmationEnabled) => {
+        const { result } = setup(walletA, vi.fn(), { oneConfirmationEnabled })
+        await waitForConfig(result)
+        await act(async () => { await result.current.start() })
+        await act(async () => { await result.current.signPackage() })
+        expect(mocks.submitSelfHosted).toHaveBeenCalledWith(expect.objectContaining({
+            allowDelegationMigration: true,
+            useSingleConfirmation: oneConfirmationEnabled,
+        }))
+        expect(mocks.cancelOrder).not.toHaveBeenCalled()
+    })
+
+    it('cancels an unsigned order after wallet rejection so retry can create a new order', async () => {
+        mocks.submitSelfHosted.mockRejectedValueOnce(Object.assign(new Error('Rejected'), { code: 4001 }))
+        const { result } = setup()
+        await waitForConfig(result)
+        await act(async () => { await result.current.start() })
+        await act(async () => { await result.current.signPackage() })
+        expect(mocks.cancelOrder).toHaveBeenCalledWith('/v1/quote', 'session', 'order-1')
+        expect(result.current.phase).toBe('cancelled')
+        await act(async () => { await result.current.start() })
+        expect(mocks.createOrder).toHaveBeenCalledTimes(2)
     })
 
     it('fails closed when the self-hosted provider is unavailable', async () => {
