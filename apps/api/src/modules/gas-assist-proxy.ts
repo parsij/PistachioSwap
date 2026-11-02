@@ -27,6 +27,7 @@ const PUBLIC_PROXY_ROUTES = Object.freeze([
     ['POST', /^\/v1\/sponsorship\/orders$/u],
     ['GET', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/atomic/prepare$`, 'u')],
+    ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/cancel$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/stub$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/sponsor$`, 'u')],
     ['POST', new RegExp(`^/v1/sponsorship/orders/${SAFE_PATH_SEGMENT}/paymaster/submitted$`, 'u')],
