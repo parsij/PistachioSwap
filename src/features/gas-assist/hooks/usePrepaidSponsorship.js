@@ -21,6 +21,7 @@ import {
 import { pendingUserOperations, removePendingUserOperation } from '../services/pendingUserOperations.js'
 import { getGasAssistBaseUrl } from '../services/gasAssist.js'
 import { isUserRejectedError } from '../../../services/swapTransaction.js'
+import { withinReviewedQuoteBounds } from '../model/reviewedQuoteBounds.js'
 
 const initial = {
     open: false,
@@ -143,6 +144,7 @@ export function usePrepaidSponsorship({
     createOrder: createOrderOverride,
     previewOrder,
     recoveryKind = 'same-chain',
+    oneConfirmationEnabled = false,
 }) {
     const connection = useConnection()
     const sourceChainId = Number(sellToken?.chainId ?? 56)
@@ -563,7 +565,8 @@ export function usePrepaidSponsorship({
                     },
                 )
                 if (!isCurrent(walletEpoch, flowEpoch)) return
-                if (reviewedSponsorshipOrderChanged(reviewedOrder, order)) {
+                if (reviewedSponsorshipOrderChanged(reviewedOrder, order) &&
+                    !(oneConfirmationEnabled && withinReviewedQuoteBounds(reviewedOrder, order, reviewedSponsorshipOrderChanged))) {
                     gasAssistTrace('flow.order.requote-review-required', {
                         previewId: reviewedOrder.id,
                         orderId: order.id,
@@ -616,6 +619,7 @@ export function usePrepaidSponsorship({
                     walletClient,
                     authenticatedWalletAddress: walletAddress,
                     useSingleConfirmation: true,
+                    allowDelegationMigration: oneConfirmationEnabled,
                     onBroadcast: ({ userOpHash }) => {
                         if (!isCurrent(walletEpoch, flowEpoch)) return
                         setState((current) => ({ ...current, phase: 'swap-confirming',
@@ -667,7 +671,7 @@ export function usePrepaidSponsorship({
         } finally {
             finishOperation(operation)
         }
-    }, [beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient, recoveryKind, sourceChainId])
+    }, [beginOperation, buyToken, config, createOrderOverride, finishOperation, grossInputAmount, isCurrent, notifySubmitted, publishFailure, quoteEndpoint, sellToken, slippageBps, state.order, walletAddress, walletClient, recoveryKind, sourceChainId, oneConfirmationEnabled])
 
     useEffect(() => {
         if (!walletAddress || !quoteEndpoint) return undefined
@@ -892,6 +896,7 @@ export function usePrepaidSponsorship({
         walletAddress,
         retryStart: start,
         available: Boolean(required && config?.enabled),
+        oneConfirmationEnabled,
         start,
         reviewOrder,
         openPreviewLoading,

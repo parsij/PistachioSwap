@@ -69,12 +69,32 @@ function props(overrides = {}) {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    sponsorship.open = false
+    sponsorship.phase = 'idle'
+    sponsorship.order = null
     vi.stubEnv('VITE_GAS_ASSIST_ENABLED', 'true')
     vi.stubEnv('VITE_SELF_HOSTED_PAYMASTER_ENABLED', 'true')
 })
 afterEach(() => vi.unstubAllEnvs())
 
 describe('useCrossChainGasAssist', () => {
+    it('refreshes an open one-confirmation review even while the cached route is still valid', async () => {
+        const input = props({ oneConfirmationEnabled: true })
+        const { result, rerender, unmount } = renderHook(value => useCrossChainGasAssist(value), { initialProps: input })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        vi.useFakeTimers()
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+        try {
+            sponsorship.open = true
+            sponsorship.phase = 'review'
+            sponsorship.order = preview().order
+            rerender(input)
+            await act(() => vi.advanceTimersByTimeAsync(30_000))
+            expect(input.previewSponsorship).toHaveBeenCalledTimes(2)
+            expect(sponsorship.openPreviewLoading).toHaveBeenCalledOnce()
+            expect(sponsorship.reviewOrder).toHaveBeenCalledOnce()
+        } finally { unmount(); visibility.mockRestore(); vi.useRealTimers() }
+    })
     it('prefetches and reuses the exact sponsored quote shown on the swap page', async () => {
         const input = props()
         const { result, rerender } = renderHook((value) => useCrossChainGasAssist(value), {

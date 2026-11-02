@@ -143,6 +143,25 @@ describe('actual smart-swap signing methods', () => {
         await finish()
     })
 
+    it('uses one passkey for an explicitly scoped delegate replacement and the exact swap', async () => {
+        const { manager, unlock } = harness()
+        await manager.signMessage({ message: challenge() })
+        const finish = manager.beginReviewedGasAssistOperation({
+            orderId: 'migration-order', walletAddress: signer.address, chainId: 56,
+            delegate, previousDelegate: paymaster, paymaster, callData,
+            expiresAt: new Date(Date.now() + 120_000).toISOString(),
+        })
+        expect(manager.hasReviewedGasAssistAuthorization(authorization(paymaster))).toBe(true)
+        expect(manager.hasReviewedGasAssistAuthorization(authorization(entryPoint))).toBe(false)
+        expect(manager.hasReviewedGasAssistAuthorization(authorization())).toBe(false)
+        await manager.signSelfHostedAuthorization(authorization(paymaster))
+        await manager.signTypedData(operation())
+        await finish()
+        expect(unlock).toHaveBeenCalledOnce()
+        expect(manager.reviewQueue.request).not.toHaveBeenCalled()
+        expect(manager.phase).toBe('locked')
+    })
+
     it('expires the handoff and discards unlocked material', async () => {
         vi.useFakeTimers()
         const { manager } = harness()

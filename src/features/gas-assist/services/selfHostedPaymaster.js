@@ -387,7 +387,7 @@ export function sponsoredGasFees(gasPriceHex, maximumFeePerGasWei = UINT128_MAX)
         maxFeePerGas: numberToHex(gasPrice * 2n > cap ? cap : gasPrice * 2n),
     }
 }
-export function classifyDelegationCode(rawCode, trustedDelegate) {
+export function classifyDelegationCode(rawCode, trustedDelegate, allowDelegationMigration = false) {
     const code = String(rawCode ?? '').toLowerCase()
     const trusted = getAddress(trustedDelegate)
     if (code === '0x') {
@@ -402,13 +402,16 @@ export function classifyDelegationCode(rawCode, trustedDelegate) {
     if (current === trusted) {
         return { status: 'already-delegated', previousDelegate: null, initialCode: code }
     }
+    if (allowDelegationMigration === true) {
+        return { status: 'requires-authorization', previousDelegate: current, initialCode: code }
+    }
     // Changing an existing EIP-7702 delegation requires a separate, explicit
     // wallet security review. Never silently replace third-party wallet code.
     deny('PAYMASTER_DELEGATION_MIGRATION_REQUIRED', 'This wallet already uses another delegate. Explicitly migrate its delegation before using checked Gas Assist.')
 }
-async function delegationState(publicRpc, sender, delegate, signal) {
+async function delegationState(publicRpc, sender, delegate, signal, allowDelegationMigration = false) {
     const code = await rpc(publicRpc, 'eth_getCode', [sender, 'latest'], signal)
-    return classifyDelegationCode(code, delegate)
+    return classifyDelegationCode(code, delegate, allowDelegationMigration)
 }
 async function authorizationForBundler7702(walletClient, publicRpc, sender, delegate, state, signal, chainId) {
     const nonce = quantity(await rpc(publicRpc, 'eth_getTransactionCount', [sender, 'latest'], signal), 'EOA authorization nonce', (1n << 64n) - 1n)
@@ -468,6 +471,7 @@ async function submitOperation({
     prepared, order, backendConfig, quoteEndpoint, sessionToken,
     walletClient, authenticatedWalletAddress, signal, onSubmitted, onBroadcast,
     useSingleConfirmation = false,
+    allowDelegationMigration = false,
 }) {
     if (pendingUserOperations(authenticatedWalletAddress).some((item) => item.orderId === order.id)) {
         deny('PAYMASTER_ALREADY_SUBMITTED', 'This operation is unresolved. Resume confirmation instead of sending again.')
@@ -492,12 +496,14 @@ async function submitOperation({
     }
     await verifyCheckedAccountDeployment(settings, (method, params) => rpc(settings.publicRpc, method, params, signal))
     await verifyFeeRefillDeployment(prepared.feeRefill, (method, params) => rpc(settings.publicRpc, method, params, signal))
+    const delegation = await delegationState(settings.publicRpc, sender, settings.delegate, signal, allowDelegationMigration)
     let finishReviewedOperation = null
     if (useSingleConfirmation) {
         const { getPistachioWalletManager } = await import('../../passkey/services/walletManager.js')
         finishReviewedOperation = getPistachioWalletManager().beginReviewedGasAssistOperation({
             orderId: order.id, walletAddress: sender, chainId: settings.chainId,
             delegate: settings.delegate, paymaster: settings.paymaster,
+            previousDelegate: delegation.previousDelegate,
             callData: encodeSelfHostedBatch(calls), expiresAt: prepared.expiresAt,
         })
     }
@@ -505,6 +511,7 @@ async function submitOperation({
         return await signAndSubmitReviewedOperation({
             prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
             walletClient, signal, onSubmitted, onBroadcast,
+            delegation,
         })
     } finally {
         await finishReviewedOperation?.()
@@ -514,9 +521,9 @@ async function submitOperation({
 async function signAndSubmitReviewedOperation({
     prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
     walletClient, signal, onSubmitted, onBroadcast,
+    delegation,
 }) {
     const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), settings.maximumFeePerGasWei)
-    const delegation = await delegationState(settings.publicRpc, sender, settings.delegate, signal)
     // ERC-7769/Alto requires eip7702Auth whenever the public UserOperation
     // carries factory=0x7702. That remains true when the sender is already
     // delegated to the same trusted implementation, so sign a fresh

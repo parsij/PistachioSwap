@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { formatUnits } from 'viem'
 import { usePrepaidSponsorship } from './usePrepaidSponsorship.js'
 import { useSponsorshipPreview } from './useSponsorshipPreview.js'
+import { quoteNeedsRefresh, useAutomaticQuoteRefresh } from './useAutomaticQuoteRefresh.js'
 import {
     getGasAssistFeeBreakdown,
     usdDecimalToMicros,
@@ -82,6 +83,7 @@ function logGasAssistDiagnostic(scope, error, fallbackCode, fallbackMessage) {
  * @security Low-BNB execution is fail-closed into the exact self-hosted prepaid Gas Assist flow.
  */
 export function useGasAssistController({
+    oneConfirmationEnabled = false,
     routingMode,
     gasAssistRoutingMode,
     normalMode,
@@ -211,6 +213,7 @@ export function useGasAssistController({
 
     const gasAssistRequested = routingMode === gasAssistRoutingMode
     const prepaidSponsorship = usePrepaidSponsorship({
+        oneConfirmationEnabled,
         quoteEndpoint,
         walletAddress: account,
         sellToken,
@@ -325,7 +328,31 @@ export function useGasAssistController({
         if (typeof previewState.refresh !== 'function' || !previewState.refresh()) return false
         prepaidSponsorship.openPreviewLoading()
         return true
-    }, [prepaidSponsorship.openPreviewLoading, previewState.refresh])
+    }, [prepaidSponsorship, previewState.refresh])
+
+    const confirmingRef = useRef(false)
+    useAutomaticQuoteRefresh({
+        enabled: oneConfirmationEnabled && gasAssistRequested && previewState.status === 'success' &&
+            ['idle', 'review'].includes(prepaidSponsorship.phase),
+        expiresAt: previewState.preview?.expiresAt,
+        onRefresh: () => {
+            if (confirmingRef.current) return
+            if (prepaidSponsorship.open) refreshPrepaidQuote()
+            else previewState.refresh?.()
+        },
+    })
+
+    const signFreshPackage = useCallback(async () => {
+        if (confirmingRef.current) return
+        if (oneConfirmationEnabled && prepaidSponsorship.order?.isPreview &&
+            quoteNeedsRefresh(prepaidSponsorship.order.expiresAt)) {
+            refreshPrepaidQuote()
+            return
+        }
+        confirmingRef.current = true
+        try { return await prepaidSponsorship.signPackage() }
+        finally { confirmingRef.current = false }
+    }, [oneConfirmationEnabled, prepaidSponsorship, refreshPrepaidQuote])
 
     useEffect(() => {
         if (prepaidSponsorship.phase !== 'preview-loading') return
@@ -349,6 +376,7 @@ export function useGasAssistController({
 
     const prepaidSponsorshipView = useMemo(() => ({
         ...prepaidSponsorship,
+        signPackage: signFreshPackage,
         start: reviewPreview
             ? () => prepaidSponsorship.reviewOrder(reviewPreview)
             : prepaidSponsorship.start,
@@ -359,6 +387,7 @@ export function useGasAssistController({
         previewState.status,
         refreshPrepaidQuote,
         reviewPreview,
+        signFreshPackage,
     ])
 
     useEffect(() => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatUnits } from 'viem'
 
 import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsorship.js'
+import { quoteNeedsRefresh, useAutomaticQuoteRefresh } from '../../gas-assist/hooks/useAutomaticQuoteRefresh.js'
 import { selfHostedFrontendEnabled } from '../../gas-assist/services/selfHostedPaymaster.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
 import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
@@ -36,6 +37,7 @@ function positiveRaw(value) {
  * scoped to the prepared route; no sequential payment/approval package is used.
  */
 export function useCrossChainGasAssist({
+    oneConfirmationEnabled = false,
     quoteEndpoint,
     account,
     sellToken,
@@ -202,6 +204,7 @@ export function useCrossChainGasAssist({
     }, [account, buyToken, onConfirmed, sellToken, totalInputRaw])
 
     const sponsorship = usePrepaidSponsorship({
+        oneConfirmationEnabled,
         recoveryKind: 'cross-chain',
         quoteEndpoint,
         walletAddress: account,
@@ -255,7 +258,7 @@ export function useCrossChainGasAssist({
         optimisticTransactionRef.current = null
     }, [account, buyToken, sellToken, sponsorship.phase, totalInputRaw])
 
-    const loadPreview = useCallback(async ({ minimumValidityMs = 0 } = {}) => {
+    const loadPreview = useCallback(async ({ minimumValidityMs = 0, force = false } = {}) => {
         if (!available || !routeReady) return null
         const contextAtStart = { ...contextRef.current }
         const cached = previewResultRef.current
@@ -263,7 +266,7 @@ export function useCrossChainGasAssist({
         if (
             cached?.key === contextAtStart.key &&
             Number.isFinite(cachedExpiry) &&
-            cachedExpiry > Date.now() + minimumValidityMs
+            !force && cachedExpiry > Date.now() + minimumValidityMs
         ) return cached.response
 
         const inFlight = previewOperationRef.current
@@ -344,11 +347,11 @@ export function useCrossChainGasAssist({
         void loadPreview().catch(() => undefined)
     }, [available, currentContext.key, loadPreview])
 
-    async function start() {
+    async function start({ force = false } = {}) {
         if (!available) return false
         sponsorship.openPreviewLoading()
         try {
-            const nextPreview = await loadPreview({ minimumValidityMs: 15_000 })
+            const nextPreview = await loadPreview({ minimumValidityMs: 15_000, force })
             if (!nextPreview) return false
             sponsorship.reviewOrder(nextPreview.order)
             return true
@@ -358,8 +361,27 @@ export function useCrossChainGasAssist({
         }
     }
 
+    const confirmingRef = useRef(false)
+    useAutomaticQuoteRefresh({
+        enabled: oneConfirmationEnabled && available && sponsorship.open &&
+            sponsorship.phase === 'review' && previewStatus === 'success',
+        expiresAt: sponsorship.order?.expiresAt,
+        onRefresh: () => {
+            if (!confirmingRef.current) return start({ force: true })
+        },
+    })
+    const signFreshPackage = async () => {
+        if (confirmingRef.current) return
+        if (oneConfirmationEnabled && sponsorship.order?.isPreview && quoteNeedsRefresh(sponsorship.order.expiresAt)) {
+            return start({ force: true })
+        }
+        confirmingRef.current = true
+        try { return await sponsorship.signPackage() }
+        finally { confirmingRef.current = false }
+    }
     const reviewSponsorship = {
         ...sponsorship,
+        signPackage: signFreshPackage,
         error: previewStatus === 'error' ? previewError : sponsorship.error,
         refreshing: previewStatus === 'loading' && sponsorship.open,
         refreshQuote: start,

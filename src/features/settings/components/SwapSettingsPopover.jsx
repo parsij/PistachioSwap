@@ -29,7 +29,7 @@ export default function SwapSettingsPopover({ children, settings, onSettingsChan
             }}>
                 <SlippageSettingsSection draft={draft} />
                 <SettingsToggleRow label="One-confirmation swaps"
-                    tooltip="Use Gas Assist to bundle the token charge, approval and swap. Review once, then authorize with one passkey in Pistachio Wallet on eligible routes. A token service charge applies even if you have native gas. Delegation persists; replacing another wallet’s delegation requires a separate review. External wallets control their own prompts."
+                    tooltip="Keep quotes fresh automatically. Confirm once to authorize the quoted token charge, approval, swap and replacement of any existing EIP-7702 delegation with Pistachio’s verified Gas Assist delegate. One passkey unlock in Pistachio Wallet on eligible routes. Delegation persists even if the swap fails. A token service charge applies. External wallets control their own prompts."
                     checked={settings.gasAssistPreference === 'force'}
                     onCheckedChange={(enabled) => onSettingsChange({ ...settings, gasAssistPreference: enabled ? 'force' : 'auto' })} />
                 <p className="swap-settings-smart-swap-note">Pistachio Wallet + Gas Assist. Eligible routes only; the quoted token service charge applies. Review is always required.</p>

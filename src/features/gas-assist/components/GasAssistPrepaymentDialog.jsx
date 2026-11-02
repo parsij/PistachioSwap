@@ -401,7 +401,9 @@ export default function GasAssistPrepaymentDialog({
                                 This is the fixed service charge for this quote, not the final blockchain gas cost. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. Applicable terms and law still apply.
                             </p>
                             <p className="gas-assist-one-tap-note">
-                                Confirming authorizes this quoted service charge, exact token approval and swap together. EIP-7702 delegation can remain active afterward; disconnecting does not revoke it. Replacing an existing delegation requires an additional wallet review.
+                                Confirming authorizes this quoted service charge, exact token approval and swap together. EIP-7702 delegation can remain active afterward; disconnecting does not revoke it. {sponsorship.oneConfirmationEnabled
+                                    ? 'One-confirmation swaps is on: confirming also authorizes replacing any existing delegation with the verified Gas Assist delegate below. This change can persist even if the swap fails.'
+                                    : 'Replacing an existing delegation requires an additional wallet review.'}
                             </p>
                             {sponsorship.config?.delegate && <p className="gas-assist-one-tap-note">
                                 Delegation contract: <code>{sponsorship.config.delegate}</code>
