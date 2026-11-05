@@ -87,6 +87,26 @@ function mergeSameTransaction(localItems, remoteItems) {
             : existing
         const other = preferred === item ? existing : item
         const result = { ...other, ...preferred, source: 'merged' }
+
+        // Keep the app's semantic swap details even when a receipt-backed
+        // history provider classifies the same hash as a send or contract call.
+        // Transaction status is independent of that type precedence.
+        const sourceReceipts = [existing, item].filter(candidate =>
+            candidate.source === 'remote' &&
+            (candidate.status === 'confirmed' || candidate.status === 'failed'))
+        const sourceFailed = sourceReceipts.some(candidate => candidate.status === 'failed')
+        const sourceConfirmed = sourceReceipts.some(candidate => candidate.status === 'confirmed')
+        const crossChainSwap = [existing, item].some(candidate =>
+            candidate.type === 'swapped' &&
+            candidate.destinationChainId != null &&
+            Number(candidate.destinationChainId) !== Number(candidate.chainId))
+
+        if (sourceFailed) {
+            result.status = 'failed'
+        } else if (sourceConfirmed && !crossChainSwap) {
+            // A source-chain receipt does not prove destination settlement.
+            result.status = 'confirmed'
+        }
         for (const field of ['token', 'sellToken', 'buyToken']) {
             result[field] = preferred[field] || other[field]
                 ? { ...other[field], ...Object.fromEntries(Object.entries(preferred[field] ?? {}).filter(([, value]) => value != null)) }
