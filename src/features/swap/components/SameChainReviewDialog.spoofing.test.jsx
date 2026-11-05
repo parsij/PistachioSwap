@@ -64,6 +64,34 @@ describe('review dialog token identity', () => {
         expect(screen.getByText(/4900 0x0000…00ff/)).toBeTruthy()
     })
 
+    it('renders the exact token amount rather than labeling a USD amount as the token quantity', () => {
+        const onConfirm = vi.fn()
+        renderReview(
+            { ...REAL_USDC, symbol: 'ETH' },
+            {
+                sellToken: { ...REAL_USDC, symbol: 'CBBTC', decimals: 8 },
+                sellAmount: '0.000001',
+                buyAmount: '0.000044',
+                minimumReceived: '0.0000438 ETH',
+                onConfirm,
+            },
+        )
+        expect(screen.getByText('0.000001 CBBTC')).toBeTruthy()
+        expect(screen.queryByText('0.10 CBBTC')).toBeNull()
+        expect(screen.getByText('0.0000438 ETH')).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm swap' }))
+        expect(onConfirm).toHaveBeenCalledOnce()
+    })
+
+    it('shows unavailable values rather than fabricating a token amount', () => {
+        renderReview(
+            { ...REAL_USDC, symbol: 'ETH' },
+            { sellAmount: null, buyAmount: null, minimumReceived: null },
+        )
+        expect(screen.getAllByText('Unavailable').length).toBe(2)
+        expect(screen.queryByText(/null USDC/)).toBeNull()
+    })
+
     it('shows a non-dismissible waiting screen after the transaction is submitted', () => {
         const onOpenChange = vi.fn()
         renderReview(
