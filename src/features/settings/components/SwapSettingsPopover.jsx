@@ -29,16 +29,16 @@ export default function SwapSettingsPopover({ children, settings, onSettingsChan
             }}>
                 <SlippageSettingsSection draft={draft} />
                 <SettingsToggleRow label="One-confirmation swaps"
-                    tooltip="Keep quotes fresh automatically. Confirm once to authorize the quoted token charge, approval, swap and replacement of any existing EIP-7702 delegation with Pistachio’s verified Gas Assist delegate. One passkey unlock in Pistachio Wallet on eligible routes. Delegation persists even if the swap fails. A token service charge applies. External wallets control their own prompts."
-                    checked={settings.gasAssistPreference === 'force'}
-                    onCheckedChange={(enabled) => onSettingsChange({ ...settings, gasAssistPreference: enabled ? 'force' : 'auto' })} />
-                <p className="swap-settings-smart-swap-note">Pistachio Wallet + Gas Assist. Eligible routes only; the quoted token service charge applies. Review is always required.</p>
+                    tooltip="Use one Pistachio Wallet unlock for eligible Gas Assist swaps, independently of Auto or Force Gas Assist. Ordinary swaps use one transaction confirmation when an allowance is already available; a new ERC-20 or Permit2 approval still needs its own authorization. Does not remove review, charges, or EIP-7702 delegation risks."
+                    checked={settings.oneConfirmationEnabled === true}
+                    onCheckedChange={(oneConfirmationEnabled) => onSettingsChange({ ...settings, oneConfirmationEnabled })} />
+                <p className="swap-settings-smart-swap-note">Applies to Pistachio Wallet on supported routes. Auto and Force Gas Assist can both use a single unlock; normal gas swaps may still require a separate token approval. Sponsorship charges apply only to Gas Assist.</p>
                 <div className="swap-settings-gas-assist">
-                    <div className="settings-row-label"><label htmlFor="swap-gas-assist-preference">Gas Assist</label><InfoTooltip label="Auto uses Gas Assist when gas is low. Force requires an eligible token and enabled network. Normal gas uses your wallet’s native balance." /></div>
+                    <div className="settings-row-label"><label htmlFor="swap-gas-assist-preference">Gas Assist</label><InfoTooltip label="Auto uses Gas Assist when normal network gas is insufficient. Force requests Gas Assist even when gas is available, with a quoted token service charge. Off uses native gas and never requests sponsorship." /></div>
                     <select id="swap-gas-assist-preference" aria-label="Gas Assist preference" value={settings.gasAssistPreference ?? 'auto'} onChange={(event) => onSettingsChange({ ...settings, gasAssistPreference: event.target.value })}>
                         <option value="auto">Auto</option>
-                        <option value="force">One-confirmation (Gas Assist)</option>
-                        <option value="normal">Normal gas</option>
+                        <option value="force">Force Gas Assist</option>
+                        <option value="normal">Off (normal gas)</option>
                     </select>
                 </div>
                 <SettingsToggleRow label="Auto network cost"
