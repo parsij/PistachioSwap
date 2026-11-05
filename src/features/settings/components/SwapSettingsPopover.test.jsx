@@ -113,28 +113,50 @@ describe('SwapSettingsPopover', () => {
         expect(screen.queryByRole('tooltip')).toBeNull()
         expect(screen.getByRole('dialog')).toBeTruthy()
     })
-    it('opts into the bundled Gas Assist route and explains its charge without skipping review', () => {
+    it('keeps one-confirmation enabled while Gas Assist routing changes independently', () => {
         render(<Harness />)
         fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
         const control = screen.getByRole('switch', { name: 'One-confirmation swaps' })
         const preference = screen.getByRole('combobox', { name: 'Gas Assist preference' })
         expect(control.getAttribute('aria-checked')).toBe('false')
-        fireEvent.click(control)
-        expect(preference.value).toBe('force')
-        expect(screen.getByText(/Eligible routes only; the quoted token service charge applies/)).toBeTruthy()
-        fireEvent.click(control)
         expect(preference.value).toBe('auto')
+
+        fireEvent.click(control)
+        expect(control.getAttribute('aria-checked')).toBe('true')
+        expect(preference.value).toBe('auto')
+
+        fireEvent.change(preference, { target: { value: 'force' } })
+        expect(preference.value).toBe('force')
+        expect(control.getAttribute('aria-checked')).toBe('true')
+
+        fireEvent.change(preference, { target: { value: 'normal' } })
+        expect(preference.value).toBe('normal')
+        expect(control.getAttribute('aria-checked')).toBe('true')
+
+        fireEvent.click(control)
+        expect(control.getAttribute('aria-checked')).toBe('false')
+        expect(preference.value).toBe('normal')
     })
 
-    it('lets the user force Gas Assist or choose normal gas', () => {
+    it('can force Gas Assist without turning on one-confirmation', () => {
         render(<Harness />)
         fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
         const preference = screen.getByRole('combobox', { name: 'Gas Assist preference' })
-        expect(preference.value).toBe('auto')
+        const control = screen.getByRole('switch', { name: 'One-confirmation swaps' })
         fireEvent.change(preference, { target: { value: 'force' } })
+        expect(control.getAttribute('aria-checked')).toBe('false')
         expect(preference.value).toBe('force')
-        fireEvent.change(preference, { target: { value: 'normal' } })
-        expect(preference.value).toBe('normal')
+        expect(screen.getByRole('option', { name: 'Force Gas Assist' })).toBeTruthy()
+        expect(screen.getByRole('option', { name: 'Off (normal gas)' })).toBeTruthy()
+    })
+
+    it('explains normal gas approval and Gas Assist token charges separately', () => {
+        render(<Harness />)
+        fireEvent.click(screen.getByRole('button', { name: 'Swap settings' }))
+        expect(screen.getByText(/normal gas swaps may still require a separate token approval/i)).toBeTruthy()
+        const info = screen.getByRole('button', { name: /Use one Pistachio Wallet unlock/i })
+        fireEvent.click(info)
+        expect(screen.getByRole('tooltip').textContent).toContain('a new ERC-20 or Permit2 approval')
     })
 
 })

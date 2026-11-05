@@ -202,7 +202,7 @@ export function useSwapController() {
         diagnostic: logSwapDiagnostic,
     })
     const gasAssist = useGasAssistController({
-        oneConfirmationEnabled: swapSettings.gasAssistPreference === 'force',
+        oneConfirmationEnabled: swapSettings.oneConfirmationEnabled === true,
         routingMode: routing.routingMode,
         gasAssistRoutingMode: routing.modes.SAME_CHAIN_GAS_ASSIST,
         normalMode: routing.modes.NORMAL_SWAP_MODE,
@@ -307,7 +307,7 @@ export function useSwapController() {
         sellToken: inputs.sellToken,
     })
     const crossChainGasAssist = useCrossChainGasAssist({
-        oneConfirmationEnabled: swapSettings.gasAssistPreference === 'force',
+        oneConfirmationEnabled: swapSettings.oneConfirmationEnabled === true,
         quoteEndpoint: quoteConfig.endpoint,
         account: walletState.address,
         sellToken: inputs.sellToken,
@@ -656,7 +656,8 @@ export function useSwapController() {
             networkFees.select(mode, fields)
         },
         onSettingsChange: (nextSettings) => {
-            if (nextSettings.gasAssistPreference !== swapSettings.gasAssistPreference) {
+            if (nextSettings.gasAssistPreference !== swapSettings.gasAssistPreference ||
+                nextSettings.oneConfirmationEnabled !== swapSettings.oneConfirmationEnabled) {
                 resetQuoteAndReview()
                 crossChain.review.close()
             } else if (nextSettings.autoNetworkCost !== swapSettings.autoNetworkCost) {
