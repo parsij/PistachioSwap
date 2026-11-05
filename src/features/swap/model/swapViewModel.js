@@ -120,7 +120,8 @@ export function getPrimaryActionPresentation({
 }
 
 export function formatTokenDisplayAmount(amount, token) {
-    const value = String(amount ?? '').trim()
+    if (amount == null) return null
+    const value = String(amount).trim()
     if (!value || !token) return null
     return `${value} ${getTokenDisplaySymbol(token)}`
 }
