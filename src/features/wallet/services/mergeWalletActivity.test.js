@@ -18,6 +18,36 @@ describe('wallet history merge', () => {
         expect(merged[0]).toMatchObject({ type: 'swapped', source: 'merged', sellAmount: '2', blockNumber: '123' })
     })
 
+    it('shows a submitted semantic swap as confirmed when its on-chain receipt is confirmed', () => {
+        const local = normalizeWalletActivity({
+            ...base, chainId: 8453, type: 'swapped', status: 'pending',
+            sellToken: { symbol: 'CBBTC' }, buyToken: { symbol: 'USDT' },
+            sellAmount: '0.000004', buyAmount: '0.398659',
+        })
+        const remote = normalizeWalletActivity({
+            ...base, chainId: 8453, type: 'sent', status: 'confirmed',
+            source: 'remote', blockNumber: '456',
+        })
+        const [activity] = mergeWalletActivity([local], [remote])
+        expect(activity).toMatchObject({
+            type: 'swapped', status: 'confirmed', sellAmount: '0.000004',
+            buyAmount: '0.398659', blockNumber: '456',
+        })
+    })
+
+    it('keeps a cross-chain swap pending after only its source receipt confirms', () => {
+        const local = normalizeWalletActivity({
+            ...base, chainId: 56, destinationChainId: 8453,
+            type: 'swapped', status: 'pending', sellAmount: '1',
+        })
+        const source = normalizeWalletActivity({
+            ...base, type: 'sent', status: 'confirmed', source: 'remote',
+        })
+        expect(mergeWalletActivity([local], [source])[0]).toMatchObject({
+            type: 'swapped', status: 'pending', destinationChainId: 8453,
+        })
+    })
+
     it('lets authoritative failure evidence override a local successful swap', () => {
         expect(mergeWalletActivity([{ ...base, type: 'swapped' }], [{ ...base, type: 'contract', source: 'remote', status: 'failed' }])[0].type).toBe('contract')
     })
