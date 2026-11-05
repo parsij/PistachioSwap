@@ -7,11 +7,15 @@ const mocks = vi.hoisted(() => ({
     fetchWalletHistory: vi.fn(),
     readCachedWalletHistory: vi.fn(),
     subscribe: vi.fn(() => () => {}),
+    readLocal: vi.fn(() => []),
+    recordLocal: vi.fn(),
+    receiptStatus: vi.fn(async () => 'pending'),
 }))
 
 vi.mock('../services/walletActivity.js', () => ({
     normalizeWalletActivity: (item) => item,
-    readWalletActivity: () => [],
+    readWalletActivity: mocks.readLocal,
+    recordWalletActivity: mocks.recordLocal,
     subscribeWalletActivity: mocks.subscribe,
 }))
 
@@ -19,6 +23,10 @@ vi.mock('../services/walletHistory.js', () => ({
     DIRECT_WALLET_HISTORY_CHAIN_IDS: Object.freeze([56]),
     fetchWalletHistory: mocks.fetchWalletHistory,
     readCachedWalletHistory: mocks.readCachedWalletHistory,
+}))
+
+vi.mock('../services/optimisticBalances.js', () => ({
+    walletTransactionReceiptStatus: mocks.receiptStatus,
 }))
 
 import { subscribeWalletBalanceRefresh } from '../services/walletBalanceRefresh.js'
@@ -33,8 +41,39 @@ const walletAddress = '0x0000000000000000000000000000000000000001'
 describe('useWalletActivity direct browser history', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        mocks.readLocal.mockReturnValue([])
+        mocks.receiptStatus.mockResolvedValue('pending')
         mocks.readCachedWalletHistory.mockResolvedValue({ items: [], partial: false })
         mocks.fetchWalletHistory.mockResolvedValue({ items: [], partial: false })
+    })
+
+    it('rechecks stale same-chain activity receipts when history providers are unavailable', async () => {
+        const hash = `0x${'ab'.repeat(32)}`
+        mocks.readLocal.mockReturnValue([{
+            id: 'pending-swap', walletAddress, hash, chainId: 8453,
+            type: 'swapped', status: 'pending', timestamp: '2026-11-05T12:00:00.000Z',
+            sellAmount: '0.000004', buyAmount: '0.398659',
+        }])
+        mocks.receiptStatus.mockResolvedValue('confirmed')
+        mocks.fetchWalletHistory.mockRejectedValue(new Error('CORS or rate limit'))
+        renderHook(() => useWalletActivity({ walletAddress }))
+        await waitFor(() => expect(mocks.recordLocal).toHaveBeenCalledWith(
+            expect.objectContaining({
+                hash, chainId: 8453, type: 'swapped', status: 'confirmed',
+                sellAmount: '0.000004', buyAmount: '0.398659',
+            }),
+        ))
+    })
+
+    it('never finalizes a cross-chain swap from its source-chain receipt', async () => {
+        mocks.readLocal.mockReturnValue([{
+            walletAddress, hash: `0x${'cd'.repeat(32)}`, chainId: 56,
+            destinationChainId: 8453, type: 'swapped', status: 'pending',
+        }])
+        const { result } = renderHook(() => useWalletActivity({ walletAddress }))
+        await waitFor(() => expect(result.current.loading).toBe(false))
+        expect(mocks.receiptStatus).not.toHaveBeenCalled()
+        expect(mocks.recordLocal).not.toHaveBeenCalled()
     })
 
     it('queries every configured direct-history network in bounded batches', async () => {
