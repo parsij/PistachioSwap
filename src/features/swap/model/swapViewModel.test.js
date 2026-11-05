@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
     formatTokenDisplayAmount,
+    getSameChainReviewTokenAmounts,
     getNetworkFeeDisplayData,
     getPrimaryActionPresentation,
     getWalletBalanceNotice,
@@ -115,6 +116,72 @@ describe('formatTokenDisplayAmount', () => {
     })
 })
 
+
+describe('same-chain review amount denomination', () => {
+    const sellToken = { symbol: 'CBBTC', decimals: 8, address: '0x1111111111111111111111111111111111111111' }
+    const buyToken = { symbol: 'ETH', decimals: 18, address: '0x2222222222222222222222222222222222222222' }
+
+    it('displays actual CBBTC units rather than the $0.10 sell input', () => {
+        const result = getSameChainReviewTokenAmounts({
+            snapshot: { request: { mode: 'EXACT_INPUT', sellAmount: '100' } },
+            selectedQuote: { sellAmount: '100', buyAmount: '44000000000000' },
+            sellToken,
+            buyToken,
+        })
+        expect(result).toEqual({
+            sellAmount: '0.000001',
+            buyAmount: '0.000044',
+        })
+        expect(result.sellAmount).not.toBe('0.10')
+    })
+
+    it('uses exact-output token units rather than the buy-side dollar value', () => {
+        const result = getSameChainReviewTokenAmounts({
+            snapshot: { request: { mode: 'EXACT_OUTPUT', buyAmount: '44000000000000' } },
+            selectedQuote: {
+                sellAmount: '100', maximumSellAmount: '103',
+                buyAmount: '44000000000000',
+            },
+            sellToken,
+            buyToken,
+        })
+        expect(result).toEqual({
+            sellAmount: '0.00000103',
+            buyAmount: '0.000044',
+        })
+    })
+
+    it('preserves all token digits for small token amounts and does not use floating point', () => {
+        const result = getSameChainReviewTokenAmounts({
+            snapshot: { request: { mode: 'EXACT_INPUT', sellAmount: '1' } },
+            selectedQuote: { buyAmount: '123456789012345' },
+            sellToken: { ...sellToken, decimals: 18 },
+            buyToken: { ...buyToken, decimals: 18 },
+        })
+        expect(result).toEqual({
+            sellAmount: '0.000000000000000001',
+            buyAmount: '0.000123456789012345',
+        })
+    })
+
+    it('fails closed on missing, malformed, or unbound amount metadata', () => {
+        expect(getSameChainReviewTokenAmounts({
+            snapshot: { request: { mode: 'EXACT_INPUT', sellAmount: '0.1' } },
+            selectedQuote: { buyAmount: '44000000000000' },
+            sellToken, buyToken,
+        })).toEqual({ sellAmount: null, buyAmount: '0.000044' })
+        expect(getSameChainReviewTokenAmounts({
+            snapshot: null,
+            selectedQuote: { sellAmount: '100', buyAmount: '44000000000000' },
+            sellToken, buyToken,
+        })).toEqual({ sellAmount: null, buyAmount: null })
+        expect(getSameChainReviewTokenAmounts({
+            snapshot: { request: { mode: 'EXACT_OUTPUT', buyAmount: '44000000000000' } },
+            selectedQuote: { buyAmount: '44000000000000' },
+            sellToken, buyToken,
+        })).toEqual({ sellAmount: null, buyAmount: '0.000044' })
+    })
+})
 
 describe('retired Gas Assist surface', () => {
     it('does not read the removed nested legacy gasAssist controller state', () => {
