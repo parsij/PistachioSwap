@@ -372,6 +372,20 @@ export function createSwapViewModel(context) {
     const sameChainReviewAmountsReady = Boolean(
         sameChainReviewAmounts.sellAmount !== null && sameChainReviewAmounts.buyAmount !== null,
     )
+    // Transaction limits must not be rounded to the compact six-decimal
+    // preview amount, especially for eight/18-decimal tokens.
+    const reviewedMaximumSold = quote.quote?.selectedQuote?.maximumSellAmount != null
+        ? formatTokenDisplayAmount(
+            unitsToDecimal(quote.quote.selectedQuote.maximumSellAmount, sellToken?.decimals),
+            sellToken,
+        )
+        : null
+    const reviewedMinimumReceived = quote.quote?.selectedQuote?.minimumBuyAmount != null
+        ? formatTokenDisplayAmount(
+            unitsToDecimal(quote.quote.selectedQuote.minimumBuyAmount, buyToken?.decimals),
+            buyToken,
+        )
+        : null
     const platformFee = activeQuote?.selectedQuote?.platformFee
     const serviceFee = platformFee?.amount && platformFee.amount !== '0'
         ? `${formatTokenAmount(
@@ -657,8 +671,8 @@ export function createSwapViewModel(context) {
                 sellAmount: sameChainReviewAmounts.sellAmount,
                 buyToken,
                 sellToken,
-                maximumSold,
-                minimumReceived,
+                maximumSold: reviewedMaximumSold,
+                minimumReceived: reviewedMinimumReceived,
                 quoteProvider,
                 slippageLabel: formatSlippageBps(effectiveSlippageBps),
                 reviewError: review.reviewError ??
