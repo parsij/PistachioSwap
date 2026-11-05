@@ -28,6 +28,9 @@
     padding: 18px;
 }
 
+/* Only mobile/bottom-sheet layouts expose a grab handle. */
+.gas-assist-sheet-handle { display: none; }
+
 .gas-assist-heading {
     display: flex;
     align-items: flex-start;
@@ -338,7 +341,29 @@
         transform: none;
     }
 
-    .gas-assist-dialog::before {
+    .gas-assist-dialog {
+        transform: translate3d(0, var(--gas-assist-sheet-drag-y, 0px), 0);
+        transition: transform .2s cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .gas-assist-dialog[data-dragging="true"] { transition: none; }
+
+    .gas-assist-sheet-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        display: block;
+        width: 100%;
+        height: 29px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: grab;
+        touch-action: none;
+        user-select: none;
+    }
+
+    .gas-assist-sheet-handle::before {
         position: absolute;
         top: 9px;
         left: 50%;
@@ -349,4 +374,28 @@
         content: '';
         transform: translateX(-50%);
     }
+
+    /* Other Gas Assist dialogs retain their prior visual grab bar. */
+    .gas-assist-dialog:not(.gas-assist-prepayment-dialog)::before {
+        position: absolute;
+        top: 9px;
+        left: 50%;
+        width: 38px;
+        height: 4px;
+        border-radius: 999px;
+        background: #626262;
+        content: '';
+        transform: translateX(-50%);
+    }
+
+    .gas-assist-sheet-handle:active:not(:disabled) { cursor: grabbing; }
+    .gas-assist-sheet-handle:disabled { cursor: default; }
+    .gas-assist-sheet-handle:focus-visible {
+        outline: 2px solid #8ac27c;
+        outline-offset: -2px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gas-assist-dialog { transition: none; }
 }

@@ -273,6 +273,9 @@ export default function GasAssistPrepaymentDialog({
     purpose = 'swap',
 }) {
     const [expired, setExpired] = useState(false)
+    const sheetRef = useRef(null)
+    const dragRef = useRef(null)
+    const ignoreHandleClickRef = useRef(false)
     const order = sponsorship?.order
     const paymentToken = useMemo(() => {
         if (!order) return null
@@ -300,6 +303,10 @@ export default function GasAssistPrepaymentDialog({
         sponsorship.phase.endsWith('-signing')
     const waitingForChain = ['payment-confirming', 'approval-confirming', 'swap-confirming'].includes(sponsorship.phase) ||
         ['payment-submitting', 'payment-submitted', 'approval-submitted', 'swap-submitted', 'atomic-submitting', 'atomic-submitted'].includes(order?.status)
+    // Preview loading is read-only and safe to dismiss. Signing or unsubmitted
+    // transaction broadcasting must remain non-dismissible.
+    const canDismiss = (!walletBusy || sponsorship.phase === 'preview-loading') &&
+        (!waitingForChain || submitted)
     const completed = sponsorship.phase === 'completed' || order?.status === 'completed'
     const orderExpired = !completed &&
         !packageExecutionInFlight(sponsorship.phase, order) &&
@@ -351,11 +358,61 @@ export default function GasAssistPrepaymentDialog({
     const feeUsd = formatUsdMicros(feeBreakdown?.totalFeeUsdMicros)
     const feeUsdSuffix = feeUsd === 'Unavailable' ? '' : ` (${feeUsd})`
 
+    const resetSheetDrag = () => {
+        dragRef.current = null
+        sheetRef.current?.style.removeProperty('--gas-assist-sheet-drag-y')
+        sheetRef.current?.removeAttribute('data-dragging')
+    }
+    const onHandlePointerDown = (event) => {
+        if (!canDismiss || (event.pointerType === 'mouse' && event.button !== 0)) return
+        dragRef.current = { pointerId: event.pointerId, startY: event.clientY }
+        ignoreHandleClickRef.current = false
+        sheetRef.current?.setAttribute('data-dragging', 'true')
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+    }
+    const onHandlePointerMove = (event) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        const distance = Math.max(0, event.clientY - drag.startY)
+        if (distance > 6) ignoreHandleClickRef.current = true
+        sheetRef.current?.style.setProperty('--gas-assist-sheet-drag-y', `${distance}px`)
+    }
+    const onHandlePointerUp = (event) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        const distance = Math.max(0, event.clientY - drag.startY)
+        resetSheetDrag()
+        if (distance >= 72 && canDismiss) {
+            ignoreHandleClickRef.current = true
+            sponsorship.close()
+        }
+    }
+    const onHandlePointerCancel = (event) => {
+        if (dragRef.current?.pointerId === event.pointerId) resetSheetDrag()
+    }
+
     return (
-        <Dialog.Root open onOpenChange={(open) => !open && !walletBusy && (!waitingForChain || submitted) && sponsorship.close()}>
+        <Dialog.Root open onOpenChange={(open) => !open && canDismiss && sponsorship.close()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="gas-assist-overlay" />
-                <Dialog.Content className="gas-assist-dialog gas-assist-prepayment-dialog">
+                <Dialog.Content ref={sheetRef} className="gas-assist-dialog gas-assist-prepayment-dialog">
+                    <button
+                        type="button"
+                        className="gas-assist-sheet-handle"
+                        aria-label="Drag down to close Gas Assist review"
+                        disabled={!canDismiss}
+                        onPointerDown={onHandlePointerDown}
+                        onPointerMove={onHandlePointerMove}
+                        onPointerUp={onHandlePointerUp}
+                        onPointerCancel={onHandlePointerCancel}
+                        onClick={() => {
+                            if (ignoreHandleClickRef.current) {
+                                ignoreHandleClickRef.current = false
+                                return
+                            }
+                            if (canDismiss) sponsorship.close()
+                        }}
+                    />
                     <div className="gas-assist-heading gas-assist-simple-heading">
                         <div>
                             <div className="gas-assist-kicker"><ShieldCheck aria-hidden="true" /> No {nativeSymbol} needed</div>
@@ -365,7 +422,7 @@ export default function GasAssistPrepaymentDialog({
                                 : 'PistachioSwap covers the network fee and deducts one clear fee from your sell token.'}</Dialog.Description>
                         </div>
                         <Dialog.Close asChild>
-                            <button className="gas-assist-close" type="button" disabled={walletBusy || (waitingForChain && !submitted)} aria-label="Close">
+                            <button className="gas-assist-close" type="button" disabled={!canDismiss} aria-label="Close">
                                 <X aria-hidden="true" />
                             </button>
                         </Dialog.Close>
