@@ -115,6 +115,11 @@ describe('formatTokenDisplayAmount', () => {
             symbol: 'USDC',
         })).toBe('1.25 USDC')
     })
+
+    it('does not label a malformed or absent raw quote limit as a token amount', () => {
+        expect(formatTokenDisplayAmount(null, { symbol: 'CBBTC' })).toBeNull()
+        expect(formatTokenDisplayAmount(undefined, { symbol: 'CBBTC' })).toBeNull()
+    })
 })
 
 
