@@ -1,4 +1,5 @@
 import { normalizeCrossChainRoute } from '../../cross-chain/services/crossChainRoutes.js'
+import { formatCompactRate } from './swapDisplay.js'
 import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
@@ -133,6 +134,10 @@ describe('same-chain review amount denomination', () => {
             buyAmount: '0.000044',
         })
         expect(result.sellAmount).not.toBe('0.10')
+        expect(formatCompactRate(
+            result.sellAmount, sellToken.symbol,
+            result.buyAmount, buyToken.symbol,
+        )).toBe('1 CBBTC = 44 ETH')
     })
 
     it('uses exact-output token units rather than the buy-side dollar value', () => {
