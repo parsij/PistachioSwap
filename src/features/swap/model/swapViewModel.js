@@ -424,11 +424,25 @@ export function createSwapViewModel(context) {
     }[review.reviewOperation] ?? 'Confirm swap'
     const sameChainConfirmDisabled = execution.isConfirming || review.reviewOperation !== 'idle' ||
         receipt.transactionStatus === 'pending' || receipt.transactionStatus === 'submitted'
+    // Quote rate must use token units too. Comparing a USD-denominated input
+    // with a token-denominated output can misstate the exchange rate by orders
+    // of magnitude (e.g. $0.10 of CBBTC against 0.000044 ETH).
+    const rateAmounts = routing.routingMode === routing.modes.CROSS_CHAIN
+        ? {
+            sellAmount: unitsToDecimal(crossChainDisplayRoute?.inputAmount, sellToken?.decimals),
+            buyAmount: unitsToDecimal(crossChainDisplayRoute?.outputAmount, buyToken?.decimals),
+        }
+        : routing.routingMode === routing.modes.SAME_CHAIN_GAS_ASSIST
+            ? {
+                sellAmount: unitsToDecimal(gasAssist.preview?.grossInputAmountRaw, sellToken?.decimals),
+                buyAmount: unitsToDecimal(gasAssist.preview?.expectedOutputRaw, buyToken?.decimals),
+            }
+            : sameChainReviewAmounts
     const compactRate = sellToken && buyToken
         ? formatCompactRate(
-            inputs.sellAmount,
+            rateAmounts.sellAmount,
             getTokenDisplaySymbol(sellToken),
-            inputs.buyAmount,
+            rateAmounts.buyAmount,
             getTokenDisplaySymbol(buyToken),
         )
         : 'Rate unavailable'
