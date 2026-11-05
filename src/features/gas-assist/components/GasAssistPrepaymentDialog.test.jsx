@@ -182,6 +182,50 @@ describe('Gas Assist prepayment review', () => {
         expect(screen.getByText('Review Gas Assisted Swap')).toBeTruthy()
     })
 
+    it('closes the read-only preview-loading sheet by dragging the handle downward', () => {
+        const value = sponsorship({ phase: 'preview-loading', order: null })
+        render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
+        const handle = screen.getByRole('button', { name: 'Drag down to close Gas Assist review' })
+        const sheet = document.querySelector('.gas-assist-prepayment-dialog')
+        expect(screen.getByRole('button', { name: 'Close' }).disabled).toBe(false)
+        expect(handle.disabled).toBe(false)
+
+        fireEvent.pointerDown(handle, { pointerId: 1, pointerType: 'touch', clientY: 200 })
+        fireEvent.pointerMove(handle, { pointerId: 1, pointerType: 'touch', clientY: 240 })
+        expect(sheet.style.getPropertyValue('--gas-assist-sheet-drag-y')).toBe('40px')
+        fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'touch', clientY: 240 })
+        expect(value.close).not.toHaveBeenCalled()
+        expect(sheet.style.getPropertyValue('--gas-assist-sheet-drag-y')).toBe('')
+
+        fireEvent.pointerDown(handle, { pointerId: 2, pointerType: 'touch', clientY: 200 })
+        fireEvent.pointerMove(handle, { pointerId: 2, pointerType: 'touch', clientY: 310 })
+        expect(sheet.style.getPropertyValue('--gas-assist-sheet-drag-y')).toBe('110px')
+        fireEvent.pointerUp(handle, { pointerId: 2, pointerType: 'touch', clientY: 310 })
+        expect(value.close).toHaveBeenCalledOnce()
+        // Mobile browsers can emit a click after pointerup; never close twice.
+        fireEvent.click(handle)
+        expect(value.close).toHaveBeenCalledOnce()
+    })
+
+    it('allows a tap or keyboard activation on the grab handle to go back', () => {
+        const value = sponsorship()
+        render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
+        fireEvent.click(screen.getByRole('button', { name: 'Drag down to close Gas Assist review' }))
+        expect(value.close).toHaveBeenCalledOnce()
+    })
+
+    it('blocks drag dismissal during active package signing before submission', () => {
+        const value = sponsorship({ phase: 'package-signing' })
+        render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
+        const handle = screen.getByRole('button', { name: 'Drag down to close Gas Assist review' })
+        expect(handle.disabled).toBe(true)
+        expect(screen.getByRole('button', { name: 'Close' }).disabled).toBe(true)
+        fireEvent.pointerDown(handle, { pointerId: 3, pointerType: 'touch', clientY: 100 })
+        fireEvent.pointerMove(handle, { pointerId: 3, pointerType: 'touch', clientY: 400 })
+        fireEvent.pointerUp(handle, { pointerId: 3, pointerType: 'touch', clientY: 400 })
+        expect(value.close).not.toHaveBeenCalled()
+    })
+
     it('shows a shimmer skeleton immediately while the review is loading', () => {
         render(<GasAssistPrepaymentDialog
             sponsorship={sponsorship({ phase: 'preview-loading', order: null })}
