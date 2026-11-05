@@ -7,6 +7,7 @@ export const DEFAULT_SWAP_SETTINGS = Object.freeze({
     hideUnknownTokens: true,
     hideSmallBalances: false,
     gasAssistPreference: 'auto',
+    oneConfirmationEnabled: false,
     autoNetworkCost: true,
 })
 
@@ -96,6 +97,12 @@ export function normalizeSwapSettings(value) {
         autoNetworkCost: value?.autoNetworkCost !== false,
         gasAssistPreference: ['force', 'normal'].includes(value?.gasAssistPreference)
             ? value.gasAssistPreference : 'auto',
+        // Legacy versions used 'force' as the one-confirmation toggle.
+        // Preserve that previously chosen experience when reading older storage,
+        // but keep the two settings independent for all future edits.
+        oneConfirmationEnabled: value?.oneConfirmationEnabled === undefined
+            ? value?.gasAssistPreference === 'force'
+            : value.oneConfirmationEnabled === true,
     }
 }
 
