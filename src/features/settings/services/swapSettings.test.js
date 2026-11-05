@@ -96,6 +96,53 @@ describe('swap settings', () => {
         expect(readSwapSettings(target).autoNetworkCost).toBe(true)
     })
 
+    it('persists one-confirmation independently of Auto, Force, and normal gas', () => {
+        const target = storage()
+        for (const gasAssistPreference of ['auto', 'force', 'normal']) {
+            writeSwapSettings({
+                ...DEFAULT_SWAP_SETTINGS,
+                gasAssistPreference,
+                oneConfirmationEnabled: true,
+            }, target)
+            expect(readSwapSettings(target)).toMatchObject({
+                gasAssistPreference,
+                oneConfirmationEnabled: true,
+            })
+            writeSwapSettings({
+                ...readSwapSettings(target),
+                oneConfirmationEnabled: false,
+            }, target)
+            expect(readSwapSettings(target)).toMatchObject({
+                gasAssistPreference,
+                oneConfirmationEnabled: false,
+            })
+        }
+    })
+
+    it('migrates the old force-as-one-confirmation setting without coupling future changes', () => {
+        const target = storage()
+        target.setItem(SWAP_SETTINGS_STORAGE_KEY, JSON.stringify({
+            gasAssistPreference: 'force',
+            hideUnknownTokens: true,
+        }))
+        const migrated = readSwapSettings(target)
+        expect(migrated).toMatchObject({
+            gasAssistPreference: 'force',
+            oneConfirmationEnabled: true,
+        })
+        writeSwapSettings({ ...migrated, gasAssistPreference: 'auto' }, target)
+        expect(readSwapSettings(target)).toMatchObject({
+            gasAssistPreference: 'auto',
+            oneConfirmationEnabled: true,
+        })
+        writeSwapSettings({ ...migrated, oneConfirmationEnabled: false }, target)
+        expect(readSwapSettings(target)).toMatchObject({
+            gasAssistPreference: 'force',
+            oneConfirmationEnabled: false,
+        })
+        expect(readSwapSettings(target).oneConfirmationEnabled).toBe(false)
+    })
+
     it('persists gas preferences and defaults invalid values to auto', () => {
         const target = storage()
         for (const gasAssistPreference of ['force', 'normal', 'auto']) {
