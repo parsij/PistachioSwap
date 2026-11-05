@@ -6,9 +6,14 @@ import {
     finishOptimisticWalletTransaction,
     getOptimisticWalletDeltas,
     getWalletOperationDisplayState,
+    walletTransactionReceiptStatus,
 } from './optimisticBalances.js'
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+})
 
 describe('optimistic wallet operation display state', () => {
     it('keeps confirmation visible when receipt reconciliation finishes in the same tick', () => {
@@ -77,4 +82,32 @@ it('does not restart the confirmation window on delayed final settlement', () =>
     vi.advanceTimersByTime(1_000)
     expect(getWalletOperationDisplayState(walletAddress)).toBeNull()
     expect(finishOptimisticWalletTransaction(transactionHash)).toBe(false)
+})
+
+it('falls back to the curated chain RPC when configured receipt RPC has CORS or network errors', async () => {
+    const hash = `0x${'aa'.repeat(32)}`
+    const brokenUrl = 'https://unavailable-rpc.example'
+    vi.stubEnv('VITE_EVM_8453_PUBLIC_RPC_URL', brokenUrl)
+    const fetch = vi.fn(async (url) => {
+        if (url === brokenUrl) throw new TypeError('Failed to fetch')
+        return new Response(JSON.stringify({
+            jsonrpc: '2.0', id: 1, result: { transactionHash: hash, status: '0x1' },
+        }))
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    expect(await walletTransactionReceiptStatus(hash, 8453)).toBe('confirmed')
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch.mock.calls[0][0]).toBe(brokenUrl)
+    expect(fetch.mock.calls[1][0]).not.toBe(brokenUrl)
+})
+
+it('does not report confirmation from a receipt for a different transaction', async () => {
+    const hash = `0x${'bb'.repeat(32)}`
+    const otherHash = `0x${'cc'.repeat(32)}`
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+        jsonrpc: '2.0', id: 1, result: { transactionHash: otherHash, status: '0x1' },
+    }))))
+
+    expect(await walletTransactionReceiptStatus(hash, 8453)).toBe('pending')
 })

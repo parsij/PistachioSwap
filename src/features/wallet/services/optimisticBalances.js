@@ -286,31 +286,43 @@ export function expirePendingWalletTransactions() {
 export async function walletTransactionReceiptStatus(transactionHash, chainId, { signal } = {}) {
     const hash = normalizeHash(transactionHash)
     if (!hash) return 'pending'
-    const rpcUrl = configuredRpcUrl(chainId)
-    if (!rpcUrl) return 'pending'
-    const response = await fetch(rpcUrl, {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-            accept: 'application/json',
-            'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: `pending-wallet:${hash}`,
-            method: 'eth_getTransactionReceipt',
-            params: [hash],
-        }),
-        signal: signal
-            ? AbortSignal.any([signal, AbortSignal.timeout(12_000)])
-            : AbortSignal.timeout(12_000),
-    })
-    if (!response.ok) return 'pending'
-    const payload = await response.json().catch(() => null)
-    if (payload?.error || normalizeHash(payload?.result?.transactionHash) !== hash) return 'pending'
-    const status = String(payload?.result?.status ?? '').toLowerCase()
-    if (status === '0x1' || status === '1') return 'confirmed'
-    if (status === '0x0' || status === '0') return 'failed'
+
+    // The configured RPC might be rate-limited or blocked by browser CORS.
+    // Try the chain's public RPC as a fallback before leaving activity pending.
+    const fallback = getCuratedEvmChain(normalizeChainId(chainId))
+        ?.rpcUrls?.default?.http?.[0]
+    const urls = [...new Set([configuredRpcUrl(chainId), fallback].filter(Boolean))]
+    for (const rpcUrl of urls) {
+        if (signal?.aborted) return 'pending'
+        try {
+            const response = await fetch(rpcUrl, {
+                method: 'POST',
+                cache: 'no-store',
+                headers: {
+                    accept: 'application/json',
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: `pending-wallet:${hash}`,
+                    method: 'eth_getTransactionReceipt',
+                    params: [hash],
+                }),
+                signal: signal
+                    ? AbortSignal.any([signal, AbortSignal.timeout(12_000)])
+                    : AbortSignal.timeout(12_000),
+            })
+            if (!response.ok) continue
+            const payload = await response.json().catch(() => null)
+            if (payload?.error || normalizeHash(payload?.result?.transactionHash) !== hash) continue
+            const status = String(payload?.result?.status ?? '').toLowerCase()
+            if (status === '0x1' || status === '1') return 'confirmed'
+            if (status === '0x0' || status === '0') return 'failed'
+        } catch {
+            // A network/CORS error is not evidence of transaction failure.
+            // The next available RPC may still have the receipt.
+        }
+    }
     return 'pending'
 }
 

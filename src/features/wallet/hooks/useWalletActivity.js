@@ -9,6 +9,7 @@ import {
 import {
     normalizeWalletActivity,
     readWalletActivity,
+    recordWalletActivity,
     subscribeWalletActivity,
 } from '../services/walletActivity.js'
 import {
@@ -17,6 +18,7 @@ import {
     readCachedWalletHistory,
 } from '../services/walletHistory.js'
 import { mergeWalletActivity } from '../services/mergeWalletActivity.js'
+import { walletTransactionReceiptStatus } from '../services/optimisticBalances.js'
 import { requestWalletBalanceRefresh } from '../services/walletBalanceRefresh.js'
 
 function configuredHistoryChainIds() {
@@ -39,6 +41,8 @@ export const REMOTE_WALLET_HISTORY_CHAIN_IDS = Object.freeze(
 // Bootstrap can cover 24 live networks. Keep provider pressure bounded instead
 // of starting every indexed-chain scan at once in a newly opened browser.
 const REMOTE_HISTORY_BATCH_SIZE = 4
+const PENDING_ACTIVITY_RECEIPT_POLL_MS = 12_000
+const MAX_PENDING_ACTIVITY_RECEIPTS = 8
 
 function historyBatches() {
     const batches = []
@@ -118,6 +122,46 @@ export function useWalletActivity({
             setRevision(value => value + 1)
         })
     }, [limit, walletAddress])
+
+    // History indexers can fail or lag. Independently reconcile locally
+    // submitted same-chain activity using its exact transaction receipt.
+    // Never treat a cross-chain deposit receipt as a completed bridge swap.
+    useEffect(() => {
+        if (!enabled) return undefined
+        const pending = localItems.filter(item =>
+            item.walletAddress.toLowerCase() === String(walletAddress).toLowerCase() &&
+            item.status === 'pending' &&
+            item.hash &&
+            (!item.destinationChainId ||
+                Number(item.destinationChainId) === Number(item.chainId)),
+        ).slice(0, MAX_PENDING_ACTIVITY_RECEIPTS)
+        if (pending.length === 0) return undefined
+
+        const controller = new AbortController()
+        let timer = null
+        const poll = async () => {
+            await Promise.allSettled(pending.map(async item => {
+                try {
+                    const status = await walletTransactionReceiptStatus(
+                        item.hash, item.chainId, { signal: controller.signal },
+                    )
+                    if (!controller.signal.aborted && status !== 'pending') {
+                        recordWalletActivity({ ...item, source: 'local', status })
+                    }
+                } catch {
+                    // RPC outages are inconclusive. Try again later.
+                }
+            }))
+            if (!controller.signal.aborted) {
+                timer = globalThis.setTimeout(poll, PENDING_ACTIVITY_RECEIPT_POLL_MS)
+            }
+        }
+        void poll()
+        return () => {
+            controller.abort()
+            if (timer !== null) globalThis.clearTimeout(timer)
+        }
+    }, [enabled, localItems, walletAddress])
 
     useEffect(() => {
         if (!enabled || !/^0x[a-fA-F0-9]{40}$/.test(String(walletAddress ?? ''))) {
