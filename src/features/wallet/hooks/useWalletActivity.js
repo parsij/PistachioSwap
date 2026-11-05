@@ -129,6 +129,7 @@ export function useWalletActivity({
     useEffect(() => {
         if (!enabled) return undefined
         const pending = localItems.filter(item =>
+            item.walletAddress.toLowerCase() === String(walletAddress).toLowerCase() &&
             item.status === 'pending' &&
             item.hash &&
             (!item.destinationChainId ||
@@ -160,7 +161,7 @@ export function useWalletActivity({
             controller.abort()
             if (timer !== null) globalThis.clearTimeout(timer)
         }
-    }, [enabled, localItems])
+    }, [enabled, localItems, walletAddress])
 
     useEffect(() => {
         if (!enabled || !/^0x[a-fA-F0-9]{40}$/.test(String(walletAddress ?? ''))) {
