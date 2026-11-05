@@ -24,6 +24,7 @@ import {
 } from './swapEligibility.js'
 import { getDisplayTokenPrice } from '../../tokens/services/tokenPrices.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
+import { unitsToDecimal } from './amountMath.js'
 
 function formatUsdMicros(value) {
     if (value === null || value === undefined || value < 0n) return null
@@ -122,6 +123,37 @@ export function formatTokenDisplayAmount(amount, token) {
     const value = String(amount ?? '').trim()
     if (!value || !token) return null
     return `${value} ${getTokenDisplaySymbol(token)}`
+}
+
+/**
+ * The amount field may be denominated in USD. A signing review must instead
+ * display exact TOKEN quantities from the bound quote/request, never the text
+ * entered into the editable input.
+ */
+export function getSameChainReviewTokenAmounts({ snapshot, selectedQuote, sellToken, buyToken }) {
+    const request = snapshot?.request
+    const mode = request?.mode
+    if (!selectedQuote || !['EXACT_INPUT', 'EXACT_OUTPUT'].includes(mode)) {
+        return { sellAmount: null, buyAmount: null }
+    }
+
+    const sellRaw = mode === 'EXACT_INPUT'
+        ? request.sellAmount
+        : selectedQuote.maximumSellAmount ?? selectedQuote.sellAmount
+    const buyRaw = mode === 'EXACT_OUTPUT'
+        ? request.buyAmount
+        : selectedQuote.buyAmount
+
+    const formatted = (raw, token) => {
+        const decimals = Number(token?.decimals)
+        if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) return null
+        return unitsToDecimal(raw, decimals)
+    }
+
+    return {
+        sellAmount: formatted(sellRaw, sellToken),
+        buyAmount: formatted(buyRaw, buyToken),
+    }
 }
 
 /** Uses only the source-chain native price and the current route's gas metadata. */
@@ -330,9 +362,16 @@ export function createSwapViewModel(context) {
             formatTokenAmount(activeQuote.selectedQuote.maximumSellAmount, sellToken.decimals),
             sellToken,
         )
-        : sellToken && inputs.sellAmount
-            ? formatTokenDisplayAmount(inputs.sellAmount, sellToken)
-            : null
+        : null
+    const sameChainReviewAmounts = getSameChainReviewTokenAmounts({
+        snapshot: quote.snapshot,
+        selectedQuote: quote.quote?.selectedQuote,
+        sellToken,
+        buyToken,
+    })
+    const sameChainReviewAmountsReady = Boolean(
+        sameChainReviewAmounts.sellAmount !== null && sameChainReviewAmounts.buyAmount !== null,
+    )
     const platformFee = activeQuote?.selectedQuote?.platformFee
     const serviceFee = platformFee?.amount && platformFee.amount !== '0'
         ? `${formatTokenAmount(
@@ -600,16 +639,19 @@ export function createSwapViewModel(context) {
                 contentRef: review.contentRef,
                 reducedMotion,
                 activeAmountSide: inputs.activeAmountSide,
-                buyAmount: inputs.buyAmount,
-                sellAmount: inputs.sellAmount,
+                buyAmount: sameChainReviewAmounts.buyAmount,
+                sellAmount: sameChainReviewAmounts.sellAmount,
                 buyToken,
                 sellToken,
                 maximumSold,
                 minimumReceived,
                 quoteProvider,
                 slippageLabel: formatSlippageBps(effectiveSlippageBps),
-                reviewError: review.reviewError,
-                confirmDisabled: sameChainConfirmDisabled,
+                reviewError: review.reviewError ??
+                    (review.isOpen && !sameChainReviewAmountsReady
+                        ? 'The quoted token amounts are unavailable. Close this review and refresh the quote.'
+                        : null),
+                confirmDisabled: sameChainConfirmDisabled || !sameChainReviewAmountsReady,
                 confirmLabel: sameChainConfirmLabel,
                 onConfirm: callbacks.onConfirmSameChainSwap,
             },
