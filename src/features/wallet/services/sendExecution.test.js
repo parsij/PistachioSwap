@@ -95,6 +95,90 @@ describe('selected-token Send execution', () => {
         )
     })
 
+    it('resolves a locked derived Pistachio account for a Polygon USDC send without switching the swap chain', async () => {
+        const root = account
+        const selected = '0x0000000000000000000000000000000000000004'
+        const manager = {
+            initialize: vi.fn(async () => undefined),
+            snapshot: vi.fn(() => ({
+                sessionActive: true,
+                phase: 'locked',
+                address: null,
+                selectedAddress: selected,
+                vault: { address: root },
+                chainId: 56,
+            })),
+            switchChain: vi.fn(),
+            sendTransaction: vi.fn(async () => `0x${'ed'.repeat(32)}`),
+        }
+        const targetChain = getCuratedEvmChain(137)
+        const resolved = await resolveSendWallet({
+            connectedAddress: selected,
+            targetChain,
+            connector: { id: 'pistachio-local' },
+            manager,
+        })
+        expect(resolved.account).toBe(selected)
+        expect(resolved.manager).toBe(manager)
+        expect(manager.switchChain).not.toHaveBeenCalled()
+
+        await submitSendPlan({
+            manager: resolved.manager,
+            account: resolved.account,
+            targetChain,
+            plan: {
+                kind: 'erc20', amountWei: 100_000n,
+                request: {
+                    address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+                    abi: erc20Abi,
+                    functionName: 'transfer',
+                    args: [recipient, 100_000n],
+                },
+            },
+        })
+        expect(manager.sendTransaction).toHaveBeenCalledWith(
+            expect.objectContaining({
+                from: selected,
+                chainId: 137,
+                data: expect.stringMatching(/^0xa9059cbb/u),
+            }),
+            { requireActiveChain: false },
+        )
+    })
+
+    it('rejects a stale root address when a derived Pistachio account is selected', async () => {
+        const manager = {
+            initialize: vi.fn(async () => undefined),
+            snapshot: vi.fn(() => ({
+                sessionActive: true,
+                phase: 'locked',
+                address: null,
+                selectedAddress: '0x0000000000000000000000000000000000000004',
+                vault: { address: account },
+            })),
+        }
+        await expect(resolveSendWallet({
+            connectedAddress: account, targetChain: base,
+            connector: { id: 'pistachio-local' }, manager,
+        })).rejects.toThrow('Reconnect Pistachio Wallet before sending.')
+    })
+
+    it('never trusts a selected address after disconnect or with an inconsistent unlocked signer', async () => {
+        const selected = '0x0000000000000000000000000000000000000004'
+        const manager = {
+            initialize: vi.fn(async () => undefined),
+            snapshot: vi.fn()
+                .mockReturnValueOnce({ sessionActive: false, selectedAddress: selected, vault: { address: account } })
+                .mockReturnValueOnce({ sessionActive: true, phase: 'unlocked', selectedAddress: selected, address: account, vault: { address: account } }),
+        }
+        for (let i = 0; i < 2; i++) {
+            await expect(resolveSendWallet({
+                connectedAddress: selected, targetChain: base,
+                connector: { id: 'pistachio-local' }, manager,
+            })).rejects.toThrow('Reconnect Pistachio Wallet before sending.')
+        }
+    })
+
     it('uses the selected token chain for an external connector without consulting swap-page chain state', async () => {
         let providerChainId = 56
         const provider = {

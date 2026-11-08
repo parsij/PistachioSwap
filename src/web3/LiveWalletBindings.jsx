@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import {
     useAppKit,
     useAppKitAccount,
@@ -26,6 +26,7 @@ import {
     subscribeWalletQueries,
 } from './walletRuntime.js'
 import { forgetWalletSession, rememberWalletSession } from './walletSession.js'
+import { createCachedPublicClientResolver } from './cachedPublicClient.js'
 
 function BalanceBridge({ queryKey, address, chainId, enabled }) {
     const {
@@ -123,19 +124,13 @@ export default function LiveWalletBindings() {
         getWalletQueries,
     )
     const chainId = wagmiAccount.chainId ?? wagmiChainId ?? network.chainId ?? 56
-    const getClient = useCallback((requestedChainId) => {
-        if (!config) return undefined
-        try {
-            return getPublicClient(
-                config,
-                requestedChainId != null
-                    ? { chainId: Number(requestedChainId) }
-                    : undefined,
-            )
-        } catch {
-            return undefined
-        }
-    }, [config])
+    // Wagmi's getPublicClient may return a newly extended Viem client on every
+    // call. That changed the Send fee hooks' dependencies every render and
+    // repeatedly triggered live RPC fee estimation.
+    const getClient = useMemo(
+        () => createCachedPublicClientResolver(config, getPublicClient),
+        [config],
+    )
 
     useEffect(() => {
         if (account?.isConnected || wagmiAccount?.isConnected) {

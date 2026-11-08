@@ -31,10 +31,16 @@ function parseProviderChainId(value) {
 }
 
 function localSessionAddress(snapshot) {
-    return normalizedAddress(
-        snapshot?.address ??
-        (snapshot?.sessionActive ? snapshot?.vault?.address : null),
-    )
+    // The connector exposes selectedAddress while a passkey session is locked.
+    // vault.address is the mnemonic's root and can differ from a selected
+    // derived account. Comparing against it rejects legitimate local sends.
+    if (snapshot?.sessionActive !== true) return null
+    const selected = normalizedAddress(snapshot.selectedAddress ?? snapshot.vault?.address)
+    if (!selected) return null
+    // Never continue if the unlocked signer does not match the reviewed account.
+    if (snapshot.phase === 'unlocked' &&
+        normalizedAddress(snapshot.address) !== selected) return null
+    return selected
 }
 
 async function waitForProviderChain({
