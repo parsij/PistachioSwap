@@ -142,6 +142,14 @@ describe('useCrossChainGasAssist', () => {
             outputAmount: '850',
         }
         const input = props({
+            sellToken: {
+                chainId: 56, isNative: false, decimals: 0,
+                address: '0x1111111111111111111111111111111111111111',
+            },
+            buyToken: {
+                chainId: 137, isNative: false, decimals: 0,
+                address: '0x2222222222222222222222222222222222222222',
+            },
             prepareSponsorship: vi.fn().mockResolvedValue({
                 order: {
                     id: 'new-order',
