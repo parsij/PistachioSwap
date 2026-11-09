@@ -39,9 +39,32 @@ async function reloadSubmittedOperation() {
 }
 
 it('settles a completed route after reloading with no form route pointer', async () => {
-    status.mockResolvedValue({ status: 'completed' })
+    status.mockResolvedValue({
+        status: 'completed',
+        publicRouteId: 'saved-route',
+        sourceTransactionHash: hash,
+    })
     expect((await reloadSubmittedOperation()).status).toBe('confirmed')
     expect(status).toHaveBeenCalledWith(expect.objectContaining({ routeId: 'saved-route' }))
+})
+
+it('cannot complete an old transaction by looking up the currently selected quote route', async () => {
+    const store = await import('./optimisticBalances.js')
+    store.beginOptimisticWalletTransaction({
+        walletAddress: wallet, transactionHash: hash,
+        operation: 'swapping', settlementMode: 'external',
+        changes: [{ chainId: 137, tokenAddress: '0x3333333333333333333333333333333333333333', deltaRaw: -1_400_000n }],
+    })
+    localStorage.setItem('pistachioswap:last-cross-chain-route', 'different-new-route')
+    const { reconcilePendingWalletOperations } = await import('./reconcilePendingWalletOperations.js')
+    await reconcilePendingWalletOperations(wallet)
+    expect(status).not.toHaveBeenCalled()
+    expect(store.getWalletOperationDisplayState(wallet)?.status).toBe('pending')
+})
+
+it('never accepts a provider completion missing the original submitted source hash', async () => {
+    status.mockResolvedValue({ status: 'completed', publicRouteId: 'saved-route' })
+    expect((await reloadSubmittedOperation()).status).toBe('pending')
 })
 
 it('keeps the swap pending when only the source transaction has submitted', async () => {
