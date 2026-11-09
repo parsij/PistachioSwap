@@ -718,31 +718,38 @@ export function usePrepaidSponsorship({
         let attempt = 0
         let running = false
         const walletEpoch = walletEpochRef.current
-        const operation = pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))[0]
-        if (operation) {
-            setState((current) => current.order?.id === operation.orderId ||
+        // Recover every pending order, never just the first stale record.
+        // Rotate one record per tick to respect provider rate limits and
+        // prioritize a newly submitted operation after page reload.
+        const operations = pendingUserOperations(walletAddress)
+            .filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))
+            .toReversed()
+        const latest = operations[0]
+        if (latest) {
+            setState((current) => current.order?.id === latest.orderId ||
                 current.phase !== 'idle' ? current : {
                 // Old operations continue background recovery without
                 // unexpectedly reopening an expired dialog over a fresh quote.
-                ...initial, open: !operation.dismissed &&
-                    Date.now() - operation.timestamp < 10 * 60_000,
+                ...initial, open: !latest.dismissed &&
+                    Date.now() - latest.timestamp < 10 * 60_000,
                 phase: 'confirmation-delayed',
-                order: { id: operation.orderId, userOpHash: operation.userOpHash,
-                    walletAddress: operation.walletAddress, atomicExecution: true,
+                order: { id: latest.orderId, userOpHash: latest.userOpHash,
+                    walletAddress: latest.walletAddress, atomicExecution: true,
                     status: 'atomic-submitting', sourceStatus: 'pending',
-                    recoveredFromStorage: true, reviewDisplay: operation.reviewDisplay,
-                    submissionAmbiguous: operation.ambiguous },
+                    recoveredFromStorage: true, reviewDisplay: latest.reviewDisplay,
+                    submissionAmbiguous: latest.ambiguous },
             })
-            gasAssistTrace('userop.recovery.started', { orderId: operation.orderId })
+            gasAssistTrace('userop.recovery.started', { orderId: latest.orderId })
         }
-        if (!operation) return () => controller.abort()
+        if (!latest) return () => controller.abort()
         const schedule = () => {
-            const old = Date.now() - operation.timestamp > 24 * 60 * 60 * 1_000
+            const old = Date.now() - latest.timestamp > 24 * 60 * 60 * 1_000
             timer = window.setTimeout(poll, old ? 60_000 : Math.min(15_000, 5_000 * (1 + attempt)))
         }
         async function poll() {
             if (controller.signal.aborted || running) return
             if (document.hidden) return
+            const operation = operations[attempt % operations.length]
             running = true
             try {
                 let recovered = await recoverSelfHostedUserOperation({ quoteEndpoint, operation, signal: controller.signal })
