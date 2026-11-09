@@ -19,7 +19,9 @@ import {
     selfHostedFrontendEnabled,
     submitSelfHostedPaymasterUserOperation,
 } from '../services/selfHostedPaymaster.js'
-import { pendingUserOperations, removePendingUserOperation } from '../services/pendingUserOperations.js'
+import {
+    pendingUserOperations, removePendingUserOperation, dismissPendingUserOperation,
+} from '../services/pendingUserOperations.js'
 import { getGasAssistBaseUrl } from '../services/gasAssist.js'
 import { isUserRejectedError } from '../../../services/swapTransaction.js'
 import { withinReviewedQuoteBounds } from '../model/reviewedQuoteBounds.js'
@@ -630,6 +632,20 @@ export function usePrepaidSponsorship({
                     useSingleConfirmation: oneConfirmationEnabled,
                     // The wallet asks separately when the combined review is off.
                     allowDelegationMigration: true,
+                    // Display-only quote snapshot, tied to this submitted public
+                    // operation. Recovery must never use it for a new signature.
+                    reviewDisplay: {
+                        grossInputAmountRaw: order.grossInputAmountRaw,
+                        expectedOutputRaw: order.expectedOutputRaw,
+                        paymentAmountRaw: order.paymentAmountRaw,
+                        sellTokenDecimals: Number(sellToken?.decimals),
+                        buyTokenDecimals: Number(buyToken?.decimals),
+                        paymentTokenDecimals: Number(order.paymentTokenDecimals),
+                        sellTokenSymbol: sellToken?.symbol,
+                        buyTokenSymbol: buyToken?.symbol,
+                        paymentTokenSymbol: order.paymentTokenSymbol ?? sellToken?.symbol,
+                        totalPrepaymentUsdMicros: order.totalPrepaymentUsdMicros,
+                    },
                     onBroadcast: ({ userOpHash }) => {
                         if (!isCurrent(walletEpoch, flowEpoch)) return
                         setState((current) => ({ ...current, phase: 'swap-confirming',
@@ -702,10 +718,12 @@ export function usePrepaidSponsorship({
         const operation = pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))[0]
         if (operation) {
             setState((current) => current.order?.id === operation.orderId ? current : {
-                ...initial, open: true, phase: 'confirmation-delayed',
+                ...initial, open: !operation.dismissed, phase: 'confirmation-delayed',
                 order: { id: operation.orderId, userOpHash: operation.userOpHash,
                     walletAddress: operation.walletAddress, atomicExecution: true,
-                    status: 'atomic-submitting', sourceStatus: 'pending', submissionAmbiguous: operation.ambiguous },
+                    status: 'atomic-submitting', sourceStatus: 'pending',
+                    recoveredFromStorage: true, reviewDisplay: operation.reviewDisplay,
+                    submissionAmbiguous: operation.ambiguous },
             })
             gasAssistTrace('userop.recovery.started', { orderId: operation.orderId })
         }
@@ -720,20 +738,35 @@ export function usePrepaidSponsorship({
             running = true
             try {
                 let recovered = await recoverSelfHostedUserOperation({ quoteEndpoint, operation, signal: controller.signal })
-                if (operation.routeId && recovered.sourceStatus === 'confirmed') {
-                    const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}/v1/cross-chain/routes/${encodeURIComponent(operation.routeId)}/sponsorship/recovery`, {
-                        method: 'POST', headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({ orderId: operation.orderId, walletAddress: operation.walletAddress, userOpHash: operation.userOpHash }),
-                        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
-                    })
-                    if (response.ok) {
-                        const routeRecovery = await response.json()
-                        const destination = routeRecovery.destination
-                        if (destination?.publicRouteId === operation.routeId) {
-                            recovered = { ...recovered, destinationStatus: destination.status,
-                                status: destination.status === 'completed' ? 'completed' :
-                                    ['failed', 'refunded'].includes(destination.status) ? 'failed' : 'atomic-submitted' }
+                if (operation.routeId) {
+                    // A successful source UserOperation does not establish
+                    // destination completion. Require a bound backend route
+                    // result, not a balance change or source-only "completed".
+                    let destination = null
+                    if (recovered.sourceStatus === 'confirmed') {
+                        const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}/v1/cross-chain/routes/${encodeURIComponent(operation.routeId)}/sponsorship/recovery`, {
+                            method: 'POST', headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({ orderId: operation.orderId, walletAddress: operation.walletAddress, userOpHash: operation.userOpHash }),
+                            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
+                        })
+                        if (response.ok) {
+                            const routeRecovery = await response.json()
+                            const route = routeRecovery.destination
+                            if (route?.publicRouteId === operation.routeId &&
+                                Number(route.sourceChainId) === operation.chainId &&
+                                (!route.sourceTransactionHash ||
+                                    route.sourceTransactionHash.toLowerCase() === String(recovered.transactionHash ?? '').toLowerCase())) {
+                                destination = route
+                            }
                         }
+                    }
+                    recovered = {
+                        ...recovered,
+                        destinationStatus: destination?.status ?? null,
+                        status: recovered.sourceStatus === 'reverted' ? 'failed'
+                            : destination?.status === 'completed' ? 'completed'
+                            : ['failed', 'refunded'].includes(destination?.status) ? 'failed'
+                            : 'atomic-submitted',
                     }
                 }
                 if (controller.signal.aborted || walletEpochRef.current !== walletEpoch) return
@@ -746,10 +779,14 @@ export function usePrepaidSponsorship({
                 gasAssistTrace(`userop.recovery.${phase}`, { orderId: operation.orderId, userOpHash: operation.userOpHash, transactionHash: recovered.transactionHash })
                 const order = { id: operation.orderId, ...recovered,
                     swapTransactionHash: recovered.transactionHash, atomicTransactionHash: recovered.transactionHash,
-                    atomicExecution: true, crossChainRouteId: operation.routeId }
+                    atomicExecution: true, crossChainRouteId: operation.routeId,
+                    recoveredFromStorage: true, reviewDisplay: operation.reviewDisplay }
                 setState((current) => ({ ...current, order: { ...current.order, ...order }, phase,
                     error: phase === 'failed'
-                        ? recovered.failureCode === 'PAYMASTER_NOT_SUBMITTED'
+                        ? ['failed', 'refunded'].includes(recovered.destinationStatus)
+                            ? flowError('CROSS_CHAIN_DESTINATION_FAILED',
+                                'The destination provider reported a failed or refunded transfer. Check the route status; the source gas charge may not be refundable.')
+                        : recovered.failureCode === 'PAYMASTER_NOT_SUBMITTED'
                             ? flowError('PAYMASTER_NOT_SUBMITTED', 'The sponsored operation was not confirmed on-chain before its authorization expired.')
                             : flowError('PAYMASTER_EXECUTION_REVERTED', 'The sponsored operation could not complete.')
                         : null,
@@ -892,6 +929,7 @@ export function usePrepaidSponsorship({
 
     const close = useCallback(() => {
         if (state.order?.userOpHash && !state.phase.endsWith('-signing')) {
+            dismissPendingUserOperation(state.order.id, walletAddress)
             setState((current) => ({ ...current, open: false }))
             return
         }
