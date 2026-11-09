@@ -151,6 +151,11 @@ function normalizeStoredTransaction(value) {
         operation: operationForChanges(value.operation, changes),
         settlementMode: settlementModeForChanges(value.settlementMode, changes),
         referenceId: normalizeReferenceId(value.referenceId),
+        // Routing metadata is not a positive destination balance delta.
+        // It is needed to verify the destination receipt of a source-only
+        // optimistic transaction without ever crediting tokens early.
+        destinationChainId: normalizeChainId(value.destinationChainId) ??
+            changes.find(change => BigInt(change.deltaRaw) > 0n)?.chainId ?? null,
         createdAt,
         displayStatus,
         confirmedAt: displayStatus !== 'pending' &&
@@ -342,6 +347,7 @@ export function beginOptimisticWalletTransaction({
     operation,
     settlementMode,
     referenceId,
+    destinationChainId,
 } = {}) {
     pruneExpired()
     const wallet = normalizeAddress(walletAddress)
@@ -360,6 +366,8 @@ export function beginOptimisticWalletTransaction({
         operation: operationForChanges(operation, normalizedChanges),
         settlementMode: settlementModeForChanges(settlementMode, normalizedChanges),
         referenceId: normalizeReferenceId(referenceId),
+        destinationChainId: normalizeChainId(destinationChainId) ??
+            normalizedChanges.find(change => BigInt(change.deltaRaw) > 0n)?.chainId ?? null,
         createdAt: Date.now(),
         displayStatus: 'pending',
         confirmedAt: null,
@@ -450,6 +458,7 @@ export function getOptimisticWalletTransactions(walletAddress) {
             operation: transaction.operation,
             settlementMode: transaction.settlementMode,
             referenceId: transaction.referenceId,
+            destinationChainId: transaction.destinationChainId,
             createdAt: transaction.createdAt,
             changes: transaction.changes.map((change) => ({ ...change })),
         }))
