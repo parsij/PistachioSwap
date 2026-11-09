@@ -212,7 +212,11 @@ describe('useCrossChainRoutes automatic quoting', () => {
         unmount()
         // The operation must survive losing the form's singleton route state.
         localStorage.removeItem(PUBLIC_ROUTE_STORAGE_KEY)
-        mocks.status.mockResolvedValue({ status: 'completed' })
+        mocks.status.mockResolvedValue({
+            status: 'completed',
+            publicRouteId: 'submitted-route',
+            sourceTransactionHash: hash,
+        })
         vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }))))
         await reconcilePendingWalletOperations(account)
         expect(mocks.status).toHaveBeenLastCalledWith(expect.objectContaining({ routeId: 'submitted-route' }))
