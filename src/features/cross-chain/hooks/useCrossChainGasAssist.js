@@ -168,7 +168,8 @@ export function useCrossChainGasAssist({
 
     const handleConfirmed = useCallback(async (order) => {
         const preparedRoute = preparedResponseRef.current?.preparedRoute
-        if (order?.recoveredFromStorage && !preparedRoute) {
+        if (order?.recoveredFromStorage &&
+            (!preparedRoute || preparedRoute.publicRouteId !== order.crossChainRouteId)) {
             // After a reload the token selector may show a completely different
             // pair. Never record a restored bridge as a swap of those tokens.
             // Its verified completion is still reflected in the recovered
