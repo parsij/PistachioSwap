@@ -25,6 +25,7 @@ import { useApprovalExecutionBridge } from './useApprovalExecutionBridge.js'
 import { useGasAssistController } from '../../gas-assist/hooks/useGasAssistController.js'
 import { useCrossChainController } from '../../cross-chain/hooks/useCrossChainController.js'
 import { useCrossChainGasAssist } from '../../cross-chain/hooks/useCrossChainGasAssist.js'
+import { finishCrossChainGasAssistUi } from '../services/crossChainGasAssistCompletion.js'
 import { useSwapApproval } from '../../approvals/hooks/useSwapApproval.js'
 import { useSwapPrimaryAction } from './useSwapPrimaryAction.js'
 import { useComplianceAccess } from '../../compliance/hooks/useComplianceAccess.js'
@@ -277,16 +278,14 @@ export function useSwapController() {
         prepareTransactionFees: networkFees.prepareTransaction,
         networkFeeFields: swapSettings.autoNetworkCost === false ? networkFees.fields : null,
     })
-    async function handleCrossChainGasAssistConfirmed() {
-        try {
-            crossChain.review.close()
-            receipt.setTransactionStatus('submitted')
-            setStatusMessage('Cross-chain swap submitted with Gas Assist.')
-            await catalog.refreshWalletBalances()
-        } catch (error) {
-            console.error('[pistachio-swap] Cross-chain Gas Assist status update failed', error)
-            setStatusMessage('The sponsored cross-chain transaction was sent. Refresh activity to follow its status.')
-        }
+    function handleCrossChainGasAssistConfirmed(order) {
+        return finishCrossChainGasAssistUi({
+            order,
+            closeReview: crossChain.review.close,
+            setTransactionStatus: receipt.setTransactionStatus,
+            setStatusMessage,
+            refreshWalletBalances: catalog.refreshWalletBalances,
+        })
     }
     const crossChainGasAssistExpected = expectsCrossChainGasAssist({
         gasAssistPreference: swapSettings.gasAssistPreference,

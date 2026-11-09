@@ -331,12 +331,6 @@ export function usePrepaidSponsorship({
     }, [quoteEndpoint, walletAddress, sourceChainId])
 
     const reviewOrder = useCallback((order) => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
-                error: flowError('PREVIOUS_OPERATION_PENDING',
-                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
-            return
-        }
         if (!order?.id || order.isPreview !== true) {
             throw flowError(
                 'SPONSORSHIP_PREVIEW_INVALID',
@@ -365,12 +359,6 @@ export function usePrepaidSponsorship({
     }, [config, walletAddress, recoveryKind])
 
     const openPreviewLoading = useCallback(() => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
-                error: flowError('PREVIOUS_OPERATION_PENDING',
-                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
-            return
-        }
         flowEpochRef.current += 1
         operationRef.current = null
         sessionTokenRef.current = null
@@ -388,12 +376,6 @@ export function usePrepaidSponsorship({
     }, [])
 
     const start = useCallback(async () => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
-                error: flowError('PREVIOUS_OPERATION_PENDING',
-                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
-            return
-        }
         if (previewOrder) {
             reviewOrder(previewOrder)
             return
@@ -526,7 +508,12 @@ export function usePrepaidSponsorship({
     }, [beginOperation, buyToken, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient, recoveryKind, sourceChainId])
 
     const signPackage = useCallback(async () => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
+        // An older source/bridge operation must never block a new, independently
+        // authenticated order. Only an already submitted *identical order ID*
+        // is ineligible for signing again. submitOperation enforces this a
+        // second time at the bundler boundary.
+        if (state.order?.id && pendingUserOperations(walletAddress)
+            .some((item) => item.orderId === state.order.id)) {
             setState((current) => ({ ...current, open: true, phase: 'confirmation-delayed' }))
             return
         }
@@ -731,27 +718,41 @@ export function usePrepaidSponsorship({
         let attempt = 0
         let running = false
         const walletEpoch = walletEpochRef.current
-        const operation = pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))[0]
-        if (operation) {
-            setState((current) => current.order?.id === operation.orderId ||
+        // Recover every pending order, never just the first stale record.
+        // Rotate one record per tick to respect provider rate limits and
+        // prioritize a newly submitted operation after page reload.
+        const operations = pendingUserOperations(walletAddress)
+            .filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))
+            .toReversed()
+        const latest = operations[0]
+        if (latest) {
+            setState((current) => current.order?.id === latest.orderId ||
                 current.phase !== 'idle' ? current : {
-                ...initial, open: !operation.dismissed, phase: 'confirmation-delayed',
-                order: { id: operation.orderId, userOpHash: operation.userOpHash,
-                    walletAddress: operation.walletAddress, atomicExecution: true,
+                // Old operations continue background recovery without
+                // unexpectedly reopening an expired dialog over a fresh quote.
+                ...initial, open: !latest.dismissed &&
+                    Date.now() - latest.timestamp < 10 * 60_000,
+                phase: 'confirmation-delayed',
+                order: { id: latest.orderId, userOpHash: latest.userOpHash,
+                    walletAddress: latest.walletAddress, atomicExecution: true,
                     status: 'atomic-submitting', sourceStatus: 'pending',
-                    recoveredFromStorage: true, reviewDisplay: operation.reviewDisplay,
-                    submissionAmbiguous: operation.ambiguous },
+                    recoveredFromStorage: true, reviewDisplay: latest.reviewDisplay,
+                    submissionAmbiguous: latest.ambiguous },
             })
-            gasAssistTrace('userop.recovery.started', { orderId: operation.orderId })
+            gasAssistTrace('userop.recovery.started', { orderId: latest.orderId })
         }
-        if (!operation) return () => controller.abort()
+        if (!latest) return () => controller.abort()
         const schedule = () => {
-            const old = Date.now() - operation.timestamp > 24 * 60 * 60 * 1_000
-            timer = window.setTimeout(poll, old ? 60_000 : Math.min(15_000, 5_000 * (1 + attempt)))
+            const old = Date.now() - latest.timestamp > 24 * 60 * 60 * 1_000
+            const delay = operations.length > 1
+                ? old ? 15_000 : 5_000
+                : old ? 60_000 : Math.min(15_000, 5_000 * (1 + attempt))
+            timer = window.setTimeout(poll, delay)
         }
         async function poll() {
             if (controller.signal.aborted || running) return
             if (document.hidden) return
+            const operation = operations[attempt % operations.length]
             running = true
             try {
                 let recovered = await recoverSelfHostedUserOperation({ quoteEndpoint, operation, signal: controller.signal })
