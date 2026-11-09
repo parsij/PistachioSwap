@@ -236,7 +236,7 @@ function TechnicalDetails({ order, sellToken, buyToken, paymentToken, purpose })
             </summary>
             <div className="gas-assist-technical-content">
                 {order.userOpHash && <div><span>UserOperation</span><code>{order.userOpHash}</code></div>}
-                {order && paymentToken && (
+                {order && paymentToken && !order.recoveredFromStorage && (
                     <div className="gas-assist-details">
                         <div><span>Gross input</span><strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
                         <div><span>Net swap input</span><strong>{formatRaw(order.netSwapAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong></div>
