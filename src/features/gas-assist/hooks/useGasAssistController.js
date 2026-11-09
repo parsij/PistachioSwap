@@ -158,21 +158,26 @@ export function useGasAssistController({
     const handleConfirmedSwap = useCallback(async (order) => {
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
         if (hash) confirmOptimisticWalletTransaction(hash)
-        recordWalletActivity({
-            walletAddress: account,
-            chainId: Number(sellToken?.chainId ?? 56),
-            type: 'swapped',
-            hash,
-            sellToken,
-            buyToken,
-            sellAmount: activityAmount(
-                order?.grossInputAmountRaw ?? activeAmountIn,
-                sellToken?.decimals,
-            ),
-            buyAmount: activityAmount(order?.expectedOutputRaw, buyToken?.decimals),
-            provider: 'Gas Assist',
-            status: 'confirmed',
-        })
+        if (!order?.recoveredFromStorage) {
+            // A reloaded page may have a different selected token pair. The
+            // original transaction can be confirmed without inventing amounts
+            // for that different pair.
+            recordWalletActivity({
+                walletAddress: account,
+                chainId: Number(sellToken?.chainId ?? 56),
+                type: 'swapped',
+                hash,
+                sellToken,
+                buyToken,
+                sellAmount: activityAmount(
+                    order?.grossInputAmountRaw ?? activeAmountIn,
+                    sellToken?.decimals,
+                ),
+                buyAmount: activityAmount(order?.expectedOutputRaw, buyToken?.decimals),
+                provider: 'Gas Assist',
+                status: 'confirmed',
+            })
+        }
 
         const refresh = async (refreshOnly) => {
             try {
