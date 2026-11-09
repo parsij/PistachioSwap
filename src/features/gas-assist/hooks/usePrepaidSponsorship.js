@@ -161,6 +161,7 @@ export function usePrepaidSponsorship({
     const flowEpochRef = useRef(0)
     const operationRef = useRef(null)
     const sendControllerRef = useRef(null)
+    const pendingReviewCancellationRef = useRef(null)
     const confirmedOrderIdsRef = useRef(new Set())
     const submittedOrderIdsRef = useRef(new Set())
     const forceImmediatePollRef = useRef(false)
@@ -448,6 +449,12 @@ export function usePrepaidSponsorship({
             if (!Number.isInteger(Number(slippageBps)) || Number(slippageBps) < 0) {
                 throw flowError('SLIPPAGE_INVALID', 'The slippage setting is invalid.', { stage: 'flow.start' })
             }
+
+            // Opening Review now creates a real order. If a previous review
+            // was dismissed, settle its cancellation before opening another.
+            const pendingCancellation = pendingReviewCancellationRef.current
+            if (pendingCancellation) await pendingCancellation
+            if (!isCurrent(walletEpoch, flowEpoch)) return
 
             const session = await gasAssistTraceStep(
                 'flow.authenticate',
@@ -894,11 +901,31 @@ export function usePrepaidSponsorship({
             state.phase.endsWith('-submitting') ||
             state.phase === 'authenticating' ||
             state.phase === 'continuation-loading') return
+        const order = state.order
+        const sessionToken = sessionTokenRef.current
+        if (state.phase === 'review' && order?.id && order.isPreview !== true &&
+            !order.userOpHash && sessionToken && quoteEndpoint) {
+            // A real quote now exists before review. Release abandoned orders
+            // so closing/reopening the sheet cannot exhaust active-order slots.
+            const cancellation = cancelSponsorshipOrder(
+                quoteEndpoint, sessionToken, order.id,
+            ).catch((error) => {
+                gasAssistTraceError('flow.review-abandoned.cancel-error', error, {
+                    orderId: order.id,
+                })
+            }).finally(() => {
+                if (pendingReviewCancellationRef.current === cancellation) {
+                    pendingReviewCancellationRef.current = null
+                }
+            })
+            pendingReviewCancellationRef.current = cancellation
+        }
         flowEpochRef.current += 1
         operationRef.current = null
+        sessionTokenRef.current = null
         setState(initial)
         gasAssistTrace('flow.closed', { walletAddress })
-    }, [state.phase, state.order?.userOpHash, walletAddress])
+    }, [quoteEndpoint, state.phase, state.order, walletAddress])
 
     return {
         ...state,
