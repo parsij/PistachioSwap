@@ -107,6 +107,16 @@ describe('Gas Assist prepayment review', () => {
         expect(value.signPayment).not.toHaveBeenCalled()
     })
 
+    it('never offers a signing button if the reviewed fee is missing', () => {
+        const flow = sponsorship()
+        flow.order = { ...flow.order, paymentAmountRaw: undefined }
+        render(<GasAssistPrepaymentDialog sponsorship={flow}
+            sellToken={sellToken} buyToken={buyToken} />)
+        expect(screen.getByRole('alert').textContent).toMatch(/missing verified amounts or fee details/i)
+        expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
+        expect(flow.signPackage).not.toHaveBeenCalled()
+    })
+
     it('explains a changed authenticated quote instead of looking like the flow reset', () => {
         const value = sponsorship({ reviewUpdated: true })
         render(<GasAssistPrepaymentDialog sponsorship={value} sellToken={sellToken} buyToken={buyToken} />)
