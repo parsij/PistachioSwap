@@ -75,6 +75,7 @@ describe('Gas Assist requote orchestration', () => {
         const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
         try {
             mocks.prepaid.phase = 'review'
+            mocks.prepaid.order = { id: 'unsigned-preview', isPreview: true }
             const { rerender, unmount } = renderHook(({ enabled }) => useGasAssistController({ ...props, oneConfirmationEnabled: enabled }),
                 { initialProps: { enabled: false } })
             await act(() => vi.advanceTimersByTimeAsync(30_000))
@@ -84,7 +85,8 @@ describe('Gas Assist requote orchestration', () => {
             // The real authenticated order is prepared at the review entry,
             // not by opening a temporary preview for another confirmation.
             expect(mocks.preview.refresh).not.toHaveBeenCalled()
-            expect(mocks.prepaid.start).not.toHaveBeenCalled()
+            expect(mocks.prepaid.start).toHaveBeenCalledOnce()
+            expect(mocks.prepaid.reviewOrder).not.toHaveBeenCalled()
             unmount()
         } finally { visibility.mockRestore(); vi.useRealTimers() }
     })
