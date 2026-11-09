@@ -481,6 +481,7 @@ describe('refresh recovery from public identifiers', () => {
     })
     afterEach(() => {
         localStorage.clear()
+        vi.useRealTimers()
         vi.unstubAllGlobals()
     })
 
