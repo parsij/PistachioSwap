@@ -348,6 +348,10 @@ export function beginOptimisticWalletTransaction({
     const hash = normalizeHash(transactionHash)
     const normalizedChanges = normalizeChanges(changes)
     if (!wallet || !hash || normalizedChanges.length === 0) return false
+    // A hash is a unique transaction identity. Replaying its callback (or
+    // restoring an older order) must not restart the spinner or replace the
+    // original amount/timestamp.
+    if (pendingTransactions.has(hash) || settledOperations.has(hash)) return false
 
     const transaction = {
         walletAddress: wallet,
