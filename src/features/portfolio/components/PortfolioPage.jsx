@@ -157,6 +157,7 @@ function formatSignedUsd(value) {
 }
 
 function activityLabel(type, status) {
+    if (status === 'source-confirmed') return 'Source confirmed'
     if (status === 'pending') return { sent: 'Sending…', swapped: 'Swapping…', approved: 'Approving…' }[type] ?? 'Pending'
     if (status === 'failed') return { sent: 'Send failed', swapped: 'Swap failed' }[type] ?? 'Transaction failed'
     return {
