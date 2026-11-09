@@ -479,7 +479,113 @@ describe('refresh recovery from public identifiers', () => {
         }]))
         mocks.fetchConfig.mockResolvedValue(activeConfig)
     })
-    afterEach(() => localStorage.clear())
+    afterEach(() => {
+        localStorage.clear()
+        vi.unstubAllGlobals()
+    })
+
+    const routeId = '11111111-1111-4111-8111-111111111111'
+    const transactionHash = `0x${'cd'.repeat(32)}`
+    const setCrossChainRecovery = (dismissed = false) => {
+        localStorage.setItem('pistachioswap:pending-userops:v1', JSON.stringify([{
+            orderId: 'recovery-order', walletAddress: wallet, userOpHash,
+            chainId: 137, timestamp: Date.now(), routeId, dismissed,
+            reviewDisplay: {
+                grossInputAmountRaw: '1200000', expectedOutputRaw: '1193997',
+                paymentAmountRaw: '3954', sellTokenDecimals: 6,
+                buyTokenDecimals: 6, paymentTokenDecimals: 6,
+                sellTokenSymbol: 'USDC', buyTokenSymbol: 'USDC',
+                paymentTokenSymbol: 'USDC', totalPrepaymentUsdMicros: '3954',
+            },
+        }]))
+    }
+    const sourceRecovered = () => ({
+        orderId: 'recovery-order', walletAddress: wallet, userOpHash,
+        chainId: 137, sourceStatus: 'confirmed',
+        transactionHash, status: 'completed',
+    })
+
+    it('marks a cross-chain operation complete only after the bound provider reports settlement', async () => {
+        setCrossChainRecovery()
+        mocks.recover.mockResolvedValue(sourceRecovered())
+        const fetch = vi.fn(async () => new Response(JSON.stringify({
+            destination: {
+                publicRouteId: routeId, sourceChainId: 137,
+                sourceTransactionHash: transactionHash, status: 'completed',
+            },
+        })))
+        vi.stubGlobal('fetch', fetch)
+        const onConfirmed = vi.fn()
+        const hook = renderHook(() => usePrepaidSponsorship({
+            quoteEndpoint: '/api/v1/quote', walletAddress: wallet,
+            recoveryKind: 'cross-chain', onConfirmed,
+        }))
+        await waitFor(() => expect(hook.result.current.phase).toBe('completed'))
+        expect(hook.result.current.order.reviewDisplay).toMatchObject({
+            grossInputAmountRaw: '1200000',
+            expectedOutputRaw: '1193997',
+            paymentAmountRaw: '3954',
+        })
+        expect(onConfirmed).toHaveBeenCalledOnce()
+        expect(JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))).toEqual([])
+        hook.unmount()
+    })
+
+    it('keeps a source-only completed operation pending until destination settlement is verified', async () => {
+        setCrossChainRecovery()
+        mocks.recover.mockResolvedValue(sourceRecovered())
+        const fetch = vi.fn(async () => new Response(JSON.stringify({
+            destination: {
+                publicRouteId: routeId, sourceChainId: 137,
+                sourceTransactionHash: transactionHash, status: 'in-flight',
+            },
+        })))
+        vi.stubGlobal('fetch', fetch)
+        const hook = renderHook(() => usePrepaidSponsorship({
+            quoteEndpoint: '/api/v1/quote', walletAddress: wallet,
+            recoveryKind: 'cross-chain',
+        }))
+        await waitFor(() => expect(hook.result.current.phase).toBe('destination-pending'))
+        expect(hook.result.current.order.status).toBe('atomic-submitted')
+        expect(JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))).toHaveLength(1)
+        hook.unmount()
+    })
+
+    it('does not accept a completed route with a mismatched source transaction', async () => {
+        setCrossChainRecovery()
+        mocks.recover.mockResolvedValue(sourceRecovered())
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            destination: {
+                publicRouteId: routeId, sourceChainId: 137,
+                sourceTransactionHash: `0x${'ef'.repeat(32)}`, status: 'completed',
+            },
+        }))))
+        const hook = renderHook(() => usePrepaidSponsorship({
+            quoteEndpoint: '/api/v1/quote', walletAddress: wallet,
+            recoveryKind: 'cross-chain',
+        }))
+        await waitFor(() => expect(hook.result.current.phase).toBe('destination-pending'))
+        expect(hook.result.current.order.status).toBe('atomic-submitted')
+        hook.unmount()
+    })
+
+    it('remembers a dismissed submitted operation while continuing recovery in the background', async () => {
+        setCrossChainRecovery(true)
+        mocks.recover.mockResolvedValue({
+            ...sourceRecovered(), sourceStatus: 'pending', status: 'pending',
+        })
+        const hook = renderHook(() => usePrepaidSponsorship({
+            quoteEndpoint: '/api/v1/quote', walletAddress: wallet,
+            recoveryKind: 'cross-chain',
+        }))
+        await waitFor(() => expect(mocks.recover).toHaveBeenCalled())
+        expect(hook.result.current.open).toBe(false)
+        expect(hook.result.current.order.reviewDisplay.paymentAmountRaw).toBe('3954')
+        expect(hook.result.current.order.userOpHash).toBe(userOpHash)
+        expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
+        hook.unmount()
+    })
+
     it('survives refresh and close without signing or sending again', async () => {
         mocks.recover.mockResolvedValue({ orderId: 'recovery-order', walletAddress: wallet,
             userOpHash, chainId: 56, status: 'atomic-submitting', sourceStatus: 'pending' })
