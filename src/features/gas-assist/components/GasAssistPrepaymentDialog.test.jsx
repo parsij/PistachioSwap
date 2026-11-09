@@ -466,6 +466,80 @@ describe('submitted operation UX', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Close' }))
         expect(flow.close).toHaveBeenCalledTimes(1)
     })
+    it('restores previously reviewed USDC amounts without asking for another signature', () => {
+        const flow = sponsorship({
+            phase: 'destination-pending',
+            order: {
+                id: 'order-restored',
+                status: 'atomic-submitted',
+                sourceStatus: 'confirmed',
+                userOpHash: `0x${'ab'.repeat(32)}`,
+                recoveredFromStorage: true,
+                reviewDisplay: {
+                    grossInputAmountRaw: '1200000',
+                    expectedOutputRaw: '1193997',
+                    paymentAmountRaw: '3954',
+                    sellTokenDecimals: 6,
+                    buyTokenDecimals: 6,
+                    paymentTokenDecimals: 6,
+                    sellTokenSymbol: 'USDC',
+                    buyTokenSymbol: 'USDC',
+                    paymentTokenSymbol: 'USDC',
+                    totalPrepaymentUsdMicros: '3954',
+                },
+            },
+        })
+        render(<GasAssistPrepaymentDialog sponsorship={flow}
+            sellToken={sellToken} buyToken={buyToken} purpose="cross-chain-gas" />)
+        expect(screen.getByText('1.2 USDC')).toBeTruthy()
+        expect(screen.getByText('1.193997 USDC')).toBeTruthy()
+        expect(screen.getByText('0.003954 USDC ($0.0039)')).toBeTruthy()
+        expect(screen.queryByText(/Unavailable USDC/)).toBeNull()
+        expect(screen.getByText(/already been submitted/)).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
+        expect(screen.getByText(/may already be visible in your wallet/i)).toBeTruthy()
+    })
+
+    it('hides unavailable recovered amounts instead of rendering bogus token charges', () => {
+        const flow = sponsorship({
+            phase: 'destination-pending',
+            order: {
+                id: 'legacy-recovery',
+                status: 'atomic-submitted',
+                sourceStatus: 'confirmed',
+                userOpHash: `0x${'ab'.repeat(32)}`,
+                recoveredFromStorage: true,
+                reviewDisplay: null,
+            },
+        })
+        render(<GasAssistPrepaymentDialog sponsorship={flow}
+            sellToken={sellToken} buyToken={buyToken} purpose="cross-chain-gas" />)
+        expect(screen.queryByText('You pay')).toBeNull()
+        expect(screen.queryByText('Gas Assist service charge')).toBeNull()
+        expect(screen.getByText(/original reviewed amounts are unavailable/i)).toBeTruthy()
+        expect(screen.getByText('Source confirmed')).toBeTruthy()
+        expect(screen.queryByText(/Unavailable USDC|Unavailable Token/)).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
+    })
+
+    it('shows completion for a destination-verified recovery rather than source pending', () => {
+        const flow = sponsorship({
+            phase: 'completed',
+            order: {
+                id: 'verified-recovery',
+                status: 'completed',
+                destinationStatus: 'completed',
+                userOpHash: `0x${'ab'.repeat(32)}`,
+                recoveredFromStorage: true,
+                reviewDisplay: null,
+            },
+        })
+        render(<GasAssistPrepaymentDialog sponsorship={flow}
+            sellToken={sellToken} buyToken={buyToken} purpose="cross-chain-gas" />)
+        expect(screen.getByText('Swap complete')).toBeTruthy()
+        expect(screen.queryByText('Source confirmed')).toBeNull()
+    })
+
     it('shows destination waiting after source confirmation without claiming completion', () => {
         const flow = sponsorship({ phase: 'destination-pending' })
         flow.order = { ...flow.order, status: 'atomic-submitted', sourceStatus: 'confirmed', userOpHash: `0x${'ab'.repeat(32)}` }
