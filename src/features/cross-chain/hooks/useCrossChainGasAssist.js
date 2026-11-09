@@ -5,7 +5,9 @@ import { usePrepaidSponsorship } from '../../gas-assist/hooks/usePrepaidSponsors
 import { quoteNeedsRefresh, useAutomaticQuoteRefresh } from '../../gas-assist/hooks/useAutomaticQuoteRefresh.js'
 import { selfHostedFrontendEnabled } from '../../gas-assist/services/selfHostedPaymaster.js'
 import { getGasAssistFeeBreakdown } from '../../gas-assist/model/gasAssistFee.js'
-import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+import {
+    recordWalletActivity, transitionExistingWalletActivity,
+} from '../../wallet/services/walletActivity.js'
 import {
     beginOptimisticWalletTransaction,
     confirmOptimisticWalletTransaction,
@@ -56,6 +58,7 @@ export function useCrossChainGasAssist({
     onConfirmed,
 }) {
     const preparedResponseRef = useRef(null)
+    const submittedRouteRef = useRef(null)
     const previewOperationRef = useRef(null)
     const previewResultRef = useRef(null)
     const reviewGenerationRef = useRef(0)
@@ -108,15 +111,31 @@ export function useCrossChainGasAssist({
         await authenticateSponsorship(preparedRoute)
         const result = await prepareSponsorship(idempotencyKey)
         preparedResponseRef.current = result
+        if (result.order?.id && result.order?.crossChainRouteId ===
+            result.preparedRoute?.publicRouteId) {
+            // Snapshot the actual authenticated order route. Background
+            // previews may change the displayed candidate while the
+            // original UserOperation is signing or being broadcast.
+            submittedRouteRef.current = {
+                orderId: result.order.id,
+                route: result.preparedRoute,
+            }
+        }
         return result.order
     }, [authenticateSponsorship, prepareSponsorship])
 
     const handleSubmitted = useCallback(async (order) => {
-        const prepared = preparedResponseRef.current
-        const preparedRoute = prepared?.preparedRoute
+        if (order?.recoveredFromStorage) return
+        const frozen = submittedRouteRef.current
+        const preparedRoute = frozen?.route
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
-        if (!preparedRoute || !hash) {
-            throw new Error('The sponsored cross-chain transaction is incomplete.')
+        if (!preparedRoute || !hash || !order?.id ||
+            frozen.orderId !== order.id ||
+            preparedRoute.publicRouteId !== order.crossChainRouteId) {
+            // Never attribute an old hash to the live quote or notify a
+            // different bridge route. A mismatched submission must fail
+            // visibly instead of fabricating "Swapping" activity.
+            throw new Error('The submitted UserOperation does not match the authenticated cross-chain route.')
         }
 
         const sourceChainId = Number(preparedRoute.sourceChainId ?? sellToken?.chainId)
@@ -141,6 +160,8 @@ export function useCrossChainGasAssist({
                 transactionHash: hash,
                 operation: 'swapping',
                 changes,
+                settlementMode: 'external',
+                referenceId: preparedRoute.publicRouteId,
             })
             optimisticTransactionRef.current = hash
         }
@@ -166,14 +187,36 @@ export function useCrossChainGasAssist({
         })
     }, [account, buyToken, completeSponsorship, sellToken, totalInputRaw])
 
+    const handleRecovered = useCallback(async (order, phase) => {
+        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash
+        if (!order?.recoveredFromStorage || !hash || !order?.chainId) return
+        const status = phase === 'completed' ? 'confirmed'
+            : phase === 'failed' ? 'failed'
+            : order?.sourceStatus === 'confirmed' ? 'source-confirmed' : null
+        if (!status) return
+        transitionExistingWalletActivity({
+            walletAddress: account,
+            chainId: order.chainId,
+            transactionHash: hash,
+            status,
+        })
+        if (status === 'confirmed') finishOptimisticWalletTransaction(hash)
+        else if (status === 'failed') rollbackOptimisticWalletTransaction(hash)
+        else confirmOptimisticWalletTransaction(hash, { sourceOnly: true })
+    }, [account])
+
     const handleConfirmed = useCallback(async (order) => {
-        const preparedRoute = preparedResponseRef.current?.preparedRoute
-        if (order?.recoveredFromStorage &&
-            (!preparedRoute || preparedRoute.publicRouteId !== order.crossChainRouteId)) {
-            // After a reload the token selector may show a completely different
-            // pair. Never record a restored bridge as a swap of those tokens.
-            // Its verified completion is still reflected in the recovered
-            // operation and wallet balances can be refreshed independently.
+        if (order?.recoveredFromStorage) {
+            // A verified historical completion must update only that exact
+            // hash. Never use today's token selector or a newer prepared route.
+            await handleRecovered(order, 'completed')
+            await onConfirmed?.(order, null)
+            return
+        }
+        const frozen = submittedRouteRef.current
+        const preparedRoute = frozen?.orderId === order?.id
+            ? frozen.route : null
+        if (!preparedRoute || preparedRoute.publicRouteId !== order.crossChainRouteId) {
             await onConfirmed?.(order, null)
             return
         }
@@ -211,7 +254,7 @@ export function useCrossChainGasAssist({
                 }
             }, 9_000)
         }
-    }, [account, buyToken, onConfirmed, sellToken, totalInputRaw])
+    }, [account, buyToken, handleRecovered, onConfirmed, sellToken, totalInputRaw])
 
     const sponsorship = usePrepaidSponsorship({
         oneConfirmationEnabled,
@@ -226,6 +269,7 @@ export function useCrossChainGasAssist({
         createOrder,
         onSubmitted: handleSubmitted,
         onConfirmed: handleConfirmed,
+        onRecovered: handleRecovered,
     })
     const directExecutionAvailable = sponsorshipConfig?.atomicExecution === true ||
         selfHostedFrontendEnabled(sponsorshipConfig)
