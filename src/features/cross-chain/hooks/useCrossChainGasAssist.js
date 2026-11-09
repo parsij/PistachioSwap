@@ -168,6 +168,15 @@ export function useCrossChainGasAssist({
 
     const handleConfirmed = useCallback(async (order) => {
         const preparedRoute = preparedResponseRef.current?.preparedRoute
+        if (order?.recoveredFromStorage &&
+            (!preparedRoute || preparedRoute.publicRouteId !== order.crossChainRouteId)) {
+            // After a reload the token selector may show a completely different
+            // pair. Never record a restored bridge as a swap of those tokens.
+            // Its verified completion is still reflected in the recovered
+            // operation and wallet balances can be refreshed independently.
+            await onConfirmed?.(order, null)
+            return
+        }
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ??
             optimisticTransactionRef.current ?? null
         if (hash) confirmOptimisticWalletTransaction(hash)

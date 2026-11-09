@@ -301,7 +301,12 @@ describe('self-hosted browser-owned EIP-7702 Paymaster', () => {
                     authenticatedWalletAddress: sender,
                 })).rejects.toMatchObject({ code: 'PAYMASTER_ALREADY_SUBMITTED' })
                 const persisted = JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))[0]
-                expect(Object.keys(persisted)).toEqual(['orderId', 'userOpHash', 'walletAddress', 'chainId', 'timestamp', 'ambiguous', 'routeId'])
+                expect(Object.keys(persisted)).toEqual([
+                    'orderId', 'userOpHash', 'walletAddress', 'chainId', 'timestamp',
+                    'ambiguous', 'routeId', 'dismissed', 'reviewDisplay',
+                ])
+                expect(persisted).not.toHaveProperty('signature')
+                expect(persisted).not.toHaveProperty('calldata')
                 const fetchBeforeRecovery = globalThis.fetch
                 vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
                     ...persisted, chainId: 56, transactionHash: `0x${'fa'.repeat(32)}`,
@@ -476,7 +481,12 @@ describe('all approved source chains preserve browser-owned final signatures', (
                     authenticatedWalletAddress: sender,
                 })).rejects.toMatchObject({ code: 'PAYMASTER_ALREADY_SUBMITTED' })
                 const persisted = JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))[0]
-                expect(Object.keys(persisted)).toEqual(['orderId', 'userOpHash', 'walletAddress', 'chainId', 'timestamp', 'ambiguous', 'routeId'])
+                expect(Object.keys(persisted)).toEqual([
+                    'orderId', 'userOpHash', 'walletAddress', 'chainId', 'timestamp',
+                    'ambiguous', 'routeId', 'dismissed', 'reviewDisplay',
+                ])
+                expect(persisted).not.toHaveProperty('signature')
+                expect(persisted).not.toHaveProperty('calldata')
                 const fetchBeforeRecovery = globalThis.fetch
                 vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
                     ...persisted, chainId, transactionHash: `0x${'fa'.repeat(32)}`,

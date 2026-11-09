@@ -470,6 +470,7 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
 async function submitOperation({
     prepared, order, backendConfig, quoteEndpoint, sessionToken,
     walletClient, authenticatedWalletAddress, signal, onSubmitted, onBroadcast,
+    reviewDisplay = null,
     useSingleConfirmation = false,
     allowDelegationMigration = false,
 }) {
@@ -511,7 +512,7 @@ async function submitOperation({
         return await signAndSubmitReviewedOperation({
             prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
             walletClient, signal, onSubmitted, onBroadcast,
-            delegation,
+            delegation, reviewDisplay,
         })
     } finally {
         await finishReviewedOperation?.()
@@ -521,7 +522,7 @@ async function submitOperation({
 async function signAndSubmitReviewedOperation({
     prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
     walletClient, signal, onSubmitted, onBroadcast,
-    delegation,
+    delegation, reviewDisplay,
 }) {
     const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), settings.maximumFeePerGasWei)
     // ERC-7769/Alto requires eip7702Auth whenever the public UserOperation
@@ -625,7 +626,7 @@ async function signAndSubmitReviewedOperation({
     const recovery = persistPendingUserOperation({
         orderId: prepared.orderId, userOpHash: expectedHash, chainId: settings.chainId,
         walletAddress: sender, timestamp: Date.now(), routeId: order.crossChainRouteId,
-        ambiguous: true,
+        ambiguous: true, reviewDisplay,
     })
     const userOpHash = await rpc(settings.bundlerRpc, 'eth_sendUserOperation',
         [bundlerUserOperation(finalOperation), settings.entryPoint], signal)
