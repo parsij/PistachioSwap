@@ -10,7 +10,7 @@ const VALID_TYPES = new Set([
     'received',
     'contract',
 ])
-const VALID_STATUSES = new Set(['pending', 'confirmed', 'failed'])
+const VALID_STATUSES = new Set(['pending', 'source-confirmed', 'confirmed', 'failed'])
 
 function browserStorage() {
     try {
@@ -205,11 +205,44 @@ export function recordWalletActivity(input) {
     const current = Array.isArray(store[activity.walletAddress])
         ? store[activity.walletAddress]
         : []
+    const existing = current.map(normalizeWalletActivity).filter(Boolean)
+        .find(item => activity.hash && item.hash === activity.hash &&
+            item.chainId === activity.chainId)
+    // A transaction hash identifies one on-chain action, not the currently
+    // selected quote. Prevent late duplicate callbacks from rewriting an old
+    // transaction with new amounts or moving its timestamp to "now".
+    if (existing) {
+        activity.timestamp = existing.timestamp
+        for (const key of [
+            'type', 'token', 'sellToken', 'buyToken', 'amount', 'sellAmount',
+            'buyAmount', 'destinationChainId', 'recipient', 'provider',
+        ]) {
+            activity[key] = existing[key]
+        }
+    }
     const next = mergeWalletActivity(current.map(normalizeWalletActivity).filter(Boolean), [activity], MAX_ITEMS_PER_WALLET)
 
     store[activity.walletAddress] = next
     if (writeStore(store)) emitChange(activity.walletAddress)
     return activity
+}
+
+/**
+ * Update only an existing hash- and chain-bound activity record. Recovery
+ * must never synthesize a new swap from whatever tokens the form shows now.
+ */
+export function transitionExistingWalletActivity({
+    walletAddress, chainId, transactionHash, status,
+} = {}) {
+    const address = normalizeWalletAddress(walletAddress)
+    const hash = normalizeHash(transactionHash)
+    const numericChain = Number(chainId)
+    if (!address || !hash || !Number.isSafeInteger(numericChain) ||
+        numericChain <= 0 || !VALID_STATUSES.has(status)) return null
+    const existing = readWalletActivity({ walletAddress: address, limit: MAX_ITEMS_PER_WALLET })
+        .find(item => item.hash === hash && item.chainId === numericChain)
+    if (!existing || existing.status === status) return existing ?? null
+    return recordWalletActivity({ ...existing, status })
 }
 
 export function readWalletActivity({

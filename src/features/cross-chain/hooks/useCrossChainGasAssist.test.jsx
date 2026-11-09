@@ -6,6 +6,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useCrossChainGasAssist } from './useCrossChainGasAssist.js'
 
+const submission = vi.hoisted(() => ({
+    params: null,
+    activity: vi.fn(),
+    optimistic: vi.fn(),
+}))
+
+vi.mock('../../wallet/services/walletActivity.js', () => ({
+    recordWalletActivity: submission.activity,
+    transitionExistingWalletActivity: vi.fn(),
+}))
+vi.mock('../../wallet/services/optimisticBalances.js', () => ({
+    beginOptimisticWalletTransaction: submission.optimistic,
+    confirmOptimisticWalletTransaction: vi.fn(),
+    finishOptimisticWalletTransaction: vi.fn(),
+    rollbackOptimisticWalletTransaction: vi.fn(),
+}))
+
 const sponsorship = vi.hoisted(() => ({
     configStatus: 'success',
     configError: null,
@@ -19,7 +36,10 @@ const sponsorship = vi.hoisted(() => ({
 }))
 
 vi.mock('../../gas-assist/hooks/usePrepaidSponsorship.js', () => ({
-    usePrepaidSponsorship: () => sponsorship,
+    usePrepaidSponsorship: (params) => {
+        submission.params = params
+        return sponsorship
+    },
 }))
 
 function preview(routeId = 'route-1', overrides = {}) {
@@ -71,6 +91,7 @@ function props(overrides = {}) {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    submission.params = null
     sponsorship.open = false
     sponsorship.phase = 'idle'
     sponsorship.order = null
@@ -80,6 +101,87 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs())
 
 describe('useCrossChainGasAssist', () => {
+    it('ignores an old recovered transaction instead of creating a fresh swapping entry', async () => {
+        const input = props()
+        const { result } = renderHook(value => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        await act(async () => submission.params.onSubmitted({
+            id: 'old-order', crossChainRouteId: 'route-1',
+            recoveredFromStorage: true,
+            swapTransactionHash: `0x${'a'.repeat(64)}`,
+            grossInputAmountRaw: '1350000',
+        }))
+        expect(submission.activity).not.toHaveBeenCalled()
+        expect(submission.optimistic).not.toHaveBeenCalled()
+        expect(input.completeSponsorship).not.toHaveBeenCalled()
+    })
+
+    it('rejects a source hash mismatched to the authenticated prepared order', async () => {
+        const input = props()
+        const { result } = renderHook(value => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        await expect(submission.params.onSubmitted({
+            id: 'old-order', crossChainRouteId: 'route-1',
+            swapTransactionHash: `0x${'a'.repeat(64)}`,
+            grossInputAmountRaw: '1350000',
+        })).rejects.toThrow(/does not match the authenticated cross-chain route/)
+        expect(submission.activity).not.toHaveBeenCalled()
+        expect(submission.optimistic).not.toHaveBeenCalled()
+        expect(input.completeSponsorship).not.toHaveBeenCalled()
+    })
+
+    it('uses the frozen authenticated route for a genuinely new submitted operation', async () => {
+        const finalRoute = {
+            publicRouteId: 'route-1',
+            sourceChainId: 56,
+            destinationChainId: 137,
+            outputAmount: '850',
+        }
+        const input = props({
+            sellToken: {
+                chainId: 56, isNative: false, decimals: 0,
+                address: '0x1111111111111111111111111111111111111111',
+            },
+            buyToken: {
+                chainId: 137, isNative: false, decimals: 0,
+                address: '0x2222222222222222222222222222222222222222',
+            },
+            prepareSponsorship: vi.fn().mockResolvedValue({
+                order: {
+                    id: 'new-order',
+                    crossChainRouteId: 'route-1',
+                },
+                preparedRoute: finalRoute,
+            }),
+        })
+        const { result } = renderHook(value => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        await act(async () => submission.params.createOrder({ idempotencyKey: 'new-key' }))
+        const hash = `0x${'b'.repeat(64)}`
+        await act(async () => submission.params.onSubmitted({
+            id: 'new-order', crossChainRouteId: 'route-1',
+            swapTransactionHash: hash,
+            grossInputAmountRaw: '1000', expectedOutputRaw: '850',
+        }))
+        expect(submission.activity).toHaveBeenCalledWith(expect.objectContaining({
+            hash, status: 'pending', sellAmount: '1000',
+        }))
+        expect(submission.optimistic).toHaveBeenCalledWith(expect.objectContaining({
+            transactionHash: hash, settlementMode: 'external',
+            referenceId: 'route-1', destinationChainId: 137,
+        }))
+        expect(input.completeSponsorship).toHaveBeenCalledWith({
+            preparedRoute: finalRoute,
+            transactionHash: hash,
+        })
+    })
+
     it('refreshes an open one-confirmation review even while the cached route is still valid', async () => {
         const input = props({ oneConfirmationEnabled: true })
         const { result, rerender, unmount } = renderHook(value => useCrossChainGasAssist(value), { initialProps: input })

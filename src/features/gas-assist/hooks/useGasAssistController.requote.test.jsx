@@ -18,6 +18,7 @@ vi.mock('./useSponsorshipPreview.js', () => ({
 
 vi.mock('../../wallet/services/walletActivity.js', () => ({
     recordWalletActivity: vi.fn(),
+    transitionExistingWalletActivity: vi.fn(),
 }))
 
 import { useGasAssistController } from './useGasAssistController.js'

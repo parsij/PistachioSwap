@@ -7,7 +7,9 @@ import {
     getGasAssistFeeBreakdown,
     usdDecimalToMicros,
 } from '../model/gasAssistFee.js'
-import { recordWalletActivity } from '../../wallet/services/walletActivity.js'
+import {
+    recordWalletActivity, transitionExistingWalletActivity,
+} from '../../wallet/services/walletActivity.js'
 import {
     beginOptimisticWalletTransaction,
     confirmOptimisticWalletTransaction,
@@ -112,6 +114,7 @@ export function useGasAssistController({
     useEffect(() => clearRefreshTimers, [account, clearRefreshTimers])
 
     const handleSubmittedSwap = useCallback((order) => {
+        if (order?.recoveredFromStorage) return
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
         if (!hash || !account || !sellToken || !buyToken) return
         try {
@@ -155,9 +158,31 @@ export function useGasAssistController({
         }
     }, [account, activeAmountIn, buyToken, sellToken])
 
+    const handleRecoveredSwap = useCallback((order, phase) => {
+        if (!order?.recoveredFromStorage) return
+        const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash
+        if (!hash || !order?.chainId) return
+        const status = phase === 'completed' ? 'confirmed'
+            : phase === 'failed' ? 'failed'
+            : order.sourceStatus === 'confirmed' ? 'confirmed' : null
+        if (!status) return
+        transitionExistingWalletActivity({
+            walletAddress: account,
+            chainId: order.chainId,
+            transactionHash: hash,
+            status,
+        })
+        if (status === 'failed') rollbackOptimisticWalletTransaction(hash)
+        else finishOptimisticWalletTransaction(hash)
+    }, [account])
+
     const handleConfirmedSwap = useCallback(async (order) => {
         const hash = order?.swapTransactionHash ?? order?.atomicTransactionHash ?? null
-        if (hash) confirmOptimisticWalletTransaction(hash)
+        if (order?.recoveredFromStorage) {
+            handleRecoveredSwap(order, 'completed')
+        } else if (hash) {
+            confirmOptimisticWalletTransaction(hash)
+        }
         if (!order?.recoveredFromStorage) {
             // A reloaded page may have a different selected token pair. The
             // original transaction can be confirmed without inventing amounts
@@ -211,6 +236,7 @@ export function useGasAssistController({
         account,
         activeAmountIn,
         buyToken,
+        handleRecoveredSwap,
         onConfirmed,
         sellToken,
         setVisibleStatus,
@@ -228,6 +254,7 @@ export function useGasAssistController({
         required: gasAssistRequested,
         onSubmitted: handleSubmittedSwap,
         onConfirmed: handleConfirmedSwap,
+        onRecovered: handleRecoveredSwap,
     })
 
     useEffect(() => {

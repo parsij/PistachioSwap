@@ -84,6 +84,37 @@ it('does not restart the confirmation window on delayed final settlement', () =>
     expect(finishOptimisticWalletTransaction(transactionHash)).toBe(false)
 })
 
+it('does not restart a previously submitted transaction when its hash callback is replayed', () => {
+    vi.useFakeTimers()
+    const walletAddress = '0x7777777777777777777777777777777777777777'
+    const hash = `0x${'f'.repeat(64)}`
+    const first = {
+        walletAddress, transactionHash: hash, operation: 'swapping',
+        settlementMode: 'external', referenceId: 'original-route',
+        changes: [{
+            chainId: 137,
+            tokenAddress: '0x8888888888888888888888888888888888888888',
+            deltaRaw: -1_400_000n,
+        }],
+    }
+    expect(beginOptimisticWalletTransaction(first)).toBe(true)
+    const original = getWalletOperationDisplayState(walletAddress)
+    vi.advanceTimersByTime(60_000)
+    expect(beginOptimisticWalletTransaction({
+        ...first,
+        referenceId: 'different-new-quote',
+        changes: [{ chainId: 137, tokenAddress: first.changes[0].tokenAddress,
+            deltaRaw: -1_200_000n }],
+    })).toBe(false)
+    expect(getWalletOperationDisplayState(walletAddress)).toMatchObject({
+        transactionHash: hash,
+        createdAt: original.createdAt,
+        referenceId: 'original-route',
+        changes: [expect.objectContaining({ deltaRaw: '-1400000' })],
+    })
+    finishOptimisticWalletTransaction(hash)
+})
+
 it('falls back to the curated chain RPC when configured receipt RPC has CORS or network errors', async () => {
     const hash = `0x${'aa'.repeat(32)}`
     const brokenUrl = 'https://unavailable-rpc.example'

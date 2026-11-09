@@ -145,6 +145,7 @@ export function usePrepaidSponsorship({
     required,
     onConfirmed,
     onSubmitted,
+    onRecovered,
     createOrder: createOrderOverride,
     previewOrder,
     recoveryKind = 'same-chain',
@@ -169,6 +170,7 @@ export function usePrepaidSponsorship({
     const forceImmediatePollRef = useRef(false)
     const onConfirmedRef = useRef(onConfirmed)
     const onSubmittedRef = useRef(onSubmitted)
+    const onRecoveredRef = useRef(onRecovered)
     const isCurrent = useCallback((walletEpoch, flowEpoch) => (
         walletEpochRef.current === walletEpoch && flowEpochRef.current === flowEpoch
     ), [])
@@ -192,6 +194,10 @@ export function usePrepaidSponsorship({
     }, [])
 
     const notifySubmitted = useCallback(async (submittedOrder, transactionHash) => {
+        // Recovery is read-only. It can contain an old receipt hash while the
+        // swap form holds a completely different new quote. NEVER publish the
+        // recovered operation as a new submission or re-notify its bridge.
+        if (submittedOrder?.recoveredFromStorage === true) return
         const orderId = submittedOrder?.id
         const hash = validTransactionHash(
             transactionHash ??
@@ -269,6 +275,10 @@ export function usePrepaidSponsorship({
     }, [onSubmitted])
 
     useEffect(() => {
+        onRecoveredRef.current = onRecovered
+    }, [onRecovered])
+
+    useEffect(() => {
         sendControllerRef.current?.abort()
         walletEpochRef.current += 1
         flowEpochRef.current += 1
@@ -322,7 +332,9 @@ export function usePrepaidSponsorship({
 
     const reviewOrder = useCallback((order) => {
         if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true }))
+            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
+                error: flowError('PREVIOUS_OPERATION_PENDING',
+                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
             return
         }
         if (!order?.id || order.isPreview !== true) {
@@ -354,7 +366,9 @@ export function usePrepaidSponsorship({
 
     const openPreviewLoading = useCallback(() => {
         if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true }))
+            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
+                error: flowError('PREVIOUS_OPERATION_PENDING',
+                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
             return
         }
         flowEpochRef.current += 1
@@ -375,7 +389,9 @@ export function usePrepaidSponsorship({
 
     const start = useCallback(async () => {
         if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true }))
+            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
+                error: flowError('PREVIOUS_OPERATION_PENDING',
+                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
             return
         }
         if (previewOrder) {
@@ -717,7 +733,8 @@ export function usePrepaidSponsorship({
         const walletEpoch = walletEpochRef.current
         const operation = pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))[0]
         if (operation) {
-            setState((current) => current.order?.id === operation.orderId ? current : {
+            setState((current) => current.order?.id === operation.orderId ||
+                current.phase !== 'idle' ? current : {
                 ...initial, open: !operation.dismissed, phase: 'confirmation-delayed',
                 order: { id: operation.orderId, userOpHash: operation.userOpHash,
                     walletAddress: operation.walletAddress, atomicExecution: true,
@@ -790,7 +807,8 @@ export function usePrepaidSponsorship({
                     swapTransactionHash: recovered.transactionHash, atomicTransactionHash: recovered.transactionHash,
                     atomicExecution: true, crossChainRouteId: operation.routeId,
                     recoveredFromStorage: true, reviewDisplay: operation.reviewDisplay }
-                setState((current) => ({ ...current, order: { ...current.order, ...order }, phase,
+                setState((current) => current.order?.id !== operation.orderId ? current : ({
+                    ...current, order: { ...current.order, ...order }, phase,
                     error: phase === 'failed'
                         ? ['failed', 'refunded'].includes(recovered.destinationStatus)
                             ? flowError('CROSS_CHAIN_DESTINATION_FAILED',
@@ -800,6 +818,18 @@ export function usePrepaidSponsorship({
                             : flowError('PAYMASTER_EXECUTION_REVERTED', 'The sponsored operation could not complete.')
                         : null,
                     lastPollError: null }))
+                // A recovered receipt can update only its OLD, hash-bound
+                // activity. It must not invoke onSubmitted, create a fresh
+                // optimistic operation or attach today's selected token pair.
+                if (recovered.transactionHash && (recovered.sourceStatus === 'confirmed' || terminal)) {
+                    try {
+                        await onRecoveredRef.current?.(order, phase)
+                    } catch (error) {
+                        gasAssistTraceError('userop.recovery.display-error', error, {
+                            orderId: operation.orderId,
+                        })
+                    }
+                }
                 if (terminal || recovered.sourceStatus === 'reverted') {
                     removePendingUserOperation(operation.orderId)
                     controller.abort()
@@ -809,9 +839,6 @@ export function usePrepaidSponsorship({
                         await onConfirmedRef.current?.(order)
                     }
                     return
-                }
-                if (recovered.sourceStatus === 'confirmed' && recovered.transactionHash) {
-                    await notifySubmitted(order, recovered.transactionHash)
                 }
                 attempt += 1
             } catch {
@@ -832,7 +859,7 @@ export function usePrepaidSponsorship({
             window.clearTimeout(timer)
             document.removeEventListener('visibilitychange', visible)
         }
-    }, [walletAddress, quoteEndpoint, state.order?.userOpHash, notifySubmitted, recoveryKind, recoveryRevision])
+    }, [walletAddress, quoteEndpoint, state.order?.userOpHash, recoveryKind, recoveryRevision])
 
     const pollOrderId = state.order?.id ?? null
     const pollOrderIsPreview = state.order?.isPreview === true

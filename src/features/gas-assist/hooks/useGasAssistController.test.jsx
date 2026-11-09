@@ -29,6 +29,7 @@ vi.mock('./useSponsorshipPreview.js', () => ({
 }))
 vi.mock('../../wallet/services/walletActivity.js', () => ({
     recordWalletActivity: mocks.recordWalletActivity,
+    transitionExistingWalletActivity: vi.fn(),
 }))
 vi.mock('../../wallet/services/optimisticBalances.js', () => ({
     beginOptimisticWalletTransaction: mocks.optimisticBegin,

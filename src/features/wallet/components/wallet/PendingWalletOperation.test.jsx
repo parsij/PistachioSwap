@@ -23,7 +23,7 @@ it('removes Swapping after 15 minutes even when settlement polling never resolve
     expect(screen.queryByText('Swapped')).toBeNull()
 })
 
-it('shows Swapped after source verification and then hides it while destination tracking remains pending', async () => {
+it('shows Source confirmed instead of Swapped until destination tracking settles', async () => {
     vi.useFakeTimers()
     const walletAddress = '0x9999999999999999999999999999999999999999'
     const transactionHash = `0x${'cb'.repeat(32)}`
@@ -33,8 +33,8 @@ it('shows Swapped after source verification and then hides it while destination 
     confirmOptimisticWalletTransaction(transactionHash, { sourceOnly: true })
     render(<PendingWalletOperation walletAddress={walletAddress} />)
     expect(screen.getByTitle('Source transaction confirmed; destination settlement is still being tracked')).toBeTruthy()
-    expect(screen.getByText('Swapped')).toBeTruthy()
-    expect(screen.queryByText('Source confirmed')).toBeNull()
+    expect(screen.getByText('Source confirmed')).toBeTruthy()
+    expect(screen.queryByText('Swapped')).toBeNull()
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
     expect(getWalletOperationDisplayState(walletAddress)).toBeNull()
 })
