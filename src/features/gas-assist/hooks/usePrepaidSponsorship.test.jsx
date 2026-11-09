@@ -185,6 +185,44 @@ describe('self-hosted sponsorship async ownership', () => {
         expect(result.current.reviewUpdated).toBe(false)
     })
 
+    it('releases an abandoned authenticated review without signing or spending', async () => {
+        const { result } = setup()
+        await waitForConfig(result)
+        await act(() => result.current.start())
+        expect(result.current.phase).toBe('review')
+        act(() => result.current.close())
+        await waitFor(() => expect(mocks.cancelOrder).toHaveBeenCalledWith(
+            '/v1/quote', 'session', 'order-1',
+        ))
+        expect(result.current.phase).toBe('idle')
+        expect(mocks.prepareSelfHosted).not.toHaveBeenCalled()
+        expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
+    })
+
+    it('waits for abandoned order cancellation before creating another final quote', async () => {
+        let finishCancellation
+        mocks.cancelOrder.mockImplementationOnce(() => new Promise(resolve => {
+            finishCancellation = resolve
+        }))
+        const { result } = setup()
+        await waitForConfig(result)
+        await act(() => result.current.start())
+        act(() => result.current.close())
+        expect(mocks.cancelOrder).toHaveBeenCalledOnce()
+
+        let reopening
+        act(() => { reopening = result.current.start() })
+        expect(mocks.authenticate).toHaveBeenCalledOnce()
+        expect(mocks.createOrder).toHaveBeenCalledOnce()
+        await act(async () => {
+            finishCancellation({ cancelled: true })
+            await reopening
+        })
+        expect(mocks.authenticate).toHaveBeenCalledTimes(2)
+        expect(mocks.createOrder).toHaveBeenCalledTimes(2)
+        expect(result.current.phase).toBe('review')
+    })
+
     it('continues order polling after a transient status failure without converting it into a fatal error', async () => {
         const onConfirmed = vi.fn()
         mocks.fetchOrder
