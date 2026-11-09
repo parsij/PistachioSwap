@@ -277,7 +277,18 @@ export function useSwapController() {
         prepareTransactionFees: networkFees.prepareTransaction,
         networkFeeFields: swapSettings.autoNetworkCost === false ? networkFees.fields : null,
     })
-    async function handleCrossChainGasAssistConfirmed() {
+    async function handleCrossChainGasAssistConfirmed(order) {
+        if (order?.recoveredFromStorage) {
+            // Background completion of an OLD swap may happen while a new
+            // quote/review is on screen. Refresh balances only; never close
+            // the current review or mark the current form as submitted.
+            try {
+                await catalog.refreshWalletBalances()
+            } catch (error) {
+                console.error('[pistachio-swap] Historical Gas Assist balance refresh failed', error)
+            }
+            return
+        }
         try {
             crossChain.review.close()
             receipt.setTransactionStatus('submitted')
