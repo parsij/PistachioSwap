@@ -33,13 +33,14 @@ afterEach(() => localStorage.clear())
 
 describe('public operation recovery state', () => {
     it('preserves final reviewed amounts and a deliberate dismiss across hash updates', () => {
-        persistPendingUserOperation({ ...base, reviewDisplay, ambiguous: true })
+        const initial = persistPendingUserOperation({ ...base, reviewDisplay, ambiguous: true })
         expect(pendingUserOperations(wallet)[0].reviewDisplay).toEqual(reviewDisplay)
         expect(dismissPendingUserOperation(base.orderId, wallet)).toBe(true)
         const persisted = pendingUserOperations(wallet)[0]
         expect(persisted.dismissed).toBe(true)
 
-        persistPendingUserOperation({ ...persisted, ambiguous: false })
+        // A late bundler acknowledgement may still hold a stale snapshot.
+        persistPendingUserOperation({ ...initial, ambiguous: false })
         expect(pendingUserOperations(wallet)).toEqual([
             expect.objectContaining({
                 orderId: base.orderId,
