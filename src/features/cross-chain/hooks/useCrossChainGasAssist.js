@@ -162,6 +162,7 @@ export function useCrossChainGasAssist({
                 changes,
                 settlementMode: 'external',
                 referenceId: preparedRoute.publicRouteId,
+                destinationChainId: destinationChainId > 0 ? destinationChainId : null,
             })
             optimisticTransactionRef.current = hash
         }
