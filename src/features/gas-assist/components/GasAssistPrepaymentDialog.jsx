@@ -334,7 +334,8 @@ export default function GasAssistPrepaymentDialog({
         (expired || Boolean(order?.expiresAt && Date.parse(order.expiresAt) <= Date.now()))
     const requiredAction = order?.currentRequiredAction
     const showPayment = sponsorship.phase === 'review' &&
-        (!requiredAction || requiredAction === 'prepare-payment')
+        (!requiredAction || requiredAction === 'prepare-payment') &&
+        amountsAvailable && Boolean(feeBreakdown)
     const showApproval = requiredAction === 'prepare-approval'
     const showContinuationRequest = requiredAction === 'prepare-sponsored-swap'
     const showContinuationSign = sponsorship.phase === 'continuation-ready'
@@ -503,6 +504,14 @@ export default function GasAssistPrepaymentDialog({
                             )}
                             {!completed && !order.userOpHash && <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />}
                         </div>
+                    )}
+
+                    {sponsorship.phase === 'review' && !showPayment &&
+                        (!requiredAction || requiredAction === 'prepare-payment') && (
+                        <p className="gas-assist-one-tap-note" role="alert">
+                            This quote is missing verified amounts or fee details.
+                            Refresh the quote before confirming the swap.
+                        </p>
                     )}
 
                     {order?.recoveredFromStorage && !amountsAvailable && (
