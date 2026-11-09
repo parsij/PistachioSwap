@@ -57,7 +57,16 @@ export function pendingUserOperations(walletAddress) {
 export function persistPendingUserOperation(value) {
     const record = normalize(value)
     if (!record) throw new Error('Invalid public operation recovery record.')
-    const all = pendingUserOperations().filter((item) => item.orderId !== record.orderId)
+    const allStored = pendingUserOperations()
+    const previous = allStored.find(item => item.orderId === record.orderId &&
+        item.walletAddress === record.walletAddress && item.userOpHash === record.userOpHash)
+    // A late bundler acknowledgment must not reopen a deliberately dismissed
+    // operation by overwriting a newer UI preference with an old snapshot.
+    if (previous?.dismissed) record.dismissed = true
+    if (!record.reviewDisplay && previous?.reviewDisplay) {
+        record.reviewDisplay = previous.reviewDisplay
+    }
+    const all = allStored.filter((item) => item.orderId !== record.orderId)
     // Never evict an unresolved operation to make room for a new one.
     if (all.length >= 100) throw new Error('Resolve pending Gas Assist operations before submitting another.')
     globalThis.localStorage.setItem(KEY, JSON.stringify([...all, record]))
