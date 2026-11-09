@@ -112,7 +112,10 @@ function statusContent({ phase, order, orderExpired }) {
         return { tone: 'success', title: 'Swap complete', detail: 'Your sponsored swap was confirmed.' }
     }
     if (phase !== 'failed' && (phase === 'destination-pending' || order?.sourceStatus === 'confirmed')) {
-        return { title: 'Source confirmed', detail: 'Waiting for the destination transfer to complete.' }
+        return {
+            title: 'Source confirmed',
+            detail: 'The bridge provider has not yet verified destination settlement. Tokens may already be visible in your wallet. You can close this panel safely; it will not send another transaction.',
+        }
     }
     if (phase === 'confirmation-unresolved') {
         return { title: 'Confirmation unresolved', detail: 'The submitted operation has no verified outcome yet. Recovery will continue; do not submit this order again.' }
@@ -290,6 +293,21 @@ export default function GasAssistPrepaymentDialog({
     const nativeSymbol = sponsorship?.config?.nativeSymbol ?? (Number(sellToken?.chainId ?? 56) === 56 ? 'BNB' : 'native gas')
     const sourceNetwork = sponsorship?.config?.displayName ?? sellToken?.chainName ?? 'the source network'
     const feeBreakdown = useMemo(() => getGasAssistFeeBreakdown(order), [order])
+    const savedDisplay = order?.recoveredFromStorage ? order.reviewDisplay : null
+    const amounts = {
+        gross: formatRaw(savedDisplay?.grossInputAmountRaw ?? order?.grossInputAmountRaw,
+            savedDisplay?.sellTokenDecimals ?? sellToken?.decimals),
+        output: formatRaw(savedDisplay?.expectedOutputRaw ?? order?.expectedOutputRaw,
+            savedDisplay?.buyTokenDecimals ?? buyToken?.decimals),
+        fee: formatRaw(savedDisplay?.paymentAmountRaw ?? order?.paymentAmountRaw,
+            savedDisplay?.paymentTokenDecimals ?? order?.paymentTokenDecimals),
+    }
+    const amountsAvailable = Object.values(amounts).every(value => value !== 'Unavailable')
+    const labels = {
+        sell: savedDisplay?.sellTokenSymbol ?? getTokenDisplaySymbol(sellToken),
+        buy: savedDisplay?.buyTokenSymbol ?? getTokenDisplaySymbol(buyToken),
+        fee: savedDisplay?.paymentTokenSymbol ?? getTokenDisplaySymbol(paymentToken),
+    }
 
     useEffect(() => setExpired(false), [order?.expiresAt, order?.id])
 
@@ -355,7 +373,7 @@ export default function GasAssistPrepaymentDialog({
         ? (sponsorship.refreshing ? 'Refreshing quote…' : 'Refresh quote')
         : 'Try again'
 
-    const feeUsd = formatUsdMicros(feeBreakdown?.totalFeeUsdMicros)
+    const feeUsd = formatUsdMicros(feeBreakdown?.totalFeeUsdMicros ?? savedDisplay?.totalPrepaymentUsdMicros)
     const feeUsdSuffix = feeUsd === 'Unavailable' ? '' : ` (${feeUsd})`
 
     const resetSheetDrag = () => {
@@ -429,25 +447,25 @@ export default function GasAssistPrepaymentDialog({
                     </div>
 
                     {!order && sponsorship.phase === 'preview-loading' && <ReviewSkeleton />}
-                    {order && paymentToken && (
+                    {order && paymentToken && amountsAvailable && (
                         <div className="gas-assist-swap-summary">
                             <div className="gas-assist-summary-token">
-                                <TokenIcon token={sellToken} />
+                                {!order.recoveredFromStorage && <TokenIcon token={sellToken} />}
                                 <div>
                                     <span>You pay</span>
-                                    <strong>{formatRaw(order.grossInputAmountRaw, sellToken?.decimals)} {getTokenDisplaySymbol(sellToken)}</strong>
+                                    <strong>{amounts.gross} {labels.sell}</strong>
                                 </div>
                             </div>
                             <div className="gas-assist-summary-token">
-                                <TokenIcon token={buyToken} />
+                                {!order.recoveredFromStorage && <TokenIcon token={buyToken} />}
                                 <div>
                                     <span>You receive</span>
-                                    <strong>{formatRaw(order.expectedOutputRaw, buyToken?.decimals)} {getTokenDisplaySymbol(buyToken)}</strong>
+                                    <strong>{amounts.output} {labels.buy}</strong>
                                 </div>
                             </div>
                             <div className="gas-assist-summary-fee">
                                 <span>Gas Assist service charge</span>
-                                <strong>{formatRaw(order.paymentAmountRaw, order.paymentTokenDecimals)} {getTokenDisplaySymbol(paymentToken)}{feeUsdSuffix}</strong>
+                                <strong>{amounts.fee} {labels.fee}{feeUsdSuffix}</strong>
                             </div>
                             {feeBreakdown?.conversionCostUsdMicros > 0n && (
                                 <p className="gas-assist-one-tap-note">
@@ -457,11 +475,19 @@ export default function GasAssistPrepaymentDialog({
                             <p className="gas-assist-one-tap-note">
                                 This is the fixed service charge for this quote, not the final blockchain gas cost. PistachioSwap retains any difference after gas expenses; lower actual gas does not automatically produce a refund. Applicable terms and law still apply.
                             </p>
-                            <p className="gas-assist-one-tap-note">
-                                Confirming authorizes this quoted service charge, exact token approval and swap together. EIP-7702 delegation can remain active afterward; disconnecting does not revoke it. {sponsorship.oneConfirmationEnabled
-                                    ? 'One-confirmation swaps is on: confirming also authorizes replacing any existing delegation with the verified Gas Assist delegate below. This change can persist even if the swap fails.'
-                                    : 'Replacing an existing delegation requires an additional wallet review.'}
-                            </p>
+                            {submitted ? (
+                                <p className="gas-assist-one-tap-note">
+                                    These are the amounts from your previous review. The operation has
+                                    already been submitted; checking its status never asks for a new
+                                    signature or payment.
+                                </p>
+                            ) : (
+                                <p className="gas-assist-one-tap-note">
+                                    Confirming authorizes this quoted service charge, exact token approval and swap together. EIP-7702 delegation can remain active afterward; disconnecting does not revoke it. {sponsorship.oneConfirmationEnabled
+                                        ? 'One-confirmation swaps is on: confirming also authorizes replacing any existing delegation with the verified Gas Assist delegate below. This change can persist even if the swap fails.'
+                                        : 'Replacing an existing delegation requires an additional wallet review.'}
+                                </p>
+                            )}
                             {sponsorship.config?.delegate && <p className="gas-assist-one-tap-note">
                                 Delegation contract: <code>{sponsorship.config.delegate}</code>
                             </p>}
@@ -472,6 +498,13 @@ export default function GasAssistPrepaymentDialog({
                             )}
                             {!completed && !order.userOpHash && <Countdown expiresAt={order.expiresAt} onExpired={() => setExpired(true)} />}
                         </div>
+                    )}
+
+                    {order?.recoveredFromStorage && !amountsAvailable && (
+                        <p className="gas-assist-one-tap-note" role="note">
+                            The original reviewed amounts are unavailable after restoring this
+                            transaction. Recovery is read-only and will not send another swap.
+                        </p>
                     )}
 
                     {status &&
