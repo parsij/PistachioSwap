@@ -1,8 +1,5 @@
 import { apiBaseUrl } from '../../../lib/apiBaseUrl.js'
-import {
-    fetchCrossChainRouteStatus,
-    PUBLIC_ROUTE_STORAGE_KEY,
-} from '../../cross-chain/services/crossChainRoutes.js'
+import { fetchCrossChainRouteStatus } from '../../cross-chain/services/crossChainRoutes.js'
 import {
     finishOptimisticWalletTransaction,
     getOptimisticWalletTransactions,
@@ -18,19 +15,13 @@ const CROSS_CHAIN_TERMINAL_FAILURES = new Set([
     'refunded',
 ])
 
-function readPersistedRouteId() {
-    try {
-        const value = String(globalThis.localStorage?.getItem(PUBLIC_ROUTE_STORAGE_KEY) ?? '').trim()
-        return value || null
-    } catch {
-        return null
-    }
-}
-
 export async function resolveExternalWalletOperationStatus(transaction, result, signal) {
     const status = String(result?.status ?? '').trim().toLowerCase()
-    if (result?.publicRouteId && transaction.referenceId && result.publicRouteId !== transaction.referenceId) return 'pending'
-    if (result?.sourceTransactionHash && String(result.sourceTransactionHash).toLowerCase() !== transaction.transactionHash.toLowerCase()) return 'pending'
+    // Provider completion must match the route and the *submitted source*
+    // hash. A global "last selected route" is not transaction evidence.
+    if (!transaction.referenceId || result?.publicRouteId !== transaction.referenceId ||
+        String(result?.sourceTransactionHash ?? '').toLowerCase() !==
+            transaction.transactionHash.toLowerCase()) return 'pending'
 
     const sourceChainId = transaction.changes.find(change => BigInt(change.deltaRaw) < 0n)?.chainId
     if (result?.sourceChainId && result.sourceChainId !== sourceChainId) return 'pending'
@@ -94,11 +85,10 @@ export async function reconcilePendingWalletOperations(walletAddress, { signal }
         .filter((transaction) => transaction.settlementMode === 'external')
     if (external.length === 0) return
 
-    const fallbackRouteId = readPersistedRouteId()
-    await Promise.all(external.map((transaction, index) =>
-        reconcileExternalOperation(
-            transaction,
-            transaction.referenceId ?? (index === 0 ? fallbackRouteId : null),
-            signal,
-        )))
+    // Never bind an older transaction to a newly previewed/stored route.
+    // Legacy optimistic entries lacking an immutable route ID can still have
+    // their source receipt checked above, but cannot claim bridge completion.
+    await Promise.all(external.filter(transaction => transaction.referenceId)
+        .map(transaction =>
+            reconcileExternalOperation(transaction, transaction.referenceId, signal)))
 }
