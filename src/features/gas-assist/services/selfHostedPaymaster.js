@@ -470,6 +470,7 @@ async function authorizationForBundler7702(walletClient, publicRpc, sender, dele
 async function submitOperation({
     prepared, order, backendConfig, quoteEndpoint, sessionToken,
     walletClient, authenticatedWalletAddress, signal, onSubmitted, onBroadcast,
+    reviewDisplay = null,
     useSingleConfirmation = false,
     allowDelegationMigration = false,
 }) {
@@ -625,7 +626,7 @@ async function signAndSubmitReviewedOperation({
     const recovery = persistPendingUserOperation({
         orderId: prepared.orderId, userOpHash: expectedHash, chainId: settings.chainId,
         walletAddress: sender, timestamp: Date.now(), routeId: order.crossChainRouteId,
-        ambiguous: true,
+        ambiguous: true, reviewDisplay,
     })
     const userOpHash = await rpc(settings.bundlerRpc, 'eth_sendUserOperation',
         [bundlerUserOperation(finalOperation), settings.entryPoint], signal)
