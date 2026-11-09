@@ -58,6 +58,7 @@ export function useCrossChainGasAssist({
     const preparedResponseRef = useRef(null)
     const previewOperationRef = useRef(null)
     const previewResultRef = useRef(null)
+    const reviewGenerationRef = useRef(0)
     const contextRef = useRef(null)
     const candidateRoutesRef = useRef([])
     const optimisticTransactionRef = useRef(null)
@@ -349,6 +350,7 @@ export function useCrossChainGasAssist({
 
     async function start({ force = false } = {}) {
         if (!available) return false
+        const requestId = ++reviewGenerationRef.current
         sponsorship.openPreviewLoading()
         try {
             // Refresh the executable bridge context first, then create the
@@ -356,10 +358,11 @@ export function useCrossChainGasAssist({
             // Otherwise the provisional preview can change on order creation
             // and demand an avoidable second confirmation.
             const nextPreview = await loadPreview({ minimumValidityMs: 15_000, force })
-            if (!nextPreview) return false
+            if (!nextPreview || reviewGenerationRef.current !== requestId) return false
             await sponsorship.start()
-            return true
+            return reviewGenerationRef.current === requestId
         } catch (error) {
+            if (reviewGenerationRef.current !== requestId) return false
             sponsorship.failPreview(error)
             throw error
         }
@@ -387,6 +390,13 @@ export function useCrossChainGasAssist({
     const reviewSponsorship = {
         ...sponsorship,
         signPackage: signFreshPackage,
+        // A dismissed sheet must never open a newly authenticated order after
+        // an async bridge-preview request returns.
+        close: () => {
+            reviewGenerationRef.current += 1
+            return sponsorship.close()
+        },
+        retryStart: start,
         error: previewStatus === 'error' ? previewError : sponsorship.error,
         refreshing: previewStatus === 'loading' && sponsorship.open,
         refreshQuote: start,
