@@ -744,26 +744,35 @@ export function usePrepaidSponsorship({
                     // result, not a balance change or source-only "completed".
                     let destination = null
                     if (recovered.sourceStatus === 'confirmed') {
-                        const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}/v1/cross-chain/routes/${encodeURIComponent(operation.routeId)}/sponsorship/recovery`, {
-                            method: 'POST', headers: { 'content-type': 'application/json' },
-                            body: JSON.stringify({ orderId: operation.orderId, walletAddress: operation.walletAddress, userOpHash: operation.userOpHash }),
-                            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
-                        })
-                        if (response.ok) {
-                            const routeRecovery = await response.json()
-                            const route = routeRecovery.destination
-                            if (route?.publicRouteId === operation.routeId &&
-                                Number(route.sourceChainId) === operation.chainId &&
-                                (!route.sourceTransactionHash ||
-                                    route.sourceTransactionHash.toLowerCase() === String(recovered.transactionHash ?? '').toLowerCase())) {
-                                destination = route
+                        try {
+                            const response = await fetch(`${getGasAssistBaseUrl(quoteEndpoint)}/v1/cross-chain/routes/${encodeURIComponent(operation.routeId)}/sponsorship/recovery`, {
+                                method: 'POST', headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({ orderId: operation.orderId, walletAddress: operation.walletAddress, userOpHash: operation.userOpHash }),
+                                signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
+                            })
+                            if (response.ok) {
+                                const routeRecovery = await response.json()
+                                const route = routeRecovery.destination
+                                if (route?.publicRouteId === operation.routeId &&
+                                    Number(route.sourceChainId) === operation.chainId &&
+                                    typeof route.sourceTransactionHash === 'string' &&
+                                    route.sourceTransactionHash.toLowerCase() === String(recovered.transactionHash ?? '').toLowerCase()) {
+                                    destination = route
+                                }
                             }
+                        } catch {
+                            // Provider outages must not mask a source receipt or
+                            // turn an unresolved destination into a failure.
+                            gasAssistTrace('userop.recovery.destination-deferred', { routeId: operation.routeId })
                         }
                     }
+                    const sourceFailed = recovered.sourceStatus === 'reverted' ||
+                        (['failed', 'rejected'].includes(recovered.status) &&
+                            recovered.sourceStatus !== 'confirmed')
                     recovered = {
                         ...recovered,
                         destinationStatus: destination?.status ?? null,
-                        status: recovered.sourceStatus === 'reverted' ? 'failed'
+                        status: sourceFailed ? 'failed'
                             : destination?.status === 'completed' ? 'completed'
                             : ['failed', 'refunded'].includes(destination?.status) ? 'failed'
                             : 'atomic-submitted',
