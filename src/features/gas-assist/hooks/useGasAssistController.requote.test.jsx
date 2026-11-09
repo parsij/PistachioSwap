@@ -75,14 +75,18 @@ describe('Gas Assist requote orchestration', () => {
         const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
         try {
             mocks.prepaid.phase = 'review'
+            mocks.prepaid.order = { id: 'unsigned-preview', isPreview: true }
             const { rerender, unmount } = renderHook(({ enabled }) => useGasAssistController({ ...props, oneConfirmationEnabled: enabled }),
                 { initialProps: { enabled: false } })
             await act(() => vi.advanceTimersByTimeAsync(30_000))
             expect(mocks.preview.refresh).not.toHaveBeenCalled()
             rerender({ enabled: true })
             await act(() => vi.advanceTimersByTimeAsync(30_000))
-            expect(mocks.preview.refresh).toHaveBeenCalledOnce()
-            expect(mocks.prepaid.openPreviewLoading).toHaveBeenCalledOnce()
+            // The real authenticated order is prepared at the review entry,
+            // not by opening a temporary preview for another confirmation.
+            expect(mocks.preview.refresh).not.toHaveBeenCalled()
+            expect(mocks.prepaid.start).toHaveBeenCalledOnce()
+            expect(mocks.prepaid.reviewOrder).not.toHaveBeenCalled()
             unmount()
         } finally { visibility.mockRestore(); vi.useRealTimers() }
     })
@@ -93,7 +97,7 @@ describe('Gas Assist requote orchestration', () => {
         mocks.prepaid.signPackage = vi.fn()
         const { result } = renderHook(() => useGasAssistController({ ...props, oneConfirmationEnabled: true }))
         await act(() => result.current.prepaidSponsorship.signPackage())
-        expect(mocks.preview.refresh).toHaveBeenCalledOnce()
+        expect(mocks.prepaid.start).toHaveBeenCalledOnce()
         expect(mocks.prepaid.signPackage).not.toHaveBeenCalled()
     })
 
@@ -134,50 +138,42 @@ describe('Gas Assist requote orchestration', () => {
         }
     })
 
-    it('fetches a fresh preview and replaces the stale review before signing again', async () => {
-        const reviewOrder = mocks.prepaid.reviewOrder
-        const openPreviewLoading = mocks.prepaid.openPreviewLoading
-        const refresh = mocks.preview.refresh
-        const { result, rerender } = renderHook(() => useGasAssistController(props))
+    it('opens the authenticated final order instead of a provisional quote on review', async () => {
+        const { result } = renderHook(() => useGasAssistController(props))
+        expect(result.current.prepaidSponsorship.start).toBe(mocks.prepaid.start)
+        await act(async () => {
+            await result.current.prepaidSponsorship.start()
+        })
+        expect(mocks.prepaid.start).toHaveBeenCalledOnce()
+        expect(mocks.prepaid.reviewOrder).not.toHaveBeenCalled()
+        expect(mocks.prepaid.openPreviewLoading).not.toHaveBeenCalled()
+    })
 
+    it('re-authenticates and obtains a final order when the user requests a new quote', () => {
+        const { result } = renderHook(() => useGasAssistController(props))
         act(() => {
             expect(result.current.prepaidSponsorship.refreshQuote()).toBe(true)
         })
-        expect(refresh).toHaveBeenCalledOnce()
-        expect(openPreviewLoading).toHaveBeenCalledOnce()
+        expect(mocks.prepaid.start).toHaveBeenCalledOnce()
+        expect(mocks.prepaid.reviewOrder).not.toHaveBeenCalled()
+        expect(mocks.preview.refresh).not.toHaveBeenCalled()
+    })
 
-        mocks.prepaid = {
-            ...mocks.prepaid,
-            phase: 'preview-loading',
+    it('does not trigger background wallet authentication for a final reviewed quote', async () => {
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+        vi.useFakeTimers()
+        try {
+            mocks.prepaid.phase = 'review'
+            mocks.prepaid.order = { id: 'authenticated', isPreview: false }
+            const { unmount } = renderHook(() =>
+                useGasAssistController({ ...props, oneConfirmationEnabled: true }))
+            await act(() => vi.advanceTimersByTimeAsync(60_000))
+            expect(mocks.prepaid.start).not.toHaveBeenCalled()
+            expect(mocks.preview.refresh).not.toHaveBeenCalled()
+            unmount()
+        } finally {
+            visibility.mockRestore()
+            vi.useRealTimers()
         }
-        mocks.preview = {
-            ...mocks.preview,
-            preview: null,
-            status: 'loading',
-        }
-        rerender()
-
-        const refreshedPreview = {
-            ...preview,
-            expectedOutputRaw: '2100000000000000000',
-            minimumOutputRaw: '2000000000000000000',
-            expiresAt: '2999-01-01T00:05:00.000Z',
-        }
-        mocks.preview = {
-            ...mocks.preview,
-            preview: refreshedPreview,
-            status: 'success',
-        }
-        rerender()
-
-        await waitFor(() => {
-            expect(reviewOrder).toHaveBeenCalledWith(expect.objectContaining({
-                id: `preview:${refreshedPreview.expiresAt}`,
-                isPreview: true,
-                walletAddress: props.account,
-                expectedOutputRaw: refreshedPreview.expectedOutputRaw,
-                minimumOutputRaw: refreshedPreview.minimumOutputRaw,
-            }))
-        })
     })
 })

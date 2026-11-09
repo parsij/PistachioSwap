@@ -110,7 +110,7 @@ describe('exact prepaid Gas Assist route ownership', () => {
         vi.restoreAllMocks()
     })
 
-    it('uses the exact prepaid preview for the current Gas Assist execution path', async () => {
+    it('uses the prepaid preview for pricing and creates a final order when review opens', async () => {
         const { result } = renderHook(() => useGasAssistController(baseProps))
         expect(mocks.prepaidArgs.required).toBe(true)
         expect(mocks.previewArgs).toMatchObject({
@@ -145,15 +145,11 @@ describe('exact prepaid Gas Assist route ownership', () => {
             expect(baseProps.setBuyAmount).toHaveBeenCalledWith('2')
         })
 
+        // The swap screen may use a lightweight preview, but the actual
+        // review must first authenticate and create the final backend order.
         act(() => result.current.prepaidSponsorship.start())
-        expect(mocks.prepaid.reviewOrder).toHaveBeenCalledWith(expect.objectContaining({
-            id: `preview:${preview.expiresAt}`,
-            isPreview: true,
-            walletAddress: baseProps.account,
-            grossInputAmountRaw: baseProps.activeAmountIn,
-            totalPrepaymentUsdMicros: '1000000',
-        }))
-        expect(mocks.prepaid.start).not.toHaveBeenCalled()
+        expect(mocks.prepaid.start).toHaveBeenCalledOnce()
+        expect(mocks.prepaid.reviewOrder).not.toHaveBeenCalled()
     })
 
     it('records completed Gas Assist swaps and retries the wallet refresh while discovery catches up', async () => {
