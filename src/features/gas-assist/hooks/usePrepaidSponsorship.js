@@ -733,7 +733,8 @@ export function usePrepaidSponsorship({
         const walletEpoch = walletEpochRef.current
         const operation = pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain'))[0]
         if (operation) {
-            setState((current) => current.order?.id === operation.orderId ? current : {
+            setState((current) => current.order?.id === operation.orderId ||
+                current.phase !== 'idle' ? current : {
                 ...initial, open: !operation.dismissed, phase: 'confirmation-delayed',
                 order: { id: operation.orderId, userOpHash: operation.userOpHash,
                     walletAddress: operation.walletAddress, atomicExecution: true,
@@ -858,7 +859,7 @@ export function usePrepaidSponsorship({
             window.clearTimeout(timer)
             document.removeEventListener('visibilitychange', visible)
         }
-    }, [walletAddress, quoteEndpoint, recoveryKind, recoveryRevision])
+    }, [walletAddress, quoteEndpoint, state.order?.userOpHash, recoveryKind, recoveryRevision])
 
     const pollOrderId = state.order?.id ?? null
     const pollOrderIsPreview = state.order?.isPreview === true
