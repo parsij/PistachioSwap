@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { getApiConfig } from '../config.js'
 import { NATIVE_TOKEN_ADDRESS } from '../lib/address.js'
 import { isNormalQuotePlatformFeeExemptWallet } from '../lib/platform-fee-exemptions.js'
@@ -5,6 +6,13 @@ import type {
     CrossChainFee,
     CrossChainProviderName,
 } from './types.js'
+
+const sponsoredBridgeAppFeeOmission = new AsyncLocalStorage<true>()
+
+/** Only the trusted Gas Assist requote path can enter this scope. */
+export function withoutSponsoredBridgeAppFee<T>(quote: () => T): T {
+    return sponsoredBridgeAppFeeOmission.run(true, quote)
+}
 
 export type PlatformFeeConfiguration = {
     bps: number
@@ -16,7 +24,7 @@ export function getPlatformFeeConfiguration(
     walletAddress: string | null = null,
 ): PlatformFeeConfiguration {
     const fees = getApiConfig().fees
-    if (isNormalQuotePlatformFeeExemptWallet(walletAddress)) {
+    if (sponsoredBridgeAppFeeOmission.getStore() || isNormalQuotePlatformFeeExemptWallet(walletAddress)) {
         return { bps: 0, recipient: null }
     }
     if (fees.platformFeeBps === 0) return { bps: 0, recipient: null }

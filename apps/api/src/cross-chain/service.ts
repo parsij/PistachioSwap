@@ -120,6 +120,9 @@ export class CrossChainRouteService {
         }
         let route = await this.repository.markPrepared(routeId, ownerAddress)
         const quote = await this.registry.prepare(route.quoteId)
+        if (quote.bridgeAppFeeOmitted) {
+            throw routeError('SPONSORED_ROUTE_ONLY', 'This quote must be prepared through Gas Assist.', 409)
+        }
         if (quote.request.ownerAddress !== ownerAddress) {
             throw routeError('ROUTE_OWNER_MISMATCH', 'Route belongs to another owner.')
         }
@@ -297,6 +300,7 @@ export class CrossChainRouteService {
             signal,
         )
 
+        let omitBridgeAppFee = candidateQuote.bridgeAppFeeOmitted === true
         for (let attempt = 0; attempt < CROSS_CHAIN_SPONSORSHIP_STABILIZE_ATTEMPTS; attempt += 1) {
             if (attempt > 0) {
                 const quote = await this.registry.requoteProvider(
@@ -304,6 +308,7 @@ export class CrossChainRouteService {
                     expectedAmount,
                     signal,
                     grossInputAmount,
+                    omitBridgeAppFee,
                 )
                 candidateRoute = await this.repository.create(quote)
                 candidateRoute = await this.repository.markPrepared(
@@ -371,21 +376,25 @@ export class CrossChainRouteService {
             } catch (error) {
                 if (!(error instanceof PrivateGasAssistError) ||
                     error.code !== 'ORDER_REQUOTE_REQUIRED') throw error
+                const requestedAmount = String(error.details?.expectedNetSwapAmountRaw ?? '')
+                const requestedFeeOmission = error.details?.omitBridgeAppFee === true
+                const changedFeeMode = requestedFeeOmission && !omitBridgeAppFee
                 const nextAmount = nextSponsoredNetAmount({
                     grossInputAmount,
                     currentRouteAmount: candidateRoute.inputAmount,
-                    expectedNetSwapAmount: String(
-                        error.details?.expectedNetSwapAmountRaw ?? '',
-                    ),
-                })
+                    expectedNetSwapAmount: requestedAmount,
+                }) ?? (changedFeeMode && requestedAmount === candidateRoute.inputAmount &&
+                    /^[1-9]\d*$/.test(requestedAmount) && BigInt(requestedAmount) < BigInt(grossInputAmount)
+                    ? requestedAmount : null)
                 if (!nextAmount ||
-                    nextAmount === expectedAmount ||
+                    (nextAmount === expectedAmount && !changedFeeMode) ||
                     attempt === CROSS_CHAIN_SPONSORSHIP_STABILIZE_ATTEMPTS - 1) {
                     throw routeError(
                         'CROSS_CHAIN_SPONSORSHIP_UNSTABLE',
                         'The exact sponsored route could not be stabilized.',
                     )
                 }
+                omitBridgeAppFee ||= requestedFeeOmission
                 expectedAmount = nextAmount
             }
         }
@@ -517,6 +526,7 @@ function exactSponsoredRoute(
     }
     return {
         publicRouteId: route.publicRouteId,
+        ...(quote.bridgeAppFeeOmitted ? { bridgeAppFeeOmitted: true } : {}),
         provider: route.provider,
         executionModel: route.executionModel,
         ownerAddress,
