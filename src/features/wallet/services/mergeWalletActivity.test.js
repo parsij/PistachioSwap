@@ -35,7 +35,7 @@ describe('wallet history merge', () => {
         })
     })
 
-    it('keeps a cross-chain swap pending after only its source receipt confirms', () => {
+    it('labels a cross-chain source receipt as source-confirmed, not a complete bridge', () => {
         const local = normalizeWalletActivity({
             ...base, chainId: 56, destinationChainId: 8453,
             type: 'swapped', status: 'pending', sellAmount: '1',
@@ -44,8 +44,24 @@ describe('wallet history merge', () => {
             ...base, type: 'sent', status: 'confirmed', source: 'remote',
         })
         expect(mergeWalletActivity([local], [source])[0]).toMatchObject({
-            type: 'swapped', status: 'pending', destinationChainId: 8453,
+            type: 'swapped', status: 'source-confirmed', destinationChainId: 8453,
         })
+    })
+
+    it('never hides destination receipts merely because a source-only swap is still pending', () => {
+        const swap = normalizeWalletActivity({
+            ...base, destinationChainId: 8453,
+            type: 'swapped', status: 'source-confirmed',
+            buyToken: { address: tokenB, symbol: 'USDC', decimals: 6 },
+            buyAmount: '1.337088',
+        })
+        const received = normalizeWalletActivity({
+            ...base, chainId: 8453, hash: `0x${'b'.repeat(64)}`,
+            type: 'received', status: 'confirmed',
+            token: { address: tokenB, symbol: 'USDC', decimals: 6 },
+            amount: '1.337088', timestamp: '2026-09-01T00:00:25Z',
+        })
+        expect(mergeWalletActivity([swap], [received])).toHaveLength(2)
     })
 
     it('lets authoritative failure evidence override a local successful swap', () => {
