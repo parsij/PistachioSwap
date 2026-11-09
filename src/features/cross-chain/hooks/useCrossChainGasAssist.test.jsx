@@ -174,7 +174,7 @@ describe('useCrossChainGasAssist', () => {
         }))
         expect(submission.optimistic).toHaveBeenCalledWith(expect.objectContaining({
             transactionHash: hash, settlementMode: 'external',
-            referenceId: 'route-1',
+            referenceId: 'route-1', destinationChainId: 137,
         }))
         expect(input.completeSponsorship).toHaveBeenCalledWith({
             preparedRoute: finalRoute,
