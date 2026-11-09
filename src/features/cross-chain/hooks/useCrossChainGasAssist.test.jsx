@@ -12,6 +12,7 @@ const sponsorship = vi.hoisted(() => ({
     error: null,
     open: false,
     openPreviewLoading: vi.fn(),
+    start: vi.fn(async () => undefined),
     reviewOrder: vi.fn(),
     failPreview: vi.fn(),
 }))
@@ -87,14 +88,38 @@ describe('useCrossChainGasAssist', () => {
         try {
             sponsorship.open = true
             sponsorship.phase = 'review'
-            sponsorship.order = preview().order
+            sponsorship.order = { ...preview().order, isPreview: true }
             rerender(input)
             await act(() => vi.advanceTimersByTimeAsync(30_000))
             expect(input.previewSponsorship).toHaveBeenCalledTimes(2)
             expect(sponsorship.openPreviewLoading).toHaveBeenCalledOnce()
-            expect(sponsorship.reviewOrder).toHaveBeenCalledOnce()
+            expect(sponsorship.start).toHaveBeenCalledOnce()
+            expect(sponsorship.reviewOrder).not.toHaveBeenCalled()
         } finally { unmount(); visibility.mockRestore(); vi.useRealTimers() }
     })
+    it('never reauthenticates or rewrites a final reviewed order in the background', async () => {
+        const input = props({ oneConfirmationEnabled: true })
+        const { result, rerender, unmount } = renderHook(value => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+        vi.useFakeTimers()
+        try {
+            sponsorship.open = true
+            sponsorship.phase = 'review'
+            sponsorship.order = { ...preview().order, id: 'authenticated-order', isPreview: false }
+            rerender(input)
+            await act(() => vi.advanceTimersByTimeAsync(60_000))
+            expect(sponsorship.start).not.toHaveBeenCalled()
+            expect(sponsorship.openPreviewLoading).not.toHaveBeenCalled()
+        } finally {
+            unmount()
+            visibility.mockRestore()
+            vi.useRealTimers()
+        }
+    })
+
     it('prefetches and reuses the exact sponsored quote shown on the swap page', async () => {
         const input = props()
         const { result, rerender } = renderHook((value) => useCrossChainGasAssist(value), {
@@ -113,7 +138,8 @@ describe('useCrossChainGasAssist', () => {
 
         expect(input.previewSponsorship).toHaveBeenCalledOnce()
         expect(sponsorship.openPreviewLoading).toHaveBeenCalledOnce()
-        expect(sponsorship.reviewOrder).toHaveBeenCalledWith(result.current.preview)
+        expect(sponsorship.start).toHaveBeenCalledOnce()
+        expect(sponsorship.reviewOrder).not.toHaveBeenCalled()
     })
 
     it.each([56, 8453])('uses self-hosted direct cross-chain execution on source chain %i', async chainId => {

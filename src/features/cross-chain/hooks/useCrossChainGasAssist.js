@@ -351,9 +351,13 @@ export function useCrossChainGasAssist({
         if (!available) return false
         sponsorship.openPreviewLoading()
         try {
+            // Refresh the executable bridge context first, then create the
+            // authenticated order BEFORE showing the financial review.
+            // Otherwise the provisional preview can change on order creation
+            // and demand an avoidable second confirmation.
             const nextPreview = await loadPreview({ minimumValidityMs: 15_000, force })
             if (!nextPreview) return false
-            sponsorship.reviewOrder(nextPreview.order)
+            await sponsorship.start()
             return true
         } catch (error) {
             sponsorship.failPreview(error)
@@ -364,6 +368,7 @@ export function useCrossChainGasAssist({
     const confirmingRef = useRef(false)
     useAutomaticQuoteRefresh({
         enabled: oneConfirmationEnabled && available && sponsorship.open &&
+            sponsorship.order?.isPreview === true &&
             sponsorship.phase === 'review' && previewStatus === 'success',
         expiresAt: sponsorship.order?.expiresAt,
         onRefresh: () => {

@@ -319,20 +319,20 @@ export function useGasAssistController({
                     ? 'error'
                     : previewState.status
         : normalQuoteStatus
-    const reviewPreview = useMemo(
-        () => previewReviewOrder(previewState.preview, account),
-        [account, previewState.preview],
-    )
-
+    // The swap page can display inexpensive unauthenticated estimates, but
+    // the first signing review must contain the *authenticated* final order.
+    // Preparing that order here avoids a second "Confirm updated quote" click.
     const refreshPrepaidQuote = useCallback(() => {
-        if (typeof previewState.refresh !== 'function' || !previewState.refresh()) return false
-        prepaidSponsorship.openPreviewLoading()
+        void prepaidSponsorship.start()
         return true
-    }, [prepaidSponsorship, previewState.refresh])
+    }, [prepaidSponsorship.start])
 
     const confirmingRef = useRef(false)
     useAutomaticQuoteRefresh({
+        // Background refresh may update unsigned previews, but must not
+        // trigger wallet authentication again after the final order is shown.
         enabled: oneConfirmationEnabled && gasAssistRequested && previewState.status === 'success' &&
+            prepaidSponsorship.order?.isPreview === true &&
             ['idle', 'review'].includes(prepaidSponsorship.phase),
         expiresAt: previewState.preview?.expiresAt,
         onRefresh: () => {
@@ -354,39 +354,17 @@ export function useGasAssistController({
         finally { confirmingRef.current = false }
     }, [oneConfirmationEnabled, prepaidSponsorship, refreshPrepaidQuote])
 
-    useEffect(() => {
-        if (prepaidSponsorship.phase !== 'preview-loading') return
-        if (previewState.status === 'success' && reviewPreview) {
-            prepaidSponsorship.reviewOrder(reviewPreview)
-            return
-        }
-        if (previewState.status === 'error') {
-            prepaidSponsorship.failPreview(
-                previewState.error ?? new Error('Gas Assist could not refresh this quote.'),
-            )
-        }
-    }, [
-        prepaidSponsorship.failPreview,
-        prepaidSponsorship.phase,
-        prepaidSponsorship.reviewOrder,
-        previewState.error,
-        previewState.status,
-        reviewPreview,
-    ])
-
     const prepaidSponsorshipView = useMemo(() => ({
         ...prepaidSponsorship,
         signPackage: signFreshPackage,
-        start: reviewPreview
-            ? () => prepaidSponsorship.reviewOrder(reviewPreview)
-            : prepaidSponsorship.start,
+        // Authenticated order creation happens before opening the final review.
+        start: prepaidSponsorship.start,
         refreshQuote: refreshPrepaidQuote,
         refreshing: prepaidSponsorship.phase === 'preview-loading' && previewState.status === 'loading',
     }), [
         prepaidSponsorship,
         previewState.status,
         refreshPrepaidQuote,
-        reviewPreview,
         signFreshPackage,
     ])
 

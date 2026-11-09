@@ -157,6 +157,34 @@ describe('self-hosted sponsorship async ownership', () => {
         vi.useRealTimers()
     })
 
+    it('authenticates and creates the final quote before showing review, with no second quote-confirmation', async () => {
+        const order = {
+            id: 'order-final', isPreview: false, walletAddress: walletA,
+            chainId: 56, sellToken: tokenA.address, buyToken: tokenB.address,
+            grossInputAmountRaw: '1000', netSwapAmountRaw: '900',
+            paymentToken: tokenA.address, paymentAmountRaw: '110',
+            totalPrepaymentUsdMicros: '110000', expectedOutputRaw: '850',
+            minimumOutputRaw: '800',
+        }
+        mocks.createOrder.mockResolvedValueOnce(order)
+        const { result } = setup()
+        await waitForConfig(result)
+        await act(() => result.current.start())
+
+        expect(mocks.authenticate).toHaveBeenCalledOnce()
+        expect(mocks.createOrder).toHaveBeenCalledOnce()
+        expect(result.current.phase).toBe('review')
+        expect(result.current.order).toEqual(order)
+        expect(result.current.reviewUpdated).toBe(false)
+        expect(mocks.prepareSelfHosted).not.toHaveBeenCalled()
+
+        await act(() => result.current.signPackage())
+        expect(mocks.createOrder).toHaveBeenCalledOnce()
+        expect(mocks.prepareSelfHosted).toHaveBeenCalledOnce()
+        expect(mocks.submitSelfHosted).toHaveBeenCalledOnce()
+        expect(result.current.reviewUpdated).toBe(false)
+    })
+
     it('continues order polling after a transient status failure without converting it into a fatal error', async () => {
         const onConfirmed = vi.fn()
         mocks.fetchOrder
