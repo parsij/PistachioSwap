@@ -294,13 +294,16 @@ export default function GasAssistPrepaymentDialog({
     const sourceNetwork = sponsorship?.config?.displayName ?? sellToken?.chainName ?? 'the source network'
     const feeBreakdown = useMemo(() => getGasAssistFeeBreakdown(order), [order])
     const savedDisplay = order?.recoveredFromStorage ? order.reviewDisplay : null
+    // Restored public status fields are not an authenticated quote. Never mix
+    // them with whatever token pair is currently selected in the swap screen.
+    const displayOrder = order?.recoveredFromStorage ? savedDisplay : order
     const amounts = {
-        gross: formatRaw(savedDisplay?.grossInputAmountRaw ?? order?.grossInputAmountRaw,
-            savedDisplay?.sellTokenDecimals ?? sellToken?.decimals),
-        output: formatRaw(savedDisplay?.expectedOutputRaw ?? order?.expectedOutputRaw,
-            savedDisplay?.buyTokenDecimals ?? buyToken?.decimals),
-        fee: formatRaw(savedDisplay?.paymentAmountRaw ?? order?.paymentAmountRaw,
-            savedDisplay?.paymentTokenDecimals ?? order?.paymentTokenDecimals),
+        gross: formatRaw(displayOrder?.grossInputAmountRaw,
+            order?.recoveredFromStorage ? savedDisplay?.sellTokenDecimals : sellToken?.decimals),
+        output: formatRaw(displayOrder?.expectedOutputRaw,
+            order?.recoveredFromStorage ? savedDisplay?.buyTokenDecimals : buyToken?.decimals),
+        fee: formatRaw(displayOrder?.paymentAmountRaw,
+            order?.recoveredFromStorage ? savedDisplay?.paymentTokenDecimals : order?.paymentTokenDecimals),
     }
     const amountsAvailable = Object.values(amounts).every(value => value !== 'Unavailable')
     const labels = {
@@ -373,7 +376,9 @@ export default function GasAssistPrepaymentDialog({
         ? (sponsorship.refreshing ? 'Refreshing quote…' : 'Refresh quote')
         : 'Try again'
 
-    const feeUsd = formatUsdMicros(feeBreakdown?.totalFeeUsdMicros ?? savedDisplay?.totalPrepaymentUsdMicros)
+    const feeUsd = formatUsdMicros(order?.recoveredFromStorage
+        ? savedDisplay?.totalPrepaymentUsdMicros
+        : feeBreakdown?.totalFeeUsdMicros)
     const feeUsdSuffix = feeUsd === 'Unavailable' ? '' : ` (${feeUsd})`
 
     const resetSheetDrag = () => {
