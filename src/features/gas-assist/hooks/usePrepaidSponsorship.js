@@ -895,7 +895,8 @@ export function usePrepaidSponsorship({
             setState((current) => ({ ...current, open: false }))
             return
         }
-        if (state.phase.endsWith('-signing') ||
+        if (operationRef.current ||
+            state.phase.endsWith('-signing') ||
             state.phase.endsWith('-preparing') ||
             state.phase.endsWith('-confirming') ||
             state.phase.endsWith('-submitting') ||
