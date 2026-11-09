@@ -331,12 +331,6 @@ export function usePrepaidSponsorship({
     }, [quoteEndpoint, walletAddress, sourceChainId])
 
     const reviewOrder = useCallback((order) => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
-                error: flowError('PREVIOUS_OPERATION_PENDING',
-                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
-            return
-        }
         if (!order?.id || order.isPreview !== true) {
             throw flowError(
                 'SPONSORSHIP_PREVIEW_INVALID',
@@ -365,12 +359,6 @@ export function usePrepaidSponsorship({
     }, [config, walletAddress, recoveryKind])
 
     const openPreviewLoading = useCallback(() => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
-                error: flowError('PREVIOUS_OPERATION_PENDING',
-                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
-            return
-        }
         flowEpochRef.current += 1
         operationRef.current = null
         sessionTokenRef.current = null
@@ -388,12 +376,6 @@ export function usePrepaidSponsorship({
     }, [])
 
     const start = useCallback(async () => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
-            setState((current) => ({ ...current, open: true, phase: 'unsupported', order: null,
-                error: flowError('PREVIOUS_OPERATION_PENDING',
-                    'An earlier Gas Assist transaction is still being tracked. This quote has not submitted a new transaction.') }))
-            return
-        }
         if (previewOrder) {
             reviewOrder(previewOrder)
             return
@@ -526,7 +508,12 @@ export function usePrepaidSponsorship({
     }, [beginOperation, buyToken, config, configError, configStatus, connection.connector?.id, createOrderOverride, finishOperation, grossInputAmount, isCurrent, previewOrder, publishFailure, quoteEndpoint, reviewOrder, sellToken, slippageBps, walletAddress, walletClient, recoveryKind, sourceChainId])
 
     const signPackage = useCallback(async () => {
-        if (pendingUserOperations(walletAddress).filter((item) => Boolean(item.routeId) === (recoveryKind === 'cross-chain')).length) {
+        // An older source/bridge operation must never block a new, independently
+        // authenticated order. Only an already submitted *identical order ID*
+        // is ineligible for signing again. submitOperation enforces this a
+        // second time at the bundler boundary.
+        if (state.order?.id && pendingUserOperations(walletAddress)
+            .some((item) => item.orderId === state.order.id)) {
             setState((current) => ({ ...current, open: true, phase: 'confirmation-delayed' }))
             return
         }
@@ -735,7 +722,11 @@ export function usePrepaidSponsorship({
         if (operation) {
             setState((current) => current.order?.id === operation.orderId ||
                 current.phase !== 'idle' ? current : {
-                ...initial, open: !operation.dismissed, phase: 'confirmation-delayed',
+                // Old operations continue background recovery without
+                // unexpectedly reopening an expired dialog over a fresh quote.
+                ...initial, open: !operation.dismissed &&
+                    Date.now() - operation.timestamp < 10 * 60_000,
+                phase: 'confirmation-delayed',
                 order: { id: operation.orderId, userOpHash: operation.userOpHash,
                     walletAddress: operation.walletAddress, atomicExecution: true,
                     status: 'atomic-submitting', sourceStatus: 'pending',
