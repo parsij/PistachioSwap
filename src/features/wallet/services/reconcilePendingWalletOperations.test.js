@@ -93,6 +93,44 @@ async function checkRoute(overrides = {}, receiptStatus = '0x1', receiptHash = d
     return { store, fetch, display: store.getWalletOperationDisplayState(wallet) }
 }
 
+it('verifies a genuine source-only cross-chain swap using destination chain metadata without an optimistic credit', async () => {
+    const source = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const store = await import('./optimisticBalances.js')
+    expect(store.beginOptimisticWalletTransaction({
+        walletAddress: wallet,
+        transactionHash: hash,
+        operation: 'swapping',
+        settlementMode: 'external',
+        referenceId: 'source-only-polygon-route',
+        destinationChainId: 8453,
+        changes: [{ chainId: 137, tokenAddress: source, deltaRaw: -1_350_000n }],
+    })).toBe(true)
+    expect(store.getOptimisticWalletDeltas(wallet)).toEqual([
+        expect.objectContaining({ chainId: 137, deltaRaw: '-1350000' }),
+    ])
+    const outHash = `0x${'dd'.repeat(32)}`
+    status.mockResolvedValue({
+        publicRouteId: 'source-only-polygon-route',
+        status: 'destination-confirming',
+        sourceChainId: 137, destinationChainId: 8453,
+        sourceTransactionHash: hash, destinationTransactionHash: outHash,
+    })
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+        const requestedHash = JSON.parse(options.body).params[0]
+        return new Response(JSON.stringify({
+            jsonrpc: '2.0', id: 1,
+            result: { status: '0x1', transactionHash: requestedHash },
+        }))
+    }))
+    const { reconcilePendingWalletOperations } = await import('./reconcilePendingWalletOperations.js')
+    await reconcilePendingWalletOperations(wallet)
+    expect(store.getWalletOperationDisplayState(wallet)?.status).toBe('confirmed')
+    expect(store.getOptimisticWalletDeltas(wallet)).toHaveLength(0)
+    expect(status).toHaveBeenCalledWith(expect.objectContaining({
+        routeId: 'source-only-polygon-route',
+    }))
+})
+
 it('completes BSC to OP from the exact destination receipt even when provider status lags', async () => {
     const { display, fetch } = await checkRoute()
     expect(display.status).toBe('confirmed')
