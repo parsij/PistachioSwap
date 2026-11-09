@@ -1626,12 +1626,15 @@ describe('cross-chain backend', () => {
         }))
     })
 
-    it('previews without wallet authentication, then creates the exact net route through the matching internal endpoint', async () => {
+    it.each([false, true])('previews and prepares the exact net route (app fee omitted: %s)', async omitAppFee => {
+        process.env.PLATFORM_FEE_BPS = '45'
+        process.env.TREASURY_ADDRESS = target
         const bscRequest = {
             ...request,
             sourceAsset: { ...request.sourceAsset, chainId: 56, decimals: 18 },
         }
         const base = fixtureAdapter('across', '900')
+        const feeObservations: number[] = []
         const adapter = {
             ...base,
             getCapabilities: async () => ({
@@ -1646,6 +1649,7 @@ describe('cross-chain backend', () => {
                 }],
             }),
             getQuote: async (quoteRequest: typeof bscRequest) => {
+                feeObservations.push(getPlatformFeeConfiguration('across', sender).bps)
                 const transaction = {
                     chainId: 56,
                     to: target,
@@ -1677,7 +1681,7 @@ describe('cross-chain backend', () => {
         const privateRequest = vi.fn(async ({ pathname, body }: { pathname: string; body: unknown }) => {
             const payload = body as {
                 grossInputAmount: string
-                route: { inputAmount: string; transaction: { value: string } }
+                route: { inputAmount: string; transaction: { value: string }; bridgeAppFeeOmitted?: true }
             }
             expect(payload.grossInputAmount).toBe('1000')
             expect(payload.route.transaction.value).toBe('0')
@@ -1690,6 +1694,13 @@ describe('cross-chain backend', () => {
                 )
             }
             expect(payload.route.inputAmount).toBe('900')
+            if (omitAppFee && !payload.route.bridgeAppFeeOmitted) {
+                // Net amount was already right; the server still requires a
+                // fresh provider quote with the app fee omitted.
+                throw new PrivateGasAssistError('ORDER_REQUOTE_REQUIRED', 'Omit the app fee.', 409, {
+                    expectedNetSwapAmountRaw: '900', omitBridgeAppFee: true,
+                })
+            }
             return {
                 id: pathname.endsWith('/preview') ? 'preview:route' : 'sponsorship-order',
                 isPreview: pathname.endsWith('/preview'),
@@ -1701,6 +1712,7 @@ describe('cross-chain backend', () => {
             new MemoryCrossChainRouteRepository(),
             privateRequest,
         )
+        const configuredFee = getPlatformFeeConfiguration('across', sender).bps
         const quoted = await service.quote(bscRequest)
         const preview = await service.previewSponsorship({
             routeId: quoted.selectedRoute.routeId,
@@ -1722,13 +1734,19 @@ describe('cross-chain backend', () => {
             clientIp: '127.0.0.1',
             idempotencyKey: 'cross-chain-test-order',
         })
-        expect(privateRequest).toHaveBeenCalledTimes(2)
+        expect(privateRequest).toHaveBeenCalledTimes(omitAppFee ? 3 : 2)
         expect(privateRequest).toHaveBeenLastCalledWith(expect.objectContaining({
             pathname: '/internal/v1/sponsorship/cross-chain/orders',
         }))
         expect(result.order).toMatchObject({ id: 'sponsorship-order' })
         expect(result.preparedRoute.inputAmount).toBe('900')
         expect(result.preparedRoute.transaction.value).toBe('0')
+        expect(feeObservations.at(-1)).toBe(omitAppFee ? 0 : configuredFee)
+        expect(getPlatformFeeConfiguration('across', sender).bps).toBe(configuredFee)
+        if (omitAppFee) {
+            await expect(service.prepare(result.preparedRoute.routeId, sender))
+                .rejects.toMatchObject({ code: 'SPONSORED_ROUTE_ONLY' })
+        }
     })
 
     it('keeps the original gross when creating an order from a preview net route', async () => {

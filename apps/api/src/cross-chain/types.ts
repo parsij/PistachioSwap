@@ -121,6 +121,7 @@ export type CrossChainQuote = {
     statusId: string | null
     expiresAt: string
     sponsoredGrossInputAmount?: string
+    bridgeAppFeeOmitted?: true
 }
 
 export type CrossChainStep = {

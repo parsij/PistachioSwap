@@ -13,6 +13,7 @@ import type {
     CrossChainStatusResult,
     ProviderCapabilities,
 } from './types.js'
+import { withoutSponsoredBridgeAppFee } from './fees.js'
 import { routeSupportsRequest } from './validation.js'
 import { CrossChainValidationError } from './validation.js'
 
@@ -317,6 +318,7 @@ export class CrossChainRegistry {
             ...prepared,
             sponsoredGrossInputAmount:
                 prepared.sponsoredGrossInputAmount ?? quote.sponsoredGrossInputAmount,
+            bridgeAppFeeOmitted: quote.bridgeAppFeeOmitted,
         })
         return this.quotes.get(quoteId)!
     }
@@ -326,6 +328,7 @@ export class CrossChainRegistry {
         amount: string,
         signal?: AbortSignal,
         grossInputAmount = amount,
+        omitBridgeAppFee = false,
     ): Promise<CrossChainQuote> {
         this.pruneQuotes()
         const previous = this.quotes.get(quoteId)
@@ -339,9 +342,10 @@ export class CrossChainRegistry {
             throw new Error('The selected provider no longer supports the sponsored route.')
         }
         const adapter = this.requireAdapter(previous.provider)
-        const selected = await this.run(previous.provider, () =>
+        const quoteProvider = () => this.run(previous.provider, () =>
             adapter.getQuote(request, capabilities, signal),
         )
+        const selected = await (omitBridgeAppFee ? withoutSponsoredBridgeAppFee(quoteProvider) : quoteProvider())
         if (
             selected.provider !== previous.provider ||
             selected.executionModel !== 'evm-transaction' ||
@@ -361,6 +365,7 @@ export class CrossChainRegistry {
         const quote = {
             ...selected,
             sponsoredGrossInputAmount: grossInputAmount,
+            bridgeAppFeeOmitted: omitBridgeAppFee ? true as const : undefined,
         }
         this.quotes.set(quote.quoteId, quote)
         this.pruneQuotes()
