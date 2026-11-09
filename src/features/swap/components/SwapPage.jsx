@@ -1,7 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 
-import PistachioWalletController from '../../passkey/components/PistachioWalletController.jsx'
 import SwapToolbar from './SwapToolbar.jsx'
 import SwapCard from './SwapCard.jsx'
 import TokenSelectorOverlay from '../../tokens/components/TokenSelectorOverlay.jsx'
@@ -47,7 +46,6 @@ export default function SwapPage({ toolbar, card, tokenSelector, sameChainReview
             <GasAssistDialogs {...gasAssistDialogs} />
             <SameChainReviewDialog {...sameChainReview} />
             <CrossChainReviewDialog {...crossChainReview} />
-            <PistachioWalletController />
         </>
     )
 }

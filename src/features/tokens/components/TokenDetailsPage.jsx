@@ -10,7 +10,6 @@ import {
 import * as Popover from '@radix-ui/react-popover'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import PistachioWalletController from '../../passkey/components/PistachioWalletController.jsx'
 import GasAssistDialogs from '../../gas-assist/components/GasAssistDialogs.jsx'
 import CrossChainReviewDialog from '../../cross-chain/components/CrossChainReviewDialog.jsx'
 import SameChainReviewDialog from '../../swap/components/SameChainReviewDialog.jsx'
@@ -308,7 +307,6 @@ export default function TokenDetailsPage({ token, page, onBrowseTokens }) {
             <GasAssistDialogs {...page.gasAssistDialogs} />
             <SameChainReviewDialog {...page.sameChainReview} />
             <CrossChainReviewDialog {...page.crossChainReview} />
-            <PistachioWalletController />
         </>
     )
 }
