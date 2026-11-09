@@ -13,6 +13,7 @@ const sponsorship = vi.hoisted(() => ({
     open: false,
     openPreviewLoading: vi.fn(),
     start: vi.fn(async () => undefined),
+    close: vi.fn(),
     reviewOrder: vi.fn(),
     failPreview: vi.fn(),
 }))
@@ -139,6 +140,31 @@ describe('useCrossChainGasAssist', () => {
         expect(input.previewSponsorship).toHaveBeenCalledOnce()
         expect(sponsorship.openPreviewLoading).toHaveBeenCalledOnce()
         expect(sponsorship.start).toHaveBeenCalledOnce()
+        expect(sponsorship.reviewOrder).not.toHaveBeenCalled()
+    })
+
+    it('does not create a final order if the user closes while the bridge preview refreshes', async () => {
+        const input = props()
+        const { result } = renderHook(value => useCrossChainGasAssist(value), {
+            initialProps: input,
+        })
+        await waitFor(() => expect(result.current.status).toBe('success'))
+
+        let finishPreview
+        input.previewSponsorship.mockImplementationOnce(() => new Promise(resolve => {
+            finishPreview = resolve
+        }))
+        let opening
+        act(() => { opening = result.current.start({ force: true }) })
+        await waitFor(() => expect(input.previewSponsorship).toHaveBeenCalledTimes(2))
+
+        act(() => result.current.sponsorship.close())
+        await act(async () => {
+            finishPreview(preview())
+            await opening
+        })
+        expect(sponsorship.close).toHaveBeenCalledOnce()
+        expect(sponsorship.start).not.toHaveBeenCalled()
         expect(sponsorship.reviewOrder).not.toHaveBeenCalled()
     })
 
