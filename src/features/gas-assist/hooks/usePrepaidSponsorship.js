@@ -744,7 +744,10 @@ export function usePrepaidSponsorship({
         if (!latest) return () => controller.abort()
         const schedule = () => {
             const old = Date.now() - latest.timestamp > 24 * 60 * 60 * 1_000
-            timer = window.setTimeout(poll, old ? 60_000 : Math.min(15_000, 5_000 * (1 + attempt)))
+            const delay = operations.length > 1
+                ? old ? 15_000 : 5_000
+                : old ? 60_000 : Math.min(15_000, 5_000 * (1 + attempt))
+            timer = window.setTimeout(poll, delay)
         }
         async function poll() {
             if (controller.signal.aborted || running) return
