@@ -512,7 +512,7 @@ async function submitOperation({
         return await signAndSubmitReviewedOperation({
             prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
             walletClient, signal, onSubmitted, onBroadcast,
-            delegation,
+            delegation, reviewDisplay,
         })
     } finally {
         await finishReviewedOperation?.()
@@ -522,7 +522,7 @@ async function submitOperation({
 async function signAndSubmitReviewedOperation({
     prepared, order, settings, calls, sender, quoteEndpoint, sessionToken,
     walletClient, signal, onSubmitted, onBroadcast,
-    delegation,
+    delegation, reviewDisplay,
 }) {
     const feeQuote = sponsoredGasFees(await rpc(settings.publicRpc, 'eth_gasPrice', [], signal), settings.maximumFeePerGasWei)
     // ERC-7769/Alto requires eip7702Auth whenever the public UserOperation
