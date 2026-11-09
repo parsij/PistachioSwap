@@ -667,6 +667,57 @@ describe('refresh recovery from public identifiers', () => {
         hook.unmount()
     })
 
+    it('recovers both old and new source operations without replaying either while a new quote is shown', async () => {
+        setCrossChainRecovery(true)
+        const saved = JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))
+        const newerRouteId = '22222222-2222-4222-8222-222222222222'
+        const newerHash = `0x${'ef'.repeat(32)}`
+        const newerTxHash = `0x${'ab'.repeat(32)}`
+        saved[0].timestamp -= 3 * 60 * 60_000
+        saved.push({
+            ...saved[0],
+            orderId: 'latest-order',
+            userOpHash: newerHash,
+            routeId: newerRouteId,
+            timestamp: Date.now(),
+            dismissed: true,
+        })
+        localStorage.setItem('pistachioswap:pending-userops:v1', JSON.stringify(saved))
+        mocks.recover.mockImplementation(async ({ operation }) => ({
+            ...sourceRecovered(),
+            orderId: operation.orderId,
+            userOpHash: operation.userOpHash,
+            transactionHash: operation.orderId === 'latest-order' ? newerTxHash : transactionHash,
+        }))
+        vi.stubGlobal('fetch', vi.fn(async (url) => {
+            const newer = String(url).includes(newerRouteId)
+            return new Response(JSON.stringify({
+                destination: {
+                    publicRouteId: newer ? newerRouteId : routeId,
+                    sourceChainId: 137,
+                    sourceTransactionHash: newer ? newerTxHash : transactionHash,
+                    status: 'in-flight',
+                },
+            }))
+        }))
+        const onSubmitted = vi.fn()
+        vi.useFakeTimers()
+        const hook = renderHook(() => usePrepaidSponsorship({
+            quoteEndpoint: '/api/v1/quote', walletAddress: wallet,
+            recoveryKind: 'cross-chain', onSubmitted,
+        }))
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(18_000)
+        })
+        const recoveredOrderIds = new Set(mocks.recover.mock.calls
+            .map(([input]) => input.operation.orderId))
+        expect(recoveredOrderIds).toEqual(new Set(['recovery-order', 'latest-order']))
+        expect(JSON.parse(localStorage.getItem('pistachioswap:pending-userops:v1'))).toHaveLength(2)
+        expect(onSubmitted).not.toHaveBeenCalled()
+        expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
+        hook.unmount()
+    })
+
     it('keeps a source-only completed operation pending until destination settlement is verified', async () => {
         setCrossChainRecovery()
         mocks.recover.mockResolvedValue(sourceRecovered())
