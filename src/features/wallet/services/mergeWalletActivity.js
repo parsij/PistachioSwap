@@ -1,5 +1,5 @@
 const priority = { swapped: 5, sent: 4, received: 4, approved: 3, contract: 2, unknown: 1 }
-const statusPriority = { pending: 1, confirmed: 2, failed: 3 }
+const statusPriority = { pending: 1, 'source-confirmed': 2, confirmed: 3, failed: 4 }
 const CROSS_CHAIN_PAIR_WINDOW_MS = 5 * 60 * 1_000
 const CROSS_CHAIN_DESTINATION_WINDOW_MS = 30 * 60 * 1_000
 
@@ -104,8 +104,10 @@ function mergeSameTransaction(localItems, remoteItems) {
         if (sourceFailed) {
             result.status = 'failed'
         } else if (sourceConfirmed && !crossChainSwap) {
-            // A source-chain receipt does not prove destination settlement.
             result.status = 'confirmed'
+        } else if (sourceConfirmed && crossChainSwap && result.status === 'pending') {
+            // The source receipt confirms the deposit, not bridge settlement.
+            result.status = 'source-confirmed'
         }
         for (const field of ['token', 'sellToken', 'buyToken']) {
             result[field] = preferred[field] || other[field]
@@ -123,7 +125,8 @@ function mergeSameTransaction(localItems, remoteItems) {
 function suppressDestinationReceives(items) {
     const consumed = new Set()
     for (const swap of items) {
-        if (swap.type !== 'swapped' || !swap.destinationChainId || !swap.buyToken || !swap.buyAmount) continue
+        if (swap.type !== 'swapped' || swap.status !== 'confirmed' ||
+            !swap.destinationChainId || !swap.buyToken || !swap.buyAmount) continue
         const candidate = items.find((item) =>
             item !== swap &&
             !consumed.has(item) &&
