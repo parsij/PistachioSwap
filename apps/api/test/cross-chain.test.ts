@@ -295,6 +295,83 @@ describe('cross-chain backend', () => {
         expect(urls.some((url) => url.includes('originTxHash='))).toBe(true)
     })
 
+    it.each([
+        ['origin_tx_pending', null, 'pending'],
+        ['origin_tx_confirmed', null, 'source-confirming'],
+        ['bridge_pending', null, 'in-flight'],
+        ['bridge_filled', null, 'completed'],
+        ['origin_tx_reverted', null, 'failed'],
+        ['bridge_failed', { status: 'refund_pending' }, 'in-flight'],
+        ['bridge_failed', { status: 'manual_action_required' }, 'in-flight'],
+        ['bridge_failed', { status: 'refund_succeeded' }, 'refunded'],
+        ['bridge_failed', { status: 'failed' }, 'failed'],
+        ['bridge_failed', { status: 'no_actions_required' }, 'failed'],
+        ['unrecognized_new_status', null, 'unknown'],
+    ])('maps the current 0x status %s without inventing settlement', async (providerStatus, failure, expectedStatus) => {
+        process.env.ZEROX_CROSS_CHAIN_ENABLED = 'true'
+        process.env.ZEROX_API_KEY = 'test-key'
+        const sourceHash = `0x${'1'.repeat(64)}`
+        const destinationHash = `0x${'2'.repeat(64)}`
+        const adapter = createZeroXCrossChainAdapter(async () => ({
+            status: providerStatus,
+            failure,
+            transactions: [
+                { chainId: 8453, txHash: sourceHash },
+                { chainId: 137, txHash: destinationHash },
+            ],
+        }))
+        const result = await adapter.getStatus('8453:provider-quote', undefined, sourceHash)
+        expect(result.status).toBe(expectedStatus)
+        expect(result.sourceTransactionHash).toBe(sourceHash)
+        expect(result.destinationTransactionHash).toBe(
+            expectedStatus === 'completed' ? destinationHash : null,
+        )
+    })
+
+    it('does not call a source-only receipt a destination fill on 0x', async () => {
+        process.env.ZEROX_CROSS_CHAIN_ENABLED = 'true'
+        process.env.ZEROX_API_KEY = 'test-key'
+        const sourceHash = `0x${'a'.repeat(64)}`
+        const adapter = createZeroXCrossChainAdapter(async () => ({
+            status: 'bridge_filled',
+            transactions: [{ chainId: 8453, txHash: sourceHash }],
+        }))
+        await expect(adapter.getStatus('8453:provider-quote', undefined, sourceHash))
+            .resolves.toMatchObject({
+                status: 'completed',
+                sourceTransactionHash: sourceHash,
+                destinationTransactionHash: null,
+            })
+    })
+
+    it('keeps a completed public route terminal when a later provider poll would regress', async () => {
+        const hash = `0x${'ab'.repeat(32)}`
+        let statusCalls = 0
+        const adapter = fixtureAdapter('across', '900')
+        adapter.getStatus = async (statusId) => {
+            statusCalls += 1
+            return {
+                provider: 'across' as const,
+                statusId,
+                status: statusCalls === 1 ? 'completed' as const : 'in-flight' as const,
+                sourceTransactionHash: hash,
+                destinationTransactionHash: `0x${'cd'.repeat(32)}`,
+            }
+        }
+        const service = new CrossChainRouteService(
+            new CrossChainRegistry([adapter]),
+            new MemoryCrossChainRouteRepository(),
+        )
+        const quoted = await service.quote(request)
+        const routeId = quoted.selectedRoute.routeId
+        await service.prepare(routeId, sender)
+        await service.claim(routeId, sender)
+        await service.submitted(routeId, sender, hash)
+        expect((await service.get(routeId)).status).toBe('completed')
+        expect((await service.get(routeId)).status).toBe('completed')
+        expect(statusCalls).toBe(1)
+    })
+
     it('pins the 0x BSC AllowanceHolder instead of trusting a quoted execution target', async () => {
         process.env.ZEROX_CROSS_CHAIN_ENABLED = 'true'
         process.env.ZEROX_API_KEY = 'test-key'

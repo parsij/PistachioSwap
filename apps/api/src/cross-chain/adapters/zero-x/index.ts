@@ -196,14 +196,19 @@ export function createZeroXCrossChainAdapter(
                 timeoutMs: config.quoteTimeoutMs,
             })
             const value = isRecord(payload) ? payload : {}
+            const status = mapStatus(value.status, value.failure)
             return {
                 provider: PROVIDER,
                 statusId,
-                status: mapStatus(value.status),
+                status,
                 sourceTransactionHash,
-                destinationTransactionHash: transactionHash(
-                    value.destinationTxHash ?? value.destinationTransactionHash,
-                ),
+                // 0x now reports settlement in its chain-tagged transactions
+                // array. An origin receipt or an unmined recovery attempt is
+                // NOT a completed destination transaction.
+                destinationTransactionHash: status === 'completed'
+                    ? transactionHash(value.destinationTxHash ?? value.destinationTransactionHash) ??
+                        destinationHashFromTransactions(value.transactions, Number(originChain))
+                    : null,
             }
         },
     }
@@ -340,14 +345,44 @@ function readFees(value: unknown, request: CrossChainRequest): CrossChainFee[] {
     })
 }
 
-function mapStatus(value: unknown) {
+function mapStatus(value: unknown, failure?: unknown) {
     const status = String(value ?? '').toLowerCase()
+    // 0x /cross-chain/status uses origin_tx_*/bridge_* states, not the
+    // older swap-completion status names. In particular bridge_failed is
+    // not terminal while a refund or destination retry is still in progress.
+    if (status === 'bridge_filled') return 'completed' as const
+    if (status === 'origin_tx_confirmed') return 'source-confirming' as const
+    if (status === 'origin_tx_pending') return 'pending' as const
+    if (status === 'bridge_pending') return 'in-flight' as const
+    if (status === 'origin_tx_reverted') return 'failed' as const
+    if (status === 'bridge_failed') {
+        const recovery = isRecord(failure)
+            ? String(failure.status ?? '').toLowerCase() : ''
+        if (recovery === 'refund_succeeded') return 'refunded' as const
+        if (recovery === 'failed' || recovery === 'no_actions_required') return 'failed' as const
+        return 'in-flight' as const
+    }
     if (['success', 'completed', 'complete'].includes(status)) return 'completed' as const
     if (['failed', 'reverted'].includes(status)) return 'failed' as const
     if (['refunded'].includes(status)) return 'refunded' as const
     if (['pending', 'submitted'].includes(status)) return 'pending' as const
     if (['inflight', 'in_flight', 'bridging'].includes(status)) return 'in-flight' as const
     return 'unknown' as const
+}
+
+function destinationHashFromTransactions(value: unknown, originChainId: number): string | null {
+    if (!Array.isArray(value)) return null
+    // The status response includes both source and destination transactions.
+    // Never mistake the first (origin) hash for delivery on another chain.
+    for (let i = value.length - 1; i >= 0; i -= 1) {
+        const transaction = value[i]
+        if (!isRecord(transaction) ||
+            !Number.isSafeInteger(Number(transaction.chainId)) ||
+            Number(transaction.chainId) === originChainId) continue
+        const hash = transactionHash(transaction.txHash ?? transaction.transactionHash ?? transaction.hash)
+        if (hash) return hash
+    }
+    return null
 }
 
 function transactionHash(value: unknown) {

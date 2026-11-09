@@ -155,7 +155,8 @@ export class CrossChainRouteService {
         if (!route) throw routeError('ROUTE_NOT_FOUND', 'Route was not found.')
         if (
             route.providerTrackingId &&
-            !['quoted', 'prepared', 'awaiting-source', 'expired'].includes(route.status)
+            !['quoted', 'prepared', 'awaiting-source', 'expired',
+                'completed', 'failed', 'refunded'].includes(route.status)
         ) {
             try {
                 const status = await this.registry.status(
