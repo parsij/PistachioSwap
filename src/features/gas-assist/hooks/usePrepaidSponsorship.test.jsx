@@ -531,6 +531,65 @@ describe('refresh recovery from public identifiers', () => {
         hook.unmount()
     })
 
+    it('never treats recovered source confirmation as a newly submitted swap during a fresh quote', async () => {
+        setCrossChainRecovery(true)
+        mocks.recover.mockResolvedValue(sourceRecovered())
+        const onSubmitted = vi.fn()
+        const onRecovered = vi.fn()
+        const completeRoute = vi.fn()
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            destination: {
+                publicRouteId: routeId,
+                sourceChainId: 137,
+                sourceTransactionHash: transactionHash,
+                status: 'in-flight',
+            },
+        }))))
+        const hook = renderHook(() => usePrepaidSponsorship({
+            quoteEndpoint: '/api/v1/quote', walletAddress: wallet,
+            recoveryKind: 'cross-chain', onSubmitted, onRecovered,
+            onConfirmed: completeRoute,
+        }))
+        await waitFor(() => expect(hook.result.current.phase).toBe('destination-pending'))
+        expect(onRecovered).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 'recovery-order',
+                recoveredFromStorage: true,
+                swapTransactionHash: transactionHash,
+            }),
+            'destination-pending',
+        )
+        expect(onSubmitted).not.toHaveBeenCalled()
+        expect(completeRoute).not.toHaveBeenCalled()
+        expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
+        expect(mocks.createOrder).not.toHaveBeenCalled()
+        hook.unmount()
+    })
+
+    it('does not replace a new review with an older operation during recovery polling', async () => {
+        setCrossChainRecovery(true)
+        mocks.recover.mockResolvedValue(sourceRecovered())
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+            destination: {
+                publicRouteId: routeId, sourceChainId: 137,
+                sourceTransactionHash: transactionHash, status: 'in-flight',
+            },
+        }))))
+        const hook = renderHook(() => usePrepaidSponsorship({
+            quoteEndpoint: '/api/v1/quote', walletAddress: wallet,
+            recoveryKind: 'cross-chain',
+        }))
+        await waitFor(() => expect(hook.result.current.phase).toBe('destination-pending'))
+        await act(async () => hook.result.current.start())
+        expect(hook.result.current.phase).toBe('unsupported')
+        expect(hook.result.current.order).toBeNull()
+        expect(hook.result.current.error.code).toBe('PREVIOUS_OPERATION_PENDING')
+        expect(mocks.authenticate).not.toHaveBeenCalled()
+        expect(mocks.createOrder).not.toHaveBeenCalled()
+        expect(mocks.submitSelfHosted).not.toHaveBeenCalled()
+        hook.unmount()
+    })
+
     it('keeps a source-only completed operation pending until destination settlement is verified', async () => {
         setCrossChainRecovery()
         mocks.recover.mockResolvedValue(sourceRecovered())
