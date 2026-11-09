@@ -29,7 +29,8 @@ export async function resolveExternalWalletOperationStatus(transaction, result, 
 
     // The source receipt confirms only the deposit. Completion needs the
     // destination receipt bound to this route and its expected output chain.
-    const destinationChainId = transaction.changes.find(change => BigInt(change.deltaRaw) > 0n)?.chainId
+    const destinationChainId = transaction.destinationChainId ??
+        transaction.changes.find(change => BigInt(change.deltaRaw) > 0n)?.chainId
     if (result?.destinationTransactionHash && (!destinationChainId || result.destinationChainId !== destinationChainId)) return 'pending'
     if (result?.destinationTransactionHash && destinationChainId && result.destinationChainId === destinationChainId) {
         try {
