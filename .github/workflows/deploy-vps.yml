@@ -130,7 +130,7 @@ jobs:
         run: pnpm exec vitest run test/shared-api-env-sync.test.js
 
       - name: One-confirmation swap regressions
-        run: pnpm exec vitest run src/features/gas-assist/hooks/useAutomaticQuoteRefresh.test.jsx src/features/gas-assist/hooks/useGasAssistController.requote.test.jsx src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx src/features/gas-assist/model/reviewedQuoteBounds.test.js src/features/passkey/services/walletManagerSmartSwap.test.js src/features/gas-assist/services/selfHostedPaymaster.test.js src/features/cross-chain/hooks/useCrossChainGasAssist.test.jsx
+        run: pnpm exec vitest run src/features/gas-assist/hooks/useAutomaticQuoteRefresh.test.jsx src/features/gas-assist/hooks/useGasAssistController.requote.test.jsx src/features/gas-assist/hooks/usePrepaidSponsorship.test.jsx src/features/gas-assist/components/GasAssistPrepaymentDialog.test.jsx src/features/gas-assist/services/pendingUserOperations.test.js src/features/gas-assist/model/reviewedQuoteBounds.test.js src/features/passkey/services/walletManagerSmartSwap.test.js src/features/gas-assist/services/selfHostedPaymaster.test.js src/features/cross-chain/hooks/useCrossChainGasAssist.test.jsx
 
       - name: Lint
         run: pnpm lint
