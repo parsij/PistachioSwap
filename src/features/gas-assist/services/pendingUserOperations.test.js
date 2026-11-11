@@ -99,8 +99,8 @@ describe('public operation recovery state', () => {
     })
 
     it('supports legacy display snapshots without token identity', () => {
-        const { sellTokenChainId, sellTokenAddress, sellTokenLogoURI,
-            buyTokenChainId, buyTokenAddress, buyTokenLogoURI, ...legacy } = reviewDisplay
+        const legacy = Object.fromEntries(Object.entries(reviewDisplay)
+            .filter(([key]) => !/^(sell|buy)Token(ChainId|Address|LogoURI)$/.test(key)))
         localStorage.setItem('pistachioswap:pending-userops:v1', JSON.stringify([
             { ...base, reviewDisplay: legacy },
         ]))

@@ -91,6 +91,7 @@
       "@pancakeswap/swap-sdk-core>bn.js": "^5.2.3",
       "axios": "^1.20.0",
       "bigint-buffer": "link:packages/bigint-buffer-safe",
+      "bitcoinjs-lib": "7.0.5",
       "esbuild@<=0.24.2": "0.25.12",
       "fast-uri@3": "^3.1.6",
       "fast-uri@4": "^4.1.3",
