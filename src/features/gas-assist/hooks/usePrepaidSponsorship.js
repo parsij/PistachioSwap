@@ -648,6 +648,15 @@ export function usePrepaidSponsorship({
                         buyTokenSymbol: buyToken?.symbol,
                         paymentTokenSymbol: order.paymentTokenSymbol ?? sellToken?.symbol,
                         totalPrepaymentUsdMicros: order.totalPrepaymentUsdMicros,
+                        // Preserve identity and artwork for *this* submitted
+                        // review, not the next token pair selected after reload.
+                        // The recovery store validates these display-only fields.
+                        sellTokenChainId: Number(sellToken?.chainId ?? sourceChainId),
+                        sellTokenAddress: sellToken?.address,
+                        sellTokenLogoURI: sellToken?.logoURI ?? sellToken?.logoUri ?? sellToken?.iconUrl,
+                        buyTokenChainId: Number(buyToken?.chainId),
+                        buyTokenAddress: buyToken?.address,
+                        buyTokenLogoURI: buyToken?.logoURI ?? buyToken?.logoUri ?? buyToken?.iconUrl,
                     },
                     onBroadcast: ({ userOpHash }) => {
                         if (!isCurrent(walletEpoch, flowEpoch)) return

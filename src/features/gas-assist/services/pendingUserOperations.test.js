@@ -27,6 +27,12 @@ const reviewDisplay = {
     buyTokenSymbol: 'USDC',
     paymentTokenSymbol: 'USDC',
     totalPrepaymentUsdMicros: '3954',
+    sellTokenChainId: 137,
+    sellTokenAddress: '0x3333333333333333333333333333333333333333',
+    sellTokenLogoURI: '/icons/usdc.svg',
+    buyTokenChainId: 8453,
+    buyTokenAddress: '0x4444444444444444444444444444444444444444',
+    buyTokenLogoURI: 'https://assets.example.com/usdt.png',
 }
 
 afterEach(() => localStorage.clear())
@@ -72,6 +78,33 @@ describe('public operation recovery state', () => {
         })
         expect(entry.reviewDisplay).toBeNull()
         expect(pendingUserOperations(wallet)[0].orderId).toBe(base.orderId)
+    })
+
+    it('rejects unsafe or mismatched icon data without losing the amounts', () => {
+        const entry = persistPendingUserOperation({
+            ...base,
+            reviewDisplay: {
+                ...reviewDisplay,
+                sellTokenAddress: '0xwrong',
+                sellTokenLogoURI: 'https://assets.example.com/wrong.svg',
+                buyTokenLogoURI: 'javascript:alert(1)',
+            },
+        })
+        expect(entry.reviewDisplay.grossInputAmountRaw).toBe('1200000')
+        expect(entry.reviewDisplay.sellTokenAddress).toBeUndefined()
+        expect(entry.reviewDisplay.sellTokenChainId).toBeUndefined()
+        expect(entry.reviewDisplay.sellTokenLogoURI).toBeUndefined()
+        expect(entry.reviewDisplay.buyTokenAddress).toBe(reviewDisplay.buyTokenAddress)
+        expect(entry.reviewDisplay.buyTokenLogoURI).toBeUndefined()
+    })
+
+    it('supports legacy display snapshots without token identity', () => {
+        const { sellTokenChainId, sellTokenAddress, sellTokenLogoURI,
+            buyTokenChainId, buyTokenAddress, buyTokenLogoURI, ...legacy } = reviewDisplay
+        localStorage.setItem('pistachioswap:pending-userops:v1', JSON.stringify([
+            { ...base, reviewDisplay: legacy },
+        ]))
+        expect(pendingUserOperations(wallet)[0].reviewDisplay).toEqual(legacy)
     })
 
     it('supports old pending operations that do not have display fields', () => {

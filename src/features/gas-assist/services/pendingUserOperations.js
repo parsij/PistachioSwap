@@ -2,6 +2,28 @@ const KEY = 'pistachioswap:pending-userops:v1'
 const HASH = /^0x[0-9a-f]{64}$/iu
 const ADDRESS = /^0x[0-9a-f]{40}$/iu
 
+function safeLogoUri(value) {
+    if (typeof value !== 'string') return null
+    const uri = value.trim()
+    // Images only. Never persist data:, javascript:, protocol-relative URLs,
+    // or arbitrarily long untrusted values into a recoverable review.
+    if (uri.length === 0 || uri.length > 1024 || /[\s\u0000-\u001f]/u.test(uri)) return null
+    return /^https:\/\/[^/]+/iu.test(uri) || /^\/(?!\/)/u.test(uri) ? uri : null
+}
+
+function tokenDisplayIdentity(value, prefix) {
+    const chainId = value[`${prefix}TokenChainId`]
+    const address = value[`${prefix}TokenAddress`]
+    if (!Number.isSafeInteger(chainId) || chainId <= 0 ||
+        typeof address !== 'string' || !ADDRESS.test(address)) return {}
+    const logoURI = safeLogoUri(value[`${prefix}TokenLogoURI`])
+    return {
+        [`${prefix}TokenChainId`]: chainId,
+        [`${prefix}TokenAddress`]: address.toLowerCase(),
+        ...(logoURI ? { [`${prefix}TokenLogoURI`]: logoURI } : {}),
+    }
+}
+
 function validUnsigned(value) {
     return /^\d{1,80}$/.test(String(value ?? ''))
 }
@@ -28,6 +50,8 @@ function displaySnapshot(value) {
         sellTokenSymbol: symbol(value.sellTokenSymbol),
         buyTokenSymbol: symbol(value.buyTokenSymbol),
         paymentTokenSymbol: symbol(value.paymentTokenSymbol),
+        ...tokenDisplayIdentity(value, 'sell'),
+        ...tokenDisplayIdentity(value, 'buy'),
         totalPrepaymentUsdMicros: validUnsigned(value.totalPrepaymentUsdMicros)
             ? String(value.totalPrepaymentUsdMicros) : null,
     }

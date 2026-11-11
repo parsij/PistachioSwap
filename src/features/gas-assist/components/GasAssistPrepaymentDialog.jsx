@@ -39,6 +39,20 @@ function formatUsdMicros(value) {
     return `$${fraction ? `${whole}.${fraction}` : whole}`
 }
 
+function recoveredTokenIcon(display, side) {
+    if (!display) return null
+    // Never use today's selected token to decorate an older submitted swap.
+    // Records saved before token identities were included retain a neutral
+    // symbol-based icon without implying a specific contract or network.
+    return {
+        symbol: display[`${side}TokenSymbol`],
+        decimals: display[`${side}TokenDecimals`],
+        chainId: display[`${side}TokenChainId`] ?? null,
+        address: display[`${side}TokenAddress`] ?? null,
+        logoURI: display[`${side}TokenLogoURI`] ?? null,
+    }
+}
+
 function formatRaw(value, decimals) {
     try {
         return trimDecimal(formatUnits(BigInt(value), Number(decimals)))
@@ -297,6 +311,10 @@ export default function GasAssistPrepaymentDialog({
     // Restored public status fields are not an authenticated quote. Never mix
     // them with whatever token pair is currently selected in the swap screen.
     const displayOrder = order?.recoveredFromStorage ? savedDisplay : order
+    const displaySellToken = order?.recoveredFromStorage
+        ? recoveredTokenIcon(savedDisplay, 'sell') : sellToken
+    const displayBuyToken = order?.recoveredFromStorage
+        ? recoveredTokenIcon(savedDisplay, 'buy') : buyToken
     const amounts = {
         gross: formatRaw(displayOrder?.grossInputAmountRaw,
             order?.recoveredFromStorage ? savedDisplay?.sellTokenDecimals : sellToken?.decimals),
@@ -456,14 +474,16 @@ export default function GasAssistPrepaymentDialog({
                     {order && paymentToken && amountsAvailable && (
                         <div className="gas-assist-swap-summary">
                             <div className="gas-assist-summary-token">
-                                {!order.recoveredFromStorage && <TokenIcon token={sellToken} />}
+                                {displaySellToken && <TokenIcon token={displaySellToken}
+                                    showChainBadge={Boolean(displaySellToken.chainId && displaySellToken.address)} />}
                                 <div>
                                     <span>You pay</span>
                                     <strong>{amounts.gross} {labels.sell}</strong>
                                 </div>
                             </div>
                             <div className="gas-assist-summary-token">
-                                {!order.recoveredFromStorage && <TokenIcon token={buyToken} />}
+                                {displayBuyToken && <TokenIcon token={displayBuyToken}
+                                    showChainBadge={Boolean(displayBuyToken.chainId && displayBuyToken.address)} />}
                                 <div>
                                     <span>You receive</span>
                                     <strong>{amounts.output} {labels.buy}</strong>

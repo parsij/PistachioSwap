@@ -496,6 +496,12 @@ describe('submitted operation UX', () => {
                     buyTokenSymbol: 'USDC',
                     paymentTokenSymbol: 'USDC',
                     totalPrepaymentUsdMicros: '3954',
+                    sellTokenChainId: 137,
+                    sellTokenAddress: '0x3333333333333333333333333333333333333333',
+                    sellTokenLogoURI: '/icons/usdc.svg',
+                    buyTokenChainId: 8453,
+                    buyTokenAddress: '0x4444444444444444444444444444444444444444',
+                    buyTokenLogoURI: '/icons/usdt.svg',
                 },
             },
         })
@@ -506,8 +512,44 @@ describe('submitted operation UX', () => {
         expect(screen.getByText('0.003954 USDC ($0.0039)')).toBeTruthy()
         expect(screen.queryByText(/Unavailable USDC/)).toBeNull()
         expect(screen.getByText(/already been submitted/)).toBeTruthy()
+        // These are the originally submitted tokens, NOT the current SELL/BUY
+        // props from a new quote. Both icons and chain badges must survive.
+        const icons = document.querySelectorAll('.gas-assist-summary-token > .ps-token-icon')
+        expect(icons).toHaveLength(2)
+        expect(icons[0].querySelector('.ps-token-main-logo')?.getAttribute('src')).toBe('/icons/usdc.svg')
+        expect(icons[1].querySelector('.ps-token-main-logo')?.getAttribute('src')).toBe('/icons/usdt.svg')
+        expect(icons[0].querySelector('.ps-token-network-badge')?.getAttribute('aria-label')).toMatch(/Polygon/i)
+        expect(icons[1].querySelector('.ps-token-network-badge')?.getAttribute('aria-label')).toMatch(/Base/i)
         expect(screen.queryByRole('button', { name: 'Swap using Gas Assist' })).toBeNull()
         expect(screen.getByText(/may already be visible in your wallet/i)).toBeTruthy()
+    })
+
+    it('keeps neutral token icon fallbacks for old recoveries lacking chain identities', () => {
+        const flow = sponsorship({
+            phase: 'destination-pending',
+            order: {
+                id: 'legacy-with-amounts',
+                status: 'atomic-submitted',
+                sourceStatus: 'confirmed',
+                userOpHash: `0x${'ab'.repeat(32)}`,
+                recoveredFromStorage: true,
+                reviewDisplay: {
+                    grossInputAmountRaw: '1200000',
+                    expectedOutputRaw: '1193997',
+                    paymentAmountRaw: '3954',
+                    sellTokenDecimals: 6, buyTokenDecimals: 6, paymentTokenDecimals: 6,
+                    sellTokenSymbol: 'USDC', buyTokenSymbol: 'USDT', paymentTokenSymbol: 'USDC',
+                },
+            },
+        })
+        render(<GasAssistPrepaymentDialog sponsorship={flow}
+            sellToken={sellToken} buyToken={buyToken} purpose="cross-chain-gas" />)
+        const icons = document.querySelectorAll('.gas-assist-summary-token > .ps-token-icon')
+        expect(icons).toHaveLength(2)
+        expect(icons[0].querySelector('.ps-token-logo-fallback')?.textContent).toBe('U')
+        expect(icons[1].querySelector('.ps-token-logo-fallback')?.textContent).toBe('U')
+        expect(icons[0].querySelector('.ps-token-network-badge')).toBeNull()
+        expect(icons[1].querySelector('.ps-token-network-badge')).toBeNull()
     })
 
     it('hides unavailable recovered amounts instead of rendering bogus token charges', () => {
